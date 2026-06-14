@@ -1,0 +1,24 @@
+# coturn needs HOST networking: it hands out a large UDP relay-port range and
+# embeds the host public IP in ICE candidates — Docker per-port NAT breaks both.
+# (host networking is Linux-only; correct on a Linux VM / EC2.)
+services:
+  coturn:
+    image: coturn/coturn:4.6.2        # pinned; :latest drifts
+    container_name: coturn
+    restart: unless-stopped
+    network_mode: host
+    command: >
+      -c /etc/coturn/turnserver.conf
+      --static-auth-secret=${TURN_SECRET}
+      --realm=${TURN_REALM}
+      --external-ip=${TURN_EXTERNAL_IP}
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - ./certs:/etc/coturn/certs:ro    # fullchain.pem + privkey.pem
+    environment:
+      TURN_SECRET: ${TURN_SECRET}
+      TURN_REALM: ${TURN_REALM:-turn.example.com}
+      TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP}
+
+# Non-Linux dev fallback: drop network_mode, add `ports:` for 3478/5349 plus a
+# small 49152-49200/udp relay range, and shrink min/max-port in the conf to match.

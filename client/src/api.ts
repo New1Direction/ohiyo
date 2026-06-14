@@ -1,0 +1,463 @@
+// ── Centralized endpoint config ───────────────────────────────────────────────
+// Production overrides the origin via VITE_SERVER_URL; falls back to local dev.
+const SERVER_ORIGIN: string =
+  (import.meta.env.VITE_SERVER_URL as string | undefined) ?? "http://localhost:3000";
+
+export const API_BASE = `${SERVER_ORIGIN}/api/v1`;
+/** Base for serving uploaded files/avatars/emoji (`${FILE_BASE}/files/{id}`). */
+export const FILE_BASE = SERVER_ORIGIN;
+
+/** WebSocket gateway URL, derived from the server origin (ws/wss by protocol). */
+/** Gateway URL — uses a short-lived one-time ticket, not the long-lived JWT. */
+export function gatewayUrl(ticket: string): string {
+  const wsOrigin = SERVER_ORIGIN.replace(/^http/, "ws");
+  return `${wsOrigin}/gateway?ticket=${encodeURIComponent(ticket)}`;
+}
+
+export type PublicUser = {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+};
+
+export type Server = {
+  id: string;
+  name: string;
+  owner_id: string;
+  icon_url: string | null;
+  created_at: number;
+};
+
+export type Channel = {
+  id: string;
+  server_id: string | null;
+  name: string;
+  channel_type: "text" | "voice" | "dm" | "group_dm";
+  position: number;
+  topic: string | null;
+  created_at: number;
+  category_id?: string | null;
+};
+
+export type Category = {
+  id: string;
+  server_id: string;
+  name: string;
+  position: number;
+  created_at: number;
+};
+
+export type ServerWithChannels = Server & {
+  channels: Channel[];
+  members: PublicUser[];
+  categories?: Category[];
+};
+
+export type ReactionGroup = {
+  emoji: string;
+  count: number;
+  me: boolean;
+};
+
+export type AttachmentMeta = {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  /** Pixel dimensions for images, so the client reserves space before load (no shift). */
+  width?: number | null;
+  height?: number | null;
+};
+
+export type ReplyPreview = {
+  id: string;
+  author: string;
+  content: string;
+};
+
+export type PollOption = { id: string; text: string; votes: number; me: boolean };
+export type Poll = {
+  question: string;
+  multi: boolean;
+  closes_at: number | null;
+  total_votes: number;
+  options: PollOption[];
+};
+
+export type Message = {
+  id: string;
+  channel_id: string;
+  author: PublicUser;
+  content: string;
+  created_at: number;
+  edited_at: number | null;
+  attachments?: AttachmentMeta[] | null;
+  reactions?: ReactionGroup[];
+  reply_to?: ReplyPreview | null;
+  pinned?: boolean;
+  poll?: Poll | null;
+  /** Client-only optimistic-send lifecycle (never returned by the server). */
+  _state?: "pending" | "failed";
+  _send?: { content: string; attachmentIds?: string[]; replyTo?: string | null };
+};
+
+/** One participant's read cursor in a channel (drives Delivered/Seen receipts). */
+export type ReadCursor = {
+  user_id: string;
+  last_read_message_id: string | null;
+  last_read_at: number;
+};
+
+export type ServerEmoji = {
+  id: string;
+  server_id: string;
+  name: string;
+  url: string;
+  created_by: string;
+  created_at: number;
+};
+
+export type UserProfile = {
+  id: string;
+  username: string;
+  display_name: string;
+  bio: string | null;
+  pronouns: string | null;
+  banner_color: string | null;
+  custom_status: string | null;
+  avatar_url: string | null;
+  social_spotify: string | null;
+  social_github: string | null;
+  social_twitter: string | null;
+  social_steam: string | null;
+  social_youtube: string | null;
+  social_twitch: string | null;
+};
+
+export type AuthResponse = {
+  token: string;
+  user: PublicUser;
+};
+
+export type EventInfo = {
+  id: string;
+  server_id: string;
+  title: string;
+  description: string | null;
+  starts_at: number;
+  created_by: string;
+  rsvp_count: number;
+  me_rsvp: boolean;
+};
+
+export type Role = {
+  id: string;
+  server_id: string;
+  name: string;
+  color: string | null;
+  permissions: number;
+  position: number;
+  created_at: number;
+};
+
+export type InviteInfo = {
+  code: string;
+  server_id: string;
+  expires_at: number | null;
+  max_uses: number | null;
+  uses: number;
+};
+
+export type InvitePreview = {
+  code: string;
+  server_id: string;
+  server_name: string;
+  icon_url: string | null;
+  member_count: number;
+  already_member: boolean;
+};
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+export const api = {
+  /** Exchange the JWT for a one-time gateway ticket (used to open the WebSocket). */
+  getWsTicket: (token: string) =>
+    request<{ ticket: string }>("/ws/ticket", { method: "POST" }, token).then((r) => r.ticket),
+
+  register: (username: string, password: string, displayName?: string) =>
+    request<AuthResponse>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ username, password, display_name: displayName }),
+    }),
+
+  login: (username: string, password: string) =>
+    request<AuthResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+
+  me: (token: string) => request<PublicUser>("/users/@me", {}, token),
+
+  listServers: (token: string) =>
+    request<ServerWithChannels[]>("/servers", {}, token),
+
+  createServer: (token: string, name: string) =>
+    request<ServerWithChannels>("/servers", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }, token),
+
+  joinServer: (token: string, serverId: string) =>
+    request<ServerWithChannels>(`/servers/${serverId}/join`, {
+      method: "POST",
+    }, token),
+
+  kickMember: (token: string, serverId: string, userId: string) =>
+    request<void>(`/servers/${serverId}/members/${userId}`, { method: "DELETE" }, token),
+
+  banMember: (token: string, serverId: string, userId: string) =>
+    request<void>(`/servers/${serverId}/bans/${userId}`, { method: "POST" }, token),
+
+  // ── Roles & permissions ───────────────────────────────────────────────────
+  getMyPermissions: (token: string, serverId: string) =>
+    request<{ permissions: number }>(`/servers/${serverId}/me/permissions`, {}, token),
+
+  listRoles: (token: string, serverId: string) =>
+    request<Role[]>(`/servers/${serverId}/roles`, {}, token),
+
+  createRole: (token: string, serverId: string, name: string, permissions: number, color?: string | null) =>
+    request<Role>(`/servers/${serverId}/roles`, {
+      method: "POST",
+      body: JSON.stringify({ name, permissions, color: color ?? null }),
+    }, token),
+
+  deleteRole: (token: string, serverId: string, roleId: string) =>
+    request<void>(`/servers/${serverId}/roles/${roleId}`, { method: "DELETE" }, token),
+
+  getMemberRoles: (token: string, serverId: string, userId: string) =>
+    request<string[]>(`/servers/${serverId}/members/${userId}/roles`, {}, token),
+
+  assignRole: (token: string, serverId: string, userId: string, roleId: string) =>
+    request<void>(`/servers/${serverId}/members/${userId}/roles/${roleId}`, { method: "PUT" }, token),
+
+  unassignRole: (token: string, serverId: string, userId: string, roleId: string) =>
+    request<void>(`/servers/${serverId}/members/${userId}/roles/${roleId}`, { method: "DELETE" }, token),
+
+  searchMessages: (token: string, serverId: string, q: string) =>
+    request<Message[]>(`/servers/${serverId}/search?q=${encodeURIComponent(q)}`, {}, token),
+
+  // ── Scheduled events ──────────────────────────────────────────────────────
+  listEvents: (token: string, serverId: string) =>
+    request<EventInfo[]>(`/servers/${serverId}/events`, {}, token),
+
+  createEvent: (token: string, serverId: string, title: string, startsAt: number, description?: string | null) =>
+    request<void>(`/servers/${serverId}/events`, {
+      method: "POST",
+      body: JSON.stringify({ title, starts_at: startsAt, description: description ?? null }),
+    }, token),
+
+  rsvpEvent: (token: string, serverId: string, eventId: string) =>
+    request<void>(`/servers/${serverId}/events/${eventId}/rsvp`, { method: "POST" }, token),
+
+  deleteEvent: (token: string, serverId: string, eventId: string) =>
+    request<void>(`/servers/${serverId}/events/${eventId}`, { method: "DELETE" }, token),
+
+  createChannel: (token: string, serverId: string, name: string, categoryId?: string | null) =>
+    request<Channel>(`/servers/${serverId}/channels`, {
+      method: "POST",
+      body: JSON.stringify({ name, category_id: categoryId ?? null }),
+    }, token),
+
+  createCategory: (token: string, serverId: string, name: string) =>
+    request<Category>(`/servers/${serverId}/categories`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }, token),
+
+  deleteCategory: (token: string, serverId: string, categoryId: string) =>
+    request<void>(`/servers/${serverId}/categories/${categoryId}`, { method: "DELETE" }, token),
+
+  moveChannel: (token: string, serverId: string, channelId: string, categoryId: string | null) =>
+    request<void>(`/servers/${serverId}/channels/${channelId}/category`, {
+      method: "PUT",
+      body: JSON.stringify({ category_id: categoryId }),
+    }, token),
+
+  listMessages: (token: string, channelId: string) =>
+    request<Message[]>(`/channels/${channelId}/messages`, {}, token),
+
+  /** Read cursors for a channel — hydrates Delivered/Seen receipts on open. */
+  listReads: (token: string, channelId: string) =>
+    request<ReadCursor[]>(`/channels/${channelId}/reads`, {}, token),
+
+  sendMessage: (
+    token: string,
+    channelId: string,
+    content: string,
+    attachmentIds?: string[],
+    replyTo?: string | null
+  ) =>
+    request<Message>(`/channels/${channelId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        content,
+        attachment_ids: attachmentIds ?? [],
+        reply_to: replyTo ?? null,
+      }),
+    }, token),
+
+  editMessage: (token: string, channelId: string, messageId: string, content: string) =>
+    request<Message>(`/channels/${channelId}/messages/${messageId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    }, token),
+
+  deleteMessage: (token: string, channelId: string, messageId: string) =>
+    request<void>(`/channels/${channelId}/messages/${messageId}`, { method: "DELETE" }, token),
+
+  pinMessage: (token: string, channelId: string, messageId: string) =>
+    request<Message>(`/channels/${channelId}/messages/${messageId}/pin`, { method: "POST" }, token),
+
+  unpinMessage: (token: string, channelId: string, messageId: string) =>
+    request<Message>(`/channels/${channelId}/messages/${messageId}/pin`, { method: "DELETE" }, token),
+
+  listPins: (token: string, channelId: string) =>
+    request<Message[]>(`/channels/${channelId}/pins`, {}, token),
+
+  saveMessage: (token: string, channelId: string, messageId: string) =>
+    request<void>(`/channels/${channelId}/messages/${messageId}/save`, { method: "POST" }, token),
+
+  unsaveMessage: (token: string, channelId: string, messageId: string) =>
+    request<void>(`/channels/${channelId}/messages/${messageId}/save`, { method: "DELETE" }, token),
+
+  listSaved: (token: string) => request<Message[]>("/users/@me/saved", {}, token),
+
+  createPoll: (
+    token: string,
+    channelId: string,
+    question: string,
+    options: string[],
+    opts?: { multi?: boolean; closesInSecs?: number | null }
+  ) =>
+    request<Message>(`/channels/${channelId}/polls`, {
+      method: "POST",
+      body: JSON.stringify({
+        question,
+        options,
+        multi: opts?.multi ?? false,
+        closes_in_secs: opts?.closesInSecs ?? null,
+      }),
+    }, token),
+
+  votePoll: (token: string, channelId: string, messageId: string, optionId: string) =>
+    request<Message>(`/channels/${channelId}/polls/${messageId}/vote`, {
+      method: "POST",
+      body: JSON.stringify({ option_id: optionId }),
+    }, token),
+
+  react: (token: string, channelId: string, messageId: string, emoji: string) =>
+    request<void>(`/channels/${channelId}/messages/${messageId}/react/${emoji}`, {
+      method: "POST",
+    }, token),
+
+  getPublicProfile: (token: string, userId: string) =>
+    request<UserProfile>(`/users/${userId}/profile`, {}, token),
+
+  getMyProfile: (token: string) =>
+    request<UserProfile>("/users/@me/profile", {}, token),
+
+  updateProfile: (
+    token: string,
+    patch: Partial<{
+      display_name: string;
+      bio: string;
+      pronouns: string;
+      banner_color: string;
+      custom_status: string;
+    }>
+  ) =>
+    request<UserProfile>("/users/@me/profile", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }, token),
+
+  listEmojis: (token: string, serverId: string) =>
+    request<ServerEmoji[]>(`/servers/${serverId}/emojis`, {}, token),
+
+  createEmoji: (token: string, serverId: string, name: string, fileId: string) =>
+    request<ServerEmoji>(`/servers/${serverId}/emojis`, {
+      method: "POST",
+      body: JSON.stringify({ name, file_id: fileId }),
+    }, token),
+
+  deleteEmoji: (token: string, serverId: string, emojiId: string) =>
+    request<void>(`/servers/${serverId}/emojis/${emojiId}`, { method: "DELETE" }, token),
+
+  setAvatar: (token: string, fileId: string) =>
+    request<void>("/users/@me/avatar", {
+      method: "POST",
+      body: JSON.stringify({ file_id: fileId }),
+    }, token),
+
+  openDm: (token: string, recipientId: string) =>
+    request<Channel>("/users/@me/dms", {
+      method: "POST",
+      body: JSON.stringify({ recipient_id: recipientId }),
+    }, token),
+
+  /** Fetch STUN + time-limited TURN ICE servers for WebRTC. */
+  getIceServers: (token: string) =>
+    request<{ iceServers: RTCIceServer[]; ttlExpiresAt?: number }>("/ice-servers", {}, token),
+
+  // ── Invites & people ──────────────────────────────────────────────────────
+  createInvite: (
+    token: string,
+    serverId: string,
+    opts?: { maxUses?: number | null; expiresInSecs?: number | null }
+  ) =>
+    request<InviteInfo>(`/servers/${serverId}/invites`, {
+      method: "POST",
+      body: JSON.stringify({
+        max_uses: opts?.maxUses ?? null,
+        expires_in_secs: opts?.expiresInSecs ?? null,
+      }),
+    }, token),
+
+  getInvite: (token: string, code: string) =>
+    request<InvitePreview>(`/invites/${encodeURIComponent(code)}`, {}, token),
+
+  redeemInvite: (token: string, code: string) =>
+    request<ServerWithChannels>(`/invites/${encodeURIComponent(code)}`, { method: "POST" }, token),
+
+  searchUsers: (token: string, q: string) =>
+    request<PublicUser[]>(`/users/search?q=${encodeURIComponent(q)}`, {}, token),
+};
+
+/** Build a shareable invite URL from a code (current origin + ?invite=). */
+export function inviteUrl(code: string): string {
+  return `${window.location.origin}/?invite=${encodeURIComponent(code)}`;
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Kikkacord",
+  "version": "0.1.0",
+  "identifier": "app.kikkacord.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Kikkacord",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 940,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:3000 ws://localhost:3000 https: wss:; img-src 'self' data: blob: https: http://localhost:3000; media-src 'self' blob: data: https: http://localhost:3000; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["kikkacord"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "SocialNetworking",
+    "shortDescription": "The warm, free place for your group chat.",
+    "longDescription": "Kikkacord is a free, open Discord alternative — voice, video, 4K screen-share, polls, events, roles, and plugins, with nothing locked behind a paywall.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

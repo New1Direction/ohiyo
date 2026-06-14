@@ -1,0 +1,537 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Quicksand:wght@500;600;700&display=swap");
+@import "tailwindcss";
+
+:root {
+  /* ─── Default theme (Daybreak) — JS re-applies the saved/active theme on boot.
+         These values keep first paint warm instead of flashing dark. ───────── */
+  --bg-base: #f4e9dd;
+  --bg-sidebar: #fbf3ea;
+  --bg-channel: #fffcf8;
+  --bg-input: #f3e7da;
+  --bg-hover: #f1e2d2;
+  --text-primary: #2a2320;
+  --text-secondary: #6b5d54;
+  --text-muted: #9a8c82;
+  --accent: #f2683c;
+  --accent-hover: #db5429;
+  --danger: #e0483f;
+  --green: #1f9e6b;
+
+  /* ─── Typography ───────────────────────────────────────────── */
+  --font-ui: "Inter", "Noto Sans", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-display: "Quicksand", "Inter", system-ui, -apple-system, sans-serif;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2rem;
+  --text-display: 2.75rem;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-tight: -0.015em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+
+  /* ─── Spacing (8px base) ───────────────────────────────────── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 2.5rem;
+  --space-10: 3rem;
+  --space-12: 4rem;
+
+  /* ─── Radius ───────────────────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 28px;
+  --radius-full: 9999px;
+
+  /* ─── Shadows ──────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 2px rgba(40, 30, 24, 0.06), 0 1px 1px rgba(40, 30, 24, 0.04);
+  --shadow-md: 0 4px 12px rgba(40, 30, 24, 0.08), 0 2px 4px rgba(40, 30, 24, 0.05);
+  --shadow-lg: 0 12px 32px rgba(40, 30, 24, 0.12), 0 4px 8px rgba(40, 30, 24, 0.06);
+  --shadow-lift: 0 6px 20px color-mix(in oklch, var(--accent) 35%, transparent),
+    0 2px 6px color-mix(in oklch, var(--accent) 20%, transparent);
+
+  /* ─── Motion ───────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+  /* Theme switches (Daybreak ⇆ Dusk) glide instead of snapping. */
+  transition: background-color var(--dur-slow) var(--ease-out), color var(--dur-slow) var(--ease-out);
+}
+
+* { box-sizing: border-box; }
+
+/* ── Touch physics ─────────────────────────────────────────────────────────────
+   Make touch feel native: no grey tap flash, no 300ms click delay, no
+   pull-to-refresh / rubber-band stealing a scroll. Desktop is unaffected. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none; /* kill pull-to-refresh + page bounce at the root */
+}
+button, a, summary, label,
+[role="button"], [role="option"], [role="tab"], [role="menuitem"],
+input, textarea, select {
+  touch-action: manipulation; /* removes the legacy 300ms tap delay + double-tap zoom */
+}
+/* Scroll regions: momentum on iOS, and contain the overscroll so a swipe past
+   the end doesn't bounce the whole app or trigger browser back/forward. */
+.kc-touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--text-muted) 40%, transparent);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover { background: color-mix(in oklch, var(--text-muted) 60%, transparent); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ═══════════════════════════════════════════════════════════
+   Kikkacord motion & interaction
+   ═══════════════════════════════════════════════════════════ */
+@keyframes kc-message-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes kc-reaction-pop {
+  0%   { transform: scale(0.7); }
+  55%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@keyframes kc-chirp-bob {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50%      { transform: translateY(-5px) rotate(4deg); }
+}
+@keyframes kc-pulse-soft {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.94); }
+}
+@keyframes kc-spin { to { transform: rotate(360deg); } }
+@keyframes kc-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.kc-message-in { animation: kc-message-in var(--dur-base) var(--ease-out) both; }
+.kc-fade-up { animation: kc-fade-up var(--dur-slow) var(--ease-out) both; }
+.kc-reaction-add { animation: kc-reaction-pop var(--dur-base) var(--ease-spring) both; }
+
+.kc-interactive {
+  transition: transform var(--dur-fast) var(--ease-spring),
+    box-shadow var(--dur-base) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.kc-interactive:hover { transform: translateY(-1px); }
+.kc-interactive:active { transform: scale(0.97); }
+
+.kc-cta {
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-semibold);
+  transition: transform var(--dur-fast) var(--ease-spring),
+    box-shadow var(--dur-base) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.kc-cta:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
+.kc-cta:active { transform: scale(0.97); }
+
+.kc-card {
+  transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+}
+.kc-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+
+.kc-loader { display: inline-grid; place-items: center; color: var(--accent); }
+.kc-loader svg { width: 40px; height: 40px; transform-origin: 50% 75%; animation: kc-chirp-bob 900ms var(--ease-spring) infinite; }
+.kc-pulse {
+  width: 12px; height: 12px; border-radius: var(--radius-full);
+  background: var(--accent); animation: kc-pulse-soft 1s var(--ease-out) infinite;
+}
+.kc-spinner {
+  width: 22px; height: 22px; border-radius: var(--radius-full);
+  border: 2.5px solid color-mix(in oklch, var(--accent) 25%, transparent);
+  border-top-color: var(--accent); animation: kc-spin 720ms linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Overlays · modals · onboarding · skeletons
+   ═══════════════════════════════════════════════════════════ */
+@keyframes kc-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes kc-scale-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes kc-float {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50%      { transform: translateY(-7px) rotate(3deg); }
+}
+@keyframes kc-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+@keyframes kc-sheen { from { background-position: 180% 0; } to { background-position: -80% 0; } }
+
+.kc-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in oklch, var(--text-primary) 36%, transparent);
+  backdrop-filter: blur(10px) saturate(1.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  animation: kc-backdrop-in var(--dur-base) var(--ease-out) both;
+}
+.kc-modal {
+  width: 100%;
+  background: var(--bg-channel);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid color-mix(in oklch, var(--text-primary) 7%, transparent);
+  animation: kc-scale-in var(--dur-slow) var(--ease-spring) both;
+}
+.kc-float { animation: kc-float 4s var(--ease-out) infinite; }
+.kc-shake { animation: kc-shake 380ms var(--ease-out) both; }
+
+/* Premium text input: warm fill, calm idle, accent focus ring handled globally */
+.kc-field {
+  width: 100%;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  border: 1.5px solid transparent;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.kc-field::placeholder { color: var(--text-muted); }
+.kc-field:hover { border-color: color-mix(in oklch, var(--accent) 22%, transparent); }
+.kc-field:focus, .kc-field:focus-within {
+  border-color: color-mix(in oklch, var(--accent) 60%, transparent);
+  background: var(--bg-channel);
+}
+
+.kc-skeleton {
+  background: linear-gradient(
+    100deg,
+    color-mix(in oklch, var(--text-muted) 12%, transparent) 30%,
+    color-mix(in oklch, var(--text-muted) 24%, transparent) 50%,
+    color-mix(in oklch, var(--text-muted) 12%, transparent) 70%
+  );
+  background-size: 220% 100%;
+  animation: kc-sheen 1.5s linear infinite;
+  border-radius: var(--radius-md);
+}
+
+/* Animated "typing…" dots */
+@keyframes kc-typing-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
+  40%           { transform: translateY(-3px); opacity: 1; }
+}
+.kc-typing-dots { display: inline-flex; align-items: center; gap: 3px; }
+.kc-typing-dots i {
+  width: 5px; height: 5px; border-radius: var(--radius-full);
+  background: var(--accent); display: inline-block;
+  animation: kc-typing-bounce 1.2s var(--ease-out) infinite both;
+}
+.kc-typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+.kc-typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+
+/* ═══════════════════════════════════════════════════════════
+   Responsive navigation — off-canvas drawer on phones (≤768px)
+   ═══════════════════════════════════════════════════════════ */
+.kc-nav { display: flex; flex-shrink: 0; }
+.kc-nav-scrim { display: none; }
+/* The header menu button is desktop-hidden; it reveals at the breakpoint. */
+.kc-nav-toggle { display: none; }
+
+@media (max-width: 768px) {
+  .kc-nav {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 50;
+    transform: translateX(-102%);
+    transition: transform var(--dur-base) var(--ease-out);
+    box-shadow: var(--shadow-lg);
+  }
+  .kc-nav.is-open { transform: translateX(0); }
+  /* Trim the channel list a touch so the scrim stays tappable on 320px. */
+  .kc-nav .channel-sidebar > div { width: 13rem; }
+
+  .kc-nav-scrim {
+    display: block; position: fixed; inset: 0; z-index: 48;
+    background: color-mix(in oklch, var(--text-primary) 38%, transparent);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    animation: kc-backdrop-in var(--dur-base) var(--ease-out) both;
+  }
+  .kc-nav-toggle { display: inline-flex; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kc-nav { transition: none !important; }
+}
+
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-channel), 0 0 0 4px color-mix(in oklch, var(--accent) 70%, transparent);
+  border-radius: var(--radius-md);
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kc-message-in, .kc-fade-up, .kc-reaction-add, .kc-loader svg, .kc-pulse, .kc-spinner,
+  .kc-backdrop, .kc-modal, .kc-float, .kc-shake, .kc-skeleton, .kc-typing-dots i,
+  .kc-receipt, .kc-jump-bottom {
+    animation: none !important;
+  }
+  body { transition: none !important; }
+  .kc-interactive, .kc-cta, .kc-card {
+    transition: background-color var(--dur-fast) linear, box-shadow var(--dur-fast) linear;
+  }
+  .kc-interactive:hover, .kc-cta:hover, .kc-card:hover,
+  .kc-interactive:active, .kc-cta:active { transform: none; }
+  .kc-msg-actions { transition: none !important; }
+}
+
+/* ── Message rows: dense hover highlight + Discord-style floating actions ── */
+.kc-msg {
+  position: relative;
+  margin: 0 -8px;
+  padding: 1px 8px 2px;
+  border-radius: var(--radius-md);
+  transition: background-color var(--dur-fast, 120ms) ease;
+}
+.kc-msg:hover { background: color-mix(in oklch, var(--text-primary) 5%, transparent); }
+
+/* Floating action toolbar — hidden until the row is hovered/focused */
+.kc-msg-actions {
+  position: absolute;
+  top: -14px;
+  right: 10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  border: 1px solid var(--bg-hover);
+  box-shadow: 0 6px 16px -4px rgba(45, 35, 25, 0.18), 0 2px 4px rgba(45, 35, 25, 0.08);
+  opacity: 0;
+  transform: translateY(3px);
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.kc-msg:hover .kc-msg-actions,
+.kc-msg:focus-within .kc-msg-actions {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.kc-msg-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: background-color 100ms ease, color 100ms ease;
+}
+.kc-msg-actions button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.kc-msg-actions button.active { color: var(--accent); }
+.kc-msg-actions button.danger:hover { background: var(--danger); color: #fff; }
+.kc-msg-actions[data-confirm="1"] { gap: 4px; padding: 3px 5px; }
+.kc-msg-actions[data-confirm="1"] button { width: auto; padding: 0 9px; height: 26px; font-size: 12px; font-weight: 600; }
+.kc-msg-actions[data-confirm="1"] button.danger { color: #fff; background: var(--danger); }
+
+/* Reaction pills */
+.kc-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  border: 1px solid var(--bg-hover);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 100ms ease, background-color 100ms ease;
+}
+.kc-reaction:hover { border-color: var(--accent); }
+.kc-reaction[data-me="1"] { border-color: var(--accent); background: color-mix(in oklch, var(--accent) 14%, transparent); }
+.kc-reaction-n { color: var(--text-muted); }
+.kc-reaction[data-me="1"] .kc-reaction-n { color: var(--accent); }
+
+/* Hover-revealed timestamp in the avatar gutter for grouped messages */
+.kc-msg-time {
+  position: absolute;
+  left: -56px;
+  top: 3px;
+  width: 48px;
+  text-align: right;
+  font-size: 10px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 100ms ease;
+}
+.kc-msg:hover .kc-msg-time { opacity: 0.7; }
+
+/* Delivered / Seen receipt — a quiet right-aligned line above the composer (DMs) */
+.kc-receipt {
+  padding: 1px 20px 3px;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+  user-select: none;
+  animation: kc-backdrop-in var(--dur-base) var(--ease-out) both; /* soft fade when it appears */
+}
+
+/* ── Server rail icons: base + hover squircle/tint + selected ── */
+.kc-rail-icon {
+  background: var(--bg-sidebar);
+  color: var(--text-primary);
+  border-radius: 50%;
+  transition: border-radius 150ms ease, background-color 150ms ease, box-shadow 150ms ease, color 150ms ease;
+}
+.kc-rail-icon:hover { border-radius: 30%; background: var(--accent); color: #fff; }
+.kc-rail-icon[data-selected="1"] { border-radius: 30%; background: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+
+/* "Jump to latest" pill — shown when a message arrives while reading history */
+.kc-jump-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 8px 20px -4px rgba(45, 35, 25, 0.3);
+  animation: kc-jump-in 160ms ease;
+}
+.kc-jump-bottom:hover { background: var(--accent-hover); }
+@keyframes kc-jump-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* Failed-send affordance */
+.kc-msg-failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--danger);
+}
+.kc-msg-failed button {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.kc-msg-failed button.discard { color: var(--text-muted); }
+.kc-msg-failed button:hover { opacity: 0.8; }
+
+/* Image frame: reserves exact space before load (no layout shift) with a soft
+   placeholder behind the image until it paints. */
+.kc-img-frame {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-input);
+  border: 1px solid var(--bg-hover);
+  max-width: 100%;
+}
+.kc-img-frame .kc-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: zoom-in;
+}
+
+/* Screen-reader-only (for live regions / visually-hidden labels) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Consistent icon button: square hit area, designed hover/active/focus states */
+.kc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, transform 80ms ease;
+}
+.kc-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.kc-icon-btn:active { transform: scale(0.88); }
+.kc-icon-btn.active { color: var(--accent); }
+.kc-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

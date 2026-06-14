@@ -1,0 +1,47 @@
+:root {
+  --conn-excellent: oklch(72% 0.17 150);
+  --conn-good: oklch(78% 0.15 130);
+  --conn-poor: oklch(80% 0.16 75);
+  --conn-critical: oklch(64% 0.21 25);
+  --conn-track: oklch(70% 0 0 / 0.25);
+  --conn-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.conn-badge {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: calc(var(--badge-size) * 0.12);
+  height: var(--badge-size);
+  line-height: 0;
+}
+.conn-bar {
+  width: calc(var(--badge-size) * 0.2);
+  border-radius: 2px;
+  background: var(--conn-track);
+  transform-origin: bottom;
+  transition: background 200ms var(--conn-ease), opacity 200ms var(--conn-ease);
+}
+.conn-bar[data-bar="1"] { height: 35%; }
+.conn-bar[data-bar="2"] { height: 55%; }
+.conn-bar[data-bar="3"] { height: 78%; }
+.conn-bar[data-bar="4"] { height: 100%; }
+.conn-bar.is-off { opacity: 0.9; }
+.conn-badge--excellent .conn-bar.is-on { background: var(--conn-excellent); }
+.conn-badge--good .conn-bar.is-on { background: var(--conn-good); }
+.conn-badge--poor .conn-bar.is-on { background: var(--conn-poor); }
+.conn-badge--critical .conn-bar.is-on { background: var(--conn-critical); }
+.conn-badge--unknown .conn-dot {
+  width: calc(var(--badge-size) * 0.5);
+  height: calc(var(--badge-size) * 0.5);
+  border-radius: 50%;
+  background: var(--conn-track);
+  animation: conn-pulse 1.2s var(--conn-ease) infinite;
+}
+@keyframes conn-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conn-bar { transition: none; }
+  .conn-badge--unknown .conn-dot { animation: none; opacity: 0.6; }
+}

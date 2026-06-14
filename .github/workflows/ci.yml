@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Quality gate so regressions can't merge. Hard gates fail the build; fmt/clippy
+# are reported but non-blocking (existing drift is tracked, not enforced yet).
+jobs:
+  client:
+    name: Client (lint · types · build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - name: ESLint (hooks correctness + a11y)
+        run: npm run lint
+      - name: Type-check
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build
+
+  server:
+    name: Server (build · test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - name: Build
+        run: cargo build --locked
+      - name: Test
+        run: cargo test --locked
+      - name: Format check (non-blocking)
+        run: cargo fmt --check
+        continue-on-error: true
+      - name: Clippy (non-blocking)
+        run: cargo clippy
+        continue-on-error: true

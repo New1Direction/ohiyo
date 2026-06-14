@@ -1,0 +1,45 @@
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+*.swp
+
+# ── Rust (server) ─────────────────────────────────────────────────────────────
+/server/target/
+target/
+
+# ── Node / Vite (client) ──────────────────────────────────────────────────────
+node_modules/
+client/dist/
+client/dist-ssr/
+*.tsbuildinfo
+.vite/
+
+# ── Tauri (desktop) ───────────────────────────────────────────────────────────
+client/src-tauri/target/
+client/src-tauri/gen/
+
+# ── Secrets / local env (templates .env.example and client/.env.production stay) ─
+.env
+.env.local
+.env.*.local
+server/.env
+
+# ── Databases (rebuilt from migrations) ───────────────────────────────────────
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# ── User uploads (runtime data, not source) ───────────────────────────────────
+server/uploads/
+client/uploads/
+
+# ── Release artifacts (ship via GitHub Releases, not in git history) ──────────
+*.dmg
+*.app
+*.AppImage
+*.deb
+*.msi
+
+# ── Logs / coverage ───────────────────────────────────────────────────────────
+*.log
+coverage/

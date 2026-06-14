@@ -1,0 +1,11 @@
+# Build artifacts and local state — never ship these into the image.
+target/
+uploads/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+.git/
+**/*.md
