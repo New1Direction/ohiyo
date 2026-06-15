@@ -2,7 +2,7 @@ import { launchBrowser, register, shot, log, uniq } from "./harness.mjs";
 
 // End-to-end encrypted DMs: A toggles encryption, sends a secret. B decrypts it.
 // CRITICAL: the server must store only ciphertext — verified via the REST API.
-const API = "http://localhost:3000/api/v1";
+const API = process.env.E2E_API || "http://localhost:3000/api/v1";
 const u = uniq();
 const A = `ea_${u}`,
   B = `eb_${u}`;
