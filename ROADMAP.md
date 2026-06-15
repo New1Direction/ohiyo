@@ -20,7 +20,7 @@ See what friends are playing and drop into the action.
 ## 📺 Watch
 Watch shows and videos in sync, together.
 
-- [x] **Watch party** — shared play/pause/seek synced across a channel (direct media; YouTube embed-sync is a follow-up)
+- [x] **Watch party** — synced play/pause/seek across a channel, **YouTube + direct media** (IFrame API)
 - [ ] Screen-share with audio (have the transport; needs the watch-party UX)
 - [ ] Reactions/timeline pinned to playback position
 
