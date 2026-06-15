@@ -30,7 +30,7 @@ import { notify, ensureNotificationPermission, initDeepLinks, claimNotification 
 import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendingFailedOutbox, reconcileStalePending } from "./lib/outbox";
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
-import { myKeyPair, deriveSharedKey, encryptMessage, decryptMessage, isEncrypted } from "./lib/e2e";
+import { myKeyPair, deriveSharedKey, decryptMessage, isEncrypted } from "./lib/e2e";
 import { initSignal, encryptFor, decryptFrom, isSignalCiphertext, safetyNumber } from "./lib/signal";
 import {
   onIdentityChange,
@@ -985,17 +985,17 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
             const g = await groupEncrypt(cid, content);
             if (g) wire = g;
           } else {
-            // 1:1: prefer the forward-secret Signal session; fall back to the legacy
-            // static key if the peer hasn't published Signal prekeys yet.
+            // 1:1: require a forward-secret Signal session. We no longer fall back to
+            // the legacy static-key scheme (zero forward secrecy) — and never to
+            // plaintext. If there's no session yet, abort so the message stays
+            // retryable once the peer publishes prekeys.
             const peerId = dmPeerId(cid);
             const sig = peerId ? await encryptFor(token, peerId, content) : null;
-            if (sig) {
-              wire = sig;
-            } else {
-              const key = await getDmKey(cid);
-              if (key) wire = await encryptMessage(key, content);
-              else toast("Your friend hasn't set up encryption yet — they just need to open Kikkacord once.");
+            if (!sig) {
+              toast("Can't send encrypted yet — your friend needs to open Kikkacord once to set up encryption.");
+              throw new Error("no-signal-session");
             }
+            wire = sig;
           }
         }
         const created = await api.sendMessage(token, cid, wire, attachmentIds, replyTo);
@@ -1017,7 +1017,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         setOutboxState(tempId, "failed");
       }
     },
-    [token, getDmKey, dmPeerId, toast, distributeMySenderKey]
+    [token, dmPeerId, toast, distributeMySenderKey]
   );
 
   // Retry a failed/queued message using its stored send args.
@@ -1037,11 +1037,8 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
           } else {
             const peerId = dmPeerId(msg.channel_id);
             const sig = peerId ? await encryptFor(token, peerId, send.content) : null;
-            if (sig) wire = sig;
-            else {
-              const key = await getDmKey(msg.channel_id);
-              if (key) wire = await encryptMessage(key, send.content);
-            }
+            if (!sig) throw new Error("no-signal-session"); // stays failed/retryable
+            wire = sig;
           }
         }
         const created = await api.sendMessage(token, msg.channel_id, wire, send.attachmentIds, send.replyTo ?? null);
@@ -1058,7 +1055,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         setOutboxState(msg.id, "failed");
       }
     },
-    [token, getDmKey, dmPeerId]
+    [token, dmPeerId]
   );
 
   // Drop a failed message (it never reached the server).
