@@ -149,6 +149,7 @@ export type UserProfile = {
   bio: string | null;
   pronouns: string | null;
   banner_color: string | null;
+  banner_url: string | null;
   custom_status: string | null;
   avatar_url: string | null;
   last_active_at: number | null;
@@ -476,6 +477,12 @@ export const api = {
 
   setAvatar: (token: string, fileId: string) =>
     request<void>("/users/@me/avatar", {
+      method: "POST",
+      body: JSON.stringify({ file_id: fileId }),
+    }, token),
+
+  setBanner: (token: string, fileId: string) =>
+    request<void>("/users/@me/banner", {
       method: "POST",
       body: JSON.stringify({ file_id: fileId }),
     }, token),

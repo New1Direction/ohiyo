@@ -35,6 +35,41 @@ pub async fn set_avatar(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+pub struct SetBannerBody {
+    pub file_id: String,
+}
+
+/// POST /users/@me/banner — set the profile banner image. Mirrors set_avatar exactly:
+/// validates the uploaded file exists, then stores its full /files/<id> URL.
+pub async fn set_banner(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<SetBannerBody>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM files WHERE id = ?")
+        .bind(&body.file_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if exists.is_none() {
+        return Err((StatusCode::NOT_FOUND, "File not found".into()));
+    }
+
+    let base =
+        std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_owned());
+    let banner_url = format!("{base}/files/{}", body.file_id);
+    sqlx::query("UPDATE users SET banner_url = ? WHERE id = ?")
+        .bind(&banner_url)
+        .bind(&auth.0)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 use crate::{auth::AuthUser, AppState};
 
 #[derive(Deserialize)]
@@ -60,6 +95,7 @@ pub struct ProfileResponse {
     pub bio: Option<String>,
     pub pronouns: Option<String>,
     pub banner_color: Option<String>,
+    pub banner_url: Option<String>,
     pub custom_status: Option<String>,
     pub avatar_url: Option<String>,
     /// Unix time of last activity (connect / message send) → "active Xm ago" / last seen.
@@ -80,6 +116,7 @@ struct ProfileRow {
     bio: Option<String>,
     pronouns: Option<String>,
     banner_color: Option<String>,
+    banner_url: Option<String>,
     custom_status: Option<String>,
     avatar_url: Option<String>,
     last_active_at: Option<i64>,
@@ -100,6 +137,7 @@ impl From<ProfileRow> for ProfileResponse {
             bio: r.bio,
             pronouns: r.pronouns,
             banner_color: r.banner_color,
+            banner_url: r.banner_url,
             custom_status: r.custom_status,
             avatar_url: r.avatar_url,
             last_active_at: r.last_active_at,
@@ -118,7 +156,7 @@ pub async fn get_profile(
     State(state): State<AppState>,
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
     let row: ProfileRow = sqlx::query_as(
-        "SELECT id, username, display_name, bio, pronouns, banner_color, custom_status,
+        "SELECT id, username, display_name, bio, pronouns, banner_color, banner_url, custom_status,
                 avatar_url, last_active_at, social_spotify, social_github, social_twitter, social_steam,
                 social_youtube, social_twitch
          FROM users WHERE id = ?",
@@ -137,7 +175,7 @@ pub async fn get_user_profile(
     State(state): State<AppState>,
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
     let row: ProfileRow = sqlx::query_as(
-        "SELECT id, username, display_name, bio, pronouns, banner_color, custom_status,
+        "SELECT id, username, display_name, bio, pronouns, banner_color, banner_url, custom_status,
                 avatar_url, last_active_at, social_spotify, social_github, social_twitter, social_steam,
                 social_youtube, social_twitch
          FROM users WHERE id = ?",
@@ -191,7 +229,7 @@ pub async fn update_profile(
     update_field!(social_twitch);
 
     let row: ProfileRow = sqlx::query_as(
-        "SELECT id, username, display_name, bio, pronouns, banner_color, custom_status,
+        "SELECT id, username, display_name, bio, pronouns, banner_color, banner_url, custom_status,
                 avatar_url, last_active_at, social_spotify, social_github, social_twitter, social_steam,
                 social_youtube, social_twitch
          FROM users WHERE id = ?",

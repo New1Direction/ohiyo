@@ -210,6 +210,7 @@ pub fn router() -> Router<AppState> {
         )
         // Avatar upload
         .route("/users/@me/avatar", post(profile::set_avatar))
+        .route("/users/@me/banner", post(profile::set_banner))
         // E2E encryption public-key directory (legacy static-key scheme)
         .route("/users/@me/key", post(keys::publish_key))
         .route("/users/{user_id}/key", get(keys::get_key))
