@@ -10,6 +10,7 @@ import {
   SessionCipher,
 } from "@privacyresearch/libsignal-protocol-typescript";
 import { api } from "../api";
+import { recordKeySeen, setIdentityTrustBackend } from "./identityTrust";
 
 const NS = "kc:sig:";
 const PREKEY_BATCH = 100;
@@ -42,6 +43,25 @@ let backend: SignalBackend = {
 };
 export function setSignalBackend(b: SignalBackend) {
   backend = b;
+  // Keep the identity-change/verification flags in the SAME store as the keys
+  // they guard (the locked-RAM vault on desktop).
+  setIdentityTrustBackend(b);
+}
+
+/** A peer identity is stored per full address ("user.device"); strip the trailing
+ *  device id to get the user id. User ids are UUIDs (hyphens, never dots), so the
+ *  last dot is always the device separator. */
+function userOf(address: string): string {
+  const i = address.lastIndexOf(".");
+  return i === -1 ? address : address.slice(0, i);
+}
+
+/** User ids are UUIDs — hyphens, never dots; the address separator is ".". Reject a
+ *  dotted id so a malicious server can't smuggle one (e.g. "uuid.9") that would make
+ *  userOf split on the wrong dot and bucket the identity-change flag under a phantom
+ *  user, silently suppressing the real peer's "safety number changed" warning. */
+function isValidUserId(id: string): boolean {
+  return id.length > 0 && !id.includes(".");
 }
 
 function enc(v: unknown): string {
@@ -93,6 +113,13 @@ class SignalStore {
     // Multi-device: each device has its OWN identity key, but the library only passes
     // the bare user id here (no device), so we can't tell a new device from a changed
     // key. Trust on first use; real verification is the out-of-band safety number.
+    //
+    // We never BLOCK here (returning false would throw mid-decrypt) — instead the key
+    // change is surfaced non-destructively: saveIdentity records it (see recordKeySeen)
+    // and the UI shows a "safety number changed" banner. One consequence of not
+    // blocking: because a reused session skips processPreKey, a swapped key is detected
+    // on the INBOUND path (the attacker's first PreKeyWhisperMessage calls saveIdentity),
+    // so the warning can arrive one message late rather than pre-empting the first read.
     return true;
   }
   async loadIdentityKey(id: string) {
@@ -103,7 +130,10 @@ class SignalStore {
     // each other (the library calls this with remoteAddress.toString()).
     const e = this.get("identity" + id) as ArrayBuffer | undefined;
     this.put("identity" + id, key);
-    return e !== undefined && ab2b64(key) !== ab2b64(e);
+    // Record the change so the UI can warn ("safety number changed"); a key we've
+    // never seen is trust-on-first-use, not a change. Returns the same boolean the
+    // library expects (true iff a known key was replaced).
+    return recordKeySeen(userOf(id), e ? ab2b64(e) : undefined, ab2b64(key));
   }
 
   async loadPreKey(id: number | string) {
@@ -250,6 +280,7 @@ async function ensureSession(addr: SignalProtocolAddress, bundle: Bundle): Promi
  *  own other devices (multi-device). Returns a `sig2.<b64(json)>` envelope, or null if
  *  no Signal-capable recipient device exists yet. */
 export async function encryptFor(token: string, peerId: string, plaintext: string): Promise<string | null> {
+  if (!isValidUserId(peerId)) return null;
   const myId = ownUserId();
   const myDevice = getDeviceId();
   const uids = myId && myId !== peerId ? [peerId, myId] : [peerId];
@@ -277,6 +308,9 @@ export async function encryptFor(token: string, peerId: string, plaintext: strin
 /** Decrypt a Signal envelope addressed to this device, or null if it isn't ours /
  *  can't be decrypted. Handles multi-device `sig2.` and legacy single-device `sig1.`. */
 export async function decryptFrom(senderUserId: string, wire: string): Promise<string | null> {
+  // A legit sender id is a dot-free UUID; reject anything else so a hostile server
+  // can't mis-bucket the identity-change flag under a phantom user (see isValidUserId).
+  if (!isValidUserId(senderUserId)) return null;
   if (wire.startsWith("sig2.")) {
     let env: { s: number; r: Record<string, { t: number; b: string }> };
     try {
