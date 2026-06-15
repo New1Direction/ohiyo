@@ -52,15 +52,15 @@ import { initVaultBackend } from "./lib/tauriVault";
 import type { UseWebRTCReturn } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
-import { applyTheme, loadTheme } from "./themes";
+import { applyActiveAppearance } from "./lib/appearance";
 import { useToast } from "./hooks/useToast";
 import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
 import type { GatewayEvent, ConnectionStatus, Activity, WatchSession } from "./gateway";
 
 
-// Boot the theme from localStorage immediately.
-applyTheme(loadTheme());
+// Boot the theme + personal accent from localStorage immediately (warm first paint).
+applyActiveAppearance();
 
 export default function App() {
   const [token, setToken] = useState<string | null>(
