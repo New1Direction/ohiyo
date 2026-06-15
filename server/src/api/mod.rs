@@ -41,7 +41,10 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me/dms", get(users::list_dms))
         .route("/users/@me/dms", post(users::open_dm))
         .route("/users/@me/group-dms", post(users::open_group_dm))
-        .route("/channels/{channel_id}/recipients", get(users::list_recipients))
+        .route(
+            "/channels/{channel_id}/recipients",
+            get(users::list_recipients),
+        )
         .route("/users/@me/deadman", get(users::get_deadman))
         .route("/users/@me/deadman", post(users::set_deadman))
         // Profile
@@ -50,6 +53,10 @@ pub fn router() -> Router<AppState> {
         .route("/users/{user_id}/profile", get(profile::get_user_profile))
         .route("/users/@me/prefs", get(profile::get_prefs))
         .route("/users/@me/prefs", post(profile::set_prefs))
+        // Encrypted E2E key backup (recovery-code model; server stores ciphertext only)
+        .route("/users/@me/key-backup", get(profile::get_key_backup))
+        .route("/users/@me/key-backup", put(profile::put_key_backup))
+        .route("/users/@me/key-backup", delete(profile::delete_key_backup))
         // Servers
         .route("/servers", get(servers::list_servers))
         .route("/servers", post(servers::create_server))

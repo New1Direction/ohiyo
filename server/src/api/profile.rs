@@ -243,3 +243,60 @@ pub async fn set_prefs(
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// Encrypted E2E key-backup (recovery-code model). The body is opaque ciphertext
+/// produced on the client; the server stores and returns it verbatim — it never
+/// sees the recovery code or the key material.
+pub async fn get_key_backup(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT blob FROM key_backups WHERE user_id = ?")
+        .bind(&auth.0)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    match row {
+        Some((s,)) => {
+            let v: serde_json::Value = serde_json::from_str(&s)
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            Ok(Json(v))
+        }
+        None => Err((StatusCode::NOT_FOUND, "no backup".into())),
+    }
+}
+
+pub async fn put_key_backup(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let blob =
+        serde_json::to_string(&body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    sqlx::query(
+        "INSERT INTO key_backups (user_id, blob, updated_at) VALUES (?,?,?)
+         ON CONFLICT(user_id) DO UPDATE SET blob = excluded.blob, updated_at = excluded.updated_at",
+    )
+    .bind(&auth.0)
+    .bind(&blob)
+    .bind(crate::types::now_unix())
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_key_backup(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    sqlx::query("DELETE FROM key_backups WHERE user_id = ?")
+        .bind(&auth.0)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
