@@ -472,6 +472,26 @@ export const api = {
   getUserKey: (token: string, userId: string) =>
     request<{ public_key: string | null }>(`/users/${userId}/key`, {}, token),
 
+  // Signal Protocol (X3DH) prekey directory.
+  signalPublishKeys: (
+    token: string,
+    body: {
+      identity_key: string;
+      registration_id: number;
+      signed_prekey: { key_id: number; public_key: string; signature: string };
+      one_time_prekeys: { key_id: number; public_key: string }[];
+    }
+  ) => request<void>("/signal/keys", { method: "POST", body: JSON.stringify(body) }, token),
+  getPrekeyBundle: (token: string, userId: string) =>
+    request<{
+      identity_key: string;
+      registration_id: number;
+      signed_prekey: { key_id: number; public_key: string; signature: string };
+      one_time_prekey: { key_id: number; public_key: string } | null;
+    }>(`/users/${userId}/prekey-bundle`, {}, token),
+  signalPrekeyCount: (token: string) =>
+    request<{ count: number }>("/signal/keys/count", {}, token),
+
   // ── Invites & people ──────────────────────────────────────────────────────
   createInvite: (
     token: string,
