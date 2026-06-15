@@ -29,6 +29,8 @@ pub struct AppState {
     pub rate: RateLimiter,
     /// One-time gateway tickets — keeps the long-lived JWT out of the WebSocket URL.
     pub tickets: gateway::WsTickets,
+    /// Live rich-presence: user_id → current activity (playing/watching/working).
+    pub activities: gateway::Activities,
 }
 
 /// Ensure `JWT_SECRET` is present. If the operator didn't set one (no env, no
@@ -85,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
         typing_cooldowns: gateway::new_typing_cooldowns(),
         rate: RateLimiter::new(),
         tickets: gateway::new_ws_tickets(),
+        activities: gateway::new_activities(),
     };
 
     let cors = CorsLayer::new()

@@ -67,6 +67,13 @@ pub fn new_session_map() -> SessionMap {
     Arc::new(RwLock::new(HashMap::new()))
 }
 
+// Map user_id → current activity (rich presence). Ephemeral; cleared on disconnect.
+pub type Activities = Arc<RwLock<HashMap<String, crate::types::Activity>>>;
+
+pub fn new_activities() -> Activities {
+    Arc::new(RwLock::new(HashMap::new()))
+}
+
 /// Server-side throttle for typing pings: (user_id, channel_id) → last broadcast.
 pub type TypingCooldowns = Arc<RwLock<HashMap<(String, String), Instant>>>;
 
@@ -266,11 +273,12 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     // Leave any voice channels we were in, notifying peers.
     cleanup_voice(&state, &user_id, me.as_ref());
 
-    // Unregister session + announce offline.
+    // Unregister session + clear activity + announce offline.
     {
         let mut map = state.sessions.write().unwrap();
         map.remove(&user_id);
     }
+    state.activities.write().unwrap().remove(&user_id);
     broadcast_presence(&state, &user_id, false).await;
 }
 
@@ -430,7 +438,10 @@ async fn handle_client_event(
             let key = (user_id.to_string(), channel_id.clone());
             {
                 let cooldowns = state.typing_cooldowns.read().unwrap();
-                if cooldowns.get(&key).is_some_and(|t| t.elapsed() < TYPING_COOLDOWN) {
+                if cooldowns
+                    .get(&key)
+                    .is_some_and(|t| t.elapsed() < TYPING_COOLDOWN)
+                {
                     return;
                 }
             }
@@ -463,6 +474,22 @@ async fn handle_client_event(
             handle_ack(state, user_id, &channel_id, &message_id).await;
         }
 
+        ClientEvent::SetActivity { activity } => {
+            let sanitized = activity.and_then(|a| a.sanitized());
+            {
+                let mut acts = state.activities.write().unwrap();
+                match &sanitized {
+                    Some(a) => {
+                        acts.insert(user_id.to_string(), a.clone());
+                    }
+                    None => {
+                        acts.remove(user_id);
+                    }
+                }
+            }
+            broadcast_presence(state, user_id, true).await;
+        }
+
         ClientEvent::Heartbeat => {}
     }
 }
@@ -488,14 +515,15 @@ async fn handle_ack(state: &AppState, user_id: &str, channel_id: &str, message_i
 
     // Only ever advance forward. Re-acking an already-read message is a no-op,
     // which also throttles a misbehaving client (no redundant broadcast).
-    let prev: Option<i64> =
-        sqlx::query_scalar("SELECT last_read_at FROM channel_reads WHERE channel_id = ? AND user_id = ?")
-            .bind(channel_id)
-            .bind(user_id)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten();
+    let prev: Option<i64> = sqlx::query_scalar(
+        "SELECT last_read_at FROM channel_reads WHERE channel_id = ? AND user_id = ?",
+    )
+    .bind(channel_id)
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
     if prev.is_some_and(|p| p >= watermark) {
         return;
     }
@@ -516,13 +544,14 @@ async fn handle_ack(state: &AppState, user_id: &str, channel_id: &str, message_i
 
     // Receipts are a DM-only affordance: a channel with NULL server_id is a DM.
     // Decode as Option<String> so NULL → None (a bare String coerces NULL to "").
-    let server_id: Option<String> = sqlx::query_scalar::<_, Option<String>>("SELECT server_id FROM channels WHERE id = ?")
-        .bind(channel_id)
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten()
-        .flatten();
+    let server_id: Option<String> =
+        sqlx::query_scalar::<_, Option<String>>("SELECT server_id FROM channels WHERE id = ?")
+            .bind(channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
     if server_id.is_none() {
         broadcast_to_channel(
             state,
@@ -607,9 +636,16 @@ async fn broadcast_presence(state: &AppState, user_id: &str, online: bool) {
             .fetch_all(&state.db)
             .await
             .unwrap_or_default();
+    // Attach the user's current activity when online (read + drop the lock before awaiting).
+    let activity = if online {
+        state.activities.read().unwrap().get(user_id).cloned()
+    } else {
+        None
+    };
     let event = GatewayEvent::PresenceUpdate {
         user_id: user_id.to_string(),
         online,
+        activity,
     };
     for sid in server_ids {
         broadcast_to_server(state, &sid, &event).await;

@@ -156,6 +156,40 @@ pub struct MessageWithAuthor {
     pub embeds: Option<serde_json::Value>,
 }
 
+/// What a user is currently doing — the "rich presence" layer that powers the
+/// gaming / watching / working hub. Ephemeral (in-memory, cleared on disconnect).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Activity {
+    /// "playing" | "watching" | "working" | "listening"
+    pub kind: String,
+    pub name: String,
+    pub details: Option<String>,
+}
+
+impl Activity {
+    /// Clamp to safe bounds and a known `kind`; returns None if unusable.
+    pub fn sanitized(self) -> Option<Activity> {
+        const KINDS: [&str; 4] = ["playing", "watching", "working", "listening"];
+        let kind = self.kind.to_ascii_lowercase();
+        if !KINDS.contains(&kind.as_str()) {
+            return None;
+        }
+        let name: String = self.name.trim().chars().take(128).collect();
+        if name.is_empty() {
+            return None;
+        }
+        let details = self
+            .details
+            .map(|d| d.trim().chars().take(128).collect::<String>())
+            .filter(|d| !d.is_empty());
+        Some(Activity {
+            kind,
+            name,
+            details,
+        })
+    }
+}
+
 // ── WebSocket gateway events ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,10 +245,12 @@ pub enum GatewayEvent {
         last_read_message_id: String,
         last_read_at: i64,
     },
-    /// Presence/online status for a user (server-scoped).
+    /// Presence/online status for a user (server-scoped), with optional rich activity.
     PresenceUpdate {
         user_id: String,
         online: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        activity: Option<Activity>,
     },
     /// Someone started typing in a channel. Clients show it for a few seconds.
     TypingStart {
@@ -295,6 +331,11 @@ pub enum ClientEvent {
     Ack {
         channel_id: String,
         message_id: String,
+    },
+    /// Set or clear the user's current activity (rich presence). None clears it.
+    SetActivity {
+        #[serde(default)]
+        activity: Option<Activity>,
     },
     /// Keep-alive.
     Heartbeat,
