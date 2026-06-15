@@ -258,6 +258,14 @@ export const api = {
   setPrefs: (token: string, prefs: Record<string, unknown>) =>
     request<void>("/users/@me/prefs", { method: "POST", body: JSON.stringify(prefs) }, token),
 
+  // Encrypted E2E key backup (recovery-code model). Server stores ciphertext only;
+  // getKeyBackup rejects with a 404 when none exists.
+  getKeyBackup: (token: string) => request<Record<string, unknown>>("/users/@me/key-backup", {}, token),
+  putKeyBackup: (token: string, blob: Record<string, unknown>) =>
+    request<void>("/users/@me/key-backup", { method: "PUT", body: JSON.stringify(blob) }, token),
+  deleteKeyBackup: (token: string) =>
+    request<void>("/users/@me/key-backup", { method: "DELETE" }, token),
+
   listServers: (token: string) =>
     request<ServerWithChannels[]>("/servers", {}, token),
 

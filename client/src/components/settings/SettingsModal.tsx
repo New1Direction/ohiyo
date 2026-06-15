@@ -18,7 +18,8 @@ import { isValidHex } from "../../lib/color";
 import { ProfileCardView, type ProfileCardData } from "../ProfileCardView";
 import type { PluginManager } from "../../plugins/registry";
 import { isDesktop } from "../../lib/desktop";
-import { burnVault } from "../../lib/tauriVault";
+import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauriVault";
+import { generateRecoveryCode, encryptBackup, decryptBackup, type BackupBlob } from "../../lib/recovery";
 import { ACCENT_PRESETS, applyActiveAppearance, getActiveAccent, loadAccent, setAccent } from "../../lib/appearance";
 import { pushAppearance } from "../../lib/appearanceSync";
 
@@ -1066,6 +1067,11 @@ function SecurityTab({
   const [seconds, setSeconds] = useState<number | null>(null);
   const [scope, setScope] = useState<"history" | "keys">("history");
   const [confirmBurn, setConfirmBurn] = useState(false);
+  // Backup & recovery (recovery-code model).
+  const [hasBackup, setHasBackup] = useState<boolean | null>(null);
+  const [newCode, setNewCode] = useState<string | null>(null);
+  const [restoreInput, setRestoreInput] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
 
   useEffect(() => {
     api
@@ -1076,6 +1082,55 @@ function SecurityTab({
       })
       .catch((e) => console.warn("[kikkacord] couldn't load deadman config", e));
   }, [token]);
+
+  useEffect(() => {
+    api
+      .getKeyBackup(token)
+      .then(() => setHasBackup(true))
+      .catch(() => setHasBackup(false)); // 404 = no backup yet
+  }, [token]);
+
+  async function createBackup() {
+    setBackupBusy(true);
+    try {
+      const code = generateRecoveryCode();
+      const material = exportKeyMaterial();
+      const blob = await encryptBackup(code, material);
+      await api.putKeyBackup(token, blob as unknown as Record<string, unknown>);
+      setNewCode(code);
+      setHasBackup(true);
+    } catch {
+      onToast("Couldn't create backup", "error");
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
+  async function restoreBackup() {
+    if (!restoreInput.trim()) return;
+    setBackupBusy(true);
+    try {
+      const blob = (await api.getKeyBackup(token)) as unknown as BackupBlob;
+      const material = await decryptBackup(restoreInput, blob);
+      await importKeyMaterial(material);
+      onToast("Keys restored — reloading…", "success");
+      setTimeout(() => window.location.reload(), 1200);
+    } catch {
+      onToast("That code didn't match the backup", "error");
+      setBackupBusy(false);
+    }
+  }
+
+  async function deleteBackup() {
+    try {
+      await api.deleteKeyBackup(token);
+      setHasBackup(false);
+      setNewCode(null);
+      onToast("Backup deleted", "success");
+    } catch {
+      onToast("Couldn't delete backup", "error");
+    }
+  }
 
   async function save(nextSeconds: number | null, nextScope: "history" | "keys") {
     setSeconds(nextSeconds);
@@ -1101,6 +1156,114 @@ function SecurityTab({
         Your messages are end-to-end encrypted with the Signal protocol. These controls decide what
         happens to your data if you disappear — or on demand.
       </p>
+
+      {/* Backup & recovery (recovery-code model) */}
+      <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
+        <div className="mb-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+          🔑 Backup &amp; recovery
+        </div>
+        <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
+          Save an encrypted backup of your keys so you can restore your messages on a new device. It&apos;s
+          locked with a recovery code only you hold — the server never sees your code or your keys.
+        </p>
+
+        {newCode ? (
+          <div
+            className="mb-3 rounded-md p-3"
+            style={{ background: "color-mix(in oklch, var(--accent) 10%, transparent)", border: "1px solid var(--accent)" }}
+          >
+            <div className="mb-1 text-xs font-bold uppercase" style={{ color: "var(--accent)", letterSpacing: "0.04em" }}>
+              Your recovery code
+            </div>
+            <code
+              className="block font-mono text-sm tracking-wider"
+              style={{ color: "var(--text-primary)", wordBreak: "break-all" }}
+            >
+              {newCode}
+            </code>
+            <p className="mt-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+              ⚠️ Write this down and keep it safe. It&apos;s the <strong>only</strong> way to recover your
+              messages if you lose this device — we can&apos;t reset it for you.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(newCode).then(() => onToast("Recovery code copied", "success"));
+                }}
+                className="rounded px-3 py-1.5 text-xs font-semibold"
+                style={{ background: "var(--accent)", color: "#fff" }}
+              >
+                Copy code
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewCode(null)}
+                className="kc-interactive rounded px-3 py-1.5 text-xs"
+                style={{ color: "var(--text-secondary)", border: "1px solid var(--bg-hover)", background: "transparent" }}
+              >
+                I&apos;ve saved it
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={createBackup}
+              disabled={backupBusy}
+              className="rounded px-3 py-1.5 text-sm font-semibold"
+              style={{ background: "var(--accent)", color: "#fff", opacity: backupBusy ? 0.6 : 1 }}
+            >
+              {hasBackup ? "Create a new recovery code" : "Create recovery code"}
+            </button>
+            {hasBackup && (
+              <>
+                <span className="text-xs" style={{ color: "var(--green)" }}>✓ Backup saved</span>
+                <button
+                  type="button"
+                  onClick={deleteBackup}
+                  className="kc-interactive rounded px-2 py-1 text-xs"
+                  style={{ color: "var(--danger)", background: "transparent", border: "1px solid var(--bg-hover)" }}
+                >
+                  Delete backup
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Restore */}
+        <div className="border-t pt-3" style={{ borderColor: "var(--bg-hover)" }}>
+          <div className="mb-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+            Restore on this device
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={restoreInput}
+              onChange={(e) => setRestoreInput(e.target.value)}
+              placeholder="Paste your recovery code"
+              aria-label="Recovery code"
+              className="flex-1 rounded px-3 py-2 text-sm outline-none font-mono"
+              style={{ background: "var(--bg-input)", color: "var(--text-primary)", minWidth: 220 }}
+            />
+            <button
+              type="button"
+              onClick={restoreBackup}
+              disabled={backupBusy || !restoreInput.trim()}
+              className="kc-interactive rounded px-3 py-2 text-sm font-semibold"
+              style={{
+                border: "1px solid var(--accent)",
+                color: "var(--accent)",
+                background: "transparent",
+                opacity: backupBusy || !restoreInput.trim() ? 0.6 : 1,
+              }}
+            >
+              Restore
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Dead man's switch */}
       <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
