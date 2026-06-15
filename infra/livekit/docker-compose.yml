@@ -1,0 +1,28 @@
+# LiveKit SFU — scalable group voice/video/screen-share for Kikkacord.
+#
+# This is the OPTIONAL path. With LiveKit disabled, calls use the built-in
+# peer-to-peer WebRTC mesh (fine up to ~4-5 participants). LiveKit lifts that
+# ceiling by routing media through a selective forwarding unit.
+#
+# Bring it up:  docker compose -f infra/livekit/docker-compose.yml up -d
+# Then set on the server (see server/.env.example):
+#   LIVEKIT_ENABLED=true
+#   LIVEKIT_URL=wss://<your-host>:7880
+#   LIVEKIT_API_KEY / LIVEKIT_API_SECRET  (must match livekit.yaml `keys` below)
+# And build the client with VITE_LIVEKIT_ENABLED=true (or rely on /livekit/config).
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.8
+    container_name: kikkacord-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml --node-ip ${LIVEKIT_NODE_IP:-127.0.0.1}
+    # LiveKit needs a wide UDP range for media; host networking is simplest on Linux.
+    # On macOS/Windows dev, drop network_mode and use the explicit port maps below.
+    network_mode: host
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    # ports (when NOT using network_mode: host):
+    #   - "7880:7880"            # signal / WebSocket
+    #   - "7881:7881"            # TCP fallback for RTC
+    #   - "50000-60000:50000-60000/udp"   # RTC media

@@ -1,0 +1,21 @@
+# LiveKit server config for Kikkacord. Mounted read-only into the container.
+port: 7880
+
+rtc:
+  # UDP media range — must match the published ports / host firewall.
+  port_range_start: 50000
+  port_range_end: 60000
+  # TCP fallback for clients that can't do UDP.
+  tcp_port: 7881
+  # In production set this true and provide --node-ip so SDP carries the public IP.
+  use_external_ip: true
+
+# API key/secret pairs. The server signs join tokens with one of these; the value
+# here MUST equal the server's LIVEKIT_API_KEY (the key) and LIVEKIT_API_SECRET (the
+# value). Generate a real pair with `docker run --rm livekit/livekit-server
+# generate-keys`, or any random key + a 32+ char secret.
+keys:
+  devkey: CHANGE_ME_livekit_secret_at_least_32_chars_long
+
+logging:
+  level: info

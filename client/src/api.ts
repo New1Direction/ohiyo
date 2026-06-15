@@ -446,6 +446,16 @@ export const api = {
   getIceServers: (token: string) =>
     request<{ iceServers: RTCIceServer[]; ttlExpiresAt?: number }>("/ice-servers", {}, token),
 
+  // LiveKit SFU (optional, feature-flagged) — config discovery + room join token.
+  getLiveKitConfig: (token: string) =>
+    request<{ enabled: boolean; url: string | null }>("/livekit/config", {}, token),
+  getLiveKitToken: (token: string, channelId: string) =>
+    request<{ token: string; url: string; room: string }>(
+      `/channels/${channelId}/livekit-token`,
+      { method: "POST" },
+      token
+    ),
+
   // ── Invites & people ──────────────────────────────────────────────────────
   createInvite: (
     token: string,

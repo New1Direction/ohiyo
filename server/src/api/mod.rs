@@ -6,6 +6,7 @@ pub mod events;
 pub mod files;
 pub mod ice;
 pub mod invites;
+pub mod livekit;
 pub mod messages;
 pub mod og;
 pub mod polls;
@@ -184,6 +185,12 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me/avatar", post(profile::set_avatar))
         // WebRTC ICE config: STUN + time-limited TURN credentials
         .route("/ice-servers", get(ice::ice_servers))
+        // LiveKit SFU: feature-flagged config + room-scoped join tokens
+        .route("/livekit/config", get(livekit::livekit_config))
+        .route(
+            "/channels/{channel_id}/livekit-token",
+            post(livekit::create_livekit_token),
+        )
         // Open Graph / link preview proxy (authenticated + SSRF-guarded)
         .route("/og", get(og::fetch_og))
         // One-time ticket to open the gateway WebSocket (keeps the JWT out of the URL)
