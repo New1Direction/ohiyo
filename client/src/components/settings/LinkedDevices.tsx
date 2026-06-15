@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { api } from "../../api";
 import { deviceId } from "../../lib/signal";
 
 type Device = { device_id: number; updated_at: number };
+
+const groupCode = (code: string) => (code.match(/.{1,4}/g) ?? [code]).join("-");
 
 function lastActive(ts: number): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000) - ts);
@@ -26,6 +29,12 @@ export function LinkedDevices({
   const [busy, setBusy] = useState<number | null>(null);
   const thisDevice = deviceId();
 
+  // Device-link code (this device acts as the primary that authorizes a new one).
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [linkExpiry, setLinkExpiry] = useState<number>(0);
+  const [secondsLeft, setSecondsLeft] = useState<number>(0);
+  const [linkBusy, setLinkBusy] = useState(false);
+
   const load = useCallback(() => {
     api
       .listDevices(token)
@@ -33,6 +42,33 @@ export function LinkedDevices({
       .catch(() => setDevices([]));
   }, [token]);
   useEffect(() => load(), [load]);
+
+  // Live countdown; clear the code when it expires.
+  useEffect(() => {
+    if (!linkCode) return;
+    const tick = () => {
+      const left = Math.max(0, linkExpiry - Math.floor(Date.now() / 1000));
+      setSecondsLeft(left);
+      if (left === 0) setLinkCode(null);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [linkCode, linkExpiry]);
+
+  async function startLink() {
+    setLinkBusy(true);
+    try {
+      const { code, expires_at } = await api.startDeviceLink(token);
+      setLinkCode(code);
+      setLinkExpiry(expires_at);
+      load(); // a freshly-linked device will show up after it redeems
+    } catch {
+      onToast("Couldn't start device linking — try again", "error");
+    } finally {
+      setLinkBusy(false);
+    }
+  }
 
   async function revoke(id: number) {
     setBusy(id);
@@ -56,6 +92,49 @@ export function LinkedDevices({
         Every device you&apos;ve signed in on has its own encryption key. Verifying a contact covers all of
         their devices. Remove a device you no longer use — new messages won&apos;t be encrypted to it.
       </p>
+
+      {/* Link a new device with a QR / code — no password re-entry on the new device. */}
+      {linkCode ? (
+        <div
+          className="mb-3 rounded-md p-3 text-center"
+          style={{ background: "color-mix(in oklch, var(--accent) 8%, transparent)", border: "1px solid var(--accent)" }}
+        >
+          <div className="mb-2 text-xs font-bold uppercase" style={{ color: "var(--accent)", letterSpacing: "0.04em" }}>
+            Scan or enter on the new device
+          </div>
+          <div className="mb-2 inline-block rounded-md bg-white p-2">
+            <QRCodeSVG value={`${location.origin}/?link=${linkCode}`} size={132} marginSize={0} />
+          </div>
+          <code
+            className="block font-mono text-base font-bold tracking-widest"
+            style={{ color: "var(--text-primary)" }}
+          >
+            {groupCode(linkCode)}
+          </code>
+          <p className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+            On the new device, choose <strong>Link a device</strong> on the sign-in screen. Expires in{" "}
+            <strong>{secondsLeft}s</strong>.
+          </p>
+          <button
+            type="button"
+            onClick={() => setLinkCode(null)}
+            className="mt-2 rounded px-3 py-1 text-xs font-semibold"
+            style={{ color: "var(--text-secondary)", background: "var(--bg-hover)" }}
+          >
+            Done
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={linkBusy}
+          onClick={startLink}
+          className="mb-3 rounded-md px-3 py-1.5 text-xs font-semibold"
+          style={{ background: "var(--accent)", color: "#fff" }}
+        >
+          🔗 Link a device
+        </button>
+      )}
 
       {devices === null ? (
         <div className="text-xs" style={{ color: "var(--text-muted)" }}>

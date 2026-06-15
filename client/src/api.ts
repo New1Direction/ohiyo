@@ -246,6 +246,13 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
+  // Device linking (QR / one-time code). The primary mints a code; a new device redeems
+  // it for a session token without the password.
+  startDeviceLink: (token: string) =>
+    request<{ code: string; expires_at: number }>("/devices/link/start", { method: "POST" }, token),
+  completeDeviceLink: (code: string) =>
+    request<AuthResponse>("/devices/link/complete", { method: "POST", body: JSON.stringify({ code }) }),
+
   me: (token: string) => request<PublicUser>("/users/@me", {}, token),
 
   // Dead-man's switch (account-level inactivity wipe).

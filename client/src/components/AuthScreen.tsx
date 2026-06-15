@@ -6,7 +6,7 @@ type Props = {
   onAuth: (token: string) => void;
 };
 
-type Mode = "login" | "register";
+type Mode = "login" | "register" | "link";
 
 const LAST_USERNAME_KEY = "kc:last-username";
 const MIN_PASSWORD = 8;
@@ -47,10 +47,18 @@ export function AuthScreen({ onAuth }: Props) {
   const [capsLock, setCapsLock] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [linkCode, setLinkCode] = useState("");
   const usernameRef = useRef<HTMLInputElement>(null);
+  const linkRef = useRef<HTMLInputElement>(null);
 
-  // Autofocus: username when empty, otherwise jump to password (returning user).
+  // A scanned QR opens the app with ?link=<code> — jump straight to the link form.
   useEffect(() => {
+    const code = new URLSearchParams(location.search).get("link");
+    if (code) {
+      setLinkCode(code);
+      setMode("link");
+      return;
+    }
     if (username) document.getElementById("kc-password")?.focus();
     else usernameRef.current?.focus();
     // run once on mount
@@ -78,6 +86,35 @@ export function AuthScreen({ onAuth }: Props) {
       setLoading(false);
     }
   }
+
+  async function handleLinkSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const code = linkCode.replace(/[^a-zA-Z0-9]/g, "");
+    if (!code || loading) return;
+    setError("");
+    setLoading(true);
+    try {
+      const res = await api.completeDeviceLink(code);
+      onAuth(res.token);
+    } catch (err) {
+      const m = err instanceof Error ? err.message.toLowerCase() : "";
+      setError(
+        m.includes("expired")
+          ? "That code expired — generate a fresh one on your other device."
+          : m.includes("invalid") || m.includes("not found") || m.includes("used")
+            ? "That code isn't valid — double-check it."
+            : m.includes("failed to fetch") || m.includes("load failed")
+              ? "Can't reach Kikkacord right now — check your connection."
+              : "Couldn't link this device. Try again?"
+      );
+      setLoading(false);
+    }
+  }
+
+  // Focus the code field whenever we enter link mode (replaces the autoFocus prop).
+  useEffect(() => {
+    if (mode === "link") linkRef.current?.focus();
+  }, [mode]);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -130,13 +167,18 @@ export function AuthScreen({ onAuth }: Props) {
           <h1
             style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-2xl)", color: "var(--text-primary)" }}
           >
-            {mode === "login" ? "Welcome back" : "Join Kikkacord"}
+            {mode === "login" ? "Welcome back" : mode === "register" ? "Join Kikkacord" : "Link this device"}
           </h1>
           <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-            {mode === "login" ? "Good to see you again." : "Free forever. Takes ten seconds."}
+            {mode === "login"
+              ? "Good to see you again."
+              : mode === "register"
+                ? "Free forever. Takes ten seconds."
+                : "Enter the code from a device you're already signed in on."}
           </p>
         </div>
 
+        {mode !== "link" && (
         <form key={mode} onSubmit={handleSubmit} className="kc-fade-up flex flex-col gap-3" aria-label={mode === "login" ? "Sign in" : "Create account"}>
           <div>
             <input
@@ -250,6 +292,64 @@ export function AuthScreen({ onAuth }: Props) {
             )}
           </button>
         </form>
+        )}
+
+        {mode === "link" && (
+          <form onSubmit={handleLinkSubmit} className="kc-fade-up flex flex-col gap-3" aria-label="Link a device">
+            <input
+              ref={linkRef}
+              id="kc-linkcode"
+              type="text"
+              placeholder="Device-link code"
+              aria-label="Device-link code"
+              value={linkCode}
+              onChange={(e) => {
+                setLinkCode(e.target.value);
+                if (error) setError("");
+              }}
+              autoComplete="one-time-code"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              className="kc-field px-3.5 py-3 text-center font-mono text-base tracking-widest outline-none"
+            />
+            {error && (
+              <div
+                className="kc-shake px-3 py-2 text-xs"
+                style={{
+                  background: "color-mix(in oklch, var(--danger) 12%, transparent)",
+                  color: "var(--danger)",
+                  borderRadius: "var(--radius-md)",
+                  fontWeight: 500,
+                }}
+                role="alert"
+              >
+                {error}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={loading || linkCode.replace(/[^a-zA-Z0-9]/g, "").length < 8}
+              className="kc-cta mt-1 flex items-center justify-center gap-2 py-3 text-sm"
+              style={{
+                opacity: loading || linkCode.replace(/[^a-zA-Z0-9]/g, "").length < 8 ? 0.65 : 1,
+                cursor: loading ? "default" : "pointer",
+              }}
+            >
+              {loading ? (
+                <span
+                  className="kc-spinner"
+                  style={{ width: 16, height: 16, borderColor: "rgba(255,255,255,0.35)", borderTopColor: "#fff" }}
+                />
+              ) : (
+                "Link this device"
+              )}
+            </button>
+            <p className="text-center text-xs" style={{ color: "var(--text-muted)" }}>
+              On your other device: <strong>Settings → Privacy &amp; Security → Link a device</strong>.
+            </p>
+          </form>
+        )}
 
         <p className="mt-5 text-center text-xs" style={{ color: "var(--text-muted)" }}>
           {mode === "login" ? (
@@ -257,6 +357,11 @@ export function AuthScreen({ onAuth }: Props) {
               New to Kikkacord?{" "}
               <button onClick={() => switchMode("register")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
                 Create an account
+              </button>
+              <br />
+              Already signed in elsewhere?{" "}
+              <button onClick={() => switchMode("link")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
+                Link a device
               </button>
             </>
           ) : (

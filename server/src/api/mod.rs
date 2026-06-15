@@ -34,6 +34,9 @@ pub fn router() -> Router<AppState> {
         // Auth
         .route("/auth/register", post(auth::register))
         .route("/auth/login", post(auth::login))
+        // Device linking (QR / one-time code) — add a device without re-entering the password
+        .route("/devices/link/start", post(auth::link_start))
+        .route("/devices/link/complete", post(auth::link_complete))
         // Users
         .route("/users/@me", get(users::me))
         .route("/users/@me/saved", get(saved::list_saved))
