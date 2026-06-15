@@ -13,7 +13,7 @@ See what friends are playing and drop into the action.
 - [x] **Rich presence / activity** — "Playing / Watching / Working on / Listening to ___", live in the member list
 - [x] Voice / video / screen-share (peer-to-peer WebRTC)
 - [x] **LiveKit SFU foundation** — server token endpoint + infra (scales voice past the ~5-person P2P ceiling)
-- [ ] LiveKit **client engine** — drop-in `useWebRTCLiveKit` so large parties just work *(needs a live LiveKit to verify)*
+- [x] LiveKit **client engine** — drop-in `useWebRTCLiveKit`, flag-gated + lazy-loaded *(built/typechecked; a live multi-party call needs a running LiveKit to verify end-to-end)*
 - [x] **"Join my voice"** — see who's in voice in the member list and one-click join them
 - [ ] Game detection / auto-presence (desktop), rich-presence art
 
