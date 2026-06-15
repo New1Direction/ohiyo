@@ -211,14 +211,22 @@ fn spawn_embed_refresh(
         let Some(embeds_json) = crate::api::embeds::build_embeds(&content).await else {
             return;
         };
-        if let Err(e) = sqlx::query("UPDATE messages SET embeds = ? WHERE id = ?")
+        // Guard on content: if the message was edited (content changed) or deleted
+        // while we were fetching, rows_affected == 0 and we drop these now-stale
+        // embeds instead of clobbering the newer state.
+        match sqlx::query("UPDATE messages SET embeds = ? WHERE id = ? AND content = ?")
             .bind(&embeds_json)
             .bind(&id)
+            .bind(&content)
             .execute(&state.db)
             .await
         {
-            tracing::warn!("embed persist failed for {id}: {e}");
-            return;
+            Ok(r) if r.rows_affected() == 0 => return,
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!("embed persist failed for {id}: {e}");
+                return;
+            }
         }
         let reloaded: Result<Message, _> = sqlx::query_as("SELECT * FROM messages WHERE id = ?")
             .bind(&id)

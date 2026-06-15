@@ -1199,12 +1199,26 @@ function LinkPreviewCard({ url }: { url: string }) {
   );
 }
 
+/** Accept only http(s) URLs — blocks javascript:/data: from third-party OG data. */
+function safeHttpUrl(s: string | null | undefined): string | undefined {
+  if (!s) return undefined;
+  try {
+    const u = new URL(s, window.location.origin);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Server-persisted link-preview card (no client fetch — fields come from the gateway). */
 function EmbedCard({ embed }: { embed: Embed }) {
   if (!embed.title && !embed.description && !embed.image) return null;
+  const href = safeHttpUrl(embed.url);
+  const imageUrl = safeHttpUrl(embed.image);
+  const faviconUrl = safeHttpUrl(embed.favicon);
   return (
     <a
-      href={embed.url}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       style={{
@@ -1220,9 +1234,9 @@ function EmbedCard({ embed }: { embed: Embed }) {
         overflow: "hidden",
       }}
     >
-      {embed.image && (
+      {imageUrl && (
         <img
-          src={embed.image}
+          src={imageUrl}
           alt=""
           style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 4, flexShrink: 0 }}
           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -1231,8 +1245,8 @@ function EmbedCard({ embed }: { embed: Embed }) {
       <div style={{ minWidth: 0, flex: 1 }}>
         {embed.site_name && (
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>
-            {embed.favicon && (
-              <img src={embed.favicon} alt="" width={12} height={12} style={{ marginRight: 4, verticalAlign: "middle" }}
+            {faviconUrl && (
+              <img src={faviconUrl} alt="" width={12} height={12} style={{ marginRight: 4, verticalAlign: "middle" }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
             )}
             {embed.site_name}

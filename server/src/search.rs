@@ -56,16 +56,23 @@ pub async fn ensure_index() {
     let Some((url, key)) = config() else {
         return;
     };
-    if let Err(e) = http()
+    match http()
         .post(format!("{url}/indexes"))
         .bearer_auth(&key)
         .json(&serde_json::json!({ "uid": "messages", "primaryKey": "id" }))
         .send()
         .await
     {
-        tracing::warn!("meili create-index failed: {e}");
-        return;
+        // 2xx = created/accepted; 409 = already exists. Both are fine.
+        Ok(r) if r.status().is_success() || r.status().as_u16() == 409 => {}
+        Ok(r) => tracing::warn!("meili create-index returned {}", r.status()),
+        Err(e) => {
+            tracing::warn!("meili create-index failed: {e}");
+            return;
+        }
     }
+    // The settings are what make server_id filterable + content searchable — a silent
+    // failure here would make every scoped search return nothing, so check the status.
     match http()
         .patch(format!("{url}/indexes/messages/settings"))
         .bearer_auth(&key)
@@ -77,7 +84,8 @@ pub async fn ensure_index() {
         .send()
         .await
     {
-        Ok(_) => tracing::info!("meilisearch index 'messages' ready"),
+        Ok(r) if r.status().is_success() => tracing::info!("meilisearch index 'messages' ready"),
+        Ok(r) => tracing::warn!("meili settings returned non-success: {}", r.status()),
         Err(e) => tracing::warn!("meili settings failed: {e}"),
     }
 }

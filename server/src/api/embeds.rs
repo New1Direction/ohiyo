@@ -6,11 +6,21 @@
 //! callers run it in a spawned task and broadcast a `MessageUpdate` when done.
 
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+use tokio::sync::Semaphore;
 
 use crate::api::og::fetch_og_data;
 
 /// Cap the work per message so a wall of links can't fan out unboundedly.
 const MAX_URLS: usize = 5;
+
+/// Bounds concurrent embed builds across all messages, so a burst of link-heavy
+/// sends can't pile up an unbounded number of in-flight outbound HTTP fetches.
+const MAX_CONCURRENT_BUILDS: usize = 32;
+static BUILD_SEM: OnceLock<Semaphore> = OnceLock::new();
+fn build_semaphore() -> &'static Semaphore {
+    BUILD_SEM.get_or_init(|| Semaphore::new(MAX_CONCURRENT_BUILDS))
+}
 
 /// A resolved link-preview card persisted with a message and rendered by the client.
 /// Field names mirror the client `Embed` type in `client/src/api.ts`.
@@ -69,6 +79,8 @@ pub async fn build_embeds(content: &str) -> Option<String> {
     if urls.is_empty() {
         return None;
     }
+    // Backpressure: wait for a build slot so concurrent fetches stay bounded.
+    let _permit = build_semaphore().acquire().await.ok()?;
     let mut embeds: Vec<Embed> = Vec::new();
     for url in urls {
         if let Some(og) = fetch_og_data(&url).await {

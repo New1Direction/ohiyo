@@ -53,8 +53,7 @@ pub async fn search_messages(
                 .bind(&server_id)
                 .fetch_optional(&state.db)
                 .await
-                .ok()
-                .flatten();
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
                 if let Some(msg) = msg {
                     out.push(build_full(&state, msg, &auth.0).await?);
                 }

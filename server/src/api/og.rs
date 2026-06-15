@@ -65,10 +65,60 @@ fn http() -> &'static reqwest::Client {
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .user_agent("Kikkacord/1.0 (link preview bot)")
-            .redirect(reqwest::redirect::Policy::limited(5))
+            // No auto-redirects: we follow manually so EVERY hop is SSRF-checked
+            // (a public URL must not be able to bounce us to an internal address).
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("http client")
     })
+}
+
+/// Max bytes buffered from a previewed page — bounds memory on large/hostile pages.
+const MAX_BODY_BYTES: usize = 512 * 1024;
+/// Max redirect hops, each re-validated against the SSRF guard.
+const MAX_REDIRECTS: usize = 5;
+
+/// GET `url`, manually following up to `MAX_REDIRECTS` redirects and re-running the
+/// SSRF guard on every hop. Returns the final non-redirect response, or `None` if a
+/// hop is disallowed / the chain is too long / a request fails.
+async fn fetch_guarded(url: &str) -> Option<reqwest::Response> {
+    let mut current = url.to_owned();
+    for _ in 0..=MAX_REDIRECTS {
+        if !is_public_url(&current).await {
+            return None;
+        }
+        let resp = http().get(&current).send().await.ok()?;
+        if resp.status().is_redirection() {
+            let loc = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())?;
+            // Resolve relative redirects against the current URL before re-checking.
+            current = url::Url::parse(&current).ok()?.join(loc).ok()?.to_string();
+            continue;
+        }
+        return Some(resp);
+    }
+    None
+}
+
+/// Read at most `MAX_BODY_BYTES` of a response body as a lossy UTF-8 string.
+async fn read_capped(mut resp: reqwest::Response) -> Option<String> {
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                buf.extend_from_slice(&chunk);
+                if buf.len() >= MAX_BODY_BYTES {
+                    buf.truncate(MAX_BODY_BYTES);
+                    break;
+                }
+            }
+            Ok(None) => break,
+            Err(_) => return None,
+        }
+    }
+    Some(String::from_utf8_lossy(&buf).into_owned())
 }
 
 pub async fn fetch_og(
@@ -173,7 +223,7 @@ pub(crate) async fn fetch_og_data(url: &str) -> Option<OgData> {
         }
     }
 
-    let response = http().get(url).send().await.ok()?;
+    let response = fetch_guarded(url).await?;
 
     let content_type = response
         .headers()
@@ -190,10 +240,18 @@ pub(crate) async fn fetch_og_data(url: &str) -> Option<OgData> {
         });
     }
 
-    let html = response.text().await.ok()?;
+    // Cap the body so a hostile/huge page can't OOM the (spawned, unbounded) task.
+    let html = read_capped(response).await?;
 
     // Parse OG tags with a lightweight regex-free parser.
     Some(parse_og(url, &html))
+}
+
+/// Resolve a meta image URL against the page URL and accept only http(s) — blocks
+/// `javascript:`/`data:` schemes from third-party Open Graph tags (stored-XSS source).
+fn safe_image_url(base: &str, candidate: &str) -> Option<String> {
+    let resolved = url::Url::parse(base).ok()?.join(candidate.trim()).ok()?;
+    matches!(resolved.scheme(), "http" | "https").then(|| resolved.to_string())
 }
 
 fn parse_og(url: &str, html: &str) -> OgData {
@@ -202,8 +260,13 @@ fn parse_og(url: &str, html: &str) -> OgData {
         ..Default::default()
     };
 
-    // Extract <meta> tags — only scan the first 8KB for perf.
-    let scan = &html[..html.len().min(8192)];
+    // Extract <meta> tags — only scan the first 8KB for perf. Back off to a char
+    // boundary so a multi-byte codepoint straddling the cutoff can't panic the slice.
+    let mut cut = html.len().min(8192);
+    while !html.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let scan = &html[..cut];
 
     for line in scan.split('<') {
         let lower = line.to_ascii_lowercase();
@@ -220,7 +283,12 @@ fn parse_og(url: &str, html: &str) -> OgData {
                 "og:description" | "twitter:description" | "description" => {
                     data.description.get_or_insert(content.clone())
                 }
-                "og:image" | "twitter:image" => data.image.get_or_insert(content.clone()),
+                "og:image" | "twitter:image" => {
+                    if data.image.is_none() {
+                        data.image = safe_image_url(url, &content);
+                    }
+                    continue;
+                }
                 "og:site_name" => data.site_name.get_or_insert(content.clone()),
                 _ => continue,
             };

@@ -15,8 +15,9 @@ use serde::Serialize;
 
 use crate::{api::messages::user_can_access, auth::AuthUser, AppState};
 
-/// 6h — comfortably longer than a call, short enough to rotate often.
-const TOKEN_TTL_SECS: i64 = 6 * 60 * 60;
+/// 10 min — limits the post-kick window (LiveKit has no revocation callback in a
+/// standard deploy); the client re-mints on reconnect, so a short TTL costs nothing.
+const TOKEN_TTL_SECS: i64 = 10 * 60;
 
 #[derive(Serialize)]
 pub struct LiveKitConfig {
@@ -49,6 +50,7 @@ struct VideoGrant {
 struct LiveKitClaims {
     iss: String, // API key
     sub: String, // participant identity (= user_id, so the client can map back)
+    jti: String, // unique token id — LiveKit uses it for dedup / one-use semantics
     exp: i64,
     nbf: i64,
     name: String, // display name shown to other participants
@@ -104,10 +106,7 @@ pub async fn create_livekit_token(
             "livekit not configured".into(),
         ));
     };
-    if !std::env::var("LIVEKIT_ENABLED")
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false)
-    {
+    if !livekit_enabled() {
         return Err((StatusCode::SERVICE_UNAVAILABLE, "livekit disabled".into()));
     }
     if !user_can_access(&state, &channel_id, &auth.0).await {
@@ -127,6 +126,7 @@ pub async fn create_livekit_token(
     let claims = LiveKitClaims {
         iss: api_key,
         sub: auth.0.clone(),
+        jti: crate::types::new_id(),
         exp: now + TOKEN_TTL_SECS,
         nbf: now - 10,
         name,
