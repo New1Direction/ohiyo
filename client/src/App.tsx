@@ -670,6 +670,15 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const decryptMessages = useCallback(
     async (channelId: string, msgs: Message[]): Promise<Message[]> => {
       if (!msgs.some((m) => isEncrypted(m.content))) return msgs;
+      // The conversation is encrypted → reflect it locally (sticky + mutual): the
+      // recipient's UI flips to encrypted mode and their replies encrypt too.
+      setE2eChannels((prev) => {
+        if (prev.has(channelId)) return prev;
+        const next = new Set(prev);
+        next.add(channelId);
+        localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
+        return next;
+      });
       // Learn the DM peer from message authors (resilient to un-hydrated dmUsers).
       if (!dmPeerRef.current.has(channelId)) {
         const myId = currentUserRef.current?.id;
