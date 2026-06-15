@@ -13,8 +13,10 @@ import {
   loadTheme,
 } from "../../themes";
 import type { PluginManager } from "../../plugins/registry";
+import { isDesktop } from "../../lib/desktop";
+import { burnVault } from "../../lib/tauriVault";
 
-type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji";
+type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
 
 type Props = {
   currentUser: PublicUser | null;
@@ -53,7 +55,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, onCl
           <div className="mb-4 text-xs font-bold uppercase" style={{ color: "var(--text-muted)" }}>
             User Settings
           </div>
-          {(["account", "profile", "social", "appearance", "plugins", "emoji"] as Tab[]).map((t) => (
+          {(["account", "profile", "social", "security", "appearance", "plugins", "emoji"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -63,7 +65,15 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, onCl
                 color: tab === t ? "var(--text-primary)" : "var(--text-secondary)",
               }}
             >
-              {t === "social" ? "Social Links" : t === "plugins" ? "Plugins" : t === "emoji" ? "Custom Emoji" : t}
+              {t === "social"
+                ? "Social Links"
+                : t === "plugins"
+                  ? "Plugins"
+                  : t === "emoji"
+                    ? "Custom Emoji"
+                    : t === "security"
+                      ? "Privacy & Security"
+                      : t}
             </button>
           ))}
 
@@ -85,6 +95,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, onCl
           {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} />}
           {tab === "profile" && <ProfileTab token={token} onToast={onToast} />}
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
+          {tab === "security" && <SecurityTab token={token} onToast={onToast} />}
           {tab === "emoji" && <EmojiTab token={token} servers={servers} onToast={onToast} />}
         </div>
       </div>
@@ -745,6 +756,156 @@ function SocialTab({ token, onToast }: { token: string; onToast: (t: string, typ
       >
         Save Links
       </button>
+    </div>
+  );
+}
+
+// ── Privacy & Security tab ────────────────────────────────────────────────────
+
+const DAY = 86400;
+const DEADMAN_PRESETS: { label: string; seconds: number | null }[] = [
+  { label: "Off", seconds: null },
+  { label: "7 days", seconds: 7 * DAY },
+  { label: "30 days", seconds: 30 * DAY },
+  { label: "90 days", seconds: 90 * DAY },
+];
+
+function SecurityTab({
+  token,
+  onToast,
+}: {
+  token: string;
+  onToast: (t: string, type?: "info" | "success" | "error") => void;
+}) {
+  const [seconds, setSeconds] = useState<number | null>(null);
+  const [scope, setScope] = useState<"history" | "keys">("history");
+  const [confirmBurn, setConfirmBurn] = useState(false);
+
+  useEffect(() => {
+    api
+      .getDeadman(token)
+      .then((c) => {
+        setSeconds(c.seconds ?? null);
+        setScope(c.scope === "keys" ? "keys" : "history");
+      })
+      .catch((e) => console.warn("[kikkacord] couldn't load deadman config", e));
+  }, [token]);
+
+  async function save(nextSeconds: number | null, nextScope: "history" | "keys") {
+    setSeconds(nextSeconds);
+    setScope(nextScope);
+    try {
+      await api.setDeadman(token, nextSeconds, nextScope);
+      onToast(nextSeconds ? "Dead man's switch armed" : "Dead man's switch turned off", "success");
+    } catch {
+      onToast("Couldn't save", "error");
+    }
+  }
+
+  async function burn() {
+    setConfirmBurn(false);
+    await burnVault();
+    onToast("Vault burned — E2E keys wiped from this device.", "success");
+  }
+
+  return (
+    <div>
+      <h2 className="mb-1 text-xl font-bold">Privacy &amp; Security</h2>
+      <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
+        Your messages are end-to-end encrypted with the Signal protocol. These controls decide what
+        happens to your data if you disappear — or on demand.
+      </p>
+
+      {/* Dead man's switch */}
+      <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
+        <div className="mb-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+          ⏳ Dead man&apos;s switch
+        </div>
+        <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
+          If you don&apos;t open Kikkacord for this long, your data is wiped automatically.
+        </p>
+        <div className="mb-3 flex flex-wrap gap-2">
+          {DEADMAN_PRESETS.map((p) => {
+            const active = (seconds ?? null) === p.seconds;
+            return (
+              <button
+                key={p.label}
+                type="button"
+                onClick={() => save(p.seconds, scope)}
+                className="rounded-full px-3 py-1 text-sm font-semibold"
+                style={{
+                  background: active ? "var(--accent)" : "var(--bg-input)",
+                  color: active ? "#fff" : "var(--text-secondary)",
+                }}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+        {seconds != null && (
+          <div className="flex flex-wrap gap-2">
+            {(["history", "keys"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => save(seconds, s)}
+                className="rounded px-3 py-1 text-xs"
+                style={{
+                  background: scope === s ? "var(--bg-hover)" : "transparent",
+                  color: scope === s ? "var(--text-primary)" : "var(--text-secondary)",
+                  border: "1px solid var(--bg-hover)",
+                }}
+              >
+                {s === "history" ? "Wipe my messages" : "Wipe messages + my encryption keys"}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Desktop vault burn (Tauri only) */}
+      {isDesktop() && (
+        <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--danger)" }}>
+          <div className="mb-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+            🔥 Burn keys on this device now
+          </div>
+          <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
+            On desktop your E2E keys live in locked, non-swappable memory — never plaintext on disk.
+            This destroys them (and the keychain key) immediately; you&apos;ll re-establish encryption
+            from scratch.
+          </p>
+          {confirmBurn ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={burn}
+                className="rounded px-3 py-1.5 text-sm font-semibold"
+                style={{ background: "var(--danger)", color: "#fff" }}
+              >
+                Yes, burn them
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmBurn(false)}
+                className="rounded px-3 py-1.5 text-sm"
+                style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmBurn(true)}
+              className="rounded px-3 py-1.5 text-sm font-semibold"
+              style={{ background: "transparent", color: "var(--danger)", border: "1px solid var(--danger)" }}
+            >
+              Burn now
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

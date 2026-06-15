@@ -33,6 +33,9 @@ pub struct Channel {
     pub topic: Option<String>,
     pub created_at: i64,
     pub category_id: Option<String>,
+    /// Disappearing-message TTL in seconds; None = off.
+    #[serde(default)]
+    pub disappearing_seconds: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -82,6 +85,9 @@ pub struct Message {
     /// JSON array string of resolved link-preview embeds (NULL until built async).
     #[serde(default)]
     pub embeds: Option<String>,
+    /// Unix time this message self-destructs (disappearing messages); NULL = never.
+    #[serde(default)]
+    pub expires_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,6 +160,9 @@ pub struct MessageWithAuthor {
     pub poll: Option<Poll>,
     /// Parsed link-preview embed array (not the raw DB JSON string), like attachments.
     pub embeds: Option<serde_json::Value>,
+    /// Unix time this message self-destructs (disappearing messages); None = never.
+    #[serde(default)]
+    pub expires_at: Option<i64>,
 }
 
 /// What a user is currently doing — the "rich presence" layer that powers the
@@ -218,6 +227,18 @@ pub enum GatewayEvent {
     MessageDelete {
         id: String,
         channel_id: String,
+    },
+    /// A channel's disappearing-message TTL changed (seconds = None turns it off).
+    DisappearingUpdate {
+        channel_id: String,
+        seconds: Option<i64>,
+    },
+    /// A group member's encrypted Sender Key Distribution Message (group E2E bootstrap).
+    /// `envelope` is a pairwise-encrypted SKDM only this recipient device can open.
+    SenderKeyDistribution {
+        channel_id: String,
+        from_user_id: String,
+        envelope: String,
     },
     ServerCreate(ServerWithChannels),
     ServerDelete {

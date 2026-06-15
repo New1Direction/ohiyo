@@ -1,5 +1,7 @@
 use tauri::Manager;
 
+mod vault;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -21,6 +23,18 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        // Locked-RAM E2E key vault (replaces on-disk localStorage for the keys).
+        .setup(|app| {
+            vault::init(app.handle());
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            vault::vault_available,
+            vault::vault_snapshot,
+            vault::vault_set,
+            vault::vault_remove,
+            vault::vault_burn,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Kikkacord");
 }

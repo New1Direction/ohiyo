@@ -38,6 +38,8 @@ export type Channel = {
   topic: string | null;
   created_at: number;
   category_id?: string | null;
+  /** Disappearing-message TTL in seconds; null/undefined = off. */
+  disappearing_seconds?: number | null;
 };
 
 export type Category = {
@@ -110,6 +112,8 @@ export type Message = {
   pinned?: boolean;
   poll?: Poll | null;
   embeds?: Embed[] | null;
+  /** Unix time this message self-destructs (disappearing messages); null = never. */
+  expires_at?: number | null;
   /** Client-only optimistic-send lifecycle (never returned by the server). */
   _state?: "pending" | "failed";
   /** Client-only: this message was decrypted from an E2E ciphertext for display. */
@@ -237,6 +241,16 @@ export const api = {
 
   me: (token: string) => request<PublicUser>("/users/@me", {}, token),
 
+  // Dead-man's switch (account-level inactivity wipe).
+  getDeadman: (token: string) =>
+    request<{ seconds: number | null; scope: string }>("/users/@me/deadman", {}, token),
+  setDeadman: (token: string, seconds: number | null, scope: "history" | "keys") =>
+    request<void>(
+      "/users/@me/deadman",
+      { method: "POST", body: JSON.stringify({ seconds, scope }) },
+      token
+    ),
+
   listServers: (token: string) =>
     request<ServerWithChannels[]>("/servers", {}, token),
 
@@ -328,6 +342,14 @@ export const api = {
   /** Read cursors for a channel — hydrates Delivered/Seen receipts on open. */
   listReads: (token: string, channelId: string) =>
     request<ReadCursor[]>(`/channels/${channelId}/reads`, {}, token),
+
+  // Disappearing messages: set the channel TTL in seconds (0/null turns it off).
+  setDisappearing: (token: string, channelId: string, seconds: number | null) =>
+    request<void>(
+      `/channels/${channelId}/disappearing`,
+      { method: "PATCH", body: JSON.stringify({ seconds }) },
+      token
+    ),
 
   sendMessage: (
     token: string,
@@ -444,6 +466,25 @@ export const api = {
       body: JSON.stringify({ recipient_id: recipientId }),
     }, token),
 
+  // Create a group DM with several people (group E2E layers on top of this channel).
+  createGroupDm: (token: string, recipientIds: string[], name?: string) =>
+    request<Channel>("/users/@me/group-dms", {
+      method: "POST",
+      body: JSON.stringify({ recipient_ids: recipientIds, name: name ?? null }),
+    }, token),
+
+  // Participants of a DM / group DM — used to fan out sender-key distributions.
+  listRecipients: (token: string, channelId: string) =>
+    request<PublicUser[]>(`/channels/${channelId}/recipients`, {}, token),
+
+  // Relay encrypted Sender Key Distribution Messages to the group (group E2E bootstrap).
+  distributeSenderKey: (token: string, channelId: string, envelopes: Record<string, string>) =>
+    request<void>(
+      `/channels/${channelId}/sender-key`,
+      { method: "POST", body: JSON.stringify({ envelopes }) },
+      token
+    ),
+
   /** Fetch STUN + time-limited TURN ICE servers for WebRTC. */
   getIceServers: (token: string) =>
     request<{ iceServers: RTCIceServer[]; ttlExpiresAt?: number }>("/ice-servers", {}, token),
@@ -476,21 +517,26 @@ export const api = {
   signalPublishKeys: (
     token: string,
     body: {
+      device_id: number;
       identity_key: string;
       registration_id: number;
       signed_prekey: { key_id: number; public_key: string; signature: string };
       one_time_prekeys: { key_id: number; public_key: string }[];
     }
   ) => request<void>("/signal/keys", { method: "POST", body: JSON.stringify(body) }, token),
-  getPrekeyBundle: (token: string, userId: string) =>
-    request<{
-      identity_key: string;
-      registration_id: number;
-      signed_prekey: { key_id: number; public_key: string; signature: string };
-      one_time_prekey: { key_id: number; public_key: string } | null;
-    }>(`/users/${userId}/prekey-bundle`, {}, token),
-  signalPrekeyCount: (token: string) =>
-    request<{ count: number }>("/signal/keys/count", {}, token),
+  // All of a user's devices' bundles — the sender fans out a copy to each.
+  getPrekeyBundles: (token: string, userId: string) =>
+    request<
+      {
+        device_id: number;
+        identity_key: string;
+        registration_id: number;
+        signed_prekey: { key_id: number; public_key: string; signature: string };
+        one_time_prekey: { key_id: number; public_key: string } | null;
+      }[]
+    >(`/users/${userId}/prekey-bundles`, {}, token),
+  signalPrekeyCount: (token: string, deviceId: number) =>
+    request<{ count: number }>(`/signal/keys/count?device_id=${deviceId}`, {}, token),
 
   // ── Invites & people ──────────────────────────────────────────────────────
   createInvite: (

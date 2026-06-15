@@ -60,11 +60,17 @@ pub async fn create_ws_ticket(
     Json(WsTicketResponse { ticket })
 }
 
-// Map user_id → sender so we can push events to specific users.
-pub type SessionMap = Arc<RwLock<HashMap<String, broadcast::Sender<GatewayEvent>>>>;
+// user_id → (connection_id → sender). A user can be connected from several devices /
+// tabs at once (multi-device); EVERY connection receives the user's broadcasts.
+pub type SessionMap = Arc<RwLock<HashMap<String, HashMap<u64, broadcast::Sender<GatewayEvent>>>>>;
 
 pub fn new_session_map() -> SessionMap {
     Arc::new(RwLock::new(HashMap::new()))
+}
+
+static NEXT_CONN_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+fn next_conn_id() -> u64 {
+    NEXT_CONN_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 // Map user_id → current activity (rich presence). Ephemeral; cleared on disconnect.
@@ -112,8 +118,10 @@ pub fn new_voice_rooms() -> VoiceRooms {
 /// Broadcast to a single user (unicast). Used for WebRTC signaling relay.
 pub fn broadcast_to_user(sessions: &SessionMap, user_id: &str, event: &GatewayEvent) {
     let map = sessions.read().unwrap();
-    if let Some(tx) = map.get(user_id) {
-        let _ = tx.send(event.clone());
+    if let Some(conns) = map.get(user_id) {
+        for tx in conns.values() {
+            let _ = tx.send(event.clone());
+        }
     }
 }
 
@@ -128,8 +136,10 @@ pub async fn broadcast_to_server(state: &AppState, server_id: &str, event: &Gate
     // Acquire the lock AFTER the await — never hold a std RwLock across .await.
     let map = state.sessions.read().unwrap();
     for uid in members {
-        if let Some(tx) = map.get(&uid) {
-            let _ = tx.send(event.clone());
+        if let Some(conns) = map.get(&uid) {
+            for tx in conns.values() {
+                let _ = tx.send(event.clone());
+            }
         }
     }
 }
@@ -166,8 +176,10 @@ pub async fn broadcast_to_channel(state: &AppState, channel_id: &str, event: &Ga
 
     let map = state.sessions.read().unwrap();
     for uid in recipients {
-        if let Some(tx) = map.get(&uid) {
-            let _ = tx.send(event.clone());
+        if let Some(conns) = map.get(&uid) {
+            for tx in conns.values() {
+                let _ = tx.send(event.clone());
+            }
         }
     }
 }
@@ -189,8 +201,10 @@ fn broadcast_to_voice(
         if Some(uid.as_str()) == except {
             continue;
         }
-        if let Some(tx) = map.get(uid) {
-            let _ = tx.send(event.clone());
+        if let Some(conns) = map.get(uid) {
+            for tx in conns.values() {
+                let _ = tx.send(event.clone());
+            }
         }
     }
 }
@@ -219,13 +233,17 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     // Generous capacity — WebRTC ICE trickle is chatty (dozens of candidates/sec).
     let (tx, mut rx) = broadcast::channel::<GatewayEvent>(1024);
 
-    // Register this session.
+    // Register this connection (multi-device: a user can have many at once).
+    let conn_id = next_conn_id();
     {
         let mut map = state.sessions.write().unwrap();
-        if let Some(old_tx) = map.insert(user_id.clone(), tx.clone()) {
-            drop(old_tx); // a reconnecting user replaces their previous session sender
-        }
+        map.entry(user_id.clone())
+            .or_default()
+            .insert(conn_id, tx.clone());
     }
+
+    // Connecting counts as activity → refresh the dead-man's-switch liveness clock.
+    crate::api::users::touch_active(&state.db, &user_id).await;
 
     // Load our own public profile once for voice events.
     let me = load_public_user(&state, &user_id).await;
@@ -285,13 +303,26 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     // Leave any voice channels we were in, notifying peers.
     cleanup_voice(&state, &user_id, me.as_ref());
 
-    // Unregister session + clear activity + announce offline.
-    {
+    // Unregister THIS connection. Only when the user's last connection drops do we
+    // clear activity + announce offline (otherwise closing one device flaps presence).
+    let last_connection = {
         let mut map = state.sessions.write().unwrap();
-        map.remove(&user_id);
+        if let Some(conns) = map.get_mut(&user_id) {
+            conns.remove(&conn_id);
+            if conns.is_empty() {
+                map.remove(&user_id);
+                true
+            } else {
+                false
+            }
+        } else {
+            true
+        }
+    };
+    if last_connection {
+        state.activities.write().unwrap().remove(&user_id);
+        broadcast_presence(&state, &user_id, false).await;
     }
-    state.activities.write().unwrap().remove(&user_id);
-    broadcast_presence(&state, &user_id, false).await;
 }
 
 /// Handle one client→server event.

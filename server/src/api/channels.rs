@@ -102,6 +102,7 @@ pub async fn create_channel(
         topic: body.topic,
         created_at: now,
         category_id,
+        disappearing_seconds: None,
     };
 
     broadcast_to_channel(
