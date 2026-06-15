@@ -41,18 +41,30 @@ pub async fn fetch_poll(db: &SqlitePool, message_id: &str, viewer_id: &str) -> O
             .fetch_one(db)
             .await
             .unwrap_or(0);
-        let me: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM poll_votes WHERE option_id = ? AND user_id = ?")
-                .bind(&id)
-                .bind(viewer_id)
-                .fetch_one(db)
-                .await
-                .unwrap_or(0);
+        let me: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM poll_votes WHERE option_id = ? AND user_id = ?",
+        )
+        .bind(&id)
+        .bind(viewer_id)
+        .fetch_one(db)
+        .await
+        .unwrap_or(0);
         total += votes;
-        options.push(PollOption { id, text, votes, me: me > 0 });
+        options.push(PollOption {
+            id,
+            text,
+            votes,
+            me: me > 0,
+        });
     }
 
-    Some(Poll { question, multi: multi != 0, closes_at, total_votes: total, options })
+    Some(Poll {
+        question,
+        multi: multi != 0,
+        closes_at,
+        total_votes: total,
+        options,
+    })
 }
 
 #[derive(Deserialize)]
@@ -75,7 +87,10 @@ pub async fn create_poll(
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
-    if !state.rate.check(&format!("msg:{}", auth.0), 30, Duration::from_secs(10)) {
+    if !state
+        .rate
+        .check(&format!("msg:{}", auth.0), 30, Duration::from_secs(10))
+    {
         return Err((StatusCode::TOO_MANY_REQUESTS, "slow down a moment".into()));
     }
 
@@ -95,18 +110,23 @@ pub async fn create_poll(
 
     let now = now_unix();
     let message_id = new_id();
-    let closes_at = body.closes_in_secs.filter(|s| *s > 0).map(|s| now + s.min(60 * 60 * 24 * 30));
+    let closes_at = body
+        .closes_in_secs
+        .filter(|s| *s > 0)
+        .map(|s| now + s.min(60 * 60 * 24 * 30));
 
     // The poll rides on a normal message so it appears in the channel + search.
-    sqlx::query("INSERT INTO messages (id, channel_id, author_id, content, created_at) VALUES (?,?,?,?,?)")
-        .bind(&message_id)
-        .bind(&channel_id)
-        .bind(&auth.0)
-        .bind(&question)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query(
+        "INSERT INTO messages (id, channel_id, author_id, content, created_at) VALUES (?,?,?,?,?)",
+    )
+    .bind(&message_id)
+    .bind(&channel_id)
+    .bind(&auth.0)
+    .bind(&question)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     sqlx::query("INSERT INTO polls (message_id, question, multi, closes_at) VALUES (?,?,?,?)")
         .bind(&message_id)
@@ -134,7 +154,12 @@ pub async fn create_poll(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let full = build_full(&state, msg, &auth.0).await?;
-    broadcast_to_channel(&state, &channel_id, &GatewayEvent::MessageCreate(full.clone())).await;
+    broadcast_to_channel(
+        &state,
+        &channel_id,
+        &GatewayEvent::MessageCreate(full.clone()),
+    )
+    .await;
     Ok(Json(full))
 }
 
@@ -192,13 +217,15 @@ pub async fn vote_poll(
     .flatten();
 
     if had.is_some() {
-        sqlx::query("DELETE FROM poll_votes WHERE message_id = ? AND option_id = ? AND user_id = ?")
-            .bind(&message_id)
-            .bind(&body.option_id)
-            .bind(&auth.0)
-            .execute(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        sqlx::query(
+            "DELETE FROM poll_votes WHERE message_id = ? AND option_id = ? AND user_id = ?",
+        )
+        .bind(&message_id)
+        .bind(&body.option_id)
+        .bind(&auth.0)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     } else {
         // Single-choice polls keep only one vote per user.
         if multi == 0 {
@@ -209,13 +236,15 @@ pub async fn vote_poll(
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         }
-        sqlx::query("INSERT OR IGNORE INTO poll_votes (message_id, option_id, user_id) VALUES (?,?,?)")
-            .bind(&message_id)
-            .bind(&body.option_id)
-            .bind(&auth.0)
-            .execute(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        sqlx::query(
+            "INSERT OR IGNORE INTO poll_votes (message_id, option_id, user_id) VALUES (?,?,?)",
+        )
+        .bind(&message_id)
+        .bind(&body.option_id)
+        .bind(&auth.0)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
 
     let msg: Message = sqlx::query_as("SELECT * FROM messages WHERE id = ?")
@@ -224,6 +253,11 @@ pub async fn vote_poll(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let full = build_full(&state, msg, &auth.0).await?;
-    broadcast_to_channel(&state, &channel_id, &GatewayEvent::MessageUpdate(full.clone())).await;
+    broadcast_to_channel(
+        &state,
+        &channel_id,
+        &GatewayEvent::MessageUpdate(full.clone()),
+    )
+    .await;
     Ok(Json(full))
 }

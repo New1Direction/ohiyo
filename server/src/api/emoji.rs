@@ -5,7 +5,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{auth::AuthUser, types::{new_id, now_unix}, AppState};
+use crate::{
+    auth::AuthUser,
+    types::{new_id, now_unix},
+    AppState,
+};
 
 #[derive(Serialize, Clone)]
 pub struct ServerEmoji {
@@ -72,33 +76,37 @@ pub async fn create_emoji(
     // Validate emoji name: alphanumeric + underscores, 2–32 chars
     let name = body.name.trim().to_lowercase();
     if name.len() < 2 || name.len() > 32 {
-        return Err((StatusCode::BAD_REQUEST, "Emoji name must be 2–32 chars".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Emoji name must be 2–32 chars".into(),
+        ));
     }
     if !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-        return Err((StatusCode::BAD_REQUEST, "Emoji name: letters, numbers, underscores only".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Emoji name: letters, numbers, underscores only".into(),
+        ));
     }
 
     // Check caller is in the server
-    let is_member: Option<(String,)> = sqlx::query_as(
-        "SELECT user_id FROM server_members WHERE server_id = ? AND user_id = ?",
-    )
-    .bind(&server_id)
-    .bind(&auth.0)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let is_member: Option<(String,)> =
+        sqlx::query_as("SELECT user_id FROM server_members WHERE server_id = ? AND user_id = ?")
+            .bind(&server_id)
+            .bind(&auth.0)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if is_member.is_none() {
         return Err((StatusCode::FORBIDDEN, "Not a member of this server".into()));
     }
 
     // Resolve file URL
-    let file_url: Option<(String,)> =
-        sqlx::query_as("SELECT path FROM files WHERE id = ?")
-            .bind(&body.file_id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let file_url: Option<(String,)> = sqlx::query_as("SELECT path FROM files WHERE id = ?")
+        .bind(&body.file_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let _path = file_url.ok_or_else(|| (StatusCode::NOT_FOUND, "File not found".into()))?;
     let url = format!("/files/{}", body.file_id);
@@ -121,7 +129,10 @@ pub async fn create_emoji(
     .await
     .map_err(|e| {
         if e.to_string().contains("UNIQUE") {
-            (StatusCode::CONFLICT, format!("Emoji :{name}: already exists"))
+            (
+                StatusCode::CONFLICT,
+                format!("Emoji :{name}: already exists"),
+            )
         } else {
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         }
@@ -153,7 +164,10 @@ pub async fn delete_emoji(
 
     let (creator,) = row.ok_or_else(|| (StatusCode::NOT_FOUND, "Emoji not found".into()))?;
     if creator != auth.0 {
-        return Err((StatusCode::FORBIDDEN, "Only the creator can delete this emoji".into()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only the creator can delete this emoji".into(),
+        ));
     }
 
     sqlx::query("DELETE FROM server_emojis WHERE id = ?")

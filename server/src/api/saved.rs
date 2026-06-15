@@ -31,13 +31,15 @@ pub async fn save_message(
     if exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "message not found".into()));
     }
-    sqlx::query("INSERT OR IGNORE INTO saved_messages (user_id, message_id, saved_at) VALUES (?,?,?)")
-        .bind(&auth.0)
-        .bind(&message_id)
-        .bind(now_unix())
-        .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO saved_messages (user_id, message_id, saved_at) VALUES (?,?,?)",
+    )
+    .bind(&auth.0)
+    .bind(&message_id)
+    .bind(now_unix())
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 

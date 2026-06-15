@@ -9,12 +9,18 @@ use crate::{
     api::servers::fetch_full,
     auth::AuthUser,
     gateway::{broadcast_to_channel, broadcast_to_server},
-    types::{Category, Channel, GatewayEvent, new_id, now_unix},
+    types::{new_id, now_unix, Category, Channel, GatewayEvent},
     AppState,
 };
 
 async fn can_manage(state: &AppState, server_id: &str, user_id: &str) -> bool {
-    crate::api::roles::has_perm(state, server_id, user_id, crate::api::roles::perm::MANAGE_CHANNELS).await
+    crate::api::roles::has_perm(
+        state,
+        server_id,
+        user_id,
+        crate::api::roles::perm::MANAGE_CHANNELS,
+    )
+    .await
 }
 
 /// Reload + broadcast the whole server so every client picks up structural changes.
@@ -32,13 +38,12 @@ pub async fn list_channels(
     if !crate::api::servers::is_member(&state, &server_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "not a member of this server".into()));
     }
-    let channels: Vec<Channel> = sqlx::query_as(
-        "SELECT * FROM channels WHERE server_id = ? ORDER BY position",
-    )
-    .bind(&server_id)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let channels: Vec<Channel> =
+        sqlx::query_as("SELECT * FROM channels WHERE server_id = ? ORDER BY position")
+            .bind(&server_id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(channels))
 }
@@ -99,7 +104,12 @@ pub async fn create_channel(
         category_id,
     };
 
-    broadcast_to_channel(&state, &channel.id, &GatewayEvent::ChannelCreate(channel.clone())).await;
+    broadcast_to_channel(
+        &state,
+        &channel.id,
+        &GatewayEvent::ChannelCreate(channel.clone()),
+    )
+    .await;
     Ok(Json(channel))
 }
 
@@ -122,12 +132,13 @@ pub async fn create_category(
     if name.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "category name required".into()));
     }
-    let position: i64 =
-        sqlx::query_scalar("SELECT COALESCE(MAX(position), 0) + 1 FROM categories WHERE server_id = ?")
-            .bind(&server_id)
-            .fetch_one(&state.db)
-            .await
-            .unwrap_or(1);
+    let position: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(position), 0) + 1 FROM categories WHERE server_id = ?",
+    )
+    .bind(&server_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(1);
     let category = Category {
         id: new_id(),
         server_id: server_id.clone(),
@@ -135,15 +146,17 @@ pub async fn create_category(
         position,
         created_at: now_unix(),
     };
-    sqlx::query("INSERT INTO categories (id, server_id, name, position, created_at) VALUES (?,?,?,?,?)")
-        .bind(&category.id)
-        .bind(&category.server_id)
-        .bind(&category.name)
-        .bind(category.position)
-        .bind(category.created_at)
-        .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query(
+        "INSERT INTO categories (id, server_id, name, position, created_at) VALUES (?,?,?,?,?)",
+    )
+    .bind(&category.id)
+    .bind(&category.server_id)
+    .bind(&category.name)
+    .bind(category.position)
+    .bind(category.created_at)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     broadcast_server(&state, &server_id).await;
     Ok(Json(category))
@@ -209,7 +222,13 @@ pub async fn delete_channel(
             .flatten();
     let can = match row.and_then(|(s,)| s) {
         Some(sid) => {
-            crate::api::roles::has_perm(&state, &sid, &auth.0, crate::api::roles::perm::MANAGE_CHANNELS).await
+            crate::api::roles::has_perm(
+                &state,
+                &sid,
+                &auth.0,
+                crate::api::roles::perm::MANAGE_CHANNELS,
+            )
+            .await
         }
         None => false,
     };

@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::{
     auth::AuthUser,
-    types::{Channel, PublicUser, User, new_id, now_unix},
+    types::{new_id, now_unix, Channel, PublicUser, User},
     AppState,
 };
 

@@ -10,7 +10,11 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 
-use crate::{auth::AuthUser, types::{new_id, now_unix}, AppState};
+use crate::{
+    auth::AuthUser,
+    types::{new_id, now_unix},
+    AppState,
+};
 
 const UPLOAD_DIR: &str = "uploads";
 
@@ -78,13 +82,12 @@ pub async fn upload_file(
         let sha256 = format!("{:x}", hasher.finalize());
 
         // Check if file already exists (dedup by content hash).
-        let existing: Option<(String, String, Option<i64>, Option<i64>)> = sqlx::query_as(
-            "SELECT id, path, width, height FROM files WHERE sha256 = ?",
-        )
-        .bind(&sha256)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let existing: Option<(String, String, Option<i64>, Option<i64>)> =
+            sqlx::query_as("SELECT id, path, width, height FROM files WHERE sha256 = ?")
+                .bind(&sha256)
+                .fetch_optional(&state.db)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         let (file_id, final_path, width, height) = if let Some((id, path, w, h)) = existing {
             // Reuse existing — remove temp.
@@ -152,13 +155,12 @@ pub async fn serve_file(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Response, (StatusCode, String)> {
-    let row: Option<(String, String, String)> = sqlx::query_as(
-        "SELECT path, filename, content_type FROM files WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let row: Option<(String, String, String)> =
+        sqlx::query_as("SELECT path, filename, content_type FROM files WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let (path, filename, content_type) = row.ok_or((StatusCode::NOT_FOUND, "not found".into()))?;
 
@@ -171,7 +173,13 @@ pub async fn serve_file(
 
     let safe_filename: String = filename
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
 
     Ok(Response::builder()

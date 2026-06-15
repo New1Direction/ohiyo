@@ -8,7 +8,9 @@ use serde::Deserialize;
 use crate::{
     auth::AuthUser,
     gateway::broadcast_to_server,
-    types::{Category, GatewayEvent, PublicUser, Server, ServerWithChannels, User, new_id, now_unix},
+    types::{
+        new_id, now_unix, Category, GatewayEvent, PublicUser, Server, ServerWithChannels, User,
+    },
     AppState,
 };
 
@@ -74,32 +76,27 @@ pub async fn create_server(
     let server_id = new_id();
     let now = now_unix();
 
-    sqlx::query(
-        "INSERT INTO servers (id, name, owner_id, created_at) VALUES (?,?,?,?)",
-    )
-    .bind(&server_id)
-    .bind(body.name.trim())
-    .bind(&auth.0)
-    .bind(now)
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("INSERT INTO servers (id, name, owner_id, created_at) VALUES (?,?,?,?)")
+        .bind(&server_id)
+        .bind(body.name.trim())
+        .bind(&auth.0)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Add owner as member.
-    sqlx::query(
-        "INSERT INTO server_members (server_id, user_id, joined_at) VALUES (?,?,?)",
-    )
-    .bind(&server_id)
-    .bind(&auth.0)
-    .bind(now)
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("INSERT INTO server_members (server_id, user_id, joined_at) VALUES (?,?,?)")
+        .bind(&server_id)
+        .bind(&auth.0)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Seed a fresh server so it feels alive on first open: a #general text
     // channel plus a "General" voice room — voice is one click away, no setup.
-    let seed_channels: [(&str, &str, i64); 2] =
-        [("general", "text", 0), ("General", "voice", 1)];
+    let seed_channels: [(&str, &str, i64); 2] = [("general", "text", 0), ("General", "voice", 1)];
     for (name, kind, position) in seed_channels {
         sqlx::query(
             "INSERT INTO channels (id, server_id, name, channel_type, position, created_at) VALUES (?,?,?,?,?,?)",
@@ -116,7 +113,12 @@ pub async fn create_server(
     }
 
     let full = fetch_full(&server_id, &state).await?;
-    broadcast_to_server(&state, &full.server.id, &GatewayEvent::ServerCreate(full.clone())).await;
+    broadcast_to_server(
+        &state,
+        &full.server.id,
+        &GatewayEvent::ServerCreate(full.clone()),
+    )
+    .await;
     Ok(Json(full))
 }
 
@@ -126,7 +128,10 @@ pub async fn join_server(
     State(state): State<AppState>,
 ) -> Result<Json<ServerWithChannels>, (StatusCode, String)> {
     if is_banned(&state, &id, &auth.0).await {
-        return Err((StatusCode::FORBIDDEN, "you're banned from this server".into()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you're banned from this server".into(),
+        ));
     }
     let now = now_unix();
 
@@ -172,25 +177,29 @@ pub async fn leave_server(
         .ok()
         .flatten();
     if owner_id.as_deref() == Some(auth.0.as_str()) {
-        return Err((StatusCode::BAD_REQUEST, "delete the server instead of leaving — you own it".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "delete the server instead of leaving — you own it".into(),
+        ));
     }
 
     // Announce before removing so the leaver still receives it as a member.
     broadcast_to_server(
         &state,
         &id,
-        &GatewayEvent::MemberLeave { server_id: id.clone(), user_id: auth.0.clone() },
+        &GatewayEvent::MemberLeave {
+            server_id: id.clone(),
+            user_id: auth.0.clone(),
+        },
     )
     .await;
 
-    sqlx::query(
-        "DELETE FROM server_members WHERE server_id = ? AND user_id = ?",
-    )
-    .bind(&id)
-    .bind(&auth.0)
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("DELETE FROM server_members WHERE server_id = ? AND user_id = ?")
+        .bind(&id)
+        .bind(&auth.0)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -213,19 +222,29 @@ async fn require_mod_action(
         return Err((StatusCode::BAD_REQUEST, "the owner can't be removed".into()));
     }
     if !crate::api::roles::has_perm(state, server_id, actor_id, flag).await {
-        return Err((StatusCode::FORBIDDEN, "you don't have permission for that".into()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you don't have permission for that".into(),
+        ));
     }
     // Hierarchy: you can only act on members ranked below you.
     let actor_rank = crate::api::roles::member_top_position(state, server_id, actor_id).await;
     let target_rank = crate::api::roles::member_top_position(state, server_id, target_id).await;
     if actor_rank <= target_rank {
-        return Err((StatusCode::FORBIDDEN, "that member ranks too high for you to act on".into()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "that member ranks too high for you to act on".into(),
+        ));
     }
     Ok(())
 }
 
 /// Remove a member from a server, announcing it before the row disappears.
-async fn remove_member(state: &AppState, server_id: &str, target_id: &str) -> Result<(), (StatusCode, String)> {
+async fn remove_member(
+    state: &AppState,
+    server_id: &str,
+    target_id: &str,
+) -> Result<(), (StatusCode, String)> {
     broadcast_to_server(
         state,
         server_id,
@@ -250,7 +269,14 @@ pub async fn ban_member(
     Path((server_id, target_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    require_mod_action(&state, &server_id, &auth.0, &target_id, crate::api::roles::perm::BAN_MEMBERS).await?;
+    require_mod_action(
+        &state,
+        &server_id,
+        &auth.0,
+        &target_id,
+        crate::api::roles::perm::BAN_MEMBERS,
+    )
+    .await?;
 
     sqlx::query(
         "INSERT OR IGNORE INTO server_bans (server_id, user_id, banned_by, banned_at) VALUES (?,?,?,?)",
@@ -273,7 +299,14 @@ pub async fn unban_member(
     Path((server_id, target_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    require_mod_action(&state, &server_id, &auth.0, &target_id, crate::api::roles::perm::BAN_MEMBERS).await?;
+    require_mod_action(
+        &state,
+        &server_id,
+        &auth.0,
+        &target_id,
+        crate::api::roles::perm::BAN_MEMBERS,
+    )
+    .await?;
     sqlx::query("DELETE FROM server_bans WHERE server_id = ? AND user_id = ?")
         .bind(&server_id)
         .bind(&target_id)
@@ -302,7 +335,14 @@ pub async fn kick_member(
     Path((server_id, target_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    require_mod_action(&state, &server_id, &auth.0, &target_id, crate::api::roles::perm::KICK_MEMBERS).await?;
+    require_mod_action(
+        &state,
+        &server_id,
+        &auth.0,
+        &target_id,
+        crate::api::roles::perm::KICK_MEMBERS,
+    )
+    .await?;
     remove_member(&state, &server_id, &target_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -349,13 +389,11 @@ pub async fn fetch_full(
         .await
         .map_err(|_| (StatusCode::NOT_FOUND, "server not found".into()))?;
 
-    let channels = sqlx::query_as(
-        "SELECT * FROM channels WHERE server_id = ? ORDER BY position",
-    )
-    .bind(server_id)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    let channels = sqlx::query_as("SELECT * FROM channels WHERE server_id = ? ORDER BY position")
+        .bind(server_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
 
     let members: Vec<User> = sqlx::query_as(
         "SELECT u.* FROM users u

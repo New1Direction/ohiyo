@@ -56,17 +56,20 @@ pub async fn list_events(
 
     let mut out = Vec::with_capacity(rows.len());
     for (id, title, description, starts_at, created_by) in rows {
-        let rsvp_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM event_rsvps WHERE event_id = ?")
-            .bind(&id)
-            .fetch_one(&state.db)
-            .await
-            .unwrap_or(0);
-        let me: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM event_rsvps WHERE event_id = ? AND user_id = ?")
-            .bind(&id)
-            .bind(&auth.0)
-            .fetch_one(&state.db)
-            .await
-            .unwrap_or(0);
+        let rsvp_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM event_rsvps WHERE event_id = ?")
+                .bind(&id)
+                .fetch_one(&state.db)
+                .await
+                .unwrap_or(0);
+        let me: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM event_rsvps WHERE event_id = ? AND user_id = ?",
+        )
+        .bind(&id)
+        .bind(&auth.0)
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
         out.push(EventInfo {
             id,
             server_id: server_id.clone(),
@@ -118,7 +121,14 @@ pub async fn create_event(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    broadcast_to_server(&state, &server_id, &GatewayEvent::EventsChanged { server_id: server_id.clone() }).await;
+    broadcast_to_server(
+        &state,
+        &server_id,
+        &GatewayEvent::EventsChanged {
+            server_id: server_id.clone(),
+        },
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -154,7 +164,14 @@ pub async fn rsvp_event(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
-    broadcast_to_server(&state, &server_id, &GatewayEvent::EventsChanged { server_id: server_id.clone() }).await;
+    broadcast_to_server(
+        &state,
+        &server_id,
+        &GatewayEvent::EventsChanged {
+            server_id: server_id.clone(),
+        },
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -174,10 +191,18 @@ pub async fn delete_event(
             .flatten();
     let creator = creator.ok_or((StatusCode::NOT_FOUND, "event not found".into()))?;
 
-    let is_manager =
-        crate::api::roles::has_perm(&state, &server_id, &auth.0, crate::api::roles::perm::MANAGE_SERVER).await;
+    let is_manager = crate::api::roles::has_perm(
+        &state,
+        &server_id,
+        &auth.0,
+        crate::api::roles::perm::MANAGE_SERVER,
+    )
+    .await;
     if creator != auth.0 && !is_manager {
-        return Err((StatusCode::FORBIDDEN, "only the host or a manager can cancel this".into()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "only the host or a manager can cancel this".into(),
+        ));
     }
 
     sqlx::query("DELETE FROM events WHERE id = ?")
@@ -186,6 +211,13 @@ pub async fn delete_event(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    broadcast_to_server(&state, &server_id, &GatewayEvent::EventsChanged { server_id: server_id.clone() }).await;
+    broadcast_to_server(
+        &state,
+        &server_id,
+        &GatewayEvent::EventsChanged {
+            server_id: server_id.clone(),
+        },
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }

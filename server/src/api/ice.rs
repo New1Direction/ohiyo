@@ -41,8 +41,8 @@ pub struct IceServersResponse {
 
 /// credential = base64_STANDARD( HMAC_SHA1(key = secret, msg = username) ).
 fn turn_credential(secret: &str, username: &str) -> String {
-    let mut mac = HmacSha1::new_from_slice(secret.as_bytes())
-        .expect("HMAC accepts a key of any length");
+    let mut mac =
+        HmacSha1::new_from_slice(secret.as_bytes()).expect("HMAC accepts a key of any length");
     mac.update(username.as_bytes());
     let tag = mac.finalize().into_bytes();
     use base64::Engine as _;
@@ -60,9 +60,8 @@ fn split_urls(raw: &str) -> Vec<String> {
 pub async fn ice_servers(
     AuthUser(user_id): AuthUser,
 ) -> Result<Json<IceServersResponse>, (StatusCode, &'static str)> {
-    let stun_urls = split_urls(
-        &std::env::var("STUN_URLS").unwrap_or_else(|_| DEFAULT_STUN_URLS.to_owned()),
-    );
+    let stun_urls =
+        split_urls(&std::env::var("STUN_URLS").unwrap_or_else(|_| DEFAULT_STUN_URLS.to_owned()));
     let mut ice_servers = vec![IceServer {
         urls: stun_urls,
         username: None,

@@ -40,7 +40,10 @@ fn client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
 
 fn check_auth_rate(state: &AppState, client_ip: &str) -> Result<(), (StatusCode, String)> {
     let key = format!("auth:{}", client_ip);
-    if !state.rate.check(&key, AUTH_MAX_PER_MIN, Duration::from_secs(60)) {
+    if !state
+        .rate
+        .check(&key, AUTH_MAX_PER_MIN, Duration::from_secs(60))
+    {
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
             "too many attempts — give it a moment and try again".into(),
@@ -70,18 +73,20 @@ pub async fn register(
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
     check_auth_rate(&state, &client_ip(&headers, &addr))?;
     if body.username.len() < 2 || body.username.len() > 32 {
-        return Err((StatusCode::BAD_REQUEST, "username must be 2–32 chars".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "username must be 2–32 chars".into(),
+        ));
     }
     if body.password.len() < 8 {
         return Err((StatusCode::BAD_REQUEST, "password must be ≥8 chars".into()));
     }
 
-    let existing: Option<User> =
-        sqlx::query_as("SELECT * FROM users WHERE username = ?")
-            .bind(&body.username)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let existing: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
+        .bind(&body.username)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if existing.is_some() {
         return Err((StatusCode::CONFLICT, "username taken".into()));
@@ -118,7 +123,10 @@ pub async fn register(
     let token = create_token(&id, &secret)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(AuthResponse { token, user: user.into() }))
+    Ok(Json(AuthResponse {
+        token,
+        user: user.into(),
+    }))
 }
 
 #[derive(Deserialize)]
@@ -134,12 +142,11 @@ pub async fn login(
     Json(body): Json<LoginBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
     check_auth_rate(&state, &client_ip(&headers, &addr))?;
-    let user: Option<User> =
-        sqlx::query_as("SELECT * FROM users WHERE username = ?")
-            .bind(&body.username)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
+        .bind(&body.username)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let user = user.ok_or((StatusCode::UNAUTHORIZED, "invalid credentials".into()))?;
 
@@ -151,5 +158,8 @@ pub async fn login(
     let token = create_token(&user.id, &secret)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(AuthResponse { token, user: user.into() }))
+    Ok(Json(AuthResponse {
+        token,
+        user: user.into(),
+    }))
 }

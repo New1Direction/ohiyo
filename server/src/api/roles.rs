@@ -153,11 +153,12 @@ pub async fn create_role(
     let granted = body.permissions & mine & perm::ALL;
 
     // New roles rank above existing ones (creation order = hierarchy in v1).
-    let position: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(position), 0) + 1 FROM roles WHERE server_id = ?")
-        .bind(&server_id)
-        .fetch_one(&state.db)
-        .await
-        .unwrap_or(1);
+    let position: i64 =
+        sqlx::query_scalar("SELECT COALESCE(MAX(position), 0) + 1 FROM roles WHERE server_id = ?")
+            .bind(&server_id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(1);
 
     let role = Role {
         id: new_id(),
@@ -201,7 +202,14 @@ pub async fn delete_role(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     // Anyone who held this role just lost permissions — refresh the whole server.
-    broadcast_to_server(&state, &server_id, &GatewayEvent::PermissionsUpdate { server_id: server_id.clone() }).await;
+    broadcast_to_server(
+        &state,
+        &server_id,
+        &GatewayEvent::PermissionsUpdate {
+            server_id: server_id.clone(),
+        },
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -215,13 +223,14 @@ pub async fn assign_role(
         return Err((StatusCode::FORBIDDEN, "you can't manage roles".into()));
     }
     // Role must belong to this server, and target must be a member.
-    let role_ok: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM roles WHERE id = ? AND server_id = ?")
-        .bind(&role_id)
-        .bind(&server_id)
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten();
+    let role_ok: Option<(i64,)> =
+        sqlx::query_as("SELECT 1 FROM roles WHERE id = ? AND server_id = ?")
+            .bind(&role_id)
+            .bind(&server_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
     if role_ok.is_none() || !is_member(&state, &server_id, &user_id).await {
         return Err((StatusCode::NOT_FOUND, "role or member not found".into()));
     }
@@ -236,7 +245,9 @@ pub async fn assign_role(
     broadcast_to_user(
         &state.sessions,
         &user_id,
-        &GatewayEvent::PermissionsUpdate { server_id: server_id.clone() },
+        &GatewayEvent::PermissionsUpdate {
+            server_id: server_id.clone(),
+        },
     );
     Ok(StatusCode::NO_CONTENT)
 }
@@ -260,7 +271,9 @@ pub async fn unassign_role(
     broadcast_to_user(
         &state.sessions,
         &user_id,
-        &GatewayEvent::PermissionsUpdate { server_id: server_id.clone() },
+        &GatewayEvent::PermissionsUpdate {
+            server_id: server_id.clone(),
+        },
     );
     Ok(StatusCode::NO_CONTENT)
 }

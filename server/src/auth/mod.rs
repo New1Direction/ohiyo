@@ -4,7 +4,10 @@ use argon2::{
     Argon2,
 };
 use axum::{extract::FromRequestParts, http::request::Parts};
-use axum_extra::{TypedHeader, headers::{Authorization, authorization::Bearer}};
+use axum_extra::{
+    headers::{authorization::Bearer, Authorization},
+    TypedHeader,
+};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 
 use crate::types::Claims;
@@ -40,7 +43,10 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 
 pub fn create_token(user_id: &str, secret: &str) -> Result<String> {
     let exp = (chrono::Utc::now().timestamp() as usize) + JWT_EXPIRY_SECS;
-    let claims = Claims { sub: user_id.to_owned(), exp };
+    let claims = Claims {
+        sub: user_id.to_owned(),
+        exp,
+    };
     let token = encode(
         &Header::default(),
         &claims,

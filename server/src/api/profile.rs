@@ -22,7 +22,8 @@ pub async fn set_avatar(
     }
 
     // Configurable for production; defaults to the local dev server.
-    let base = std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_owned());
+    let base =
+        std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_owned());
     let avatar_url = format!("{base}/files/{}", body.file_id);
     sqlx::query("UPDATE users SET avatar_url = ? WHERE id = ?")
         .bind(&avatar_url)
@@ -223,8 +224,8 @@ pub async fn set_prefs(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let json_str = serde_json::to_string(&body)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let json_str =
+        serde_json::to_string(&body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
     sqlx::query(
         "INSERT INTO user_prefs (user_id, prefs_json) VALUES (?,?)

@@ -7,7 +7,7 @@ use crate::{
     api::messages::user_can_access,
     auth::AuthUser,
     gateway::broadcast_to_channel,
-    types::{GatewayEvent, now_unix},
+    types::{now_unix, GatewayEvent},
     AppState,
 };
 
@@ -47,15 +47,13 @@ pub async fn toggle_reaction(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let added = if existing > 0 {
-        sqlx::query(
-            "DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?",
-        )
-        .bind(&message_id)
-        .bind(&auth.0)
-        .bind(&emoji)
-        .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        sqlx::query("DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?")
+            .bind(&message_id)
+            .bind(&auth.0)
+            .bind(&emoji)
+            .execute(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         false
     } else {
         sqlx::query(

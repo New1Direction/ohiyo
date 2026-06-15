@@ -25,7 +25,11 @@ fn gen_code() -> String {
         .collect()
 }
 
-async fn is_member(state: &AppState, server_id: &str, user_id: &str) -> Result<bool, (StatusCode, String)> {
+async fn is_member(
+    state: &AppState,
+    server_id: &str,
+    user_id: &str,
+) -> Result<bool, (StatusCode, String)> {
     let found: Option<(i64,)> =
         sqlx::query_as("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
             .bind(server_id)
@@ -74,7 +78,10 @@ pub async fn create_invite(
     Json(body): Json<CreateInviteBody>,
 ) -> Result<Json<InviteInfo>, (StatusCode, String)> {
     if !is_member(&state, &server_id, &auth.0).await? {
-        return Err((StatusCode::FORBIDDEN, "join the server before inviting others".into()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "join the server before inviting others".into(),
+        ));
     }
 
     let now = now_unix();
@@ -85,7 +92,10 @@ pub async fn create_invite(
         .expires_in_secs
         .filter(|s| *s > 0)
         .map(|s| now + s.min(MAX_TTL_SECS));
-    let max_uses = body.max_uses.filter(|m| *m > 0).map(|m| m.min(MAX_USES_CAP));
+    let max_uses = body
+        .max_uses
+        .filter(|m| *m > 0)
+        .map(|m| m.min(MAX_USES_CAP));
 
     // Land newcomers in the server's first text channel.
     let channel_id: Option<String> = sqlx::query_scalar(
@@ -127,7 +137,10 @@ pub async fn create_invite(
             Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
         }
     }
-    Err((StatusCode::INTERNAL_SERVER_ERROR, "couldn't allocate an invite code".into()))
+    Err((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "couldn't allocate an invite code".into(),
+    ))
 }
 
 #[derive(Serialize)]
@@ -183,7 +196,10 @@ pub async fn redeem_invite(
     let inv = lookup_alive_invite(&state, &code).await?;
 
     if crate::api::servers::is_banned(&state, &inv.server_id, &auth.0).await {
-        return Err((StatusCode::FORBIDDEN, "you're banned from this server".into()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you're banned from this server".into(),
+        ));
     }
 
     let now = now_unix();
@@ -252,7 +268,10 @@ pub async fn revoke_invite(
 
     let is_owner = owner_id.as_deref() == Some(auth.0.as_str());
     if inv.created_by != auth.0 && !is_owner {
-        return Err((StatusCode::FORBIDDEN, "only the creator or owner can revoke this".into()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "only the creator or owner can revoke this".into(),
+        ));
     }
 
     sqlx::query("DELETE FROM invites WHERE code = ?")
