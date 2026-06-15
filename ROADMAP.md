@@ -20,7 +20,7 @@ See what friends are playing and drop into the action.
 ## 📺 Watch
 Watch shows and videos in sync, together.
 
-- [ ] **Watch party** — shared play/pause/seek state across a channel (synced player)
+- [x] **Watch party** — shared play/pause/seek synced across a channel (direct media; YouTube embed-sync is a follow-up)
 - [ ] Screen-share with audio (have the transport; needs the watch-party UX)
 - [ ] Reactions/timeline pinned to playback position
 
@@ -39,7 +39,7 @@ A calm, fast place to get things done with a team.
 - [x] Rust (axum + sqlx/SQLite) server, React 19 + Tauri client, **Daybreak**/Dusk design
 - [x] Quality gate: ESLint (a11y as errors), tsc, cargo test, 18-suite e2e, GitHub Actions CI
 - [x] **AGPL-3.0** licensed; adversarial security review pass (SSRF / XSS / injection / JWT)
-- [ ] Presence **snapshot on connect** (see who's online + their activity the moment you open the app)
+- [x] Presence **snapshot on connect** (see who's online + their activity the moment you open the app)
 - [ ] Multi-node scale: NATS/Redis gateway fan-out, Postgres option
 - [ ] Mobile build (Tauri mobile); push notifications
 - [ ] Federation + E2E encryption (the things incumbents *won't* do)
