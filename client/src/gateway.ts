@@ -39,7 +39,7 @@ export type GatewayEvent =
   | { t: "EventsChanged"; d: { server_id: string } }
   | { t: "ReactionUpdate"; d: { message_id: string; channel_id: string; emoji: string; user_id: string; added: boolean } }
   | { t: "ReadReceipt"; d: { channel_id: string; user_id: string; last_read_message_id: string; last_read_at: number } }
-  | { t: "PresenceUpdate"; d: { user_id: string; online: boolean; activity?: Activity | null } }
+  | { t: "PresenceUpdate"; d: { user_id: string; online: boolean; status?: string; activity?: Activity | null } }
   | { t: "TypingStart"; d: { channel_id: string; user_id: string; user: PublicUser } }
   | { t: "VoiceState"; d: { channel_id: string; user_id: string; user: PublicUser; joined: boolean; muted: boolean; video: boolean; screen: boolean } }
   | { t: "VoiceRoster"; d: { channel_id: string; peers: VoicePeer[] } }
@@ -55,6 +55,7 @@ export type ClientEvent =
   | { t: "Typing"; d: { channel_id: string } }
   | { t: "Ack"; d: { channel_id: string; message_id: string } }
   | { t: "SetActivity"; d: { activity: Activity | null } }
+  | { t: "SetPresence"; d: { idle: boolean } }
   | { t: "WatchControl"; d: { channel_id: string; action: string; url?: string | null; position?: number | null } }
   | { t: "Heartbeat" };
 

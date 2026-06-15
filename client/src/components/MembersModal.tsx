@@ -8,6 +8,7 @@ type Props = {
   ownerId: string;
   currentUserId: string;
   onlineUsers: Set<string>;
+  idleUsers?: Set<string>;
   activities: Map<string, Activity>;
   voiceMembers: Map<string, string>;
   onJoinVoice: (channelId: string) => void;
@@ -41,7 +42,7 @@ export function ActivityLine({ activity }: { activity: Activity }) {
 
 /** Server member list. Moderation actions appear per your permissions. */
 export function MembersModal({
-  members, ownerId, currentUserId, onlineUsers, activities, voiceMembers, onJoinVoice, canKick, canBan, canManageRoles, onManageRoles, onKick, onBan, onClose,
+  members, ownerId, currentUserId, onlineUsers, idleUsers, activities, voiceMembers, onJoinVoice, canKick, canBan, canManageRoles, onManageRoles, onKick, onBan, onClose,
 }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const canModerate = canKick || canBan;
@@ -94,7 +95,8 @@ export function MembersModal({
                 <span
                   style={{
                     position: "absolute", right: -1, bottom: -1, width: 11, height: 11,
-                    borderRadius: "var(--radius-full)", background: "var(--green)",
+                    borderRadius: "var(--radius-full)",
+                    background: idleUsers?.has(m.id) ? "var(--gold)" : "var(--green)",
                     border: "2.5px solid var(--bg-channel)",
                   }}
                 />

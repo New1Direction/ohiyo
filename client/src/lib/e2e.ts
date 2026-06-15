@@ -8,6 +8,17 @@
 
 const KEY_STORAGE = "kc:e2e-keypair";
 
+// Pluggable storage so the desktop locked-RAM vault can hold the keypair instead of
+// plaintext localStorage (the web build keeps the localStorage default).
+type KeyStore = { getItem(k: string): string | null; setItem(k: string, v: string): void };
+let store: KeyStore = {
+  getItem: (k) => localStorage.getItem(k),
+  setItem: (k, v) => localStorage.setItem(k, v),
+};
+export function setE2eStore(s: KeyStore) {
+  store = s;
+}
+
 export type StoredKeyPair = { publicJwk: JsonWebKey; privateJwk: JsonWebKey };
 
 /** Generate a fresh ECDH P-256 keypair, exported as JWK for storage/transmission. */
@@ -22,7 +33,7 @@ export async function generateKeyPair(): Promise<StoredKeyPair> {
 
 /** Load this device's keypair, generating + persisting one on first use. */
 export async function myKeyPair(): Promise<StoredKeyPair> {
-  const raw = localStorage.getItem(KEY_STORAGE);
+  const raw = store.getItem(KEY_STORAGE);
   if (raw) {
     try {
       return JSON.parse(raw) as StoredKeyPair;
@@ -31,7 +42,7 @@ export async function myKeyPair(): Promise<StoredKeyPair> {
     }
   }
   const kp = await generateKeyPair();
-  localStorage.setItem(KEY_STORAGE, JSON.stringify(kp));
+  store.setItem(KEY_STORAGE, JSON.stringify(kp));
   return kp;
 }
 

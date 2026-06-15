@@ -62,6 +62,8 @@ pub struct ProfileResponse {
     pub banner_color: Option<String>,
     pub custom_status: Option<String>,
     pub avatar_url: Option<String>,
+    /// Unix time of last activity (connect / message send) → "active Xm ago" / last seen.
+    pub last_active_at: Option<i64>,
     pub social_spotify: Option<String>,
     pub social_github: Option<String>,
     pub social_twitter: Option<String>,
@@ -80,6 +82,7 @@ struct ProfileRow {
     banner_color: Option<String>,
     custom_status: Option<String>,
     avatar_url: Option<String>,
+    last_active_at: Option<i64>,
     social_spotify: Option<String>,
     social_github: Option<String>,
     social_twitter: Option<String>,
@@ -99,6 +102,7 @@ impl From<ProfileRow> for ProfileResponse {
             banner_color: r.banner_color,
             custom_status: r.custom_status,
             avatar_url: r.avatar_url,
+            last_active_at: r.last_active_at,
             social_spotify: r.social_spotify,
             social_github: r.social_github,
             social_twitter: r.social_twitter,
@@ -115,7 +119,7 @@ pub async fn get_profile(
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
     let row: ProfileRow = sqlx::query_as(
         "SELECT id, username, display_name, bio, pronouns, banner_color, custom_status,
-                avatar_url, social_spotify, social_github, social_twitter, social_steam,
+                avatar_url, last_active_at, social_spotify, social_github, social_twitter, social_steam,
                 social_youtube, social_twitch
          FROM users WHERE id = ?",
     )
@@ -134,7 +138,7 @@ pub async fn get_user_profile(
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
     let row: ProfileRow = sqlx::query_as(
         "SELECT id, username, display_name, bio, pronouns, banner_color, custom_status,
-                avatar_url, social_spotify, social_github, social_twitter, social_steam,
+                avatar_url, last_active_at, social_spotify, social_github, social_twitter, social_steam,
                 social_youtube, social_twitch
          FROM users WHERE id = ?",
     )
@@ -188,7 +192,7 @@ pub async fn update_profile(
 
     let row: ProfileRow = sqlx::query_as(
         "SELECT id, username, display_name, bio, pronouns, banner_color, custom_status,
-                avatar_url, social_spotify, social_github, social_twitter, social_steam,
+                avatar_url, last_active_at, social_spotify, social_github, social_twitter, social_steam,
                 social_youtube, social_twitch
          FROM users WHERE id = ?",
     )

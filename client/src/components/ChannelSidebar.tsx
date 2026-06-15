@@ -11,6 +11,7 @@ type Props = {
   currentUser: PublicUser | null;
   connStatus: ConnectionStatus;
   onlineUsers: Set<string>;
+  idleUsers?: Set<string>;
   activeVoiceChannelId: string | null;
   voiceParticipantCount: number;
   unread?: Record<string, number>;
@@ -73,6 +74,7 @@ export function ChannelSidebar({
   currentUser,
   connStatus,
   onlineUsers,
+  idleUsers,
   activeVoiceChannelId,
   voiceParticipantCount,
   unread,
@@ -367,7 +369,11 @@ export function ChannelSidebar({
                       >
                         {!other?.avatar_url && label[0]?.toUpperCase()}
                       </div>
-                      {online && <OnlineDot />}
+                      {online && (
+                        <OnlineDot
+                          color={other && idleUsers?.has(other.id) ? "var(--gold)" : "var(--green)"}
+                        />
+                      )}
                     </div>
                     <span className="flex-1 truncate text-sm">{label}</span>
                     {showMention ? (

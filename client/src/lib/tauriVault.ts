@@ -18,9 +18,11 @@
 import { isDesktop } from "./desktop";
 import { setSignalBackend } from "./signal";
 import { setSenderKeyBackend } from "./senderKeys";
+import { setE2eStore } from "./e2e";
 
-// localStorage namespaces that hold E2E key material → moved into the vault.
-const KEY_PREFIXES = ["kc:sig:", "kc:sk:"];
+// localStorage namespaces that hold E2E key material → moved into the vault. Covers
+// Signal (kc:sig:), group sender keys (kc:sk:), and the legacy ECDH keypair.
+const KEY_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair"];
 
 let mirror: Map<string, string> | null = null;
 
@@ -67,6 +69,7 @@ export async function initVaultBackend(): Promise<boolean> {
     };
     setSignalBackend(backend);
     setSenderKeyBackend({ getItem: backend.getItem, setItem: backend.setItem });
+    setE2eStore({ getItem: backend.getItem, setItem: backend.setItem });
     return true;
   } catch {
     return false; // vault unavailable — fall back to localStorage

@@ -286,6 +286,9 @@ pub enum GatewayEvent {
     PresenceUpdate {
         user_id: String,
         online: bool,
+        /// "online" | "idle" | "offline" — richer than the bool, kept alongside it.
+        #[serde(default)]
+        status: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         activity: Option<Activity>,
     },
@@ -378,6 +381,11 @@ pub enum ClientEvent {
     SetActivity {
         #[serde(default)]
         activity: Option<Activity>,
+    },
+    /// Client reports it has gone idle (no input for a while) or active again.
+    SetPresence {
+        #[serde(default)]
+        idle: bool,
     },
     /// Watch-party controls: set a video, play/pause/seek, or stop.
     WatchControl {
