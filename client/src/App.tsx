@@ -1477,7 +1477,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
             ? async () => {
                 const peer = dmPeerId(selectedChannel.id);
                 const me = currentUser?.id;
-                return peer && me ? safetyNumber(me, peer) : null;
+                return peer && me ? safetyNumber(token, me, peer) : null;
               }
             : undefined
         }

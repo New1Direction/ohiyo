@@ -59,14 +59,34 @@ pub async fn publish_keys(
     }
 
     let mut tx = state.db.begin().await.map_err(ise)?;
-    sqlx::query(
+
+    // Tombstone check: a device_id that has ever been used keeps its identity key pinned
+    // even across removal, so delete-then-republish can't swap in a new identity key.
+    let tomb: Option<String> = sqlx::query_scalar(
+        "SELECT identity_key FROM signal_device_tombstones WHERE user_id = ? AND device_id = ?",
+    )
+    .bind(&auth.0)
+    .bind(b.device_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(ise)?;
+    if tomb.is_some_and(|k| k != b.identity_key) {
+        return Err((StatusCode::CONFLICT, "conflict".into()));
+    }
+
+    // Atomic identity-key pin. identity_key is NOT in the DO UPDATE SET (a conflicting row
+    // keeps its key), and the WHERE makes the update apply only when the incoming key
+    // already matches the stored one — a mismatch updates 0 rows, which we reject. Doing
+    // it in one statement is race-free, unlike a separate SELECT-then-write.
+    let res = sqlx::query(
         "INSERT INTO signal_identity
            (user_id, device_id, identity_key, registration_id, signed_prekey_id, signed_prekey, signed_prekey_sig, updated_at)
          VALUES (?,?,?,?,?,?,?,?)
          ON CONFLICT(user_id, device_id) DO UPDATE SET
-           identity_key=excluded.identity_key, registration_id=excluded.registration_id,
-           signed_prekey_id=excluded.signed_prekey_id, signed_prekey=excluded.signed_prekey,
-           signed_prekey_sig=excluded.signed_prekey_sig, updated_at=excluded.updated_at",
+           registration_id=excluded.registration_id, signed_prekey_id=excluded.signed_prekey_id,
+           signed_prekey=excluded.signed_prekey, signed_prekey_sig=excluded.signed_prekey_sig,
+           updated_at=excluded.updated_at
+         WHERE signal_identity.identity_key = excluded.identity_key",
     )
     .bind(&auth.0)
     .bind(b.device_id)
@@ -79,6 +99,9 @@ pub async fn publish_keys(
     .execute(&mut *tx)
     .await
     .map_err(ise)?;
+    if res.rows_affected() == 0 {
+        return Err((StatusCode::CONFLICT, "conflict".into())); // identity key is pinned
+    }
 
     for otk in &b.one_time_prekeys {
         if otk.public_key.len() > 1000 {
@@ -208,4 +231,103 @@ pub async fn prekey_count(
     .await
     .unwrap_or(0);
     Json(serde_json::json!({ "count": n }))
+}
+
+#[derive(Serialize)]
+pub struct DeviceOut {
+    pub device_id: i64,
+    pub updated_at: i64,
+}
+
+/// GET /users/@me/devices — list this account's registered Signal devices. Read-only;
+/// does NOT pop one-time prekeys (unlike get_bundles), so it's safe for display.
+pub async fn list_devices(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<DeviceOut>>, (StatusCode, String)> {
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT device_id, updated_at FROM signal_identity WHERE user_id = ? ORDER BY device_id",
+    )
+    .bind(&auth.0)
+    .fetch_all(&state.db)
+    .await
+    .map_err(ise)?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(device_id, updated_at)| DeviceOut {
+                device_id,
+                updated_at,
+            })
+            .collect(),
+    ))
+}
+
+/// DELETE /users/@me/devices/{device_id} — revoke a device from the directory: drop its
+/// identity key + prekeys so no one can start new sessions with it. Tombstones the
+/// device's identity key first so it can't be re-published under a different key.
+pub async fn remove_device(
+    auth: AuthUser,
+    Path(device_id): Path<i64>,
+    State(state): State<AppState>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let mut tx = state.db.begin().await.map_err(ise)?;
+    // Remember the device's identity key (so the pin survives removal).
+    sqlx::query(
+        "INSERT INTO signal_device_tombstones (user_id, device_id, identity_key)
+         SELECT user_id, device_id, identity_key FROM signal_identity
+           WHERE user_id = ? AND device_id = ?
+         ON CONFLICT(user_id, device_id) DO UPDATE SET identity_key = excluded.identity_key",
+    )
+    .bind(&auth.0)
+    .bind(device_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(ise)?;
+    sqlx::query("DELETE FROM signal_one_time_prekeys WHERE user_id = ? AND device_id = ?")
+        .bind(&auth.0)
+        .bind(device_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(ise)?;
+    sqlx::query("DELETE FROM signal_identity WHERE user_id = ? AND device_id = ?")
+        .bind(&auth.0)
+        .bind(device_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(ise)?;
+    tx.commit().await.map_err(ise)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Serialize)]
+pub struct IdentityKeyOut {
+    pub device_id: i64,
+    pub identity_key: String,
+}
+
+/// GET /users/{user_id}/identity-keys — every device's identity key for a user, with NO
+/// one-time-prekey consumption (unlike get_bundles). Lets a client compute the FULL
+/// multi-device safety number for out-of-band verification (covers devices it hasn't yet
+/// messaged). The directory is untrusted — the out-of-band comparison is what detects a
+/// server that lies about a user's device set.
+pub async fn get_identity_keys(
+    _auth: AuthUser,
+    Path(user_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<IdentityKeyOut>>, (StatusCode, String)> {
+    let rows: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT device_id, identity_key FROM signal_identity WHERE user_id = ? ORDER BY device_id",
+    )
+    .bind(&user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(ise)?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(device_id, identity_key)| IdentityKeyOut {
+                device_id,
+                identity_key,
+            })
+            .collect(),
+    ))
 }

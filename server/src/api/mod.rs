@@ -222,6 +222,15 @@ pub fn router() -> Router<AppState> {
         .route("/signal/keys", post(signal::publish_keys))
         .route("/signal/keys/count", get(signal::prekey_count))
         .route("/users/{user_id}/prekey-bundles", get(signal::get_bundles))
+        .route(
+            "/users/{user_id}/identity-keys",
+            get(signal::get_identity_keys),
+        )
+        .route("/users/@me/devices", get(signal::list_devices))
+        .route(
+            "/users/@me/devices/{device_id}",
+            delete(signal::remove_device),
+        )
         // WebRTC ICE config: STUN + time-limited TURN credentials
         .route("/ice-servers", get(ice::ice_servers))
         // LiveKit SFU: feature-flagged config + room-scoped join tokens

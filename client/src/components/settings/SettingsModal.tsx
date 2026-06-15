@@ -33,6 +33,7 @@ import {
 } from "../../lib/appearance";
 import { type Density, DENSITIES, FONT_SCALES } from "../../lib/density";
 import { pushAppearance } from "../../lib/appearanceSync";
+import { LinkedDevices } from "./LinkedDevices";
 
 type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
 
@@ -1279,6 +1280,9 @@ function SecurityTab({
         Your messages are end-to-end encrypted with the Signal protocol. These controls decide what
         happens to your data if you disappear — or on demand.
       </p>
+
+      {/* Linked devices — see + revoke your registered Signal devices */}
+      <LinkedDevices token={token} onToast={onToast} />
 
       {/* Backup & recovery (recovery-code model) */}
       <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
