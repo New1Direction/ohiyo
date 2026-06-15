@@ -12,6 +12,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { CallOverlay } from "./components/CallOverlay";
 import { BootSplash } from "./components/BootSplash";
 import { Onboarding } from "./components/Onboarding";
+import { NoServersYet } from "./components/NoServersYet";
 import { CreateServerModal } from "./components/CreateServerModal";
 import { InviteAccept } from "./components/InviteAccept";
 import { InviteModal } from "./components/InviteModal";
@@ -25,7 +26,7 @@ import { CategoriesModal } from "./components/CategoriesModal";
 import { ForwardModal } from "./components/ForwardModal";
 import { PERM, can } from "./permissions";
 import { mentionsUser } from "./lib/mentions";
-import { notify, ensureNotificationPermission, initDeepLinks } from "./lib/desktop";
+import { notify, ensureNotificationPermission, initDeepLinks, claimNotification } from "./lib/desktop";
 import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendingFailedOutbox, reconcileStalePending } from "./lib/outbox";
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
@@ -106,9 +107,9 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [inviteCode, setInviteCode] = useState<string | null>(
     () => new URLSearchParams(window.location.search).get("invite")
   );
-  const [welcomed, setWelcomed] = useState(
-    () => localStorage.getItem("kc:welcomed") === "1"
-  );
+  // Seeded per-account from `kc:welcomed:<userId>` once we know who logged in (in the
+  // Ready handler) — so a different account on a shared device isn't treated as welcomed.
+  const [welcomed, setWelcomed] = useState(false);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [mentions, setMentions] = useState<Set<string>>(new Set());
   // Read receipts: channelId → (userId → last_read_at watermark). Drives the
@@ -335,15 +336,40 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         setCurrentUser(event.d.user);
         setServers(event.d.servers);
         setDms(event.d.dms);
-        // Smooth landing: on first connect, drop into a real channel rather than
-        // a "pick one" screen. Runs once so reconnects never yank you around.
+        // Seed unread badges from the server so they no longer wipe to zero on reload.
+        setUnread(event.d.unread ?? {});
+        // Per-account onboarding flag (same batch as currentUser → no onboarding flash).
+        try {
+          setWelcomed(localStorage.getItem(`kc:welcomed:${event.d.user.id}`) === "1");
+        } catch {
+          /* storage off */
+        }
+        // Smooth landing: on first connect, drop the user back where they left off
+        // (persisted last channel) — else the first server's first text channel. Runs
+        // once per load so reconnects never yank you around.
         if (!didAutoSelectRef.current && !selectedChannelRef.current) {
           didAutoSelectRef.current = true;
-          const firstServer = event.d.servers[0];
-          const firstText = firstServer?.channels.find((c) => c.channel_type === "text");
-          if (firstServer && firstText) {
-            setSelectedServerId(firstServer.id);
-            handleSelectChannelRef.current(firstText);
+          const lastId = (() => {
+            try {
+              return localStorage.getItem("kc:last-channel");
+            } catch {
+              return null;
+            }
+          })();
+          const findChannel = (id: string): Channel | null => {
+            for (const s of event.d.servers) {
+              const c = s.channels.find((ch) => ch.id === id);
+              if (c) return c;
+            }
+            return event.d.dms.find((d) => d.id === id) ?? null;
+          };
+          const target =
+            (lastId ? findChannel(lastId) : null) ??
+            event.d.servers[0]?.channels.find((c) => c.channel_type === "text") ??
+            null;
+          if (target) {
+            setSelectedServerId(target.server_id ?? null);
+            handleSelectChannelRef.current(target);
           }
         }
         pluginManagerRef.current.emit("ready", event.d);
@@ -647,6 +673,12 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   async function handleSelectChannel(channel: Channel) {
     setSelectedChannel(channel);
     selectedChannelRef.current = channel;
+    // Remember where you are so a reload drops you back here, not channel #1.
+    try {
+      localStorage.setItem("kc:last-channel", channel.id);
+    } catch {
+      /* storage off — non-fatal */
+    }
     setMobileNavOpen(false); // collapse the drawer once you've picked a channel
     // Reset + fetch the watch-party state for the channel we're entering.
     setWatchSession(null);
@@ -1049,8 +1081,11 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       selectedChannelRef.current?.id === msg.channel_id && !document.hidden;
     if (lookingAtIt) return;
     const body = msg.content?.slice(0, 140) || "Sent an attachment";
-    // Native OS notification under Tauri, Web Notification in a browser.
-    void notify({ title: msg.author.display_name, body });
+    // Native OS notification under Tauri, Web Notification in a browser — but only from
+    // ONE tab/window when several are open (claimNotification), so no double-ping.
+    void claimNotification(msg.id).then((mine) => {
+      if (mine) void notify({ title: msg.author.display_name, body });
+    });
   }
 
   // Jump to a channel from search results (find it across loaded servers).
@@ -1107,7 +1142,13 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
 
   function markWelcomed() {
     setWelcomed(true);
-    localStorage.setItem("kc:welcomed", "1");
+    if (currentUser) {
+      try {
+        localStorage.setItem(`kc:welcomed:${currentUser.id}`, "1");
+      } catch {
+        /* storage off */
+      }
+    }
   }
 
   // Add a server to state and drop the user straight into a live channel —
@@ -1273,6 +1314,12 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         <div className="kc-nav-scrim" onClick={() => setMobileNavOpen(false)} aria-hidden />
       )}
 
+      {servers.length === 0 && !selectedChannel ? (
+        <NoServersYet
+          onCreate={() => setShowCreateServer(true)}
+          onFindPeople={() => setShowFindPeople(true)}
+        />
+      ) : (
       <ChatPane
         channel={selectedChannel}
         messages={messages}
@@ -1326,6 +1373,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
             : undefined
         }
       />
+      )}
 
       {/* Voice / video / screen-share call overlay */}
       <CallOverlay

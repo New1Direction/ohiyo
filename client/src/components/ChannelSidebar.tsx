@@ -338,6 +338,10 @@ export function ChannelSidebar({
                 const other = dmUsers[dm.id];
                 const label = other?.display_name ?? other?.username ?? "Direct Message";
                 const online = other ? onlineUsers.has(other.id) : false;
+                const isSel = selectedChannelId === dm.id;
+                const unreadCount = unread?.[dm.id] ?? 0;
+                const hasUnread = unreadCount > 0 && !isSel;
+                const showMention = (mentionChannels?.has(dm.id) ?? false) && !isSel;
                 return (
                   <button
                     key={dm.id}
@@ -347,8 +351,9 @@ export function ChannelSidebar({
                     style={{
                       border: "none",
                       borderRadius: "var(--radius-md)",
-                      background: selectedChannelId === dm.id ? "var(--bg-hover)" : "transparent",
-                      color: selectedChannelId === dm.id ? "var(--text-primary)" : "var(--text-secondary)",
+                      background: isSel ? "var(--bg-hover)" : "transparent",
+                      color: isSel || hasUnread || showMention ? "var(--text-primary)" : "var(--text-secondary)",
+                      fontWeight: hasUnread || showMention ? 600 : 400,
                     }}
                   >
                     <div className="relative flex-shrink-0">
@@ -364,7 +369,24 @@ export function ChannelSidebar({
                       </div>
                       {online && <OnlineDot />}
                     </div>
-                    <span className="truncate text-sm">{label}</span>
+                    <span className="flex-1 truncate text-sm">{label}</span>
+                    {showMention ? (
+                      <span
+                        className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
+                        style={{ background: "var(--danger)", color: "#fff", minWidth: 18, textAlign: "center" }}
+                        aria-label="You were mentioned"
+                      >
+                        @
+                      </span>
+                    ) : hasUnread ? (
+                      <span
+                        className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
+                        style={{ background: "var(--accent)", color: "#fff", minWidth: 18, textAlign: "center" }}
+                        aria-label={`${unreadCount} unread`}
+                      >
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })

@@ -65,6 +65,47 @@ export async function ensureNotificationPermission(): Promise<void> {
   }
 }
 
+/**
+ * Returns true if THIS tab/window should fire the OS notification for message `id`.
+ * With several tabs open they'd otherwise each fire their own — a true double-ping.
+ * Uses the Web Locks API (only one claimant wins the lock) and falls back to a short
+ * localStorage claim window where Web Locks isn't available.
+ */
+export async function claimNotification(id: string): Promise<boolean> {
+  type LockReq = (
+    name: string,
+    opts: { ifAvailable: boolean },
+    cb: (lock: unknown) => Promise<void>
+  ) => Promise<void>;
+  const locks = (navigator as unknown as { locks?: { request?: LockReq } }).locks;
+  if (locks?.request) {
+    return new Promise<boolean>((resolve) => {
+      locks
+        .request!(`kc-notif:${id}`, { ifAvailable: true }, async (lock) => {
+          if (!lock) {
+            resolve(false); // another tab already holds it → it notifies, we don't
+            return;
+          }
+          resolve(true);
+          // Hold briefly so a racing tab's ifAvailable request sees it taken.
+          await new Promise((r) => setTimeout(r, 4000));
+        })
+        .catch(() => resolve(true));
+    });
+  }
+  // Fallback: a shared localStorage claim window (best-effort; tiny residual race).
+  try {
+    const KEY = "kc:last-notif";
+    const now = Date.now();
+    const prev = JSON.parse(localStorage.getItem(KEY) || "null") as { id: string; t: number } | null;
+    if (prev && prev.id === id && now - prev.t < 4000) return false;
+    localStorage.setItem(KEY, JSON.stringify({ id, t: now }));
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 /** Parse a `kikkacord://invite/<code>` (or `?invite=<code>`) URL into its code. */
 export function parseInviteUrl(url: string): string | null {
   try {

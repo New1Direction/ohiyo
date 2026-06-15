@@ -24,7 +24,7 @@ export type WatchSession = {
 };
 
 export type GatewayEvent =
-  | { t: "Ready"; d: { user: PublicUser; servers: ServerWithChannels[]; dms: Channel[] } }
+  | { t: "Ready"; d: { user: PublicUser; servers: ServerWithChannels[]; dms: Channel[]; unread?: Record<string, number> } }
   | { t: "MessageCreate"; d: Message }
   | { t: "MessageUpdate"; d: Message }
   | { t: "MessageDelete"; d: { id: string; channel_id: string } }

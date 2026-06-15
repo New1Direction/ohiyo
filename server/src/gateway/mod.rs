@@ -857,41 +857,46 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
     .fetch_all(&state.db)
     .await?;
 
-    let mut server_list = Vec::new();
-    for server in servers {
-        let channels = sqlx::query_as::<_, crate::types::Channel>(
-            "SELECT * FROM channels WHERE server_id = ? ORDER BY position",
-        )
-        .bind(&server.id)
-        .fetch_all(&state.db)
-        .await
-        .unwrap_or_default();
-
-        let members = sqlx::query_as::<_, crate::types::User>(
-            "SELECT u.* FROM users u
-             JOIN server_members sm ON sm.user_id = u.id
-             WHERE sm.server_id = ?",
-        )
-        .bind(&server.id)
-        .fetch_all(&state.db)
-        .await
-        .unwrap_or_default();
-
-        let categories = sqlx::query_as::<_, crate::types::Category>(
-            "SELECT * FROM categories WHERE server_id = ? ORDER BY position",
-        )
-        .bind(&server.id)
-        .fetch_all(&state.db)
-        .await
-        .unwrap_or_default();
-
-        server_list.push(ServerWithChannels {
-            server,
-            channels,
-            members: members.into_iter().map(PublicUser::from).collect(),
-            categories,
-        });
-    }
+    // Per-server channels/members/categories: run the three queries concurrently per
+    // server, and all servers concurrently (WAL + 16-conn pool) — instead of 3N serial
+    // queries on the connect critical path.
+    let server_list: Vec<ServerWithChannels> = futures_util::future::join_all(
+        servers.into_iter().map(|server| {
+            let db = &state.db;
+            async move {
+                let (channels, members, categories) = tokio::join!(
+                    sqlx::query_as::<_, crate::types::Channel>(
+                        "SELECT * FROM channels WHERE server_id = ? ORDER BY position",
+                    )
+                    .bind(&server.id)
+                    .fetch_all(db),
+                    sqlx::query_as::<_, crate::types::User>(
+                        "SELECT u.* FROM users u
+                         JOIN server_members sm ON sm.user_id = u.id
+                         WHERE sm.server_id = ?",
+                    )
+                    .bind(&server.id)
+                    .fetch_all(db),
+                    sqlx::query_as::<_, crate::types::Category>(
+                        "SELECT * FROM categories WHERE server_id = ? ORDER BY position",
+                    )
+                    .bind(&server.id)
+                    .fetch_all(db),
+                );
+                ServerWithChannels {
+                    server,
+                    channels: channels.unwrap_or_default(),
+                    members: members
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(PublicUser::from)
+                        .collect(),
+                    categories: categories.unwrap_or_default(),
+                }
+            }
+        }),
+    )
+    .await;
 
     let dms = sqlx::query_as::<_, crate::types::Channel>(
         "SELECT c.* FROM channels c
@@ -903,9 +908,39 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
     .await
     .unwrap_or_default();
 
+    // Per-channel unread counts (one query): messages newer than the user's read cursor,
+    // excluding their own and expired ones, across every channel they can see. Seeds the
+    // client's unread badges on connect so they no longer wipe to zero on reload.
+    let now = crate::types::now_unix();
+    let unread_rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT m.channel_id, COUNT(*) AS cnt
+         FROM messages m
+         LEFT JOIN channel_reads cr ON cr.channel_id = m.channel_id AND cr.user_id = ?
+         WHERE m.author_id != ?
+           AND m.created_at > COALESCE(cr.last_read_at, 0)
+           AND (m.expires_at IS NULL OR m.expires_at > ?)
+           AND m.channel_id IN (
+             SELECT c.id FROM channels c
+               JOIN server_members sm ON sm.server_id = c.server_id WHERE sm.user_id = ?
+             UNION
+             SELECT channel_id FROM dm_participants WHERE user_id = ?
+           )
+         GROUP BY m.channel_id",
+    )
+    .bind(user_id)
+    .bind(user_id)
+    .bind(now)
+    .bind(user_id)
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+    let unread: std::collections::HashMap<String, i64> = unread_rows.into_iter().collect();
+
     Ok(GatewayEvent::Ready {
         user: PublicUser::from(user),
         servers: server_list,
         dms,
+        unread,
     })
 }
