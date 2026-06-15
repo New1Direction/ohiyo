@@ -15,6 +15,7 @@ import {
   THEME_VAR_GROUPS,
 } from "../../themes";
 import { isValidHex } from "../../lib/color";
+import { ProfileCardView, type ProfileCardData } from "../ProfileCardView";
 import type { PluginManager } from "../../plugins/registry";
 import { isDesktop } from "../../lib/desktop";
 import { burnVault } from "../../lib/tauriVault";
@@ -833,6 +834,8 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
   const [pronouns, setPronouns] = useState("");
   const [status, setStatus] = useState("");
   const [bannerColor, setBannerColor] = useState("#5865f2");
+  // Read-only base fields (name, @handle, avatar, socials) used by the live preview.
+  const [base, setBase] = useState<Partial<ProfileCardData>>({});
 
   useEffect(() => {
     fetch(`${API_BASE}/users/@me/profile`, {
@@ -844,6 +847,18 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
         setPronouns(d.pronouns ?? "");
         setStatus(d.custom_status ?? "");
         setBannerColor(d.banner_color ?? "#f2683c");
+        setBase({
+          username: d.username,
+          display_name: d.display_name,
+          avatar_url: d.avatar_url ?? null,
+          last_active_at: d.last_active_at ?? null,
+          social_github: d.social_github ?? null,
+          social_twitter: d.social_twitter ?? null,
+          social_youtube: d.social_youtube ?? null,
+          social_twitch: d.social_twitch ?? null,
+          social_steam: d.social_steam ?? null,
+          social_spotify: d.social_spotify ?? null,
+        });
       })
       .catch((e) => console.warn("[kikkacord] couldn't load profile", e));
   }, [token]);
@@ -861,50 +876,104 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
     }
   }
 
+  // Live preview data: saved base fields overlaid with the in-progress edits.
+  const preview: ProfileCardData = {
+    display_name: base.display_name ?? "Your name",
+    username: base.username ?? "username",
+    avatar_url: base.avatar_url ?? null,
+    last_active_at: base.last_active_at ?? null,
+    pronouns,
+    custom_status: status,
+    bio,
+    banner_color: bannerColor,
+    social_github: base.social_github ?? null,
+    social_twitter: base.social_twitter ?? null,
+    social_youtube: base.social_youtube ?? null,
+    social_twitch: base.social_twitch ?? null,
+    social_steam: base.social_steam ?? null,
+    social_spotify: base.social_spotify ?? null,
+  };
+
   return (
     <div>
-      <h2 className="mb-6 text-xl font-bold">Profile</h2>
-      <Field label="Custom Status" hint="Shown below your username">
-        <input
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          placeholder="Building something cool..."
-          className="w-full rounded px-3 py-2 text-sm outline-none"
-          style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
-        />
-      </Field>
-      <Field label="Pronouns">
-        <input
-          value={pronouns}
-          onChange={(e) => setPronouns(e.target.value)}
-          placeholder="they/them"
-          className="w-full rounded px-3 py-2 text-sm outline-none"
-          style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
-        />
-      </Field>
-      <Field label="Bio">
-        <textarea
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-          placeholder="Tell people about yourself..."
-          rows={4}
-          className="w-full rounded px-3 py-2 text-sm outline-none resize-none"
-          style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
-        />
-      </Field>
-      <Field label="Banner Color">
-        <div className="flex items-center gap-3">
-          <input type="color" value={bannerColor} onChange={(e) => setBannerColor(e.target.value)} />
-          <span className="text-sm font-mono" style={{ color: "var(--text-secondary)" }}>{bannerColor}</span>
+      <h2 className="mb-1 text-xl font-bold">Profile</h2>
+      <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
+        Edit on the left — see exactly how others see you on the right.
+      </p>
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="flex-1">
+          <Field label="Custom Status" hint="Shown below your username">
+            <input
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              placeholder="Building something cool..."
+              className="w-full rounded px-3 py-2 text-sm outline-none"
+              style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
+            />
+          </Field>
+          <Field label="Pronouns">
+            <input
+              value={pronouns}
+              onChange={(e) => setPronouns(e.target.value)}
+              placeholder="they/them"
+              className="w-full rounded px-3 py-2 text-sm outline-none"
+              style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
+            />
+          </Field>
+          <Field label="Bio">
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="Tell people about yourself..."
+              rows={4}
+              className="w-full rounded px-3 py-2 text-sm outline-none resize-none"
+              style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
+            />
+          </Field>
+          <Field label="Banner Color">
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={isValidHex(bannerColor) ? bannerColor : "#5865f2"}
+                onChange={(e) => setBannerColor(e.target.value)}
+                aria-label="Banner color"
+                className="kc-color-input"
+              />
+              <span className="text-sm font-mono" style={{ color: "var(--text-secondary)" }}>
+                {bannerColor}
+              </span>
+            </div>
+          </Field>
+          <button
+            onClick={save}
+            className="mt-2 rounded px-4 py-2 text-sm font-semibold text-white"
+            style={{ background: "var(--accent)" }}
+          >
+            Save Profile
+          </button>
         </div>
-      </Field>
-      <button
-        onClick={save}
-        className="mt-2 rounded px-4 py-2 text-sm font-semibold text-white"
-        style={{ background: "var(--accent)" }}
-      >
-        Save Profile
-      </button>
+
+        {/* Live preview — exactly the card others see on hover */}
+        <div className="flex-shrink-0 lg:w-[300px]">
+          <div
+            className="mb-2 text-xs font-bold uppercase"
+            style={{ color: "var(--text-muted)", letterSpacing: "0.04em" }}
+          >
+            Live preview
+          </div>
+          <div
+            style={{
+              borderRadius: "var(--radius-xl)",
+              overflow: "hidden",
+              boxShadow: "var(--shadow-lg)",
+              background: "var(--bg-sidebar)",
+              border: "1px solid var(--bg-hover)",
+            }}
+          >
+            <ProfileCardView data={preview} preview />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
