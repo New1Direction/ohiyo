@@ -464,6 +464,12 @@ export const api = {
       token
     ),
 
+  // E2E encryption key directory — publish my device public key; fetch a peer's.
+  publishKey: (token: string, publicKey: string) =>
+    request<void>("/users/@me/key", { method: "POST", body: JSON.stringify({ public_key: publicKey }) }, token),
+  getUserKey: (token: string, userId: string) =>
+    request<{ public_key: string | null }>(`/users/${userId}/key`, {}, token),
+
   // ── Invites & people ──────────────────────────────────────────────────────
   createInvite: (
     token: string,

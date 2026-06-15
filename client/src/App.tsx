@@ -29,6 +29,7 @@ import { notify, ensureNotificationPermission, initDeepLinks } from "./lib/deskt
 import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendingFailedOutbox, reconcileStalePending } from "./lib/outbox";
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
+import { myKeyPair } from "./lib/e2e";
 import type { UseWebRTCReturn } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -164,6 +165,21 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       updateActivity(null);
     }
   }, [watchSession]);
+
+  // Publish this device's E2E public key once we're signed in (idempotent upsert).
+  useEffect(() => {
+    if (!currentUser) return;
+    let alive = true;
+    myKeyPair()
+      .then((kp) => {
+        if (alive) void api.publishKey(token, JSON.stringify(kp.publicJwk));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- key off the user identity (id), not every currentUser object
+  }, [currentUser?.id, token]);
   const webrtcRef = useRef<UseWebRTCReturn | null>(null);
   const activeVoiceRef = useRef<string | null>(null);
 

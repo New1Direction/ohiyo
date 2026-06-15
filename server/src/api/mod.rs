@@ -6,6 +6,7 @@ pub mod events;
 pub mod files;
 pub mod ice;
 pub mod invites;
+pub mod keys;
 pub mod livekit;
 pub mod messages;
 pub mod og;
@@ -185,6 +186,9 @@ pub fn router() -> Router<AppState> {
         )
         // Avatar upload
         .route("/users/@me/avatar", post(profile::set_avatar))
+        // E2E encryption public-key directory
+        .route("/users/@me/key", post(keys::publish_key))
+        .route("/users/{user_id}/key", get(keys::get_key))
         // WebRTC ICE config: STUN + time-limited TURN credentials
         .route("/ice-servers", get(ice::ice_servers))
         // LiveKit SFU: feature-flagged config + room-scoped join tokens
