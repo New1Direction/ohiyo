@@ -35,7 +35,7 @@ import { applyTheme, loadTheme } from "./themes";
 import { useToast } from "./hooks/useToast";
 import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
-import type { GatewayEvent, ConnectionStatus } from "./gateway";
+import type { GatewayEvent, ConnectionStatus, Activity } from "./gateway";
 
 
 // Boot the theme from localStorage immediately.
@@ -115,6 +115,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     return () => cleanup();
   }, []);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [activities, setActivities] = useState<Map<string, Activity>>(new Map());
   const selectedChannelRef = useRef<Channel | null>(null);
   const selectedServerIdRef = useRef<string | null>(null);
   // Last message id we've acked per channel — dedupes redundant read receipts.
@@ -125,6 +126,11 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const currentUserRef = useRef<PublicUser | null>(null);
   const serversRef = useRef<ServerWithChannels[]>([]);
   const gatewayRef = useRef<Gateway | null>(null);
+
+  /** Set or clear my rich-presence activity; the server echoes it back to update UI. */
+  function updateActivity(activity: Activity | null) {
+    gatewayRef.current?.send({ t: "SetActivity", d: { activity } });
+  }
   const webrtcRef = useRef<UseWebRTCReturn | null>(null);
   const activeVoiceRef = useRef<string | null>(null);
 
@@ -379,10 +385,16 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       }
 
       case "PresenceUpdate": {
-        const { user_id, online } = event.d;
+        const { user_id, online, activity } = event.d;
         setOnlineUsers((prev) => {
           const next = new Set(prev);
           if (online) next.add(user_id);
+          else next.delete(user_id);
+          return next;
+        });
+        setActivities((prev) => {
+          const next = new Map(prev);
+          if (online && activity) next.set(user_id, activity);
           else next.delete(user_id);
           return next;
         });
@@ -875,6 +887,8 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
             mentionChannels={mentions}
             myStatus={myStatus}
             onSetStatus={handleSetStatus}
+            myActivity={currentUser ? activities.get(currentUser.id) ?? null : null}
+            onSetActivity={updateActivity}
             canManageChannels={can(myPerms, PERM.MANAGE_CHANNELS)}
             onOpenCategories={() => setShowCategories(true)}
             onSelectChannel={handleSelectChannel}
@@ -985,6 +999,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
           ownerId={selectedServer.owner_id}
           currentUserId={currentUser.id}
           onlineUsers={onlineUsers}
+          activities={activities}
           canKick={can(myPerms, PERM.KICK_MEMBERS)}
           canBan={can(myPerms, PERM.BAN_MEMBERS)}
           canManageRoles={can(myPerms, PERM.MANAGE_ROLES)}

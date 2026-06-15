@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Icon } from "./Icon";
 import type { Channel, ServerWithChannels, PublicUser } from "../api";
-import type { ConnectionStatus } from "../gateway";
+import type { ConnectionStatus, Activity } from "../gateway";
 
 type Props = {
   server: ServerWithChannels | null;
@@ -17,6 +17,8 @@ type Props = {
   mentionChannels?: Set<string>;
   myStatus?: string | null;
   onSetStatus?: (status: string) => void;
+  myActivity?: Activity | null;
+  onSetActivity?: (activity: Activity | null) => void;
   canManageChannels?: boolean;
   onOpenCategories?: () => void;
   onSelectChannel: (channel: Channel) => void;
@@ -77,6 +79,8 @@ export function ChannelSidebar({
   mentionChannels,
   myStatus,
   onSetStatus,
+  myActivity,
+  onSetActivity,
   canManageChannels,
   onOpenCategories,
   onSelectChannel,
@@ -432,6 +436,7 @@ export function ChannelSidebar({
                 {myStatus || (selfOnline ? "Set a status…" : STATUS_META[connStatus].label)}
               </button>
             )}
+            {onSetActivity && <ActivityComposer activity={myActivity ?? null} onSet={onSetActivity} />}
           </div>
           <button type="button" onClick={onOpenSettings} aria-label="Settings" className="kc-interactive text-base px-1" style={{ color: "var(--text-muted)" }} title="Settings (Ctrl+,)"><Icon name="settings" size={16} /></button>
           <button type="button" onClick={onLogout} aria-label="Log out" className="kc-interactive text-base px-1" style={{ color: "var(--text-muted)" }} title="Log out">⎋</button>
@@ -450,6 +455,88 @@ function OnlineDot({ color = "var(--green)" }: { color?: string }) {
         border: "2.5px solid var(--bg-sidebar)",
       }}
     />
+  );
+}
+
+const ACTIVITY_KINDS = [
+  { kind: "playing", icon: "🎮", verb: "Playing" },
+  { kind: "watching", icon: "📺", verb: "Watching" },
+  { kind: "working", icon: "💼", verb: "Working on" },
+  { kind: "listening", icon: "🎧", verb: "Listening to" },
+] as const;
+
+/** Inline rich-presence setter shown under the user's name in the sidebar. */
+function ActivityComposer({ activity, onSet }: { activity: Activity | null; onSet: (a: Activity | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState("playing");
+  const [name, setName] = useState("");
+
+  if (activity && !open) {
+    const meta = ACTIVITY_KINDS.find((k) => k.kind === activity.kind);
+    return (
+      <div className="mt-0.5 flex items-center gap-1 text-xs" style={{ color: "var(--accent)", fontWeight: 600 }}>
+        <span className="truncate">{meta?.icon ?? "•"} {meta?.verb ?? ""} {activity.name}</span>
+        <button
+          type="button"
+          onClick={() => onSet(null)}
+          aria-label="Clear activity"
+          title="Clear activity"
+          className="kc-interactive flex-shrink-0"
+          style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", lineHeight: 1 }}
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="kc-interactive mt-0.5 text-left text-xs"
+        style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+      >
+        + Set activity
+      </button>
+    );
+  }
+  const submit = () => {
+    const n = name.trim();
+    if (n) onSet({ kind, name: n });
+    setOpen(false);
+    setName("");
+  };
+  return (
+    <div className="mt-0.5 flex items-center gap-1">
+      <select
+        value={kind}
+        onChange={(e) => setKind(e.target.value)}
+        aria-label="Activity type"
+        className="bg-transparent text-xs outline-none"
+        style={{ color: "var(--text-secondary)" }}
+      >
+        {ACTIVITY_KINDS.map((k) => (
+          <option key={k.kind} value={k.kind}>{k.icon} {k.verb}</option>
+        ))}
+      </select>
+      <input
+        // eslint-disable-next-line jsx-a11y/no-autofocus -- inline composer opens on user action; focusing immediately is expected
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        maxLength={128}
+        placeholder="What are you up to?"
+        aria-label="Activity name"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+          else if (e.key === "Escape") setOpen(false);
+        }}
+        onBlur={submit}
+        className="w-full bg-transparent text-xs outline-none"
+        style={{ color: "var(--text-secondary)" }}
+      />
+    </div>
   );
 }
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PublicUser } from "../api";
+import type { Activity } from "../gateway";
 import { ModalShell } from "./ModalShell";
 
 type Props = {
@@ -7,6 +8,7 @@ type Props = {
   ownerId: string;
   currentUserId: string;
   onlineUsers: Set<string>;
+  activities: Map<string, Activity>;
   canKick: boolean;
   canBan: boolean;
   canManageRoles: boolean;
@@ -16,9 +18,28 @@ type Props = {
   onClose: () => void;
 };
 
+export const ACTIVITY_ICON: Record<string, string> = {
+  playing: "🎮", watching: "📺", working: "💼", listening: "🎧",
+};
+export const ACTIVITY_VERB: Record<string, string> = {
+  playing: "Playing", watching: "Watching", working: "Working on", listening: "Listening to",
+};
+
+/** A compact "🎮 Playing X" rich-presence line. */
+export function ActivityLine({ activity }: { activity: Activity }) {
+  return (
+    <div className="truncate text-xs" style={{ color: "var(--accent)", fontWeight: 600 }}>
+      {ACTIVITY_ICON[activity.kind] ?? "•"} {ACTIVITY_VERB[activity.kind] ?? ""} {activity.name}
+      {activity.details ? (
+        <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> — {activity.details}</span>
+      ) : null}
+    </div>
+  );
+}
+
 /** Server member list. Moderation actions appear per your permissions. */
 export function MembersModal({
-  members, ownerId, currentUserId, onlineUsers, canKick, canBan, canManageRoles, onManageRoles, onKick, onBan, onClose,
+  members, ownerId, currentUserId, onlineUsers, activities, canKick, canBan, canManageRoles, onManageRoles, onKick, onBan, onClose,
 }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const canModerate = canKick || canBan;
@@ -86,7 +107,11 @@ export function MembersModal({
                   <span className="flex-shrink-0 text-xs" title="Owner" aria-label="Owner">👑</span>
                 )}
               </div>
-              <div className="truncate text-xs" style={{ color: "var(--text-muted)" }}>@{m.username}</div>
+              {activities.get(m.id) ? (
+                <ActivityLine activity={activities.get(m.id)!} />
+              ) : (
+                <div className="truncate text-xs" style={{ color: "var(--text-muted)" }}>@{m.username}</div>
+              )}
             </div>
 
             {canModerate && m.id !== ownerId && m.id !== currentUserId && (
