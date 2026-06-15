@@ -9,6 +9,7 @@ import { API_BASE, FILE_BASE, api } from "../api";
 import type { PluginManager } from "../plugins/registry";
 import { UserProfileCard } from "./UserProfileCard";
 import { BirdMark } from "./BirdMark";
+import { ChannelWelcome } from "./ChannelWelcome";
 import { PollWidget } from "./PollWidget";
 import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions";
@@ -768,15 +769,11 @@ export function ChatPane({
             <LoadingSpinner />
           </div>
         ) : groups.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-center" style={{ color: "var(--text-muted)", padding: "var(--space-6)" }}>
-            <div style={{ color: "var(--accent)", opacity: 0.85, marginBottom: "var(--space-1)" }}>
-              <BirdMark size={72} />
-            </div>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-xl)", color: "var(--text-primary)" }}>
-              This channel's all quiet
-            </div>
-            <div className="text-sm">Say something — it's a great place to start.</div>
-          </div>
+          <ChannelWelcome
+            channelName={channel?.name && channel.name !== "dm" ? channel.name : undefined}
+            isDM={channel?.channel_type === "dm" || channel?.channel_type === "group_dm"}
+            userId={currentUserId}
+          />
         ) : (
           <AutoSizedList
             listRef={listRef}

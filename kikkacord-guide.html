@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Kikkacord — the warm, free Discord alternative (voice, video, DMs &amp; more)</title>
-  <meta name="description" content="Kikkacord is a free, open, self-hostable Discord alternative — voice, video, 4K screen-share, DMs with read receipts, polls, events, roles and sandboxed plugins — in a 3.7 MB native app, with no Nitro paywall." />
+  <meta name="description" content="Kikkacord is a free, open, self-hostable Discord alternative with Signal-grade end-to-end encryption — forward-secret DMs and groups, multi-device, disappearing messages — plus voice, video, 4K screen-share, polls, events, roles and sandboxed plugins, in a 3.7 MB native app." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -338,6 +338,38 @@
     .arch .a-ico { width: 38px; height: 38px; border-radius: 11px; background: var(--coral-tint); display: grid; place-items: center; font-size: 1.15rem; flex-shrink: 0; }
     @media (max-width: 900px){ .road { grid-template-columns: repeat(2,1fr);} }
     @media (max-width: 680px){ .road { grid-template-columns: 1fr;} }
+
+    /* ── PRIVACY / ENCRYPTION ─────────────────────────────────── */
+    .t-tag.new {
+      background: var(--coral); color: #fff;
+      animation: tagpulse 2.6s ease-out infinite;
+    }
+    @keyframes tagpulse {
+      0%   { box-shadow: 0 0 0 0 var(--coral-line); }
+      70%  { box-shadow: 0 0 0 9px transparent; }
+      100% { box-shadow: 0 0 0 0 transparent; }
+    }
+    .tile.feature .t-tag.new { background: rgba(255,255,255,0.22); color: #fff; }
+    .cipher {
+      margin-top: 1.7rem; border-radius: var(--r-md); border: 1px solid var(--line-strong);
+      background: var(--paper-2); box-shadow: var(--card-shadow); overflow: hidden;
+    }
+    .cipher-head {
+      display: flex; align-items: center; gap: 0.55rem; padding: 0.95rem 1.3rem;
+      font-family: var(--display); font-weight: 700; font-size: 0.95rem; color: var(--ink);
+      background: var(--paper-sunk); border-bottom: 1px solid var(--line);
+    }
+    .cipher-row {
+      display: grid; grid-template-columns: 7rem 1fr; gap: 1rem; align-items: center;
+      padding: 1rem 1.3rem; border-bottom: 1px solid var(--line);
+    }
+    .cipher-row:last-child { border-bottom: none; }
+    .cipher-tag { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); }
+    .cipher-val { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85rem; word-break: break-all; }
+    .cipher-row.server { background: color-mix(in srgb, var(--ink) 3%, var(--paper-2)); }
+    .cipher-row.server .cipher-val { color: var(--ink-faint); }
+    .cipher-row.you .cipher-val { color: var(--coral-deep); font-weight: 600; font-family: var(--body); font-size: 0.95rem; }
+    @media (max-width: 680px){ .cipher-row { grid-template-columns: 1fr; gap: 0.3rem; } }
   </style>
 </head>
 <body>
@@ -367,6 +399,7 @@
   <div class="brand"><span data-bird></span><span class="brand-name">Kikkacord</span></div>
   <ul class="nav-links">
     <li><a href="#features">Features</a></li>
+    <li><a href="#privacy">Encryption</a></li>
     <li><a href="#compare">vs Others</a></li>
     <li><a href="#free">Free vs Nitro</a></li>
     <li><a href="#architecture">Architecture</a></li>
@@ -384,12 +417,13 @@
 <header class="hero">
   <div class="wrap hero-inner">
     <span data-bird></span>
-    <div class="pill"><span class="dot"></span> Live backend · installable desktop app · free forever</div>
+    <div class="pill"><span class="dot"></span> Now with Signal-grade end-to-end encryption · free forever</div>
     <h1 class="hero-title">The group chat that<br>feels like <span class="swash">sunshine</span>.</h1>
     <p class="hero-sub">
       Kikkacord is a warm, open, Discord-style home for your people — voice, video, 4K
-      screen-share, DMs with read receipts, polls, events, roles and sandboxed plugins —
-      with nothing locked behind a paywall.
+      screen-share, polls, events, roles and sandboxed plugins — now with
+      <strong style="color:var(--coral-deep);font-weight:700;">Signal-grade end-to-end encryption</strong>,
+      and nothing locked behind a paywall.
     </p>
     <div class="hero-actions">
       <a class="btn btn-primary btn-lg" href="Kikkacord_0.1.0_aarch64.dmg" download>Download for macOS</a>
@@ -401,8 +435,8 @@
       <div class="stat"><div class="stat-num">$0</div><div class="stat-label">every feature, free</div></div>
       <div class="stat"><div class="stat-num">25+</div><div class="stat-label">products in one app</div></div>
       <div class="stat"><div class="stat-num">4K</div><div class="stat-label">screen-share, free</div></div>
-      <div class="stat"><div class="stat-num">3.7 MB</div><div class="stat-label">native installer</div></div>
-      <div class="stat"><div class="stat-num">18</div><div class="stat-label">e2e suites green</div></div>
+      <div class="stat"><div class="stat-num">E2E</div><div class="stat-label">Signal-grade, one click</div></div>
+      <div class="stat"><div class="stat-num">22</div><div class="stat-label">e2e suites green</div></div>
     </div>
   </div>
 </header>
@@ -506,6 +540,82 @@
         <div class="t-body">Images reserve their space — no layout shift.</div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ── PRIVACY / ENCRYPTION ─────────────────────────────────── -->
+<section id="privacy">
+  <div class="wrap">
+    <div class="eyebrow reveal">Shipped today · end-to-end by default</div>
+    <h2 class="title reveal">Signal-grade encryption.<br>Zero key handling.</h2>
+    <p class="lede reveal">Tap the lock in any chat and it goes end-to-end — forward-secret, on every device,
+      even for whole groups. The server only ever stores ciphertext, and your keys never leave your hands.
+      No QR codes, no key files, nothing to manage.</p>
+
+    <div class="bento">
+      <div class="tile feature reveal">
+        <div>
+          <div class="t-emoji">🔐</div>
+          <div class="t-name">Forward secrecy, by Signal</div>
+          <div class="t-body">X3DH key agreement and the Double Ratchet — the same protocol behind Signal and
+            WhatsApp. Every message gets its own key, so even a stolen device can&apos;t unlock your past chats.</div>
+        </div>
+        <span class="t-tag new">New today</span>
+      </div>
+
+      <div class="tile reveal">
+        <div class="t-emoji">📱</div>
+        <div class="t-name">Multi-device</div>
+        <div class="t-body">Sign in on a second device and it just reads your encrypted messages — keys fan out to every device you own.</div>
+        <span class="t-tag new">New</span>
+      </div>
+
+      <div class="tile reveal">
+        <div class="t-emoji">⏳</div>
+        <div class="t-name">Disappearing messages</div>
+        <div class="t-body">Set a timer — 30 seconds to a week. Messages self-destruct on every device <em>and</em> on the server.</div>
+        <span class="t-tag new">New</span>
+      </div>
+
+      <div class="tile col2 reveal">
+        <div class="t-emoji">👥</div>
+        <div class="t-name">Encrypted group chats</div>
+        <div class="t-body">Real group end-to-end encryption with Sender Keys — one ciphertext, every member decrypts it, and a
+          per-member signature means nobody can forge anybody. The server stays completely blind.</div>
+        <span class="t-tag new">New</span>
+      </div>
+
+      <div class="tile col2 reveal">
+        <div class="t-emoji">🧠</div>
+        <div class="t-name">Locked-RAM key vault</div>
+        <div class="t-body">On desktop your private keys live in page-locked, non-swappable memory — never sitting in
+          plaintext on disk like everyone else. Sealed at rest, and burned the instant you ask.</div>
+        <span class="t-tag new">New</span>
+      </div>
+
+      <div class="tile col2 reveal">
+        <div class="t-emoji">🕯️</div>
+        <div class="t-name">Dead man&apos;s switch</div>
+        <div class="t-body">Go quiet for too long and your data wipes itself — your messages, and optionally your keys.
+          You choose the window; Kikkacord holds the line if you can&apos;t.</div>
+        <span class="t-tag new">New</span>
+      </div>
+    </div>
+
+    <!-- proof: the server can only ever see ciphertext -->
+    <div class="cipher reveal">
+      <div class="cipher-head"><span>🔒</span> What the server stores — and what only you can read</div>
+      <div class="cipher-row server">
+        <span class="cipher-tag">Server&nbsp;sees</span>
+        <span class="cipher-val">sig2.eyJzIjoyMTM1NjEyNjgsInIiOnsiZTEwY2MzMDAtYWUzMS00MmYx…</span>
+      </div>
+      <div class="cipher-row you">
+        <span class="cipher-tag">You&nbsp;read</span>
+        <span class="cipher-val">“pizza at mine — 8pm? 🍕🌙”</span>
+      </div>
+    </div>
+    <p class="hero-note" style="margin-top:1.1rem;">Built on the maintained libsignal protocol — no hand-rolled crypto.
+      Verified end-to-end across two- and three-client tests.</p>
   </div>
 </section>
 
@@ -670,6 +780,9 @@
           <li>Offline outbox &amp; optimistic send</li>
           <li>Sandboxed plugin platform</li>
           <li>Native desktop app + live deploy</li>
+          <li><b>Signal-grade E2E</b> — DMs, groups, multi-device</li>
+          <li>Disappearing messages + dead-man&apos;s switch</li>
+          <li>Locked-RAM desktop key vault</li>
         </ul>
       </div>
       <div class="tile reveal">
@@ -688,7 +801,7 @@
         <ul>
           <li>Windows &amp; Linux installers</li>
           <li>Code signing &amp; auto-update</li>
-          <li>Group DMs &amp; typing in DMs</li>
+          <li>Sealed sender (metadata privacy)</li>
           <li>Hosted TURN for any-network voice</li>
           <li>A plugin marketplace</li>
         </ul>
@@ -698,7 +811,7 @@
         <div class="t-name" style="margin-top:0.7rem;">Later</div>
         <ul>
           <li>Mobile apps (iOS / Android)</li>
-          <li>End-to-end encrypted DMs</li>
+          <li>Encrypted attachments &amp; calls</li>
           <li>Federation between servers</li>
           <li>Threads &amp; forum channels</li>
         </ul>
