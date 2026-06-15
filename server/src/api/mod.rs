@@ -17,6 +17,7 @@ pub mod saved;
 pub mod search;
 pub mod servers;
 pub mod users;
+pub mod watch;
 
 use crate::AppState;
 use axum::{
@@ -134,6 +135,7 @@ pub fn router() -> Router<AppState> {
             post(messages::send_message),
         )
         .route("/channels/{channel_id}/reads", get(messages::list_reads))
+        .route("/channels/{channel_id}/watch", get(watch::get_watch))
         .route(
             "/channels/{channel_id}/messages/{id}",
             patch(messages::edit_message),

@@ -31,6 +31,8 @@ pub struct AppState {
     pub tickets: gateway::WsTickets,
     /// Live rich-presence: user_id → current activity (playing/watching/working).
     pub activities: gateway::Activities,
+    /// Live watch-party sessions: channel_id → synced video state.
+    pub watch: gateway::WatchSessions,
 }
 
 /// Ensure `JWT_SECRET` is present. If the operator didn't set one (no env, no
@@ -88,6 +90,7 @@ async fn main() -> anyhow::Result<()> {
         rate: RateLimiter::new(),
         tickets: gateway::new_ws_tickets(),
         activities: gateway::new_activities(),
+        watch: gateway::new_watch_sessions(),
     };
 
     let cors = CorsLayer::new()

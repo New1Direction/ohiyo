@@ -74,6 +74,13 @@ pub fn new_activities() -> Activities {
     Arc::new(RwLock::new(HashMap::new()))
 }
 
+// Map channel_id → active watch-party session (synced video). Ephemeral.
+pub type WatchSessions = Arc<RwLock<HashMap<String, crate::types::WatchSession>>>;
+
+pub fn new_watch_sessions() -> WatchSessions {
+    Arc::new(RwLock::new(HashMap::new()))
+}
+
 /// Server-side throttle for typing pings: (user_id, channel_id) → last broadcast.
 pub type TypingCooldowns = Arc<RwLock<HashMap<(String, String), Instant>>>;
 
@@ -494,6 +501,15 @@ async fn handle_client_event(
             broadcast_presence(state, user_id, true).await;
         }
 
+        ClientEvent::WatchControl {
+            channel_id,
+            action,
+            url,
+            position,
+        } => {
+            handle_watch_control(state, user_id, &channel_id, &action, url, position).await;
+        }
+
         ClientEvent::Heartbeat => {}
     }
 }
@@ -688,6 +704,74 @@ async fn send_presence_snapshot(
             });
         }
     }
+}
+
+/// Apply a watch-party control to a channel's session and broadcast the new state.
+/// The server is a relay — clients send the authoritative `position`; we just store
+/// it with a timestamp so late/other clients can compute the live position.
+async fn handle_watch_control(
+    state: &AppState,
+    user_id: &str,
+    channel_id: &str,
+    action: &str,
+    url: Option<String>,
+    position: Option<f64>,
+) {
+    if !crate::api::messages::user_can_access(state, channel_id, user_id).await {
+        return;
+    }
+    let now = crate::types::now_unix();
+    // Compute the new session under the lock; broadcast after it's dropped (no await held).
+    let session = {
+        let mut watch = state.watch.write().unwrap();
+        match action {
+            "set" => {
+                let Some(url) =
+                    url.filter(|u| u.starts_with("http://") || u.starts_with("https://"))
+                else {
+                    return;
+                };
+                let s = crate::types::WatchSession {
+                    url,
+                    paused: true,
+                    position: 0.0,
+                    updated_at: now,
+                    host_id: user_id.to_string(),
+                };
+                watch.insert(channel_id.to_string(), s.clone());
+                Some(s)
+            }
+            "play" | "pause" | "seek" => {
+                let Some(s) = watch.get_mut(channel_id) else {
+                    return;
+                };
+                if action == "play" {
+                    s.paused = false;
+                } else if action == "pause" {
+                    s.paused = true;
+                }
+                if let Some(p) = position {
+                    s.position = p.max(0.0);
+                }
+                s.updated_at = now;
+                Some(s.clone())
+            }
+            "stop" => {
+                watch.remove(channel_id);
+                None
+            }
+            _ => return,
+        }
+    };
+    broadcast_to_channel(
+        state,
+        channel_id,
+        &GatewayEvent::WatchUpdate {
+            channel_id: channel_id.to_string(),
+            session,
+        },
+    )
+    .await;
 }
 
 async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayEvent> {

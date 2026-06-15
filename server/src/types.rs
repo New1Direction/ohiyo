@@ -190,6 +190,18 @@ impl Activity {
     }
 }
 
+/// A synced "watch party" — a shared video and playback state for a channel.
+/// Ephemeral (in-memory). Clients are authoritative on `position`; the server is a
+/// state relay. Effective position while playing = position + (now - updated_at).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchSession {
+    pub url: String,
+    pub paused: bool,
+    pub position: f64,
+    pub updated_at: i64,
+    pub host_id: String,
+}
+
 // ── WebSocket gateway events ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -283,6 +295,11 @@ pub enum GatewayEvent {
         kind: String,    // "offer" | "answer" | "candidate"
         payload: String, // opaque SDP / ICE JSON — the server never parses it
     },
+    /// A channel's watch-party state changed (None = the session ended).
+    WatchUpdate {
+        channel_id: String,
+        session: Option<WatchSession>,
+    },
 }
 
 /// A participant already present in a voice channel.
@@ -336,6 +353,15 @@ pub enum ClientEvent {
     SetActivity {
         #[serde(default)]
         activity: Option<Activity>,
+    },
+    /// Watch-party controls: set a video, play/pause/seek, or stop.
+    WatchControl {
+        channel_id: String,
+        action: String, // "set" | "play" | "pause" | "seek" | "stop"
+        #[serde(default)]
+        url: Option<String>,
+        #[serde(default)]
+        position: Option<f64>,
     },
     /// Keep-alive.
     Heartbeat,
