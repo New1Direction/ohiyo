@@ -14,6 +14,15 @@ export type VoicePeer = {
 /** Rich presence — what a user is currently doing. */
 export type Activity = { kind: string; name: string; details?: string | null };
 
+/** A synced watch-party: shared video + playback state for a channel. */
+export type WatchSession = {
+  url: string;
+  paused: boolean;
+  position: number;
+  updated_at: number;
+  host_id: string;
+};
+
 export type GatewayEvent =
   | { t: "Ready"; d: { user: PublicUser; servers: ServerWithChannels[]; dms: Channel[] } }
   | { t: "MessageCreate"; d: Message }
@@ -32,7 +41,8 @@ export type GatewayEvent =
   | { t: "TypingStart"; d: { channel_id: string; user_id: string; user: PublicUser } }
   | { t: "VoiceState"; d: { channel_id: string; user_id: string; user: PublicUser; joined: boolean; muted: boolean; video: boolean; screen: boolean } }
   | { t: "VoiceRoster"; d: { channel_id: string; peers: VoicePeer[] } }
-  | { t: "VoiceSignal"; d: { from: string; to: string; channel_id: string; kind: string; payload: string } };
+  | { t: "VoiceSignal"; d: { from: string; to: string; channel_id: string; kind: string; payload: string } }
+  | { t: "WatchUpdate"; d: { channel_id: string; session: WatchSession | null } };
 
 // ── Client → server events (mirror the server's ClientEvent enum) ──────────────
 export type ClientEvent =
@@ -43,6 +53,7 @@ export type ClientEvent =
   | { t: "Typing"; d: { channel_id: string } }
   | { t: "Ack"; d: { channel_id: string; message_id: string } }
   | { t: "SetActivity"; d: { activity: Activity | null } }
+  | { t: "WatchControl"; d: { channel_id: string; action: string; url?: string | null; position?: number | null } }
   | { t: "Heartbeat" };
 
 export type GatewayHandler = (event: GatewayEvent) => void;

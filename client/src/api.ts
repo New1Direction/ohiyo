@@ -456,6 +456,14 @@ export const api = {
       token
     ),
 
+  // Watch party — fetch the current synced video state for a channel (or null).
+  getWatch: (token: string, channelId: string) =>
+    request<{ url: string; paused: boolean; position: number; updated_at: number; host_id: string } | null>(
+      `/channels/${channelId}/watch`,
+      {},
+      token
+    ),
+
   // ── Invites & people ──────────────────────────────────────────────────────
   createInvite: (
     token: string,

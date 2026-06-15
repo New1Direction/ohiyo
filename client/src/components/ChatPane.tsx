@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { useDropzone } from "react-dropzone";
 import { VariableSizeList as List } from "react-window";
 import type { AttachmentMeta, Embed, Message, Channel, ReactionGroup, ServerEmoji, PublicUser } from "../api";
+import type { WatchSession } from "../gateway";
+import { WatchParty } from "./WatchParty";
 import { API_BASE, FILE_BASE, api } from "../api";
 import type { PluginManager } from "../plugins/registry";
 import { UserProfileCard } from "./UserProfileCard";
@@ -54,6 +56,9 @@ type Props = {
   currentUsername?: string;
   /** Read cursors for this channel (userId → last_read_at). Drives DM receipts. */
   receipts?: Record<string, number>;
+  /** Active watch-party session for this channel (synced video), or null. */
+  watchSession?: WatchSession | null;
+  onWatchControl?: (action: string, payload?: { url?: string; position?: number }) => void;
 };
 
 /** Delivered / Seen line under your latest sent message — DMs only (iMessage-style). */
@@ -131,8 +136,11 @@ export function ChatPane({
   mentionables = [],
   currentUsername = "",
   receipts,
+  watchSession,
+  onWatchControl,
 }: Props) {
   const [input, setInput] = useState("");
+  const [watchInput, setWatchInput] = useState<string | null>(null);
   // Composer is sacred: remember unsent text per channel so a switch never loses it.
   const draftsRef = useRef<Record<string, string>>({});
   const inputRef = useRef(input);
@@ -511,6 +519,17 @@ export function ChatPane({
             <Icon name="members" />
           </button>
         )}
+        {onWatchControl && (
+          <button
+            type="button"
+            onClick={() => setWatchInput((v) => (v === null ? "" : null))}
+            aria-label="Watch party"
+            title="Start a watch party"
+            className="kc-icon-btn flex-shrink-0 text-base"
+          >
+            📺
+          </button>
+        )}
       </div>
 
       {/* Upload progress */}
@@ -531,6 +550,40 @@ export function ChatPane({
             </div>
           ))}
         </div>
+      )}
+
+      {/* Watch party — synced video for this channel */}
+      {watchInput !== null && onWatchControl && (
+        <form
+          className="mx-3 mt-2 flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const url = watchInput.trim();
+            if (url) onWatchControl("set", { url });
+            setWatchInput(null);
+          }}
+        >
+          <input
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- inline composer opens on user action; focusing immediately is expected
+            autoFocus
+            value={watchInput}
+            onChange={(e) => setWatchInput(e.target.value)}
+            placeholder="Paste a video URL (.mp4/.webm) to watch together…"
+            aria-label="Watch-party video URL"
+            className="flex-1 rounded-md px-3 py-1.5 text-sm outline-none"
+            style={{ background: "var(--bg-input)", color: "var(--text-primary)", border: "1px solid var(--bg-hover)" }}
+          />
+          <button
+            type="submit"
+            className="kc-interactive rounded-md px-3 py-1.5 text-sm font-semibold"
+            style={{ background: "var(--accent)", color: "#fff", border: "none", cursor: "pointer" }}
+          >
+            Start
+          </button>
+        </form>
+      )}
+      {watchSession && onWatchControl && (
+        <WatchParty session={watchSession} onControl={onWatchControl} />
       )}
 
       {/* Messages — virtualized */}

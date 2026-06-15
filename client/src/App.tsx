@@ -35,7 +35,7 @@ import { applyTheme, loadTheme } from "./themes";
 import { useToast } from "./hooks/useToast";
 import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
-import type { GatewayEvent, ConnectionStatus, Activity } from "./gateway";
+import type { GatewayEvent, ConnectionStatus, Activity, WatchSession } from "./gateway";
 
 
 // Boot the theme from localStorage immediately.
@@ -116,6 +116,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   }, []);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [activities, setActivities] = useState<Map<string, Activity>>(new Map());
+  const [watchSession, setWatchSession] = useState<WatchSession | null>(null);
   const selectedChannelRef = useRef<Channel | null>(null);
   const selectedServerIdRef = useRef<string | null>(null);
   // Last message id we've acked per channel — dedupes redundant read receipts.
@@ -130,6 +131,16 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   /** Set or clear my rich-presence activity; the server echoes it back to update UI. */
   function updateActivity(activity: Activity | null) {
     gatewayRef.current?.send({ t: "SetActivity", d: { activity } });
+  }
+
+  /** Drive the watch party in the current channel (set/play/pause/seek/stop). */
+  function sendWatchControl(action: string, payload?: { url?: string; position?: number }) {
+    const cid = selectedChannelRef.current?.id;
+    if (!cid) return;
+    gatewayRef.current?.send({
+      t: "WatchControl",
+      d: { channel_id: cid, action, url: payload?.url ?? null, position: payload?.position ?? null },
+    });
   }
   const webrtcRef = useRef<UseWebRTCReturn | null>(null);
   const activeVoiceRef = useRef<string | null>(null);
@@ -401,6 +412,13 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         break;
       }
 
+      case "WatchUpdate": {
+        if (event.d.channel_id === selectedChannelRef.current?.id) {
+          setWatchSession(event.d.session);
+        }
+        break;
+      }
+
       case "TypingStart":
         // Filter our own echo via the always-current ref (handler is registered once).
         if (event.d.user_id !== currentUserRef.current?.id) {
@@ -492,6 +510,11 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     setSelectedChannel(channel);
     selectedChannelRef.current = channel;
     setMobileNavOpen(false); // collapse the drawer once you've picked a channel
+    // Reset + fetch the watch-party state for the channel we're entering.
+    setWatchSession(null);
+    api.getWatch(token, channel.id)
+      .then((s) => { if (selectedChannelRef.current?.id === channel.id) setWatchSession(s); })
+      .catch(() => {});
     // Opening a channel marks it read (and clears any mention).
     setUnread((prev) => {
       if (!prev[channel.id]) return prev;
@@ -932,6 +955,8 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         mentionables={selectedServer?.members ?? []}
         currentUsername={currentUser.username}
         receipts={selectedChannel ? receipts[selectedChannel.id] : undefined}
+        watchSession={watchSession}
+        onWatchControl={sendWatchControl}
       />
 
       {/* Voice / video / screen-share call overlay */}
