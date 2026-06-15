@@ -28,6 +28,7 @@ import { mentionsUser } from "./lib/mentions";
 import { notify, ensureNotificationPermission, initDeepLinks } from "./lib/desktop";
 import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendingFailedOutbox, reconcileStalePending } from "./lib/outbox";
 import { useWebRTC } from "./hooks/useWebRTC";
+import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
 import type { UseWebRTCReturn } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -166,21 +167,26 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const webrtcRef = useRef<UseWebRTCReturn | null>(null);
   const activeVoiceRef = useRef<string | null>(null);
 
-  // WebRTC mesh call engine — gateway-agnostic; signaling flows through the gateway.
-  const webrtc = useWebRTC({
+  // Voice engine. Both hooks are called unconditionally (rules of hooks); the build
+  // flag picks the P2P mesh (default) or LiveKit SFU (scales past ~5 participants).
+  // Either way signaling/presence flows through the gateway.
+  const webrtcCallbacks = {
     currentUserId: currentUser?.id ?? "",
     getIceServers: async () => (await api.getIceServers(token)).iceServers,
-    sendJoin: (cid, muted, video) =>
+    sendJoin: (cid: string, muted: boolean, video: boolean) =>
       gatewayRef.current?.send({ t: "JoinVoice", d: { channel_id: cid, muted, video } }),
-    sendLeave: (cid) => gatewayRef.current?.send({ t: "LeaveVoice", d: { channel_id: cid } }),
-    sendMeta: (cid, muted, video, screen) =>
+    sendLeave: (cid: string) => gatewayRef.current?.send({ t: "LeaveVoice", d: { channel_id: cid } }),
+    sendMeta: (cid: string, muted: boolean, video: boolean, screen: boolean) =>
       gatewayRef.current?.send({ t: "VoiceMeta", d: { channel_id: cid, muted, video, screen } }),
-    sendSignal: (to, kind, payload) =>
+    sendSignal: (to: string, kind: string, payload: string) =>
       gatewayRef.current?.send({
         t: "Signal",
         d: { to, channel_id: activeVoiceRef.current ?? "", kind, payload },
       }),
-  });
+  };
+  const mesh = useWebRTC(webrtcCallbacks);
+  const sfu = useWebRTCLiveKit(webrtcCallbacks, token);
+  const webrtc = import.meta.env.VITE_LIVEKIT_ENABLED === "true" ? sfu : mesh;
   // Keep refs in sync after commit (concurrent-safe — no ref writes during render).
   useLayoutEffect(() => {
     webrtcRef.current = webrtc;
