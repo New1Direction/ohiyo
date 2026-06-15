@@ -1,5 +1,5 @@
 import "./index.css";
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from "react";
 import { api } from "./api";
 import { Gateway } from "./gateway";
 import { AuthScreen } from "./components/AuthScreen";
@@ -32,6 +32,13 @@ import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
 import { myKeyPair, deriveSharedKey, encryptMessage, decryptMessage, isEncrypted } from "./lib/e2e";
 import { initSignal, encryptFor, decryptFrom, isSignalCiphertext, safetyNumber } from "./lib/signal";
+import {
+  onIdentityChange,
+  trustState,
+  markVerified,
+  acknowledgeIdentityChange,
+  type TrustState,
+} from "./lib/identityTrust";
 import { cachePlaintext, getCachedPlaintext } from "./lib/e2eCache";
 import {
   groupEncrypt,
@@ -788,6 +795,14 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     []
   );
 
+  // Verification state for the open DM's peer — drives the "safety number changed"
+  // warning + the Verified badge. identityTrust is an external store; subscribing
+  // re-renders on any key-change / verify / dismiss without manual ticks.
+  const e2eTrust = useSyncExternalStore<TrustState>(onIdentityChange, () => {
+    const peer = selectedChannel?.channel_type === "dm" ? dmPeerId(selectedChannel.id) : undefined;
+    return peer ? trustState(peer) : "unverified";
+  });
+
   // E2E: derive (and cache) the shared AES key for a DM from my private key + the
   // peer's published public key (LEGACY static-key scheme; new sessions use Signal).
   const getDmKey = useCallback(
@@ -1398,6 +1413,23 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
                 const peer = dmPeerId(selectedChannel.id);
                 const me = currentUser?.id;
                 return peer && me ? safetyNumber(me, peer) : null;
+              }
+            : undefined
+        }
+        e2eTrust={e2eTrust}
+        onMarkVerified={
+          selectedChannel?.channel_type === "dm"
+            ? () => {
+                const peer = dmPeerId(selectedChannel.id);
+                if (peer) markVerified(peer);
+              }
+            : undefined
+        }
+        onDismissKeyChange={
+          selectedChannel?.channel_type === "dm"
+            ? () => {
+                const peer = dmPeerId(selectedChannel.id);
+                if (peer) acknowledgeIdentityChange(peer);
               }
             : undefined
         }

@@ -9,7 +9,7 @@ on:
 # are reported but non-blocking (existing drift is tracked, not enforced yet).
 jobs:
   client:
-    name: Client (lint · types · build)
+    name: Client (lint · types · unit · build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -18,7 +18,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 22: the unit tests run via the built-in runner with native TS
+          # type-stripping (--experimental-strip-types), available from 22.6+.
+          node-version: 22
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci
@@ -26,6 +28,8 @@ jobs:
         run: npm run lint
       - name: Type-check
         run: npm run typecheck
+      - name: Unit tests
+        run: npm run test:unit
       - name: Production build
         run: npm run build
 

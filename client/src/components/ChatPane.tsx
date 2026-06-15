@@ -4,6 +4,7 @@ import { useDropzone } from "react-dropzone";
 import { VariableSizeList as List } from "react-window";
 import type { AttachmentMeta, Embed, Message, Channel, ReactionGroup, ServerEmoji, PublicUser } from "../api";
 import type { WatchSession } from "../gateway";
+import type { TrustState } from "../lib/identityTrust";
 import { WatchParty } from "./WatchParty";
 import { API_BASE, FILE_BASE, api } from "../api";
 import type { PluginManager } from "../plugins/registry";
@@ -85,6 +86,12 @@ type Props = {
   onToggleE2e?: () => void;
   /** Lazily compute the Signal safety number for the peer (null if no session yet). */
   onRequestSafetyNumber?: () => Promise<string | null>;
+  /** Identity-verification trust state for this DM peer — drives the key-change warning. */
+  e2eTrust?: TrustState;
+  /** Mark the peer verified (their safety number matched out-of-band). */
+  onMarkVerified?: () => void;
+  /** Dismiss a pending "safety number changed" warning for this peer. */
+  onDismissKeyChange?: () => void;
   /** Set this channel's disappearing-message TTL in seconds (null turns it off). */
   onSetDisappearing?: (seconds: number | null) => void;
 };
@@ -169,6 +176,9 @@ export function ChatPane({
   e2eEnabled = false,
   onToggleE2e,
   onRequestSafetyNumber,
+  e2eTrust = "unverified",
+  onMarkVerified,
+  onDismissKeyChange,
   onSetDisappearing,
 }: Props) {
   // Initialize from the persisted draft so a reload (which mounts straight into the
@@ -200,6 +210,19 @@ export function ChatPane({
     value: null,
     loading: false,
   });
+  // Open + compute the safety number (shared by the banner's Verify button and the
+  // key-change warning's "Verify now").
+  const openSafetyNumber = useCallback(async () => {
+    if (!onRequestSafetyNumber) return;
+    setSafety({ open: true, value: null, loading: true });
+    try {
+      const value = await onRequestSafetyNumber();
+      setSafety({ open: true, value, loading: false });
+    } catch (err) {
+      console.error("safety number failed", err);
+      setSafety({ open: true, value: null, loading: false });
+    }
+  }, [onRequestSafetyNumber]);
   // Disappearing-message duration picker (open on demand from the header clock).
   const [disappearOpen, setDisappearOpen] = useState(false);
   const profileAnchorRef = useRef<HTMLElement | null>(null);
@@ -709,60 +732,132 @@ export function ChatPane({
       ) : null}
 
       {e2eEnabled && (
-        <div className="kc-e2e-banner mx-3 mt-2 rounded-md px-3 py-1.5 text-xs">
-          <div className="flex items-center gap-2">
-            🔒{" "}
-            <span>
-              <strong>Switched to end-to-end encrypted.</strong> Messages here are encrypted on your device — not even the server can read them.
-            </span>
-            {onRequestSafetyNumber && (
-              <button
-                type="button"
-                aria-label="Verify encryption safety number"
-                aria-expanded={safety.open}
-                className="kc-interactive ml-auto flex-shrink-0 rounded px-2 py-0.5 font-semibold whitespace-nowrap"
-                style={{ border: "1px solid var(--accent)", color: "var(--accent)", cursor: "pointer", background: "transparent" }}
-                onClick={async () => {
-                  if (safety.open) {
-                    setSafety((s) => ({ ...s, open: false }));
-                    return;
-                  }
-                  setSafety({ open: true, value: null, loading: true });
-                  try {
-                    const value = await onRequestSafetyNumber();
-                    setSafety({ open: true, value, loading: false });
-                  } catch (err) {
-                    console.error("safety number failed", err);
-                    setSafety({ open: true, value: null, loading: false });
-                  }
-                }}
-              >
-                {safety.open ? "Hide" : "Verify"}
-              </button>
-            )}
-          </div>
-          {safety.open && (
-            <div className="mt-2 border-t pt-2" style={{ borderColor: "var(--bg-hover)" }}>
-              {safety.loading ? (
-                <span style={{ color: "var(--text-secondary)" }}>Computing safety number…</span>
-              ) : safety.value ? (
-                <>
-                  <code className="block font-mono leading-relaxed tracking-wider" style={{ wordBreak: "break-all" }}>
-                    {(safety.value.match(/.{1,5}/g) ?? [safety.value]).join(" ")}
-                  </code>
-                  <span className="mt-1 block" style={{ color: "var(--text-secondary)" }}>
-                    Compare these digits with your friend in person or over a call you trust. If they match, no one is
-                    intercepting your messages.
-                  </span>
-                </>
-              ) : (
-                <span style={{ color: "var(--text-secondary)" }}>
-                  No secure session yet — send a message first, then verify.
+        <>
+          {(e2eTrust === "changed_verified" || e2eTrust === "changed_unverified") && (
+            <div
+              role="alert"
+              className="mx-3 mt-2 rounded-md px-3 py-2 text-xs"
+              style={{
+                background: e2eTrust === "changed_verified" ? "rgba(220,38,38,0.12)" : "rgba(217,119,6,0.12)",
+                border: `1px solid ${e2eTrust === "changed_verified" ? "#dc2626" : "#d97706"}`,
+                color: "var(--text-primary)",
+              }}
+            >
+              <div className="flex items-start gap-2">
+                <span aria-hidden="true">{e2eTrust === "changed_verified" ? "⚠️" : "🔁"}</span>
+                <span>
+                  {e2eTrust === "changed_verified" ? (
+                    <>
+                      <strong>Their safety number changed.</strong> You verified this contact before, so unless they
+                      reinstalled or added a device, someone may be intercepting. Compare the new number before you
+                      trust it.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Their safety number changed.</strong> Usually that&apos;s a reinstall or a new device —
+                      verify to be sure no one is intercepting.
+                    </>
+                  )}
                 </span>
-              )}
+              </div>
+              <div className="mt-2 flex gap-2">
+                {onRequestSafetyNumber && (
+                  <button
+                    type="button"
+                    className="kc-interactive rounded px-2 py-0.5 font-semibold whitespace-nowrap"
+                    style={{ border: "1px solid var(--accent)", color: "var(--accent)", cursor: "pointer", background: "transparent" }}
+                    onClick={() => void openSafetyNumber()}
+                  >
+                    Verify now
+                  </button>
+                )}
+                {onDismissKeyChange && (
+                  <button
+                    type="button"
+                    className="kc-interactive rounded px-2 py-0.5"
+                    style={{ color: "var(--text-secondary)", cursor: "pointer", background: "transparent" }}
+                    onClick={onDismissKeyChange}
+                  >
+                    Dismiss
+                  </button>
+                )}
+              </div>
             </div>
           )}
-        </div>
+          <div className="kc-e2e-banner mx-3 mt-2 rounded-md px-3 py-1.5 text-xs">
+            <div className="flex items-center gap-2">
+              🔒{" "}
+              <span>
+                <strong>
+                  {e2eTrust === "verified" ? "End-to-end encrypted · verified." : "Switched to end-to-end encrypted."}
+                </strong>{" "}
+                Messages here are encrypted on your device — not even the server can read them.
+              </span>
+              {e2eTrust === "verified" && (
+                <span
+                  aria-label="You verified this contact"
+                  title="You verified this contact's safety number"
+                  className="flex-shrink-0 font-semibold"
+                  style={{ color: "#16a34a" }}
+                >
+                  ✓
+                </span>
+              )}
+              {onRequestSafetyNumber && (
+                <button
+                  type="button"
+                  aria-label="Verify encryption safety number"
+                  aria-expanded={safety.open}
+                  className="kc-interactive ml-auto flex-shrink-0 rounded px-2 py-0.5 font-semibold whitespace-nowrap"
+                  style={{ border: "1px solid var(--accent)", color: "var(--accent)", cursor: "pointer", background: "transparent" }}
+                  onClick={() => {
+                    if (safety.open) {
+                      setSafety((s) => ({ ...s, open: false }));
+                      return;
+                    }
+                    void openSafetyNumber();
+                  }}
+                >
+                  {safety.open ? "Hide" : e2eTrust === "verified" ? "Re-verify" : "Verify"}
+                </button>
+              )}
+            </div>
+            {safety.open && (
+              <div className="mt-2 border-t pt-2" style={{ borderColor: "var(--bg-hover)" }}>
+                {safety.loading ? (
+                  <span style={{ color: "var(--text-secondary)" }}>Computing safety number…</span>
+                ) : safety.value ? (
+                  <>
+                    <code className="block font-mono leading-relaxed tracking-wider" style={{ wordBreak: "break-all" }}>
+                      {(safety.value.match(/.{1,5}/g) ?? [safety.value]).join(" ")}
+                    </code>
+                    <span className="mt-1 block" style={{ color: "var(--text-secondary)" }}>
+                      Compare these digits with your friend in person or over a call you trust. If they match, no one is
+                      intercepting your messages.
+                    </span>
+                    {onMarkVerified && e2eTrust !== "verified" && (
+                      <button
+                        type="button"
+                        className="kc-interactive mt-2 rounded px-2 py-0.5 font-semibold whitespace-nowrap"
+                        style={{ border: "1px solid #16a34a", color: "#16a34a", cursor: "pointer", background: "transparent" }}
+                        onClick={() => {
+                          onMarkVerified();
+                          setSafety((s) => ({ ...s, open: false }));
+                        }}
+                      >
+                        These match — mark verified
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <span style={{ color: "var(--text-secondary)" }}>
+                    No secure session yet — send a message first, then verify.
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Watch party — synced video for this channel */}
