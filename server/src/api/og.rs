@@ -1,4 +1,8 @@
-use axum::{extract::{Query, State}, http::StatusCode, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 
@@ -23,8 +27,12 @@ async fn is_public_url(url: &str) -> bool {
     !addrs.is_empty()
         && addrs.iter().all(|sa| match sa.ip() {
             IpAddr::V4(v4) => {
-                !(v4.is_loopback() || v4.is_private() || v4.is_link_local()
-                    || v4.is_unspecified() || v4.is_broadcast() || v4.octets()[0] == 0)
+                !(v4.is_loopback()
+                    || v4.is_private()
+                    || v4.is_link_local()
+                    || v4.is_unspecified()
+                    || v4.is_broadcast()
+                    || v4.octets()[0] == 0)
             }
             IpAddr::V6(v6) => {
                 let s = v6.segments();
@@ -69,15 +77,45 @@ pub async fn fetch_og(
     Query(q): Query<OgQuery>,
 ) -> Result<Json<OgData>, (StatusCode, String)> {
     // Authenticated + rate-limited so link previews can't be a free SSRF/proxy oracle.
-    if !state.rate.check(&format!("og:{}", auth.0), 20, std::time::Duration::from_secs(60)) {
-        return Err((StatusCode::TOO_MANY_REQUESTS, "too many link previews".into()));
+    if !state.rate.check(
+        &format!("og:{}", auth.0),
+        20,
+        std::time::Duration::from_secs(60),
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many link previews".into(),
+        ));
     }
     let url = q.url.trim().to_owned();
     if !url.starts_with("http://") && !url.starts_with("https://") {
-        return Err((StatusCode::BAD_REQUEST, "only http/https URLs are supported".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "only http/https URLs are supported".into(),
+        ));
     }
-    if !is_public_url(&url).await {
-        return Err((StatusCode::FORBIDDEN, "url not allowed".into()));
+
+    match fetch_og_data(&url).await {
+        Some(og) => Ok(Json(og)),
+        None => Err((
+            StatusCode::BAD_GATEWAY,
+            "couldn't fetch link preview".into(),
+        )),
+    }
+}
+
+/// Resolve Open Graph data for a single already-trimmed http(s) URL.
+///
+/// Self-contained: applies the SSRF guard and the specialised YouTube/GitHub
+/// handlers, falling back to generic `<meta>` parsing. Returns `None` for
+/// disallowed URLs or any fetch/parse failure. Has no auth/rate-limit of its
+/// own — callers (the `/og` endpoint, the embed builder) gate it.
+pub(crate) async fn fetch_og_data(url: &str) -> Option<OgData> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return None;
+    }
+    if !is_public_url(url).await {
+        return None;
     }
 
     // ── Specialised handlers for sites that block generic scrapers ────────────
@@ -86,18 +124,18 @@ pub async fn fetch_og(
     if url.contains("youtube.com/watch") || url.contains("youtu.be/") {
         let oembed_url = format!(
             "https://www.youtube.com/oembed?url={}&format=json",
-            urlencoding::encode(&url)
+            urlencoding::encode(url)
         );
         if let Ok(res) = http().get(&oembed_url).send().await {
             if let Ok(data) = res.json::<serde_json::Value>().await {
-                return Ok(Json(OgData {
-                    url: url.clone(),
+                return Some(OgData {
+                    url: url.to_owned(),
                     title: data["title"].as_str().map(str::to_owned),
                     description: data["author_name"].as_str().map(|a| format!("by {a}")),
                     image: data["thumbnail_url"].as_str().map(str::to_owned),
                     site_name: Some("YouTube".into()),
                     favicon: Some("https://www.youtube.com/favicon.ico".into()),
-                }));
+                });
             }
         }
     }
@@ -119,24 +157,23 @@ pub async fn fetch_og(
                     let lang = data["language"].as_str().unwrap_or("");
                     let desc = data["description"].as_str().unwrap_or("").to_owned();
                     let full = data["full_name"].as_str().unwrap_or("").to_owned();
-                    return Ok(Json(OgData {
-                        url: url.clone(),
+                    return Some(OgData {
+                        url: url.to_owned(),
                         title: Some(full),
                         description: Some(format!("{desc} · ⭐ {stars} · {lang}")),
-                        image: Some(format!("https://opengraph.githubassets.com/1/{}/{}", parts[0], parts[1])),
+                        image: Some(format!(
+                            "https://opengraph.githubassets.com/1/{}/{}",
+                            parts[0], parts[1]
+                        )),
                         site_name: Some("GitHub".into()),
                         favicon: Some("https://github.com/favicon.ico".into()),
-                    }));
+                    });
                 }
             }
         }
     }
 
-    let response = http()
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    let response = http().get(url).send().await.ok()?;
 
     let content_type = response
         .headers()
@@ -147,24 +184,16 @@ pub async fn fetch_og(
 
     if !content_type.contains("text/html") {
         // Not HTML — return bare URL info (still useful for images/video)
-        return Ok(Json(OgData {
-            url,
-            title: None,
-            description: None,
-            image: None,
-            site_name: None,
-            favicon: None,
-        }));
+        return Some(OgData {
+            url: url.to_owned(),
+            ..Default::default()
+        });
     }
 
-    let html = response
-        .text()
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    let html = response.text().await.ok()?;
 
     // Parse OG tags with a lightweight regex-free parser.
-    let og = parse_og(&url, &html);
-    Ok(Json(og))
+    Some(parse_og(url, &html))
 }
 
 fn parse_og(url: &str, html: &str) -> OgData {
@@ -188,7 +217,9 @@ fn parse_og(url: &str, html: &str) -> OgData {
         if let (Some(prop), Some(content)) = (prop, content) {
             match prop.to_lowercase().as_str() {
                 "og:title" | "twitter:title" => data.title.get_or_insert(content.clone()),
-                "og:description" | "twitter:description" | "description" => data.description.get_or_insert(content.clone()),
+                "og:description" | "twitter:description" | "description" => {
+                    data.description.get_or_insert(content.clone())
+                }
                 "og:image" | "twitter:image" => data.image.get_or_insert(content.clone()),
                 "og:site_name" => data.site_name.get_or_insert(content.clone()),
                 _ => continue,

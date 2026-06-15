@@ -11,8 +11,8 @@ use crate::{
     auth::AuthUser,
     gateway::broadcast_to_channel,
     types::{
-        GatewayEvent, Message, MessageWithAuthor, PublicUser, ReactionGroup, ReplyPreview, User,
-        new_id, now_unix,
+        new_id, now_unix, GatewayEvent, Message, MessageWithAuthor, PublicUser, ReactionGroup,
+        ReplyPreview, User,
     },
     AppState,
 };
@@ -41,7 +41,11 @@ async fn fetch_reply_preview(db: &sqlx::SqlitePool, reply_id: &str) -> Option<Re
         } else {
             snippet
         };
-        ReplyPreview { id: reply_id.to_string(), author, content }
+        ReplyPreview {
+            id: reply_id.to_string(),
+            author,
+            content,
+        }
     })
 }
 
@@ -63,7 +67,11 @@ struct ReactionRow {
     me: i64,
 }
 
-async fn fetch_reactions(db: &sqlx::SqlitePool, message_id: &str, user_id: &str) -> Vec<ReactionGroup> {
+async fn fetch_reactions(
+    db: &sqlx::SqlitePool,
+    message_id: &str,
+    user_id: &str,
+) -> Vec<ReactionGroup> {
     let rows: Vec<ReactionRow> = sqlx::query_as(
         "SELECT emoji, COUNT(*) as count,
                 MAX(CASE WHEN user_id = ? THEN 1 ELSE 0 END) as me
@@ -78,7 +86,11 @@ async fn fetch_reactions(db: &sqlx::SqlitePool, message_id: &str, user_id: &str)
     .unwrap_or_default();
 
     rows.into_iter()
-        .map(|r| ReactionGroup { emoji: r.emoji, count: r.count, me: r.me != 0 })
+        .map(|r| ReactionGroup {
+            emoji: r.emoji,
+            count: r.count,
+            me: r.me != 0,
+        })
         .collect()
 }
 
@@ -144,6 +156,7 @@ pub async fn list_messages(
             created_at: msg.created_at,
             edited_at: msg.edited_at,
             attachments: parse_attachments(&msg.attachments),
+            embeds: parse_attachments(&msg.embeds),
             reactions,
             reply_to,
             poll,
@@ -175,9 +188,52 @@ struct AttachmentMeta {
     height: Option<i64>,
 }
 
-/// Parse the stored attachments JSON string into an array value for API responses.
+/// Parse a stored JSON string column (attachments or embeds) into an array value.
 fn parse_attachments(raw: &Option<String>) -> Option<serde_json::Value> {
     raw.as_deref().and_then(|s| serde_json::from_str(s).ok())
+}
+
+/// Fetch link-preview embeds for a just-written message off the request path, then
+/// persist them and broadcast a `MessageUpdate` so clients fill the card in. No-op
+/// unless `EMBEDS_ENABLED` is set; failures are logged, never surfaced to the user.
+fn spawn_embed_refresh(
+    state: &AppState,
+    id: String,
+    channel_id: String,
+    content: String,
+    viewer: String,
+) {
+    if !crate::api::embeds::embeds_enabled() {
+        return;
+    }
+    let state = state.clone();
+    tokio::spawn(async move {
+        let Some(embeds_json) = crate::api::embeds::build_embeds(&content).await else {
+            return;
+        };
+        if let Err(e) = sqlx::query("UPDATE messages SET embeds = ? WHERE id = ?")
+            .bind(&embeds_json)
+            .bind(&id)
+            .execute(&state.db)
+            .await
+        {
+            tracing::warn!("embed persist failed for {id}: {e}");
+            return;
+        }
+        let reloaded: Result<Message, _> = sqlx::query_as("SELECT * FROM messages WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await;
+        match reloaded {
+            Ok(m) => {
+                if let Ok(full) = build_full(&state, m, &viewer).await {
+                    broadcast_to_channel(&state, &channel_id, &GatewayEvent::MessageUpdate(full))
+                        .await;
+                }
+            }
+            Err(e) => tracing::warn!("embed reload failed for {id}: {e}"),
+        }
+    });
 }
 
 pub async fn send_message(
@@ -190,14 +246,26 @@ pub async fn send_message(
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
     // Per-user spam throttle (generous for humans, blocks flooders).
-    if !state.rate.check(&format!("msg:{}", auth.0), 30, Duration::from_secs(10)) {
-        return Err((StatusCode::TOO_MANY_REQUESTS, "you're sending messages too fast".into()));
+    if !state
+        .rate
+        .check(&format!("msg:{}", auth.0), 30, Duration::from_secs(10))
+    {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "you're sending messages too fast".into(),
+        ));
     }
     if body.content.len() > 4000 {
-        return Err((StatusCode::BAD_REQUEST, "message too long (max 4000 chars)".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "message too long (max 4000 chars)".into(),
+        ));
     }
     if body.content.trim().is_empty() && body.attachment_ids.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "content or attachments required".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "content or attachments required".into(),
+        ));
     }
 
     let author: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
@@ -284,9 +352,23 @@ pub async fn send_message(
         reply_to: reply_preview,
         pinned: false,
         poll: None,
+        embeds: None,
     };
 
-    broadcast_to_channel(&state, &msg.channel_id, &GatewayEvent::MessageCreate(msg.clone())).await;
+    broadcast_to_channel(
+        &state,
+        &msg.channel_id,
+        &GatewayEvent::MessageCreate(msg.clone()),
+    )
+    .await;
+    // Resolve link-preview embeds off the hot path; a MessageUpdate follows when ready.
+    spawn_embed_refresh(
+        &state,
+        msg.id.clone(),
+        msg.channel_id.clone(),
+        msg.content.clone(),
+        auth.0.clone(),
+    );
     Ok(Json(msg))
 }
 
@@ -318,6 +400,7 @@ pub async fn build_full(
         created_at: msg.created_at,
         edited_at: msg.edited_at,
         attachments: parse_attachments(&msg.attachments),
+        embeds: parse_attachments(&msg.embeds),
         reactions,
         reply_to,
         poll,
@@ -335,20 +418,24 @@ pub async fn user_can_access(state: &AppState, channel_id: &str, user_id: &str) 
             .flatten();
     let server_id = row.and_then(|(s,)| s);
     let found: Option<(i64,)> = match server_id {
-        Some(sid) => sqlx::query_as("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
-            .bind(sid)
-            .bind(user_id)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten(),
-        None => sqlx::query_as("SELECT 1 FROM dm_participants WHERE channel_id = ? AND user_id = ?")
-            .bind(channel_id)
-            .bind(user_id)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten(),
+        Some(sid) => {
+            sqlx::query_as("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
+                .bind(sid)
+                .bind(user_id)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten()
+        }
+        None => {
+            sqlx::query_as("SELECT 1 FROM dm_participants WHERE channel_id = ? AND user_id = ?")
+                .bind(channel_id)
+                .bind(user_id)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten()
+        }
     };
     found.is_some()
 }
@@ -410,7 +497,10 @@ pub async fn edit_message(
         return Err((StatusCode::BAD_REQUEST, "content required".into()));
     }
     if content.len() > 4000 {
-        return Err((StatusCode::BAD_REQUEST, "message too long (max 4000 chars)".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "message too long (max 4000 chars)".into(),
+        ));
     }
 
     let msg: Option<Message> =
@@ -427,7 +517,8 @@ pub async fn edit_message(
     }
 
     let now = now_unix();
-    sqlx::query("UPDATE messages SET content = ?, edited_at = ? WHERE id = ?")
+    // Clear any stale embeds synchronously; the async refresh re-adds them for the new content.
+    sqlx::query("UPDATE messages SET content = ?, edited_at = ?, embeds = NULL WHERE id = ?")
         .bind(&content)
         .bind(now)
         .bind(&id)
@@ -435,9 +526,26 @@ pub async fn edit_message(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let updated = Message { content, edited_at: Some(now), ..msg };
+    let updated = Message {
+        content,
+        edited_at: Some(now),
+        embeds: None,
+        ..msg
+    };
     let full = build_full(&state, updated, &auth.0).await?;
-    broadcast_to_channel(&state, &channel_id, &GatewayEvent::MessageUpdate(full.clone())).await;
+    broadcast_to_channel(
+        &state,
+        &channel_id,
+        &GatewayEvent::MessageUpdate(full.clone()),
+    )
+    .await;
+    spawn_embed_refresh(
+        &state,
+        full.id.clone(),
+        full.channel_id.clone(),
+        full.content.clone(),
+        auth.0.clone(),
+    );
     Ok(Json(full))
 }
 
@@ -459,8 +567,18 @@ async fn set_pin(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if let Some((Some(sid),)) = chan {
-        if !crate::api::roles::has_perm(state, &sid, user_id, crate::api::roles::perm::MANAGE_MESSAGES).await {
-            return Err((StatusCode::FORBIDDEN, "you need Manage Messages to pin".into()));
+        if !crate::api::roles::has_perm(
+            state,
+            &sid,
+            user_id,
+            crate::api::roles::perm::MANAGE_MESSAGES,
+        )
+        .await
+        {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "you need Manage Messages to pin".into(),
+            ));
         }
     }
     let msg: Option<Message> =
@@ -480,9 +598,17 @@ async fn set_pin(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let updated = Message { pinned: flag, ..msg };
+    let updated = Message {
+        pinned: flag,
+        ..msg
+    };
     let full = build_full(state, updated, user_id).await?;
-    broadcast_to_channel(state, channel_id, &GatewayEvent::MessageUpdate(full.clone())).await;
+    broadcast_to_channel(
+        state,
+        channel_id,
+        &GatewayEvent::MessageUpdate(full.clone()),
+    )
+    .await;
     Ok(Json(full))
 }
 
@@ -610,7 +736,13 @@ pub async fn delete_message(
                 .flatten();
         let can = match row.and_then(|(s,)| s) {
             Some(sid) => {
-                crate::api::roles::has_perm(&state, &sid, &auth.0, crate::api::roles::perm::MANAGE_MESSAGES).await
+                crate::api::roles::has_perm(
+                    &state,
+                    &sid,
+                    &auth.0,
+                    crate::api::roles::perm::MANAGE_MESSAGES,
+                )
+                .await
             }
             None => false,
         };
@@ -628,7 +760,10 @@ pub async fn delete_message(
     broadcast_to_channel(
         &state,
         &channel_id,
-        &GatewayEvent::MessageDelete { id, channel_id: channel_id.clone() },
+        &GatewayEvent::MessageDelete {
+            id,
+            channel_id: channel_id.clone(),
+        },
     )
     .await;
 

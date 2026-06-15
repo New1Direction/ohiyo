@@ -79,6 +79,9 @@ pub struct Message {
     pub reply_to: Option<String>,
     #[serde(default)]
     pub pinned: i64,
+    /// JSON array string of resolved link-preview embeds (NULL until built async).
+    #[serde(default)]
+    pub embeds: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,6 +152,8 @@ pub struct MessageWithAuthor {
     pub reply_to: Option<ReplyPreview>,
     pub pinned: bool,
     pub poll: Option<Poll>,
+    /// Parsed link-preview embed array (not the raw DB JSON string), like attachments.
+    pub embeds: Option<serde_json::Value>,
 }
 
 // ── WebSocket gateway events ───────────────────────────────────────────────────

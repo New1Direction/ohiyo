@@ -85,6 +85,18 @@ export type Poll = {
   options: PollOption[];
 };
 
+/** A resolved link-preview card, built server-side and delivered via MessageUpdate. */
+export type Embed = {
+  url: string;
+  embed_type?: string;
+  title: string | null;
+  description: string | null;
+  image: string | null;
+  site_name: string | null;
+  favicon: string | null;
+  color?: string | null;
+};
+
 export type Message = {
   id: string;
   channel_id: string;
@@ -97,6 +109,7 @@ export type Message = {
   reply_to?: ReplyPreview | null;
   pinned?: boolean;
   poll?: Poll | null;
+  embeds?: Embed[] | null;
   /** Client-only optimistic-send lifecycle (never returned by the server). */
   _state?: "pending" | "failed";
   _send?: { content: string; attachmentIds?: string[]; replyTo?: string | null };

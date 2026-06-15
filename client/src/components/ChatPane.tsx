@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDropzone } from "react-dropzone";
 import { VariableSizeList as List } from "react-window";
-import type { AttachmentMeta, Message, Channel, ReactionGroup, ServerEmoji, PublicUser } from "../api";
+import type { AttachmentMeta, Embed, Message, Channel, ReactionGroup, ServerEmoji, PublicUser } from "../api";
 import { API_BASE, FILE_BASE, api } from "../api";
 import type { PluginManager } from "../plugins/registry";
 import { UserProfileCard } from "./UserProfileCard";
@@ -290,7 +290,8 @@ export function ChatPane({
     const pins = g.msgs.filter((m) => m.pinned).length;
     const failed = g.msgs.filter((m) => m._state === "failed").length;
     const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
-    return 44 + Math.max(textLines, 1) * 20 + imageH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH;
+    const embedsH = g.msgs.reduce((sum, m) => sum + (m.embeds?.length ?? 0) * 92, 0);
+    return 44 + Math.max(textLines, 1) * 20 + imageH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
   }
 
   const handleSend = useCallback(
@@ -626,13 +627,16 @@ export function ChatPane({
                               className="msg-content text-sm leading-[1.45]"
                               style={{ color: "var(--text-secondary)", userSelect: "text", opacity: msg._state === "pending" ? 0.5 : 1 }}
                             >
-                              {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} />}
+                              {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={!!(msg.embeds && msg.embeds.length)} />}
                               {msg.edited_at && (
                                 <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 5 }}>(edited)</span>
                               )}
                               {msg.attachments && msg.attachments.length > 0 && (
                                 <AttachmentList attachments={msg.attachments} />
                               )}
+                              {msg.embeds && msg.embeds.length > 0 && msg.embeds.map((em) => (
+                                <EmbedCard key={em.url} embed={em} />
+                              ))}
                             </div>
                           )}
                           {msg._state === "failed" && (
@@ -1044,7 +1048,7 @@ function CustomEmoji({ emoji }: { emoji: ServerEmoji }) {
   );
 }
 
-function MessageContent({ content, serverEmojis, currentUsername = "" }: { content: string; serverEmojis: ServerEmoji[]; currentUsername?: string }) {
+function MessageContent({ content, serverEmojis, currentUsername = "", suppressLinkPreviews = false }: { content: string; serverEmojis: ServerEmoji[]; currentUsername?: string; suppressLinkPreviews?: boolean }) {
   // Forwarded message: 【FWD:author】<original content>
   const fwd = content.match(/^【FWD:([^】]*)】([\s\S]*)$/);
   if (fwd) {
@@ -1054,7 +1058,7 @@ function MessageContent({ content, serverEmojis, currentUsername = "" }: { conte
         <span className="flex items-center gap-1" style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>
           <span style={{ color: "var(--accent)" }}>↪</span> Forwarded from <strong style={{ color: "var(--text-secondary)" }}>{author}</strong>
         </span>
-        {rest && <MessageContent content={rest} serverEmojis={serverEmojis} currentUsername={currentUsername} />}
+        {rest && <MessageContent content={rest} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={suppressLinkPreviews} />}
       </>
     );
   }
@@ -1073,7 +1077,7 @@ function MessageContent({ content, serverEmojis, currentUsername = "" }: { conte
 
   for (const match of content.matchAll(tokenRe)) {
     const before = content.slice(last, match.index);
-    if (before) parts.push(<InlineText key={last} text={before} serverEmojis={serverEmojis} currentUsername={currentUsername} />);
+    if (before) parts.push(<InlineText key={last} text={before} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={suppressLinkPreviews} />);
 
     if (match[0].startsWith("```")) {
       parts.push(
@@ -1107,7 +1111,7 @@ function MessageContent({ content, serverEmojis, currentUsername = "" }: { conte
   }
 
   const remainder = content.slice(last);
-  if (remainder) parts.push(<InlineText key={last + "r"} text={remainder} serverEmojis={serverEmojis} currentUsername={currentUsername} />);
+  if (remainder) parts.push(<InlineText key={last + "r"} text={remainder} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={suppressLinkPreviews} />);
 
   return <>{parts}</>;
 }
@@ -1195,8 +1199,64 @@ function LinkPreviewCard({ url }: { url: string }) {
   );
 }
 
+/** Server-persisted link-preview card (no client fetch — fields come from the gateway). */
+function EmbedCard({ embed }: { embed: Embed }) {
+  if (!embed.title && !embed.description && !embed.image) return null;
+  return (
+    <a
+      href={embed.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: "flex",
+        gap: 10,
+        marginTop: 6,
+        padding: "10px 12px",
+        borderRadius: 6,
+        background: "var(--bg-sidebar)",
+        borderLeft: `3px solid ${embed.color || "var(--accent)"}`,
+        textDecoration: "none",
+        maxWidth: 480,
+        overflow: "hidden",
+      }}
+    >
+      {embed.image && (
+        <img
+          src={embed.image}
+          alt=""
+          style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 4, flexShrink: 0 }}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      )}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        {embed.site_name && (
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>
+            {embed.favicon && (
+              <img src={embed.favicon} alt="" width={12} height={12} style={{ marginRight: 4, verticalAlign: "middle" }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            )}
+            {embed.site_name}
+          </div>
+        )}
+        {embed.title && (
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 2,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {embed.title}
+          </div>
+        )}
+        {embed.description && (
+          <div style={{ fontSize: 12, color: "var(--text-secondary)",
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+            {embed.description}
+          </div>
+        )}
+      </div>
+    </a>
+  );
+}
+
 // Inline text with bold, italic, inline code, and URL detection.
-function InlineText({ text, serverEmojis, currentUsername = "" }: { text: string; serverEmojis: ServerEmoji[]; currentUsername?: string }) {
+function InlineText({ text, serverEmojis, currentUsername = "", suppressLinkPreviews = false }: { text: string; serverEmojis: ServerEmoji[]; currentUsername?: string; suppressLinkPreviews?: boolean }) {
   const emojiMap = new Map(serverEmojis.map((e) => [e.name, e]));
   const urlRe = /(https?:\/\/[^\s]+)/g;
   const segments: React.ReactNode[] = [];
@@ -1228,7 +1288,7 @@ function InlineText({ text, serverEmojis, currentUsername = "" }: { text: string
   return (
     <>
       {segments}
-      {urls.map((url) => <LinkPreviewCard key={url} url={url} />)}
+      {!suppressLinkPreviews && urls.map((url) => <LinkPreviewCard key={url} url={url} />)}
     </>
   );
 }
