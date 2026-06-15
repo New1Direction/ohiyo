@@ -43,7 +43,11 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me/group-dms", post(users::open_group_dm))
         .route(
             "/channels/{channel_id}/recipients",
-            get(users::list_recipients),
+            get(users::list_recipients).post(users::add_recipient),
+        )
+        .route(
+            "/channels/{channel_id}/recipients/{user_id}",
+            delete(users::remove_recipient),
         )
         .route("/users/@me/deadman", get(users::get_deadman))
         .route("/users/@me/deadman", post(users::set_deadman))

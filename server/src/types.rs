@@ -36,6 +36,13 @@ pub struct Channel {
     /// Disappearing-message TTL in seconds; None = off.
     #[serde(default)]
     pub disappearing_seconds: Option<i64>,
+    /// Group-DM membership generation; bumped on every add/remove so clients rotate
+    /// their sender keys. 0 for non-group channels.
+    #[serde(default)]
+    pub epoch: i64,
+    /// Group-DM owner (creator); only they may remove other members. None otherwise.
+    #[serde(default)]
+    pub owner_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -243,6 +250,15 @@ pub enum GatewayEvent {
         channel_id: String,
         from_user_id: String,
         envelope: String,
+    },
+    /// A group DM's membership changed (add/remove/leave). `epoch` is the new rekey
+    /// generation — clients rotate their sender key when it advances past their own.
+    /// `participants` is the full current member list; a client that finds itself
+    /// absent from it has been removed and drops the channel.
+    GroupMembersUpdate {
+        channel_id: String,
+        epoch: i64,
+        participants: Vec<PublicUser>,
     },
     ServerCreate(ServerWithChannels),
     ServerDelete {

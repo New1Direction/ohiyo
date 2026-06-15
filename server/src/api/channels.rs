@@ -103,6 +103,8 @@ pub async fn create_channel(
         created_at: now,
         category_id,
         disappearing_seconds: None,
+        epoch: 0,
+        owner_id: None,
     };
 
     broadcast_to_channel(
