@@ -252,6 +252,12 @@ export const api = {
       token
     ),
 
+  // User preferences (a single JSON blob per user) — used to sync appearance across
+  // devices. POST replaces the whole blob, so callers merge before writing.
+  getPrefs: (token: string) => request<Record<string, unknown>>("/users/@me/prefs", {}, token),
+  setPrefs: (token: string, prefs: Record<string, unknown>) =>
+    request<void>("/users/@me/prefs", { method: "POST", body: JSON.stringify(prefs) }, token),
+
   listServers: (token: string) =>
     request<ServerWithChannels[]>("/servers", {}, token),
 

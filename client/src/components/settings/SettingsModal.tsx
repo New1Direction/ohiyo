@@ -19,6 +19,7 @@ import type { PluginManager } from "../../plugins/registry";
 import { isDesktop } from "../../lib/desktop";
 import { burnVault } from "../../lib/tauriVault";
 import { ACCENT_PRESETS, applyActiveAppearance, getActiveAccent, loadAccent, setAccent } from "../../lib/appearance";
+import { pushAppearance } from "../../lib/appearanceSync";
 
 type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
 
@@ -94,7 +95,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, onCl
 
         {/* Settings content */}
         <div className="flex-1 overflow-y-auto px-10 py-16">
-          {tab === "appearance" && <AppearanceTab onToast={onToast} />}
+          {tab === "appearance" && <AppearanceTab onToast={onToast} token={token} />}
           {tab === "plugins" && <PluginsTab pluginManager={pluginManager} onToast={onToast} />}
           {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} />}
           {tab === "profile" && <ProfileTab token={token} onToast={onToast} />}
@@ -109,7 +110,13 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, onCl
 
 // ── Appearance tab ────────────────────────────────────────────────────────────
 
-function AppearanceTab({ onToast }: { onToast: (t: string, type?: "info" | "success" | "error") => void }) {
+function AppearanceTab({
+  onToast,
+  token,
+}: {
+  onToast: (t: string, type?: "info" | "success" | "error") => void;
+  token: string;
+}) {
   const [currentTheme, setCurrentTheme] = useState<Theme>(loadTheme);
   const [customThemes, setCustomThemes] = useState<Theme[]>(getCustomThemes);
   const [importText, setImportText] = useState("");
@@ -125,6 +132,7 @@ function AppearanceTab({ onToast }: { onToast: (t: string, type?: "info" | "succ
     const ov = loadAccent();
     if (ov) setAccent(ov);
     setAccentVal(ov ?? theme.vars["--accent"]);
+    pushAppearance(token);
     onToast(`Theme "${theme.name}" applied`, "success");
   }
 
@@ -132,12 +140,14 @@ function AppearanceTab({ onToast }: { onToast: (t: string, type?: "info" | "succ
     setAccent(hex);
     setAccentVal(hex);
     setAccentOverride(true);
+    pushAppearance(token);
   }
 
   function resetAccent() {
     setAccent(null);
     setAccentVal(currentTheme.vars["--accent"]);
     setAccentOverride(false);
+    pushAppearance(token);
     onToast("Accent reset to theme default", "success");
   }
 
@@ -172,6 +182,7 @@ function AppearanceTab({ onToast }: { onToast: (t: string, type?: "info" | "succ
     setAccentVal(theme.vars["--accent"]);
     setAccentOverride(false);
     setEditing(false);
+    pushAppearance(token);
     onToast(`Theme "${theme.name}" saved`, "success");
   }
 

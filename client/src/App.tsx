@@ -53,6 +53,7 @@ import type { UseWebRTCReturn } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
 import { applyActiveAppearance } from "./lib/appearance";
+import { pullAppearance } from "./lib/appearanceSync";
 import { useToast } from "./hooks/useToast";
 import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
@@ -217,6 +218,9 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       // Generate + publish Signal prekeys (forward-secret X3DH sessions). Idempotent;
       // makes every signed-in user Signal-capable. The DM-flow switch builds on this.
       void initSignal(token);
+      // Sync appearance (theme + accent) from the server so it follows the user across
+      // devices. Local appearance already painted at boot; this reconciles.
+      void pullAppearance(token);
     })();
     return () => {
       alive = false;
