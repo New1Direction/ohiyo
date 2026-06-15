@@ -4,10 +4,16 @@
 // server's POST /prefs replaces the whole blob.
 
 import type { Theme } from "../themes";
+import type { Density } from "./density";
 
 const APPEARANCE_KEY = "appearance";
 
-export type AppearancePrefs = { theme?: Theme; accent?: string | null };
+export type AppearancePrefs = {
+  theme?: Theme;
+  accent?: string | null;
+  density?: Density;
+  fontScale?: number;
+};
 
 /** Return a new prefs object with the appearance slice set, leaving all other keys intact. */
 export function mergeAppearanceIntoPrefs(

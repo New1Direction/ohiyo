@@ -20,7 +20,18 @@ import type { PluginManager } from "../../plugins/registry";
 import { isDesktop } from "../../lib/desktop";
 import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauriVault";
 import { generateRecoveryCode, encryptBackup, decryptBackup, type BackupBlob } from "../../lib/recovery";
-import { ACCENT_PRESETS, applyActiveAppearance, getActiveAccent, loadAccent, setAccent } from "../../lib/appearance";
+import {
+  ACCENT_PRESETS,
+  applyActiveAppearance,
+  applyDensity,
+  applyFontScale,
+  getActiveAccent,
+  loadAccent,
+  loadDensity,
+  loadFontScale,
+  setAccent,
+} from "../../lib/appearance";
+import { type Density, DENSITIES, FONT_SCALES } from "../../lib/density";
 import { pushAppearance } from "../../lib/appearanceSync";
 
 type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
@@ -124,6 +135,8 @@ function AppearanceTab({
   const [importText, setImportText] = useState("");
   const [accent, setAccentVal] = useState<string>(getActiveAccent);
   const [accentOverride, setAccentOverride] = useState<boolean>(() => loadAccent() !== null);
+  const [density, setDensityVal] = useState<Density>(loadDensity);
+  const [fontScale, setFontScaleVal] = useState<number>(loadFontScale);
 
   const allThemes = [...BUILTIN_THEMES, ...customThemes];
 
@@ -142,6 +155,18 @@ function AppearanceTab({
     setAccent(hex);
     setAccentVal(hex);
     setAccentOverride(true);
+    pushAppearance(token);
+  }
+
+  function chooseDensity(d: Density) {
+    applyDensity(d);
+    setDensityVal(d);
+    pushAppearance(token);
+  }
+
+  function chooseFontScale(s: number) {
+    applyFontScale(s);
+    setFontScaleVal(s);
     pushAppearance(token);
   }
 
@@ -286,6 +311,48 @@ function AppearanceTab({
               Reset to theme
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Message density — how tightly messages pack. Synced cross-device like accent. */}
+      <div className="mb-8">
+        <div className="mb-1 text-sm font-semibold">Message density</div>
+        <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
+          How tightly messages pack together in chat.
+        </p>
+        <div className="kc-seg" role="group" aria-label="Message density">
+          {DENSITIES.map((d) => (
+            <button
+              key={d}
+              type="button"
+              className="kc-seg__btn"
+              aria-pressed={density === d}
+              onClick={() => chooseDensity(d)}
+            >
+              {d[0].toUpperCase() + d.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Font size — scales the chat text; the message list re-measures on change. */}
+      <div className="mb-8">
+        <div className="mb-1 text-sm font-semibold">Font size</div>
+        <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
+          Scale the chat text to taste.
+        </p>
+        <div className="kc-seg" role="group" aria-label="Font size">
+          {FONT_SCALES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className="kc-seg__btn"
+              aria-pressed={fontScale === s}
+              onClick={() => chooseFontScale(s)}
+            >
+              {Math.round(s * 100)}%
+            </button>
+          ))}
         </div>
       </div>
 
@@ -835,6 +902,8 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
   const [pronouns, setPronouns] = useState("");
   const [status, setStatus] = useState("");
   const [bannerColor, setBannerColor] = useState("#5865f2");
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const bannerFileRef = useRef<HTMLInputElement>(null);
   // Read-only base fields (name, @handle, avatar, socials) used by the live preview.
   const [base, setBase] = useState<Partial<ProfileCardData>>({});
 
@@ -848,6 +917,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
         setPronouns(d.pronouns ?? "");
         setStatus(d.custom_status ?? "");
         setBannerColor(d.banner_color ?? "#f2683c");
+        setBannerUrl(d.banner_url ?? null);
         setBase({
           username: d.username,
           display_name: d.display_name,
@@ -877,6 +947,28 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
     }
   }
 
+  async function handleBannerUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch(`${API_BASE}/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = (await res.json()) as Array<{ id: string; url: string }>;
+      const fileId = data[0]?.id;
+      if (!fileId) throw new Error("Upload failed");
+      await api.setBanner(token, fileId);
+      setBannerUrl(`${FILE_BASE}/files/${fileId}`); // local preview reflects it immediately
+      onToast("Banner image updated!", "success");
+    } catch (err) {
+      onToast(`Banner upload failed: ${err instanceof Error ? err.message : err}`, "error");
+    }
+  }
+
   // Live preview data: saved base fields overlaid with the in-progress edits.
   const preview: ProfileCardData = {
     display_name: base.display_name ?? "Your name",
@@ -887,6 +979,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
     custom_status: status,
     bio,
     banner_color: bannerColor,
+    banner_url: bannerUrl,
     social_github: base.social_github ?? null,
     social_twitter: base.social_twitter ?? null,
     social_youtube: base.social_youtube ?? null,
@@ -944,6 +1037,36 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
                 {bannerColor}
               </span>
             </div>
+          </Field>
+          <Field label="Banner Image">
+            <div className="flex items-center gap-3">
+              <div
+                className="h-12 w-24 flex-shrink-0 rounded overflow-hidden"
+                style={{ background: isValidHex(bannerColor) ? bannerColor : "#5865f2" }}
+              >
+                {bannerUrl && (
+                  <img src={bannerUrl} alt="" className="h-full w-full object-cover" />
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => bannerFileRef.current?.click()}
+                className="rounded px-3 py-1.5 text-xs font-semibold"
+                style={{ background: "var(--accent)", color: "#fff" }}
+              >
+                {bannerUrl ? "Replace image" : "Upload image"}
+              </button>
+              <input
+                ref={bannerFileRef}
+                type="file"
+                accept="image/*,.gif"
+                className="hidden"
+                onChange={handleBannerUpload}
+              />
+            </div>
+            <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+              An image covers the banner color. GIFs supported.
+            </p>
           </Field>
           <button
             onClick={save}

@@ -34,6 +34,15 @@
   --leading-snug: 1.35;
   --leading-normal: 1.5;
 
+  /* Message density + font scale (JS re-applies the saved values on boot via
+     applyActiveAppearance). --msg-line-px / --msg-base-px are unitless ints the
+     virtualized list reads back to estimate row heights. */
+  --msg-font-scale: 1;
+  --msg-line-height: 1.45;
+  --msg-group-gap: 0.125rem;
+  --msg-line-px: 20;
+  --msg-base-px: 44;
+
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -735,3 +744,42 @@ input, textarea, select {
 }
 .kc-grpmem__leave:hover { background: color-mix(in oklch, var(--danger) 20%, transparent); }
 .kc-grpmem__leave:disabled { opacity: 0.5; cursor: default; }
+
+/* ─── Message density + font scale ─────────────────────────────────────────────
+   Driven entirely by the CSS vars above (set by applyDensity / applyFontScale).
+   These rules are un-layered, so they win over the Tailwind utilities they replace. */
+.msg-content {
+  font-size: calc(0.875rem * var(--msg-font-scale, 1));
+  line-height: var(--msg-line-height, 1.45);
+}
+.msg-group {
+  padding-bottom: var(--msg-group-gap, 0.125rem);
+}
+
+/* ─── Density + font-scale segmented controls (Appearance settings) ───────────── */
+.kc-seg {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+}
+.kc-seg__btn {
+  flex: 1;
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  transition: background var(--duration-fast, 150ms), color var(--duration-fast, 150ms);
+}
+.kc-seg__btn:hover { color: var(--text-primary); }
+.kc-seg__btn[aria-pressed="true"] {
+  background: var(--bg-channel);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(40, 30, 24, 0.08));
+}

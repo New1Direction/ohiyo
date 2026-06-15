@@ -8,6 +8,7 @@ export type ProfileCardData = Pick<
   | "username"
   | "pronouns"
   | "banner_color"
+  | "banner_url"
   | "custom_status"
   | "bio"
   | "avatar_url"
@@ -49,8 +50,16 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
 
   return (
     <div>
-      {/* Banner */}
-      <div style={{ height: 72, background: bannerColor }} />
+      {/* Banner — image when set, otherwise the solid banner color. */}
+      <div style={{ height: 72, background: bannerColor, overflow: "hidden" }}>
+        {data.banner_url && (
+          <img
+            src={data.banner_url}
+            alt=""
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
+        )}
+      </div>
 
       <div style={{ padding: "0 16px" }}>
         {/* Avatar — overlaps banner */}

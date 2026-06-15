@@ -28,6 +28,18 @@ test("mergeAppearanceIntoPrefs does not mutate the input", () => {
   assert.deepEqual(prefs, { other: 1 });
 });
 
+test("density and fontScale ride along in the appearance slice", () => {
+  const out = mergeAppearanceIntoPrefs(
+    { notifications: "all" },
+    { accent: "#abcdef", density: "compact", fontScale: 1.125 },
+  );
+  assert.deepEqual(out.appearance, { accent: "#abcdef", density: "compact", fontScale: 1.125 });
+  assert.equal(out.notifications, "all");
+  const read = readAppearancePrefs(out as Record<string, unknown>);
+  assert.equal(read?.density, "compact");
+  assert.equal(read?.fontScale, 1.125);
+});
+
 test("readAppearancePrefs returns the slice or null", () => {
   assert.deepEqual(readAppearancePrefs({ appearance: { accent: "#abc123" } }), { accent: "#abc123" });
   assert.equal(readAppearancePrefs({}), null);

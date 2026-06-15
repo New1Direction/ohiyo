@@ -16,6 +16,7 @@ import { PollWidget } from "./PollWidget";
 import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions";
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
+import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
 import { Icon } from "./Icon";
 
 // Composer drafts persisted per channel so a half-written message survives a reload,
@@ -234,6 +235,10 @@ export function ChatPane({
   const listRef = useRef<List>(null);
   const listOuterRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLInputElement>(null);
+  // Row-height metrics read from the density/font-scale CSS vars. Cached in a ref and
+  // refreshed only on the appearance-changed event (not per render) so estimateHeight
+  // stays cheap. estimateHeight reads metricsRef.current; the listener re-measures.
+  const metricsRef = useRef({ linePx: 20, basePx: 44, fontScale: 1 });
   // Scroll anchoring: only follow new messages when the user is already at the
   // bottom (or we explicitly want it). forceBottomRef wins for own-send / switch.
   const atBottomRef = useRef(true);
@@ -272,6 +277,29 @@ export function ChatPane({
       }
     });
   }
+
+  // Refresh the row-height metrics from the density/font-scale CSS vars on mount and
+  // whenever the user changes density or font scale, then drop react-window's cached
+  // heights so every row re-measures at the new scale.
+  useEffect(() => {
+    const readMetrics = () => {
+      const cs = getComputedStyle(document.documentElement);
+      const fontScale = Number.parseFloat(cs.getPropertyValue("--msg-font-scale")) || 1;
+      const linePx = (Number.parseFloat(cs.getPropertyValue("--msg-line-px")) || 20) * fontScale;
+      const basePx = Number.parseFloat(cs.getPropertyValue("--msg-base-px")) || 44;
+      metricsRef.current = { linePx, basePx, fontScale };
+    };
+    readMetrics();
+    // The ref initializes to the cozy defaults; if the saved density/scale differs,
+    // re-measure now so the first paint isn't sized for the wrong density.
+    listRef.current?.resetAfterIndex(0);
+    const onChange = () => {
+      readMetrics();
+      listRef.current?.resetAfterIndex(0);
+    };
+    window.addEventListener(APPEARANCE_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(APPEARANCE_CHANGED_EVENT, onChange);
+  }, []);
 
   // Re-measure rows, then auto-scroll to the latest ONLY if the user is at the
   // bottom (or we forced it). If they're reading history, surface a jump pill
@@ -374,7 +402,10 @@ export function ChatPane({
   function estimateHeight(index: number): number {
     const g = groups[index];
     if (!g) return 60;
-    const textLines = g.msgs.reduce((sum, m) => sum + Math.ceil(m.content.length / 80), 0);
+    const { linePx, basePx, fontScale } = metricsRef.current;
+    // Fewer characters fit per line as the font scales up, so the wrap estimate tracks it.
+    const charsPerLine = Math.max(20, Math.round(80 / fontScale));
+    const textLines = g.msgs.reduce((sum, m) => sum + Math.ceil(m.content.length / charsPerLine), 0);
     // Reserve the real rendered image height so loading an image never shifts layout.
     const imageH = g.msgs.reduce(
       (sum, m) =>
@@ -391,7 +422,7 @@ export function ChatPane({
     const failed = g.msgs.filter((m) => m._state === "failed").length;
     const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
     const embedsH = g.msgs.reduce((sum, m) => sum + (m.embeds?.length ?? 0) * 92, 0);
-    return 44 + Math.max(textLines, 1) * 20 + imageH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
+    return basePx + Math.max(textLines, 1) * linePx + imageH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
   }
 
   const handleSend = useCallback(
@@ -953,7 +984,7 @@ export function ChatPane({
             {({ index, style }: { index: number; style: React.CSSProperties }) => {
               const g = groups[index];
               return (
-                <div style={style} className="msg-group px-4 pt-2 pb-0.5 hover:bg-white/[0.02]">
+                <div style={style} className="msg-group px-4 pt-2 hover:bg-white/[0.02]">
                   <div className="flex items-start gap-3">
                     <button
                       className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
@@ -1010,7 +1041,7 @@ export function ChatPane({
                             <PollWidget poll={msg.poll} onVote={(optId) => handleVotePoll(msg.id, optId)} />
                           ) : (
                             <div
-                              className="msg-content text-sm leading-[1.45]"
+                              className="msg-content"
                               style={{ color: "var(--text-secondary)", userSelect: "text", opacity: msg._state === "pending" ? 0.5 : 1 }}
                             >
                               {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={!!(msg.embeds && msg.embeds.length)} />}
