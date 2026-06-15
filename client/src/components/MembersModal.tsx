@@ -9,6 +9,8 @@ type Props = {
   currentUserId: string;
   onlineUsers: Set<string>;
   activities: Map<string, Activity>;
+  voiceMembers: Map<string, string>;
+  onJoinVoice: (channelId: string) => void;
   canKick: boolean;
   canBan: boolean;
   canManageRoles: boolean;
@@ -39,7 +41,7 @@ export function ActivityLine({ activity }: { activity: Activity }) {
 
 /** Server member list. Moderation actions appear per your permissions. */
 export function MembersModal({
-  members, ownerId, currentUserId, onlineUsers, activities, canKick, canBan, canManageRoles, onManageRoles, onKick, onBan, onClose,
+  members, ownerId, currentUserId, onlineUsers, activities, voiceMembers, onJoinVoice, canKick, canBan, canManageRoles, onManageRoles, onKick, onBan, onClose,
 }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const canModerate = canKick || canBan;
@@ -113,6 +115,18 @@ export function MembersModal({
                 <div className="truncate text-xs" style={{ color: "var(--text-muted)" }}>@{m.username}</div>
               )}
             </div>
+
+            {voiceMembers.has(m.id) && m.id !== currentUserId && (
+              <button
+                type="button"
+                onClick={() => onJoinVoice(voiceMembers.get(m.id)!)}
+                className="kc-interactive flex-shrink-0 flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
+                style={{ background: "color-mix(in oklch, var(--green) 16%, transparent)", color: "var(--green)", border: "none", cursor: "pointer" }}
+                title="Join their voice channel"
+              >
+                🔊 Join
+              </button>
+            )}
 
             {canModerate && m.id !== ownerId && m.id !== currentUserId && (
               confirmId === m.id ? (

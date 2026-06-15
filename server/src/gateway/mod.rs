@@ -266,6 +266,7 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     // Snapshot: tell the just-connected user who's currently online in their servers
     // (and their activity) so presence shows immediately, not just on the next change.
     send_presence_snapshot(&state, &user_id, &tx).await;
+    send_voice_snapshot(&state, &user_id, &tx).await;
 
     // Drain incoming messages: WebRTC signaling, voice state, heartbeats.
     while let Some(Ok(msg)) = ws_rx.next().await {
@@ -701,6 +702,40 @@ async fn send_presence_snapshot(
                 user_id: uid.clone(),
                 online: true,
                 activity: acts.get(&uid).cloned(),
+            });
+        }
+    }
+}
+
+/// Push the just-connected user a snapshot of who's currently in voice channels they
+/// can access — so "X is in voice · Join" shows immediately. Reuses VoiceState.
+async fn send_voice_snapshot(
+    state: &AppState,
+    user_id: &str,
+    tx: &broadcast::Sender<GatewayEvent>,
+) {
+    // Copy the rooms out of the lock, then access-check + send (no await under the lock).
+    let rooms: Vec<(String, Vec<VoiceMember>)> = {
+        let r = state.voice.read().unwrap();
+        r.iter()
+            .map(|(cid, m)| (cid.clone(), m.values().cloned().collect()))
+            .collect()
+    };
+    for (channel_id, members) in rooms {
+        if members.is_empty()
+            || !crate::api::messages::user_can_access(state, &channel_id, user_id).await
+        {
+            continue;
+        }
+        for m in members {
+            let _ = tx.send(GatewayEvent::VoiceState {
+                channel_id: channel_id.clone(),
+                user_id: m.user.id.clone(),
+                user: m.user.clone(),
+                joined: true,
+                muted: m.muted,
+                video: m.video,
+                screen: m.screen,
             });
         }
     }

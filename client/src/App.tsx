@@ -117,6 +117,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [activities, setActivities] = useState<Map<string, Activity>>(new Map());
   const [watchSession, setWatchSession] = useState<WatchSession | null>(null);
+  const [voiceMembers, setVoiceMembers] = useState<Map<string, string>>(new Map()); // userId → voice channelId
   const selectedChannelRef = useRef<Channel | null>(null);
   const selectedServerIdRef = useRef<string | null>(null);
   // Last message id we've acked per channel — dedupes redundant read receipts.
@@ -141,6 +142,12 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       t: "WatchControl",
       d: { channel_id: cid, action, url: payload?.url ?? null, position: payload?.position ?? null },
     });
+  }
+
+  /** Join a friend's voice channel by id (from their presence "Join" button). */
+  function joinVoiceById(channelId: string) {
+    const ch = selectedServer?.channels?.find((c) => c.id === channelId);
+    if (ch) handleJoinVoice(ch);
   }
   const webrtcRef = useRef<UseWebRTCReturn | null>(null);
   const activeVoiceRef = useRef<string | null>(null);
@@ -450,9 +457,17 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         void webrtcRef.current?.onPeerSignal(event.d);
         break;
 
-      case "VoiceState":
+      case "VoiceState": {
         webrtcRef.current?.onVoiceState(event.d);
+        const { user_id, channel_id, joined } = event.d;
+        setVoiceMembers((prev) => {
+          const next = new Map(prev);
+          if (joined) next.set(user_id, channel_id);
+          else if (next.get(user_id) === channel_id) next.delete(user_id);
+          return next;
+        });
         break;
+      }
     }
   }
 
@@ -1025,6 +1040,8 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
           currentUserId={currentUser.id}
           onlineUsers={onlineUsers}
           activities={activities}
+          voiceMembers={voiceMembers}
+          onJoinVoice={joinVoiceById}
           canKick={can(myPerms, PERM.KICK_MEMBERS)}
           canBan={can(myPerms, PERM.BAN_MEMBERS)}
           canManageRoles={can(myPerms, PERM.MANAGE_ROLES)}
