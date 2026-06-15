@@ -149,6 +149,20 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     const ch = selectedServer?.channels?.find((c) => c.id === channelId);
     if (ch) handleJoinVoice(ch);
   }
+
+  // Watch → Play: while a watch party is active in the channel you're viewing, show
+  // friends "📺 Watching …" automatically (cleared when the party ends).
+  const watchActivityRef = useRef(false);
+  useEffect(() => {
+    if (watchSession && !watchActivityRef.current) {
+      watchActivityRef.current = true;
+      const label = /youtu\.?be/.test(watchSession.url) ? "YouTube" : "a video";
+      updateActivity({ kind: "watching", name: label });
+    } else if (!watchSession && watchActivityRef.current) {
+      watchActivityRef.current = false;
+      updateActivity(null);
+    }
+  }, [watchSession]);
   const webrtcRef = useRef<UseWebRTCReturn | null>(null);
   const activeVoiceRef = useRef<string | null>(null);
 
