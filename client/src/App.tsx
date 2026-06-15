@@ -52,8 +52,8 @@ import { initVaultBackend } from "./lib/tauriVault";
 import type { UseWebRTCReturn } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
-import { applyActiveAppearance } from "./lib/appearance";
-import { pullAppearance } from "./lib/appearanceSync";
+import { applyActiveAppearance, setAccent } from "./lib/appearance";
+import { pullAppearance, pushAppearance } from "./lib/appearanceSync";
 import { useToast } from "./hooks/useToast";
 import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
@@ -1302,6 +1302,10 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         displayName={currentUser.display_name}
         onCreate={createServerAndEnter}
         onSkip={markWelcomed}
+        onPickAccent={(hex) => {
+          setAccent(hex);
+          pushAppearance(token);
+        }}
       />
     );
   }

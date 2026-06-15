@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { BirdMark } from "./BirdMark";
+import { ACCENT_PRESETS, getActiveAccent } from "../lib/appearance";
 
 type Props = {
   displayName: string;
   /** Creates the first server and drops the user into it. Throws on failure. */
   onCreate: (name: string) => Promise<void>;
   onSkip: () => void;
+  /** Apply (and sync) a personal accent picked during onboarding. */
+  onPickAccent?: (hex: string) => void;
 };
 
 const SUGGESTIONS = ["My Hangout", "Study Group", "Game Night"];
@@ -20,11 +23,17 @@ const VALUE_BULLETS: { icon: string; title: string; body: string }[] = [
  * First-run welcome. Turns the empty-app cliff into one obvious action:
  * name your space and you're instantly inside a live channel.
  */
-export function Onboarding({ displayName, onCreate, onSkip }: Props) {
+export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [accent, setAccentSel] = useState<string>(getActiveAccent);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  function pickAccent(hex: string) {
+    setAccentSel(hex);
+    onPickAccent?.(hex); // applies live (recolors this screen) + syncs
+  }
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -149,6 +158,42 @@ export function Onboarding({ displayName, onCreate, onSkip }: Props) {
             )}
           </form>
         </div>
+
+        {/* Make it yours — pick an accent right away (recolors this screen live) */}
+        {onPickAccent && (
+          <div className="mt-6 flex flex-col items-center gap-2">
+            <span className="text-xs font-bold uppercase" style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}>
+              Make it yours
+            </span>
+            <div className="flex flex-wrap items-center justify-center gap-2.5">
+              {ACCENT_PRESETS.map((p) => {
+                const isActive = accent.toLowerCase() === p.hex.toLowerCase();
+                return (
+                  <button
+                    key={p.hex}
+                    type="button"
+                    title={p.name}
+                    aria-label={`Accent ${p.name}`}
+                    aria-pressed={isActive}
+                    onClick={() => pickAccent(p.hex)}
+                    className="kc-accent-swatch"
+                    style={{
+                      background: p.hex,
+                      boxShadow: isActive ? `0 0 0 2px var(--bg-base), 0 0 0 4px ${p.hex}` : undefined,
+                    }}
+                  >
+                    {isActive && (
+                      <span aria-hidden="true" style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>✓</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              You can fine-tune everything later in Settings → Appearance.
+            </span>
+          </div>
+        )}
 
         {/* Value bullets */}
         <div className="mt-6 grid w-full grid-cols-1 gap-2 sm:grid-cols-3">
