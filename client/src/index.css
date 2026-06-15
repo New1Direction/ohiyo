@@ -485,6 +485,19 @@ input, textarea, select {
 .kc-msg-failed button.discard { color: var(--text-muted); }
 .kc-msg-failed button:hover { opacity: 0.8; }
 
+/* End-to-end encrypted mode: the message area shifts a shade darker (both themes)
+   with a thin accent rule, so the switch is unmistakable. */
+.kc-e2e {
+  background: rgba(0, 0, 0, 0.10);
+  box-shadow: inset 0 2px 0 0 color-mix(in oklch, var(--accent) 45%, transparent);
+  transition: background var(--dur-base, 300ms) var(--ease-out, ease);
+}
+.kc-e2e-banner {
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
+}
+
 /* Image frame: reserves exact space before load (no layout shift) with a soft
    placeholder behind the image until it paints. */
 .kc-img-frame {

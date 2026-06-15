@@ -112,6 +112,8 @@ export type Message = {
   embeds?: Embed[] | null;
   /** Client-only optimistic-send lifecycle (never returned by the server). */
   _state?: "pending" | "failed";
+  /** Client-only: this message was decrypted from an E2E ciphertext for display. */
+  _encrypted?: boolean;
   _send?: { content: string; attachmentIds?: string[]; replyTo?: string | null };
 };
 

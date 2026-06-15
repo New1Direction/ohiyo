@@ -29,7 +29,7 @@ import { notify, ensureNotificationPermission, initDeepLinks } from "./lib/deskt
 import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendingFailedOutbox, reconcileStalePending } from "./lib/outbox";
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
-import { myKeyPair } from "./lib/e2e";
+import { myKeyPair, deriveSharedKey, encryptMessage, decryptMessage, isEncrypted } from "./lib/e2e";
 import type { UseWebRTCReturn } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -120,6 +120,13 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [activities, setActivities] = useState<Map<string, Activity>>(new Map());
   const [watchSession, setWatchSession] = useState<WatchSession | null>(null);
   const [voiceMembers, setVoiceMembers] = useState<Map<string, string>>(new Map()); // userId → voice channelId
+  const [e2eChannels, setE2eChannels] = useState<Set<string>>(() => {
+    try {
+      return new Set<string>(JSON.parse(localStorage.getItem("kc:e2e-channels") || "[]"));
+    } catch {
+      return new Set<string>();
+    }
+  });
   const selectedChannelRef = useRef<Channel | null>(null);
   const selectedServerIdRef = useRef<string | null>(null);
   // Last message id we've acked per channel — dedupes redundant read receipts.
@@ -128,6 +135,13 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const notifyAskedRef = useRef(false);
   const handleSelectChannelRef = useRef<(channel: Channel) => void>(() => {});
   const currentUserRef = useRef<PublicUser | null>(null);
+  // E2E: mirror DM state into refs so the stable send/decrypt callbacks read live values.
+  const e2eChannelsRef = useRef(e2eChannels);
+  e2eChannelsRef.current = e2eChannels;
+  const dmUsersRef = useRef(dmUsers);
+  dmUsersRef.current = dmUsers;
+  const dmKeyCacheRef = useRef<Map<string, CryptoKey>>(new Map());
+  const dmPeerRef = useRef<Map<string, string>>(new Map()); // channelId → peer userId (learned from messages)
   const serversRef = useRef<ServerWithChannels[]>([]);
   const gatewayRef = useRef<Gateway | null>(null);
 
@@ -303,6 +317,12 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         typing.clearTyping(msg.channel_id, msg.author.id);
         if (selectedChannelRef.current?.id === msg.channel_id) {
           setMessages((prev) => [...prev, msg]);
+          if (isEncrypted(msg.content)) {
+            void decryptMessages(msg.channel_id, [msg]).then((dec) => {
+              const dm = dec[0];
+              if (dm) setMessages((prev) => prev.map((m) => (m.id === dm.id ? dm : m)));
+            });
+          }
           // You're looking at this channel → it's read. Advance the cursor.
           sendAck(msg.channel_id, msg.id);
         } else if (currentUserRef.current && msg.author.id !== currentUserRef.current.id) {
@@ -323,7 +343,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
             return next;
           });
         }
-        maybeNotify(msg);
+        maybeNotify(isEncrypted(msg.content) ? { ...msg, content: "🔒 Sent an encrypted message" } : msg);
         pluginManagerRef.current.emit("message", msg);
         break;
       }
@@ -593,9 +613,12 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       const msgs = await api.listMessages(token, channel.id);
       // Ignore a stale load if the user switched channels while this was in flight.
       if (selectedChannelRef.current?.id !== channel.id) return;
+      // Decrypt any E2E messages for display before showing them.
+      const shown = await decryptMessages(channel.id, msgs);
+      if (selectedChannelRef.current?.id !== channel.id) return;
       // Re-attach any unsent/failed messages queued for this channel.
       const queued = outboxForChannel(channel.id);
-      setMessages(queued.length ? [...msgs, ...queued] : msgs);
+      setMessages(queued.length ? [...shown, ...queued] : shown);
       // Opening the channel marks it read on the server (drives the read cursor).
       sendAck(channel.id, lastRealMessageId(msgs));
       // For DMs, hydrate existing Delivered/Seen state; live updates then arrive
@@ -619,6 +642,72 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       if (selectedChannelRef.current?.id === channel.id) setIsLoadingMessages(false);
     }
   }
+
+  // E2E: derive (and cache) the shared AES key for a DM from my private key + the
+  // peer's published public key — the user never sees or trades a key.
+  const getDmKey = useCallback(
+    async (channelId: string): Promise<CryptoKey | null> => {
+      const cached = dmKeyCacheRef.current.get(channelId);
+      if (cached) return cached;
+      // Peer = the learned message-author OR dmUsers (whichever we know).
+      const peerId = dmPeerRef.current.get(channelId) ?? dmUsersRef.current[channelId]?.id;
+      if (!peerId) return null;
+      try {
+        const { public_key } = await api.getUserKey(token, peerId);
+        if (!public_key) return null;
+        const mine = await myKeyPair();
+        const key = await deriveSharedKey(mine.privateJwk, JSON.parse(public_key) as JsonWebKey);
+        dmKeyCacheRef.current.set(channelId, key); // cache only successful derivations
+        return key;
+      } catch {
+        return null;
+      }
+    },
+    [token]
+  );
+
+  // Decrypt any E2E ciphertext in a message list for display (plaintext stays local).
+  const decryptMessages = useCallback(
+    async (channelId: string, msgs: Message[]): Promise<Message[]> => {
+      if (!msgs.some((m) => isEncrypted(m.content))) return msgs;
+      // Learn the DM peer from message authors (resilient to un-hydrated dmUsers).
+      if (!dmPeerRef.current.has(channelId)) {
+        const myId = currentUserRef.current?.id;
+        const peer = msgs.find((m) => m.author.id !== myId)?.author.id;
+        if (peer) dmPeerRef.current.set(channelId, peer);
+      }
+      const key = await getDmKey(channelId);
+      return Promise.all(
+        msgs.map(async (m) => {
+          if (!isEncrypted(m.content)) return m;
+          const pt = key ? await decryptMessage(key, m.content) : null;
+          return { ...m, content: pt ?? "🔒 Encrypted message", _encrypted: true };
+        })
+      );
+    },
+    [getDmKey]
+  );
+
+  // Flip a DM into (or out of) end-to-end encrypted mode — persisted; the chat shifts
+  // to a darker "encrypted" look. Keys are handled automatically; the user just clicks.
+  const toggleE2e = useCallback(
+    (channelId: string) => {
+      setE2eChannels((prev) => {
+        const next = new Set(prev);
+        if (next.has(channelId)) {
+          next.delete(channelId);
+        } else {
+          next.add(channelId);
+          void getDmKey(channelId).then((k) => {
+            if (!k) toast("Your friend hasn't set up encryption yet — they just need to open Kikkacord once.");
+          });
+        }
+        localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
+        return next;
+      });
+    },
+    [getDmKey, toast]
+  );
 
   const handleSend = useCallback(
     async (content: string, attachmentIds?: string[], replyTo?: string | null) => {
@@ -649,7 +738,14 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         addToOutbox(optimistic); // persisted so it survives a switch/reload/offline
       }
       try {
-        await api.sendMessage(token, selectedChannelRef.current!.id, content, attachmentIds, replyTo);
+        const cid = selectedChannelRef.current!.id;
+        let wire = content;
+        // E2E: encrypt on this device before it leaves — the server only sees ciphertext.
+        if (content && e2eChannelsRef.current.has(cid)) {
+          const key = await getDmKey(cid);
+          if (key) wire = await encryptMessage(key, content);
+        }
+        await api.sendMessage(token, cid, wire, attachmentIds, replyTo);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         removeFromOutbox(tempId);
       } catch {
@@ -658,7 +754,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         setOutboxState(tempId, "failed");
       }
     },
-    [token]
+    [token, getDmKey]
   );
 
   // Retry a failed/queued message using its stored send args.
@@ -669,7 +765,12 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, _state: "pending" } : m)));
       setOutboxState(msg.id, "pending");
       try {
-        await api.sendMessage(token, msg.channel_id, send.content, send.attachmentIds, send.replyTo ?? null);
+        let wire = send.content;
+        if (send.content && e2eChannelsRef.current.has(msg.channel_id)) {
+          const key = await getDmKey(msg.channel_id);
+          if (key) wire = await encryptMessage(key, send.content);
+        }
+        await api.sendMessage(token, msg.channel_id, wire, send.attachmentIds, send.replyTo ?? null);
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
         removeFromOutbox(msg.id);
       } catch {
@@ -677,7 +778,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         setOutboxState(msg.id, "failed");
       }
     },
-    [token]
+    [token, getDmKey]
   );
 
   // Drop a failed message (it never reached the server).
@@ -1008,6 +1109,8 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         receipts={selectedChannel ? receipts[selectedChannel.id] : undefined}
         watchSession={watchSession}
         onWatchControl={sendWatchControl}
+        e2eEnabled={selectedChannel ? e2eChannels.has(selectedChannel.id) : false}
+        onToggleE2e={selectedChannel?.channel_type === "dm" ? () => toggleE2e(selectedChannel.id) : undefined}
       />
 
       {/* Voice / video / screen-share call overlay */}

@@ -59,6 +59,9 @@ type Props = {
   /** Active watch-party session for this channel (synced video), or null. */
   watchSession?: WatchSession | null;
   onWatchControl?: (action: string, payload?: { url?: string; position?: number }) => void;
+  /** Whether this DM is in end-to-end encrypted mode, and the toggle (DMs only). */
+  e2eEnabled?: boolean;
+  onToggleE2e?: () => void;
 };
 
 /** Delivered / Seen line under your latest sent message — DMs only (iMessage-style). */
@@ -138,6 +141,8 @@ export function ChatPane({
   receipts,
   watchSession,
   onWatchControl,
+  e2eEnabled = false,
+  onToggleE2e,
 }: Props) {
   const [input, setInput] = useState("");
   const [watchInput, setWatchInput] = useState<string | null>(null);
@@ -530,6 +535,19 @@ export function ChatPane({
             📺
           </button>
         )}
+        {onToggleE2e && (
+          <button
+            type="button"
+            onClick={onToggleE2e}
+            aria-label={e2eEnabled ? "Turn off end-to-end encryption" : "Turn on end-to-end encryption"}
+            aria-pressed={e2eEnabled}
+            title={e2eEnabled ? "End-to-end encrypted — click to turn off" : "Turn on end-to-end encryption"}
+            className="kc-icon-btn flex-shrink-0 text-base"
+            style={e2eEnabled ? { color: "var(--accent)" } : undefined}
+          >
+            {e2eEnabled ? "🔒" : "🔓"}
+          </button>
+        )}
       </div>
 
       {/* Upload progress */}
@@ -549,6 +567,15 @@ export function ChatPane({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {e2eEnabled && (
+        <div className="kc-e2e-banner mx-3 mt-2 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs">
+          🔒{" "}
+          <span>
+            <strong>Switched to end-to-end encrypted.</strong> Messages here are encrypted on your device — not even the server can read them.
+          </span>
         </div>
       )}
 
@@ -587,7 +614,7 @@ export function ChatPane({
       )}
 
       {/* Messages — virtualized */}
-      <div className="flex-1 overflow-hidden relative">
+      <div className={`flex-1 overflow-hidden relative${e2eEnabled ? " kc-e2e" : ""}`}>
         {/* Screen-reader announcement of the latest message (the list is virtualized). */}
         <div className="sr-only" role="log" aria-live="polite" aria-relevant="additions">
           {displayMessages.length > 0
