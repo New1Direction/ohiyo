@@ -256,6 +256,10 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
         }
     });
 
+    // Snapshot: tell the just-connected user who's currently online in their servers
+    // (and their activity) so presence shows immediately, not just on the next change.
+    send_presence_snapshot(&state, &user_id, &tx).await;
+
     // Drain incoming messages: WebRTC signaling, voice state, heartbeats.
     while let Some(Ok(msg)) = ws_rx.next().await {
         match msg {
@@ -649,6 +653,40 @@ async fn broadcast_presence(state: &AppState, user_id: &str, online: bool) {
     };
     for sid in server_ids {
         broadcast_to_server(state, &sid, &event).await;
+    }
+}
+
+/// Push the just-connected user a one-shot presence snapshot: a PresenceUpdate for
+/// every user currently online in a server they share (carrying that user's current
+/// activity). Reuses the normal PresenceUpdate path — no new event type or client code.
+async fn send_presence_snapshot(
+    state: &AppState,
+    user_id: &str,
+    tx: &broadcast::Sender<GatewayEvent>,
+) {
+    let online: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT sm2.user_id
+         FROM server_members sm1
+         JOIN server_members sm2 ON sm2.server_id = sm1.server_id
+         WHERE sm1.user_id = ? AND sm2.user_id != ?",
+    )
+    .bind(user_id)
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    // Sync section — no await while the locks are held.
+    let sessions = state.sessions.read().unwrap();
+    let acts = state.activities.read().unwrap();
+    for uid in online {
+        if sessions.contains_key(&uid) {
+            let _ = tx.send(GatewayEvent::PresenceUpdate {
+                user_id: uid.clone(),
+                online: true,
+                activity: acts.get(&uid).cloned(),
+            });
+        }
     }
 }
 
