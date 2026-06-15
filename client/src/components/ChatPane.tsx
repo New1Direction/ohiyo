@@ -290,6 +290,9 @@ export function ChatPane({
       metricsRef.current = { linePx, basePx, fontScale };
     };
     readMetrics();
+    // The ref initializes to the cozy defaults; if the saved density/scale differs,
+    // re-measure now so the first paint isn't sized for the wrong density.
+    listRef.current?.resetAfterIndex(0);
     const onChange = () => {
       readMetrics();
       listRef.current?.resetAfterIndex(0);

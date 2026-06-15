@@ -11,11 +11,15 @@ pub async fn set_avatar(
     State(state): State<AppState>,
     Json(body): Json<SetAvatarBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM files WHERE id = ?")
-        .bind(&body.file_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Must be a real file AND uploaded by the caller — otherwise any user could point
+    // their avatar/banner at someone else's uploaded file by guessing its id.
+    let exists: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM files WHERE id = ? AND uploader_id = ?")
+            .bind(&body.file_id)
+            .bind(&auth.0)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "File not found".into()));
@@ -47,11 +51,15 @@ pub async fn set_banner(
     State(state): State<AppState>,
     Json(body): Json<SetBannerBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM files WHERE id = ?")
-        .bind(&body.file_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Must be a real file AND uploaded by the caller — otherwise any user could point
+    // their avatar/banner at someone else's uploaded file by guessing its id.
+    let exists: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM files WHERE id = ? AND uploader_id = ?")
+            .bind(&body.file_id)
+            .bind(&auth.0)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "File not found".into()));
