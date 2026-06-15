@@ -236,6 +236,45 @@ fn spawn_embed_refresh(
     });
 }
 
+/// Enqueue a Meilisearch index update for a message (fire-and-forget). Resolves the
+/// channel's server (None for DMs) so search can be scoped per server. No-op unless
+/// MEILISEARCH_ENABLED.
+fn spawn_index(
+    state: &AppState,
+    id: String,
+    channel_id: String,
+    author_id: String,
+    author_name: String,
+    content: String,
+    created_at: i64,
+) {
+    if !crate::search::search_enabled() {
+        return;
+    }
+    let state = state.clone();
+    tokio::spawn(async move {
+        // NULL server_id (DM channel) decodes as Some("") on this stack — double-flatten.
+        let server_id: Option<String> =
+            sqlx::query_scalar::<_, Option<String>>("SELECT server_id FROM channels WHERE id = ?")
+                .bind(&channel_id)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten()
+                .flatten();
+        crate::search::index_message(crate::search::MessageDoc {
+            id,
+            channel_id,
+            server_id,
+            author_id,
+            author_name,
+            content,
+            created_at,
+        })
+        .await;
+    });
+}
+
 pub async fn send_message(
     auth: AuthUser,
     Path(channel_id): Path<String>,
@@ -368,6 +407,15 @@ pub async fn send_message(
         msg.channel_id.clone(),
         msg.content.clone(),
         auth.0.clone(),
+    );
+    spawn_index(
+        &state,
+        msg.id.clone(),
+        msg.channel_id.clone(),
+        msg.author.id.clone(),
+        msg.author.display_name.clone(),
+        msg.content.clone(),
+        msg.created_at,
     );
     Ok(Json(msg))
 }
@@ -545,6 +593,15 @@ pub async fn edit_message(
         full.channel_id.clone(),
         full.content.clone(),
         auth.0.clone(),
+    );
+    spawn_index(
+        &state,
+        full.id.clone(),
+        full.channel_id.clone(),
+        full.author.id.clone(),
+        full.author.display_name.clone(),
+        full.content.clone(),
+        full.created_at,
     );
     Ok(Json(full))
 }
@@ -756,6 +813,10 @@ pub async fn delete_message(
         .execute(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if crate::search::search_enabled() {
+        tokio::spawn(crate::search::delete_message(id.clone()));
+    }
 
     broadcast_to_channel(
         &state,

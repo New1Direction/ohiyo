@@ -13,6 +13,7 @@ pub mod profile;
 pub mod reactions;
 pub mod roles;
 pub mod saved;
+pub mod search;
 pub mod servers;
 pub mod users;
 
@@ -60,10 +61,7 @@ pub fn router() -> Router<AppState> {
             "/servers/{server_id}/bans/{user_id}",
             delete(servers::unban_member),
         )
-        .route(
-            "/servers/{server_id}/search",
-            get(messages::search_messages),
-        )
+        .route("/servers/{server_id}/search", get(search::search_messages))
         // Scheduled events
         .route("/servers/{server_id}/events", get(events::list_events))
         .route("/servers/{server_id}/events", post(events::create_event))

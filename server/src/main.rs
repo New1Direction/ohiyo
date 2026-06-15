@@ -3,14 +3,15 @@ mod auth;
 mod db;
 mod gateway;
 mod ratelimit;
+mod search;
 mod types;
 
 use std::net::SocketAddr;
 
-use axum::{Router, extract::DefaultBodyLimit, routing::get};
+use axum::{extract::DefaultBodyLimit, routing::get, Router};
 use gateway::{SessionMap, TypingCooldowns, VoiceRooms};
-use ratelimit::RateLimiter;
 use rand::Rng;
+use ratelimit::RateLimiter;
 use sqlx::SqlitePool;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -59,18 +60,23 @@ async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt()
         .with_env_filter(
-            std::env::var("RUST_LOG")
-                .unwrap_or_else(|_| "server=info,tower_http=info".to_owned()),
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "server=info,tower_http=info".to_owned()),
         )
         .init();
 
     ensure_jwt_secret();
 
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite:kikkacord.db".to_owned());
+    let database_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:kikkacord.db".to_owned());
 
     let db = db::connect(&database_url).await?;
     tracing::info!("Database connected");
+
+    // Bring up the Meilisearch index if full-text search is enabled (logs + continues
+    // on failure so an unreachable search service never blocks boot).
+    if search::search_enabled() {
+        search::ensure_index().await;
+    }
 
     let state = AppState {
         db,
@@ -101,7 +107,11 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("Kikkacord server listening on {addr}");
     // Connect-info lets auth handlers rate-limit by client IP.
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

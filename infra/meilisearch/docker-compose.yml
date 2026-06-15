@@ -1,0 +1,25 @@
+# Meilisearch — full-text message search for Kikkacord.
+#
+# Bring it up:   docker compose -f infra/meilisearch/docker-compose.yml up -d
+# Then set on the server (see server/.env.example):
+#   MEILISEARCH_ENABLED=true
+#   MEILISEARCH_URL=http://localhost:7700      # or http://meilisearch:7700 in a shared network
+#   MEILISEARCH_API_KEY=<the MEILI_MASTER_KEY below>
+#
+# On first boot with search enabled, the server creates + configures the 'messages'
+# index automatically. Existing messages are NOT back-indexed — see README.md.
+
+services:
+  meilisearch:
+    image: getmeili/meilisearch:v1.12
+    container_name: kikkacord-meilisearch
+    restart: unless-stopped
+    ports:
+      - "7700:7700"
+    environment:
+      # Generate a strong key: `openssl rand -hex 32`. MUST match the server's
+      # MEILISEARCH_API_KEY. Without it, Meilisearch runs unauthenticated (dev only).
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-CHANGE_ME_meili_master_key}
+      MEILI_ENV: production
+    volumes:
+      - ./data.ms:/meili_data
