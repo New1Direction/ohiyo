@@ -13,7 +13,7 @@ See what friends are playing and drop into the action.
 - [x] **Rich presence / activity** — "Playing / Watching / Working on / Listening to ___", live in the member list
 - [x] Voice / video / screen-share (peer-to-peer WebRTC)
 - [x] **LiveKit SFU foundation** — server token endpoint + infra (scales voice past the ~5-person P2P ceiling)
-- [x] LiveKit **client engine** — drop-in `useWebRTCLiveKit`, flag-gated + lazy-loaded *(built/typechecked; a live multi-party call needs a running LiveKit to verify end-to-end)*
+- [x] LiveKit **client engine** — drop-in `useWebRTCLiveKit`, flag-gated + lazy-loaded. **Token path live-verified against a real LiveKit server** (its `TokenVerifier` accepts the self-minted join token + grants); a full multi-party *browser* call is the remaining UI-level check.
 - [x] **"Join my voice"** — see who's in voice in the member list and one-click join them
 - [ ] Game detection / auto-presence (desktop), rich-presence art
 
@@ -42,7 +42,7 @@ A calm, fast place to get things done with a team.
 - [x] Presence **snapshot on connect** (see who's online + their activity the moment you open the app)
 - [ ] Multi-node scale: NATS/Redis gateway fan-out, Postgres option
 - [ ] Mobile build (Tauri mobile); push notifications
-- [~] **E2E encryption** (incumbents won't) — crypto core (ECDH P-256 + AES-GCM, round-trip verified) + public-key directory **shipped**; wiring encrypt/decrypt into the DM message flow is the next focused step (deserves two-client verification, not a rushed one)
+- [x] **E2E encryption** (incumbents won't) — **one-click encrypted DMs**: ECDH P-256 + AES-GCM, zero key handling (keys auto-exchanged), a darker "encrypted mode" with a banner. **Two-client verified against the live server: B decrypts the message, the server stores only ciphertext.**
 - [ ] Federation
 
 ## Design north star
