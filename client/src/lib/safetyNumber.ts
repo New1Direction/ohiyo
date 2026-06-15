@@ -49,14 +49,22 @@ export function compareKeys(a: ArrayBuffer, b: ArrayBuffer): number {
 }
 
 /** Fold a user's device identity keys into one combined identity: deduped, sorted by
- *  bytes, concatenated. Order-independent so both parties derive the same value. */
+ *  bytes, then length-prefixed and concatenated. Order-independent (so both parties
+ *  derive the same value) and the 4-byte length prefix makes it impossible for two
+ *  different key sets to collide into the same byte string, whatever the key length. */
 export function combinedIdentity(keys: ArrayBuffer[]): ArrayBuffer {
   const sorted = [...keys].sort(compareKeys);
   const deduped: ArrayBuffer[] = [];
   for (const k of sorted) {
     if (!deduped.length || compareKeys(deduped[deduped.length - 1], k) !== 0) deduped.push(k);
   }
-  return concatAB(deduped);
+  const parts: ArrayBuffer[] = [];
+  for (const k of deduped) {
+    const len = new ArrayBuffer(4);
+    new DataView(len).setUint32(0, k.byteLength, false); // 4-byte big-endian length
+    parts.push(len, k);
+  }
+  return concatAB(parts);
 }
 
 /** The 30-digit displayable fingerprint of one (id, combined-key) pair. */

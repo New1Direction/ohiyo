@@ -587,6 +587,11 @@ export const api = {
   signalPrekeyCount: (token: string, deviceId: number) =>
     request<{ count: number }>(`/signal/keys/count?device_id=${deviceId}`, {}, token),
 
+  // Every device's identity key for a user — no prekey consumption. For the full
+  // multi-device safety number.
+  getIdentityKeys: (token: string, userId: string) =>
+    request<{ device_id: number; identity_key: string }[]>(`/users/${userId}/identity-keys`, {}, token),
+
   // This account's registered Signal devices (read-only; doesn't consume prekeys).
   listDevices: (token: string) =>
     request<{ device_id: number; updated_at: number }[]>("/users/@me/devices", {}, token),

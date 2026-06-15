@@ -370,16 +370,33 @@ function loadAllIdentities(userId: string): ArrayBuffer[] {
     .map((s) => dec(s) as ArrayBuffer);
 }
 
-/** Safety number (identity fingerprint) for verifying a peer out-of-band; needs a
- *  session to already exist (so the peer's identity key is known). Aggregates EVERY
- *  device key on each side, so verifying a contact once covers all their devices. Both
- *  peers derive the same 60-digit value. */
-export async function safetyNumber(myId: string, peerId: string): Promise<string | null> {
+// Fetch a user's full device identity-key set from the directory (no prekey pop). The
+// directory is untrusted — but the safety number is compared OUT OF BAND, so a server
+// that lies about a user's devices produces a mismatch the two parties will notice.
+async function fetchIdentityKeys(token: string, userId: string): Promise<ArrayBuffer[]> {
+  try {
+    const rows = await api.getIdentityKeys(token, userId);
+    return rows.map((r) => b642ab(r.identity_key));
+  } catch {
+    return [];
+  }
+}
+
+/** Safety number (identity fingerprint) for verifying a peer out-of-band. Aggregates
+ *  EVERY device key on each side — fetched from the server directory so it covers
+ *  devices this client hasn't yet messaged — so verifying a contact once covers all
+ *  their devices. Falls back to locally-seen keys when offline. Both peers derive the
+ *  same 60-digit value. */
+export async function safetyNumber(token: string, myId: string, peerId: string): Promise<string | null> {
+  if (!isValidUserId(myId) || !isValidUserId(peerId)) return null;
   const mine = await store.getIdentityKeyPair();
   if (!mine) return null;
-  // My current device's key plus any other of my devices I've seen (combinedIdentity
-  // dedupes, so including the current key twice is harmless).
-  const myKeys = [mine.pubKey, ...loadAllIdentities(myId)];
-  const theirKeys = loadAllIdentities(peerId);
+  // Prefer the server's full directory; fall back to locally-seen keys when offline.
+  const peerServer = await fetchIdentityKeys(token, peerId);
+  const theirKeys = peerServer.length ? peerServer : loadAllIdentities(peerId);
+  const myServer = await fetchIdentityKeys(token, myId);
+  // combinedIdentity dedupes, so including our current device's key alongside the
+  // directory copy is harmless.
+  const myKeys = [mine.pubKey, ...(myServer.length ? myServer : loadAllIdentities(myId))];
   return computeSafetyNumber(myId, myKeys, peerId, theirKeys);
 }

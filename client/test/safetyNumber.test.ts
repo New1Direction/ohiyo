@@ -20,8 +20,15 @@ test("combinedIdentity is order-independent and dedupes", () => {
   const x = new Uint8Array(combinedIdentity([A, B, C]));
   const y = new Uint8Array(combinedIdentity([C, A, B, A])); // different order + a dupe
   assert.deepEqual([...x], [...y], "same key set → same combined identity");
-  // deduped length: 3 distinct 4-byte keys = 12 bytes, not 16
-  assert.equal(x.length, 12);
+  // deduped length: 3 distinct keys, each length-prefixed (4) + 4 bytes = 3 * 8 = 24
+  assert.equal(x.length, 24);
+});
+
+test("length-prefixing prevents cross-set concatenation collisions", () => {
+  // Without a length prefix, {[1,2],[3]} and {[1,2,3]} concat identically. With it, they differ.
+  const a = new Uint8Array(combinedIdentity([keyOf([1, 2]), keyOf([3])]));
+  const b = new Uint8Array(combinedIdentity([keyOf([1, 2, 3])]));
+  assert.notDeepEqual([...a], [...b], "different key sets must not collide");
 });
 
 test("compareKeys orders by bytes then length", () => {
