@@ -19,7 +19,7 @@ pub async fn set_avatar(
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
 
     if exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "File not found".into()));
@@ -34,7 +34,7 @@ pub async fn set_avatar(
         .bind(&auth.0)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -59,7 +59,7 @@ pub async fn set_banner(
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
 
     if exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "File not found".into()));
@@ -73,7 +73,7 @@ pub async fn set_banner(
         .bind(&auth.0)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -207,7 +207,7 @@ pub async fn update_profile(
             .bind(&auth.0)
             .execute(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     }
 
     macro_rules! update_field {
@@ -220,7 +220,7 @@ pub async fn update_profile(
                     .bind(&auth.0)
                     .execute(&state.db)
                     .await
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                    .map_err(|e| crate::api::error::internal(e))?;
             }
         };
     }
@@ -245,7 +245,7 @@ pub async fn update_profile(
     .bind(&auth.0)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(Json(row.into()))
 }
@@ -260,7 +260,7 @@ pub async fn get_prefs(
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
 
     let json: serde_json::Value = row
         .and_then(|(s,)| serde_json::from_str(&s).ok())
@@ -285,7 +285,7 @@ pub async fn set_prefs(
     .bind(&json_str)
     .execute(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -301,12 +301,12 @@ pub async fn get_key_backup(
         .bind(&auth.0)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     match row {
         Some((s,)) => {
-            let v: serde_json::Value = serde_json::from_str(&s)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let v: serde_json::Value =
+                serde_json::from_str(&s).map_err(|e| crate::api::error::internal(e))?;
             Ok(Json(v))
         }
         None => Err((StatusCode::NOT_FOUND, "no backup".into())),
@@ -329,7 +329,7 @@ pub async fn put_key_backup(
     .bind(crate::types::now_unix())
     .execute(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -342,7 +342,7 @@ pub async fn delete_key_backup(
         .bind(&auth.0)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(StatusCode::NO_CONTENT)
 }

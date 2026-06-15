@@ -8,7 +8,14 @@ mod types;
 
 use std::net::SocketAddr;
 
-use axum::{extract::DefaultBodyLimit, routing::get, Router};
+use axum::{
+    extract::{DefaultBodyLimit, Request},
+    http::HeaderValue,
+    middleware::Next,
+    response::Response,
+    routing::get,
+    Router,
+};
 use gateway::{SessionMap, TypingCooldowns, VoiceRooms};
 use rand::Rng;
 use ratelimit::RateLimiter;
@@ -57,6 +64,37 @@ fn ensure_jwt_secret() {
              Set JWT_SECRET in the environment for stable sessions across restarts."
         );
     }
+}
+
+// ── Security headers ──────────────────────────────────────────────────────────
+// Applied to EVERY response (API + the /files upload-serving route). The locked-down
+// CSP + nosniff are what matter most on /files: they stop an uploaded HTML/SVG from
+// executing script when opened directly. HSTS only takes effect over HTTPS (ignored in
+// local http dev). The app document's own CSP/permissions are set by whatever serves
+// the SPA — this server is API-only.
+async fn security_headers(req: Request, next: Next) -> Response {
+    let mut res = next.run(req).await;
+    let h = res.headers_mut();
+    h.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    h.insert(
+        "referrer-policy",
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    h.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    h.insert(
+        "content-security-policy",
+        HeaderValue::from_static(
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; sandbox",
+        ),
+    );
+    h.insert(
+        "strict-transport-security",
+        HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+    );
+    res
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -124,6 +162,7 @@ async fn main() -> anyhow::Result<()> {
         // Liveness probe for the platform load balancer (Fly health check).
         .route("/healthz", get(|| async { "ok" }))
         .with_state(state)
+        .layer(axum::middleware::from_fn(security_headers))
         .layer(cors)
         // 16 MiB default for JSON/avatar/emoji; the /upload route overrides to 2 GiB.
         .layer(DefaultBodyLimit::max(16 * 1024 * 1024));
