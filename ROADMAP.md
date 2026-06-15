@@ -14,7 +14,7 @@ See what friends are playing and drop into the action.
 - [x] Voice / video / screen-share (peer-to-peer WebRTC)
 - [x] **LiveKit SFU foundation** — server token endpoint + infra (scales voice past the ~5-person P2P ceiling)
 - [ ] LiveKit **client engine** — drop-in `useWebRTCLiveKit` so large parties just work *(needs a live LiveKit to verify)*
-- [ ] **Party / "join my voice"** — one-click join a friend's channel from their presence
+- [x] **"Join my voice"** — see who's in voice in the member list and one-click join them
 - [ ] Game detection / auto-presence (desktop), rich-presence art
 
 ## 📺 Watch
