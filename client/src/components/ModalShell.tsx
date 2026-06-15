@@ -50,7 +50,9 @@ export function ModalShell({ onClose, labelledBy, maxWidthClass = "max-w-md", ch
   }
 
   return createPortal(
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- dismiss scrim; Escape closes (see effect above)
     <div className="kc-backdrop" onMouseDown={onClose}>
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- focus-trap dialog container; keyboard handled via onKeyDown */}
       <div
         ref={ref}
         role="dialog"

@@ -33,6 +33,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, onCl
   }
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- dismiss scrim; Escape handled via onKeyDown, container focusable via tabIndex
     <div
       className="fixed inset-0 z-50 flex items-stretch"
       style={{ background: "rgba(0,0,0,0.7)" }}
@@ -143,7 +144,12 @@ function AppearanceTab({ onToast }: { onToast: (t: string, type?: "info" | "succ
           return (
             <div
               key={theme.id}
+              role="button"
+              tabIndex={0}
               onClick={() => select(theme)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(theme); }
+              }}
               className="relative cursor-pointer rounded-lg overflow-hidden"
               style={{
                 border: `2px solid ${isSelected ? "var(--accent)" : "var(--bg-hover)"}`,
@@ -526,8 +532,9 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
         <>
           {/* Server selector */}
           <div className="mb-4">
-            <label className="mb-1.5 block text-xs font-bold uppercase" style={{ color: "var(--text-muted)" }}>Server</label>
+            <label htmlFor="kc-emoji-server-select" className="mb-1.5 block text-xs font-bold uppercase" style={{ color: "var(--text-muted)" }}>Server</label>
             <select
+              id="kc-emoji-server-select"
               value={selectedServerId}
               onChange={(e) => setSelectedServerId(e.target.value)}
               className="rounded px-3 py-2 text-sm outline-none"

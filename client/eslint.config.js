@@ -19,25 +19,34 @@ export default tseslint.config(
       globals: { ...globals.browser },
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    linterOptions: {
+      // A disable directive that no longer suppresses anything is itself an error —
+      // keeps the per-line a11y/hook exceptions below honest as the code evolves.
+      reportUnusedDisableDirectives: "error",
+    },
     rules: {
       // Hook correctness — non-negotiable (ECC react/hooks.md).
       "react-hooks/rules-of-hooks": "error",
+      // exhaustive-deps stays a warning (react/hooks.md); the few intentional
+      // exceptions (connect-once gateway, unmount-only teardown, id-keyed effect)
+      // carry per-line disables with justifications, so the live count is zero.
       "react-hooks/exhaustive-deps": "warn",
       // Keep noisy-but-not-bugs rules as warnings to preserve a green gate.
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-empty-object-type": "warn",
       "no-empty": ["warn", { allowEmptyCatch: true }],
-      // a11y: keep recommended at error EXCEPT these, which fire on deliberate,
-      // already-mitigated patterns in this app. They stay visible as warnings so
-      // a new violation of any OTHER a11y rule still fails the gate.
+      // a11y: ERRORS — a new violation fails the gate. The deliberate, already-
+      // mitigated patterns (dismiss scrims, focus-trap dialogs, aria-activedescendant
+      // listboxes, inline editors that focus on open, event-containment wrappers)
+      // each carry a per-line eslint-disable with a written justification.
       "jsx-a11y/media-has-caption": "off", // live WebRTC call <video>/<audio> — captions N/A
-      "jsx-a11y/no-autofocus": "warn", // modal/rename inputs focus deliberately on open
-      "jsx-a11y/click-events-have-key-events": "warn", // dismiss scrims (Escape already closes)
-      "jsx-a11y/no-static-element-interactions": "warn",
-      "jsx-a11y/no-noninteractive-element-interactions": "warn",
-      "jsx-a11y/interactive-supports-focus": "warn", // listbox uses aria-activedescendant, not roving tabindex
-      "jsx-a11y/label-has-associated-control": "warn",
+      "jsx-a11y/no-autofocus": "error",
+      "jsx-a11y/click-events-have-key-events": "error",
+      "jsx-a11y/no-static-element-interactions": "error",
+      "jsx-a11y/no-noninteractive-element-interactions": "error",
+      "jsx-a11y/interactive-supports-focus": "error",
+      "jsx-a11y/label-has-associated-control": "error",
     },
   },
 );

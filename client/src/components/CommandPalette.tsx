@@ -84,6 +84,7 @@ export function CommandPalette({ servers, dms, onSelectChannel, onClose }: Props
   }, [clampedIdx]);
 
   const palette = (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- modal scrim; backdrop click dismisses, Escape closes via key handler
     <div
       role="dialog"
       aria-modal="true"
@@ -178,6 +179,7 @@ export function CommandPalette({ servers, dms, onSelectChannel, onClose }: Props
             </div>
           ) : (
             results.map((r, i) => (
+              // eslint-disable-next-line jsx-a11y/interactive-supports-focus -- combobox owns focus; active option tracked via aria-activedescendant on the input, not roving tabindex
               <div
                 key={r.id}
                 id={`kc-cmd-opt-${r.id}`}

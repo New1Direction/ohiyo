@@ -440,6 +440,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   // Tear down media + peer connections if the component unmounts mid-call.
   useEffect(() => {
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount-only teardown must read the LATEST refs (streams get reassigned), not mount-time snapshots
       for (const { pc } of pcsRef.current.values()) {
         try { pc.close(); } catch { /* ignore */ }
       }

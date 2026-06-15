@@ -122,6 +122,7 @@ function SharePresetSheet({
   const audioSupported = supportsDisplayAudio();
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- dismiss scrim; clicking the backdrop closes the sheet
     <div
       onClick={(e) => e.target === e.currentTarget && onClose()}
       style={{

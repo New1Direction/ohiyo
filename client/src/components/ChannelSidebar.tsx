@@ -235,6 +235,7 @@ export function ChannelSidebar({
               {showNewChannel && (
                 <form onSubmit={handleCreateChannel} className="mx-2 mb-1">
                   <input
+                    // eslint-disable-next-line jsx-a11y/no-autofocus -- inline create-channel field opens on user action; focusing immediately is expected
                     autoFocus
                     value={newChannelName}
                     onChange={(e) => setNewChannelName(e.target.value)}
@@ -393,6 +394,7 @@ export function ChannelSidebar({
             </div>
             {editingStatus ? (
               <input
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- inline status editor opens on user action; focusing immediately is expected
                 autoFocus
                 defaultValue={myStatus ?? ""}
                 maxLength={80}

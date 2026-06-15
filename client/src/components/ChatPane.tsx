@@ -207,6 +207,7 @@ export function ChatPane({
     } else {
       setShowJump(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- groups is derived from messages (declared below); re-running on messages already covers groups.length
   }, [messages]);
 
   // Track whether the user is pinned to the bottom (read off the scroll container).
@@ -888,6 +889,7 @@ export function ChatPane({
 
       {/* Emoji picker portal — escapes the virtualized list overflow */}
       {emojiPickerFor && pickerPos && createPortal(
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- event-containment wrapper (keeps clicks inside the picker), not a control
         <div
           onClick={(e) => e.stopPropagation()}
           style={{
@@ -1401,6 +1403,7 @@ function EditBox({
   return (
     <div className="mt-0.5">
       <input
+        // eslint-disable-next-line jsx-a11y/no-autofocus -- inline message editor opens on user action; focusing immediately is expected
         autoFocus
         value={value}
         aria-label="Edit message"

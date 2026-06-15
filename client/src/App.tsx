@@ -166,6 +166,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       .then((p) => alive && setMyStatus(p.custom_status ?? null))
       .catch(() => {});
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on the user identity (id), not every currentUser object change
   }, [currentUser?.id, token]);
 
   // Reflect total unread in the tab title so it's visible when backgrounded.
@@ -214,6 +215,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     const unsubStatus = gw.onStatus(setConnStatus);
     gw.connect();
     return () => { unsub(); unsubStatus(); gw.disconnect(); gatewayRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- (re)connect only when the token changes; handleGatewayEvent reads latest state via refs, so the closure here is intentional
   }, [token]);
 
   function handleGatewayEvent(event: GatewayEvent) {

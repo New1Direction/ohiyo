@@ -70,7 +70,9 @@ export function CreateServerModal({ onCreate, onClose }: Props) {
   }
 
   return createPortal(
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- dismiss scrim; Escape closes via the dialog key handler
     <div className="kc-backdrop" onMouseDown={() => !busy && onClose()}>
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- focus-trap dialog container; keyboard handled via onKeyDown */}
       <div
         role="dialog"
         aria-modal="true"
