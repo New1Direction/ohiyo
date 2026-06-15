@@ -709,6 +709,12 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         void webrtcRef.current?.onPeerSignal(event.d);
         break;
 
+      case "VoiceKeyDistribution":
+        // A call participant relayed their voice E2EE room key — hand it to the active
+        // voice engine to converge the shared FrameCryptor key.
+        void webrtcRef.current?.onVoiceKey(event.d.channel_id, event.d.from_user_id, event.d.envelope);
+        break;
+
       case "VoiceState": {
         webrtcRef.current?.onVoiceState(event.d);
         const { user_id, channel_id, joined } = event.d;

@@ -972,6 +972,64 @@ pub async fn distribute_sender_key(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+pub struct VoiceKeyBody {
+    /// recipient user_id → pairwise-encrypted voice-key envelope.
+    pub envelopes: std::collections::HashMap<String, String>,
+}
+
+const VOICE_KEY_MAX_PER_MIN: usize = 120;
+
+/// POST /channels/{id}/voice-key — relay encrypted voice/video E2EE room keys among the
+/// people CURRENTLY in this voice call. Like the sender-key relay the server only ever
+/// forwards opaque ciphertext. Crucially the recipient set is the live voice-room
+/// roster (same rule as the WebRTC signal relay), NOT mere channel membership: a room
+/// key must never reach someone who isn't in the call — not even another member of the
+/// channel — so it can't leak to a lurking guild member.
+pub async fn distribute_voice_key(
+    auth: AuthUser,
+    Path(channel_id): Path<String>,
+    State(state): State<AppState>,
+    Json(body): Json<VoiceKeyBody>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if body.envelopes.len() > 64 {
+        return Err((StatusCode::BAD_REQUEST, "too many recipients".into()));
+    }
+    // Throttle gossip so a participant can't flood the call's sockets / the DB.
+    if !state.rate.check(
+        &format!("voice-key:{}", auth.0),
+        VOICE_KEY_MAX_PER_MIN,
+        Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
+    let in_room: std::collections::HashSet<String> = {
+        let rooms = state.voice.read().unwrap();
+        match rooms.get(&channel_id) {
+            Some(room) => room.keys().cloned().collect(),
+            None => return Err((StatusCode::FORBIDDEN, "no active call here".into())),
+        }
+    };
+    if !in_room.contains(&auth.0) {
+        return Err((StatusCode::FORBIDDEN, "not in this call".into()));
+    }
+    for (uid, envelope) in body.envelopes {
+        if envelope.len() > 20_000 || !in_room.contains(&uid) {
+            continue;
+        }
+        crate::gateway::broadcast_to_user(
+            &state.sessions,
+            &uid,
+            &GatewayEvent::VoiceKeyDistribution {
+                channel_id: channel_id.clone(),
+                from_user_id: auth.0.clone(),
+                envelope,
+            },
+        );
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Delete disappearing messages whose TTL has lapsed and tell connected clients.
 /// Driven by a periodic task in `main`. Bounded per pass so a huge backlog can't
 /// monopolize the connection (the next pass picks up the rest).

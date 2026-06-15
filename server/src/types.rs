@@ -260,6 +260,14 @@ pub enum GatewayEvent {
         epoch: i64,
         participants: Vec<PublicUser>,
     },
+    /// A relayed voice/video E2EE room-key envelope (pairwise-encrypted). Call
+    /// participants gossip these to converge on one shared FrameCryptor key; the SFU
+    /// and server only ever see opaque ciphertext.
+    VoiceKeyDistribution {
+        channel_id: String,
+        from_user_id: String,
+        envelope: String,
+    },
     ServerCreate(ServerWithChannels),
     ServerDelete {
         id: String,
