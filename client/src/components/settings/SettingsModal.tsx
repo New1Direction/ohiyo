@@ -15,6 +15,7 @@ import {
 import type { PluginManager } from "../../plugins/registry";
 import { isDesktop } from "../../lib/desktop";
 import { burnVault } from "../../lib/tauriVault";
+import { ACCENT_PRESETS, getActiveAccent, loadAccent, setAccent } from "../../lib/appearance";
 
 type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
 
@@ -109,13 +110,32 @@ function AppearanceTab({ onToast }: { onToast: (t: string, type?: "info" | "succ
   const [currentTheme, setCurrentTheme] = useState<Theme>(loadTheme);
   const [customThemes, setCustomThemes] = useState<Theme[]>(getCustomThemes);
   const [importText, setImportText] = useState("");
+  const [accent, setAccentVal] = useState<string>(getActiveAccent);
+  const [accentOverride, setAccentOverride] = useState<boolean>(() => loadAccent() !== null);
 
   const allThemes = [...BUILTIN_THEMES, ...customThemes];
 
   function select(theme: Theme) {
     applyTheme(theme);
     setCurrentTheme(theme);
+    // Keep a personal accent layered over the new theme; otherwise follow the theme.
+    const ov = loadAccent();
+    if (ov) setAccent(ov);
+    setAccentVal(ov ?? theme.vars["--accent"]);
     onToast(`Theme "${theme.name}" applied`, "success");
+  }
+
+  function chooseAccent(hex: string) {
+    setAccent(hex);
+    setAccentVal(hex);
+    setAccentOverride(true);
+  }
+
+  function resetAccent() {
+    setAccent(null);
+    setAccentVal(currentTheme.vars["--accent"]);
+    setAccentOverride(false);
+    onToast("Accent reset to theme default", "success");
   }
 
   function handleExport(theme: Theme) {
@@ -145,10 +165,82 @@ function AppearanceTab({ onToast }: { onToast: (t: string, type?: "info" | "succ
     <div>
       <h2 className="mb-1 text-xl font-bold">Appearance</h2>
       <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
-        Choose a theme or import a custom one.
+        Make it yours — pick an accent, choose a theme, or build your own.
       </p>
 
-      <div className="grid grid-cols-3 gap-3 mb-8">
+      {/* Accent color — recolors the whole app, layered over any theme. Free here;
+          Discord charges for it. */}
+      <div className="mb-8">
+        <div className="mb-1 text-sm font-semibold">Accent color</div>
+        <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
+          The color that runs through everything — buttons, links, highlights, focus rings.
+          Works on top of any theme.
+        </p>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {ACCENT_PRESETS.map((p) => {
+            const isActive = accent.toLowerCase() === p.hex.toLowerCase();
+            return (
+              <button
+                key={p.hex}
+                type="button"
+                title={p.name}
+                aria-label={`Accent ${p.name}`}
+                aria-pressed={isActive}
+                onClick={() => chooseAccent(p.hex)}
+                className="kc-accent-swatch"
+                style={{
+                  background: p.hex,
+                  boxShadow: isActive ? `0 0 0 2px var(--bg-channel), 0 0 0 4px ${p.hex}` : undefined,
+                }}
+              >
+                {isActive && (
+                  <span aria-hidden="true" style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>
+                    ✓
+                  </span>
+                )}
+              </button>
+            );
+          })}
+
+          {/* Custom color — native picker behind a rainbow swatch */}
+          <label
+            className="kc-accent-swatch kc-accent-custom"
+            title="Custom color"
+            style={{
+              background:
+                "conic-gradient(from 180deg, #f2683c, #e0992f, #1f9e6b, #1f9e9e, #3da5f2, #7c6dfa, #eb6f92, #f2683c)",
+            }}
+          >
+            <input
+              type="color"
+              value={accent}
+              onChange={(e) => chooseAccent(e.target.value)}
+              aria-label="Pick a custom accent color"
+              style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+            />
+            <span
+              aria-hidden="true"
+              style={{ color: "#fff", fontSize: 14, fontWeight: 700, textShadow: "0 1px 2px rgba(0,0,0,.45)" }}
+            >
+              +
+            </span>
+          </label>
+
+          {accentOverride && (
+            <button
+              type="button"
+              onClick={resetAccent}
+              className="kc-interactive ml-1 rounded px-2 py-1 text-xs"
+              style={{ color: "var(--text-secondary)", background: "transparent", border: "1px solid var(--bg-hover)" }}
+            >
+              Reset to theme
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mb-1 text-sm font-semibold">Theme</div>
+      <div className="grid grid-cols-3 gap-3 mb-8 mt-2">
         {allThemes.map((theme) => {
           const isSelected = currentTheme.id === theme.id;
           const isCustom = !BUILTIN_THEMES.find((b) => b.id === theme.id);

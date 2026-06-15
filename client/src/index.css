@@ -548,3 +548,20 @@ input, textarea, select {
 .kc-icon-btn:active { transform: scale(0.88); }
 .kc-icon-btn.active { color: var(--accent); }
 .kc-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ─── Accent customizer swatches (Appearance settings) ───────────────────────── */
+.kc-accent-swatch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-spring), box-shadow var(--dur-fast) var(--ease-out);
+}
+.kc-accent-swatch:hover { transform: scale(1.14); }
+.kc-accent-swatch:active { transform: scale(0.96); }
+.kc-accent-swatch:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.kc-accent-custom { overflow: hidden; }
