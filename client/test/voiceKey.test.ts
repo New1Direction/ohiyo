@@ -8,7 +8,7 @@ import {
   generateRoomKey,
   encodeVoiceEnvelope,
   decodeVoiceEnvelope,
-  shouldAdopt,
+  pickCanonical,
   shouldReplyWithOurs,
 } from "../src/lib/voiceKey.ts";
 
@@ -35,30 +35,34 @@ test("decodeVoiceEnvelope rejects non-voice / malformed / wrong-length payloads"
   assert.equal(decodeVoiceEnvelope(JSON.stringify({ v: "vk1", k: btoa("short"), s: "u" })), null);
 });
 
-test("shouldAdopt: take a key when we hold none, or it's from a smaller id", () => {
-  assert.equal(shouldAdopt(null, "user-9"), true, "no key yet → adopt");
-  assert.equal(shouldAdopt("user-9", "user-3"), true, "smaller id wins");
-  assert.equal(shouldAdopt("user-3", "user-9"), false, "larger id loses");
-  assert.equal(shouldAdopt("user-3", "user-3"), false, "same source → no change");
+test("pickCanonical returns the smallest-id key, or null when empty", () => {
+  assert.equal(pickCanonical(new Map()), null);
+  const k5 = generateRoomKey();
+  const k2 = generateRoomKey();
+  const k8 = generateRoomKey();
+  const collected = new Map([
+    ["user-5", k5],
+    ["user-2", k2],
+    ["user-8", k8],
+  ]);
+  const picked = pickCanonical(collected);
+  assert.equal(picked?.sourceId, "user-2");
+  assert.deepEqual([...picked!.key], [...k2]);
 });
 
-test("shouldReplyWithOurs: answer a losing candidate so the sender converges", () => {
-  assert.equal(shouldReplyWithOurs("user-3", "user-9"), true, "their key loses → send them ours");
-  assert.equal(shouldReplyWithOurs("user-9", "user-3"), false, "their key wins → don't reply");
+test("rotation-on-leave: evicting the smallest-id participant falls back to the next", () => {
+  const collected = new Map([
+    ["user-2", generateRoomKey()],
+    ["user-5", generateRoomKey()],
+    ["user-8", generateRoomKey()],
+  ]);
+  assert.equal(pickCanonical(collected)?.sourceId, "user-2");
+  collected.delete("user-2"); // user-2 leaves the call
+  assert.equal(pickCanonical(collected)?.sourceId, "user-5", "remaining converge to the next-smallest");
+});
+
+test("shouldReplyWithOurs: answer a higher-id announcer so they learn our key", () => {
+  assert.equal(shouldReplyWithOurs("user-3", "user-9"), true, "ours wins → send it to them");
+  assert.equal(shouldReplyWithOurs("user-9", "user-3"), false, "theirs wins → don't reply");
   assert.equal(shouldReplyWithOurs("user-3", "user-3"), false);
-});
-
-test("convergence: three peers settle on the smallest-id key", () => {
-  // Simulate each peer's local (key, sourceId) after gossiping.
-  const peers = ["user-5", "user-2", "user-8"];
-  // Each starts holding its own candidate.
-  const held = new Map(peers.map((p) => [p, p])); // sourceId each currently holds
-  // Everyone announces to everyone; adopt the smaller-id source.
-  for (const announcer of peers) {
-    for (const receiver of peers) {
-      if (announcer === receiver) continue;
-      if (shouldAdopt(held.get(receiver)!, announcer)) held.set(receiver, announcer);
-    }
-  }
-  for (const p of peers) assert.equal(held.get(p), "user-2", "all converge to the smallest id");
 });

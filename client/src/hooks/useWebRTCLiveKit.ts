@@ -8,12 +8,11 @@ import type { PublicUser } from "../api";
 import { api } from "../api";
 import type { VoicePeer } from "../gateway";
 import { encryptFor, decryptFrom } from "../lib/signal";
-import { getGroupEpoch } from "../lib/senderKeys";
 import {
   generateRoomKey,
   encodeVoiceEnvelope,
   decodeVoiceEnvelope,
-  shouldAdopt,
+  pickCanonical,
   shouldReplyWithOurs,
 } from "../lib/voiceKey";
 import { usePeerQuality } from "../webrtc/usePeerQuality";
@@ -52,20 +51,45 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
   const tokenRef = useRef(token);
   tokenRef.current = token;
 
-  // Voice E2EE: the FrameCryptor key provider + worker for the active call, and the
-  // converged per-(channel, epoch) room key we currently hold.
+  // Voice E2EE: the FrameCryptor key provider + worker for the active call, our OWN room
+  // key per channel (what we announce), and the per-participant own-keys we've collected
+  // (sourceId → key, including ours). The key we feed the FrameCryptor is the smallest-id
+  // entry; evicting a participant on leave rotates it automatically.
   const keyProviderRef = useRef<ExternalE2EEKeyProvider | null>(null);
   const e2eeWorkerRef = useRef<Worker | null>(null);
-  const voiceKeysRef = useRef<Map<string, { key: Uint8Array; sourceId: string }>>(new Map());
+  const myVoiceKeyRef = useRef<Map<string, Uint8Array>>(new Map());
+  const peerVoiceKeysRef = useRef<Map<string, Map<string, Uint8Array>>>(new Map());
 
-  // Encrypt our current room key to each recipient (pairwise Signal) and relay it, so
-  // call participants converge on one shared FrameCryptor key. The server forwards only
-  // ciphertext.
+  // Our own key for a channel (minted once per call), also recorded in the collected set.
+  const ensureMyVoiceKey = useCallback((cid: string): Uint8Array => {
+    let mine = myVoiceKeyRef.current.get(cid);
+    if (!mine) {
+      mine = generateRoomKey();
+      myVoiceKeyRef.current.set(cid, mine);
+    }
+    let collected = peerVoiceKeysRef.current.get(cid);
+    if (!collected) {
+      collected = new Map();
+      peerVoiceKeysRef.current.set(cid, collected);
+    }
+    collected.set(cbRef.current.currentUserId, mine);
+    return mine;
+  }, []);
+
+  // Feed the live FrameCryptor the canonical (smallest-id) key from what we've collected.
+  const applyCanonicalKey = useCallback(async (cid: string) => {
+    if (cid !== channelRef.current || !keyProviderRef.current) return;
+    const canonical = pickCanonical(peerVoiceKeysRef.current.get(cid) ?? new Map());
+    if (canonical) await keyProviderRef.current.setKey(new Uint8Array(canonical.key).buffer);
+  }, []);
+
+  // Encrypt OUR OWN key to each recipient (pairwise Signal) and relay it. The envelope's
+  // source id is always us, so a relay can never announce another member's key.
   const distributeMyVoiceKey = useCallback(async (cid: string, recipientIds: string[]) => {
     const myId = cbRef.current.currentUserId;
-    const vk = voiceKeysRef.current.get(`${cid}:${getGroupEpoch(cid)}`);
-    if (!vk) return;
-    const env = encodeVoiceEnvelope(vk.key, vk.sourceId);
+    const mine = myVoiceKeyRef.current.get(cid);
+    if (!mine) return;
+    const env = encodeVoiceEnvelope(mine, myId);
     const envelopes: Record<string, string> = {};
     for (const uid of recipientIds) {
       if (uid === myId) continue;
@@ -74,6 +98,16 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
     }
     if (Object.keys(envelopes).length) await api.distributeVoiceKey(tokenRef.current, cid, envelopes);
   }, []);
+
+  // A participant left the call: drop their key and rotate to the next canonical one, so
+  // they can't decrypt anything sent afterward (forward secrecy on leave).
+  const evictVoiceKey = useCallback(
+    (cid: string, userId: string) => {
+      peerVoiceKeysRef.current.get(cid)?.delete(userId);
+      void applyCanonicalKey(cid);
+    },
+    [applyCanonicalKey]
+  );
 
   const toVP = (p: RemoteParticipant): VoiceParticipant => ({
     user_id: p.identity,
@@ -119,10 +153,12 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
   }, []);
 
   const reset = useCallback(() => {
-    // Burn the E2EE worker + key provider for the ended call.
+    // Burn the E2EE worker + key provider and all room keys for the ended call.
     e2eeWorkerRef.current?.terminate();
     e2eeWorkerRef.current = null;
     keyProviderRef.current = null;
+    myVoiceKeyRef.current.clear();
+    peerVoiceKeysRef.current.clear();
     setCallState("idle");
     setChannelId(null);
     channelRef.current = null;
@@ -144,22 +180,15 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
         // Lazy-load the SDK so it stays out of the main bundle (fetched on first join).
         const { Room, RoomEvent, ExternalE2EEKeyProvider } = await import("livekit-client");
 
-        // Ensure a room key for this call, scoped to the channel + its current rekey
-        // epoch. If we're first in we mint it; otherwise gossip converges everyone onto
-        // the lowest-id participant's key (see onVoiceKey).
-        const cacheKey = `${cid}:${getGroupEpoch(cid)}`;
-        let vk = voiceKeysRef.current.get(cacheKey);
-        if (!vk) {
-          vk = { key: generateRoomKey(), sourceId: cbRef.current.currentUserId };
-          voiceKeysRef.current.set(cacheKey, vk);
-        }
+        // Mint our own room key for this call (the only key we announce).
+        const myKey = ensureMyVoiceKey(cid);
 
         const roomOpts: RoomOptions = { adaptiveStream: true, dynacast: true };
         if (E2EE_ENABLED) {
           // ExternalE2EEKeyProvider runs HKDF over the raw 32 bytes internally — no
           // hand-rolled media crypto. The worker does the actual frame (de/en)cryption.
           const keyProvider = new ExternalE2EEKeyProvider();
-          await keyProvider.setKey(new Uint8Array(vk.key).buffer);
+          await keyProvider.setKey(new Uint8Array(myKey).buffer);
           const worker = new Worker(e2eeWorkerUrl, { type: "module" });
           keyProviderRef.current = keyProvider;
           e2eeWorkerRef.current = worker;
@@ -171,7 +200,11 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
           .on(RoomEvent.TrackSubscribed, refresh)
           .on(RoomEvent.TrackUnsubscribed, refresh)
           .on(RoomEvent.ParticipantConnected, refresh)
-          .on(RoomEvent.ParticipantDisconnected, refresh)
+          // On leave, evict the departed participant's key (rotates the room key) too.
+          .on(RoomEvent.ParticipantDisconnected, (p) => {
+            evictVoiceKey(cid, p.identity);
+            refresh();
+          })
           .on(RoomEvent.TrackMuted, refresh)
           .on(RoomEvent.TrackUnmuted, refresh)
           .on(RoomEvent.LocalTrackPublished, refreshLocal)
@@ -194,7 +227,7 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
         throw e;
       }
     },
-    [refresh, refreshLocal, reset, distributeMyVoiceKey]
+    [refresh, refreshLocal, reset, ensureMyVoiceKey, distributeMyVoiceKey, evictVoiceKey]
   );
 
   const hangUp = useCallback(() => {
@@ -267,8 +300,8 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
     async (_sig: { from: string; kind: string; payload: string }) => {},
     []
   );
-  // When someone joins our active call, push them our room key so they converge fast
-  // (they also announce theirs; the lowest-id key wins — see onVoiceKey).
+  // When someone joins our active call, push them our room key so they can converge
+  // (they also announce theirs; everyone uses the smallest-id key — see onVoiceKey).
   const onVoiceState = useCallback(
     (s: {
       channel_id: string;
@@ -282,13 +315,15 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       if (!E2EE_ENABLED || !s.joined) return;
       if (s.channel_id !== channelRef.current) return;
       if (s.user_id === cbRef.current.currentUserId) return;
+      ensureMyVoiceKey(s.channel_id);
       void distributeMyVoiceKey(s.channel_id, [s.user_id]);
     },
-    [distributeMyVoiceKey]
+    [ensureMyVoiceKey, distributeMyVoiceKey]
   );
 
-  // A peer announced their voice key. Adopt it if it wins (smaller source id); if ours
-  // wins, reply with ours so they converge. setKey re-keys the live FrameCryptor.
+  // A peer announced THEIR OWN key. Authenticate the claimed source against the
+  // server-stamped sender, record it, then re-key the FrameCryptor to the smallest-id
+  // key we now hold. If our own key wins, reply so the (higher-id) sender learns it.
   const onVoiceKey = useCallback(
     async (channelId: string, fromUserId: string, envelope: string) => {
       if (!E2EE_ENABLED || channelId !== channelRef.current) return;
@@ -296,16 +331,22 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       if (!plain) return;
       const parsed = decodeVoiceEnvelope(plain);
       if (!parsed) return;
-      const cacheKey = `${channelId}:${getGroupEpoch(channelId)}`;
-      const cur = voiceKeysRef.current.get(cacheKey) ?? null;
-      if (shouldAdopt(cur?.sourceId ?? null, parsed.sourceId)) {
-        voiceKeysRef.current.set(cacheKey, { key: parsed.key, sourceId: parsed.sourceId });
-        if (keyProviderRef.current) await keyProviderRef.current.setKey(new Uint8Array(parsed.key).buffer);
-      } else if (cur && shouldReplyWithOurs(cur.sourceId, parsed.sourceId)) {
+      // The envelope's claimed source MUST be the authenticated sender. Otherwise a
+      // participant could announce sourceId="000…" (lexicographically smallest) to make
+      // everyone converge onto a key they alone control — a full E2EE hijack.
+      if (parsed.sourceId !== fromUserId) return;
+      let collected = peerVoiceKeysRef.current.get(channelId);
+      if (!collected) {
+        collected = new Map();
+        peerVoiceKeysRef.current.set(channelId, collected);
+      }
+      collected.set(fromUserId, parsed.key);
+      await applyCanonicalKey(channelId);
+      if (shouldReplyWithOurs(cbRef.current.currentUserId, fromUserId)) {
         void distributeMyVoiceKey(channelId, [fromUserId]);
       }
     },
-    [distributeMyVoiceKey]
+    [applyCanonicalKey, distributeMyVoiceKey]
   );
 
   // No RTCPeerConnections in SFU mode → empty quality (LiveKit surfaces its own).

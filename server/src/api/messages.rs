@@ -978,25 +978,43 @@ pub struct VoiceKeyBody {
     pub envelopes: std::collections::HashMap<String, String>,
 }
 
-/// POST /channels/{id}/voice-key — relay encrypted voice/video E2EE room keys to call
-/// participants. Like the sender-key relay the server only forwards opaque ciphertext;
-/// it never sees the key. Each recipient is membership-checked via `user_can_access`,
-/// so a key can't be pushed to a non-member — and this works for both server voice
-/// channels (guild membership) and DM/group calls (participant list).
+const VOICE_KEY_MAX_PER_MIN: usize = 120;
+
+/// POST /channels/{id}/voice-key — relay encrypted voice/video E2EE room keys among the
+/// people CURRENTLY in this voice call. Like the sender-key relay the server only ever
+/// forwards opaque ciphertext. Crucially the recipient set is the live voice-room
+/// roster (same rule as the WebRTC signal relay), NOT mere channel membership: a room
+/// key must never reach someone who isn't in the call — not even another member of the
+/// channel — so it can't leak to a lurking guild member.
 pub async fn distribute_voice_key(
     auth: AuthUser,
     Path(channel_id): Path<String>,
     State(state): State<AppState>,
     Json(body): Json<VoiceKeyBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    if !user_can_access(&state, &channel_id, &auth.0).await {
-        return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
-    }
     if body.envelopes.len() > 64 {
         return Err((StatusCode::BAD_REQUEST, "too many recipients".into()));
     }
+    // Throttle gossip so a participant can't flood the call's sockets / the DB.
+    if !state.rate.check(
+        &format!("voice-key:{}", auth.0),
+        VOICE_KEY_MAX_PER_MIN,
+        Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
+    let in_room: std::collections::HashSet<String> = {
+        let rooms = state.voice.read().unwrap();
+        match rooms.get(&channel_id) {
+            Some(room) => room.keys().cloned().collect(),
+            None => return Err((StatusCode::FORBIDDEN, "no active call here".into())),
+        }
+    };
+    if !in_room.contains(&auth.0) {
+        return Err((StatusCode::FORBIDDEN, "not in this call".into()));
+    }
     for (uid, envelope) in body.envelopes {
-        if envelope.len() > 20_000 || !user_can_access(&state, &channel_id, &uid).await {
+        if envelope.len() > 20_000 || !in_room.contains(&uid) {
             continue;
         }
         crate::gateway::broadcast_to_user(
