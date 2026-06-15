@@ -57,6 +57,8 @@ export function AuthScreen({ onAuth }: Props) {
     if (code) {
       setLinkCode(code);
       setMode("link");
+      // Don't leave the code sitting in the URL / browser history.
+      window.history.replaceState({}, "", window.location.pathname);
       return;
     }
     if (username) document.getElementById("kc-password")?.focus();
@@ -99,10 +101,10 @@ export function AuthScreen({ onAuth }: Props) {
     } catch (err) {
       const m = err instanceof Error ? err.message.toLowerCase() : "";
       setError(
-        m.includes("expired")
-          ? "That code expired — generate a fresh one on your other device."
-          : m.includes("invalid") || m.includes("not found") || m.includes("used")
-            ? "That code isn't valid — double-check it."
+        m.includes("invalid") || m.includes("expired") || m.includes("not found") || m.includes("used")
+          ? "That code isn't valid or has expired — generate a fresh one on your other device."
+          : m.includes("too many")
+            ? "Too many tries — give it a moment and try again."
             : m.includes("failed to fetch") || m.includes("load failed")
               ? "Can't reach Kikkacord right now — check your connection."
               : "Couldn't link this device. Try again?"

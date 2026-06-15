@@ -106,6 +106,8 @@ async fn main() -> anyhow::Result<()> {
                 api::messages::sweep_expired(&sweep_state).await;
                 // Account-level dead-man's switch: wipe data for users gone too long.
                 api::users::sweep_deadman(&sweep_state).await;
+                // Drop expired device-link codes so the table can't grow unbounded.
+                api::auth::sweep_link_tokens(&sweep_state).await;
             }
         });
     }
