@@ -9,6 +9,7 @@ import { WatchParty } from "./WatchParty";
 import { API_BASE, FILE_BASE, api } from "../api";
 import type { PluginManager } from "../plugins/registry";
 import { UserProfileCard } from "./UserProfileCard";
+import { GroupMembersPopover } from "./GroupMembersPopover";
 import { BirdMark } from "./BirdMark";
 import { ChannelWelcome } from "./ChannelWelcome";
 import { PollWidget } from "./PollWidget";
@@ -83,6 +84,8 @@ type Props = {
   onWatchControl?: (action: string, payload?: { url?: string; position?: number }) => void;
   /** Whether this DM is in end-to-end encrypted mode, and the toggle (DMs only). */
   e2eEnabled?: boolean;
+  /** Live participant list for a group DM (drives the members popover). */
+  groupMembers?: PublicUser[];
   onToggleE2e?: () => void;
   /** Lazily compute the Signal safety number for the peer (null if no session yet). */
   onRequestSafetyNumber?: () => Promise<string | null>;
@@ -174,6 +177,7 @@ export function ChatPane({
   watchSession,
   onWatchControl,
   e2eEnabled = false,
+  groupMembers,
   onToggleE2e,
   onRequestSafetyNumber,
   e2eTrust = "unverified",
@@ -185,6 +189,7 @@ export function ChatPane({
   // restored channel, with prevChannelRef already equal) still shows it.
   const [input, setInput] = useState(() => (channel?.id ? loadDraft(channel.id) : ""));
   const [watchInput, setWatchInput] = useState<string | null>(null);
+  const [showGroupMembers, setShowGroupMembers] = useState(false);
   // Composer is sacred: remember unsent text per channel so a switch never loses it.
   const draftsRef = useRef<Record<string, string>>({});
   const inputRef = useRef(input);
@@ -607,6 +612,30 @@ export function ChatPane({
           >
             <Icon name="members" />
           </button>
+        )}
+        {channel?.channel_type === "group_dm" && (
+          <div className="kc-grpmem-anchor">
+            <button
+              type="button"
+              onClick={() => setShowGroupMembers((v) => !v)}
+              aria-label="Group members"
+              title="Group members"
+              aria-expanded={showGroupMembers}
+              className="kc-icon-btn flex-shrink-0 text-base"
+            >
+              <Icon name="members" />
+            </button>
+            {showGroupMembers && (
+              <GroupMembersPopover
+                channel={channel}
+                currentUserId={currentUserId}
+                token={token}
+                seedMembers={groupMembers}
+                onToast={onToast}
+                onClose={() => setShowGroupMembers(false)}
+              />
+            )}
+          </div>
         )}
         {onWatchControl && (
           <button

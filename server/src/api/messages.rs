@@ -943,8 +943,20 @@ pub async fn distribute_sender_key(
     if body.envelopes.len() > 64 {
         return Err((StatusCode::BAD_REQUEST, "too many recipients".into()));
     }
+    // Enforce the membership boundary server-side: a sender key may only be relayed to
+    // users who are CURRENTLY in the channel. This is what makes a re-key effective —
+    // a member removed at a higher epoch must never receive a fresh key, no matter what
+    // recipient map a (buggy or malicious) client submits.
+    let members: std::collections::HashSet<String> =
+        sqlx::query_scalar("SELECT user_id FROM dm_participants WHERE channel_id = ?")
+            .bind(&channel_id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
     for (uid, envelope) in body.envelopes {
-        if envelope.len() > 20_000 {
+        if envelope.len() > 20_000 || !members.contains(&uid) {
             continue;
         }
         crate::gateway::broadcast_to_user(

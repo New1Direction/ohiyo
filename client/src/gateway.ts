@@ -30,6 +30,7 @@ export type GatewayEvent =
   | { t: "MessageDelete"; d: { id: string; channel_id: string } }
   | { t: "DisappearingUpdate"; d: { channel_id: string; seconds: number | null } }
   | { t: "SenderKeyDistribution"; d: { channel_id: string; from_user_id: string; envelope: string } }
+  | { t: "GroupMembersUpdate"; d: { channel_id: string; epoch: number; participants: PublicUser[] } }
   | { t: "ServerCreate"; d: ServerWithChannels }
   | { t: "ServerDelete"; d: { id: string } }
   | { t: "ChannelCreate"; d: Channel }

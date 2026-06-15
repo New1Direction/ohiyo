@@ -67,11 +67,23 @@ async function deriveAes(messageKey: ArrayBuffer): Promise<{ key: CryptoKey; iv:
 const randomKeyId = () => Math.floor(Math.random() * 0x7fffffff);
 
 // ── Persisted state ─────────────────────────────────────────────────────────────
-type OwnState = { keyId: number; chainKey: string; iteration: number; signPriv: JsonWebKey; verifyKey: string };
-type PeerState = { keyId: number; chainKey: string; iteration: number; verifyKey: string };
+// `epoch` ties a sender key to a membership generation. The server bumps a group's
+// epoch on every add/remove; when ours advances we mint a brand-new chain (rotate),
+// so a removed member's copy of the old chain — and any forward ratchet of it — is
+// dead. Messages and peer keys carry their epoch; cross-epoch reads are rejected.
+type OwnState = {
+  keyId: number;
+  chainKey: string;
+  iteration: number;
+  signPriv: JsonWebKey;
+  verifyKey: string;
+  epoch: number;
+};
+type PeerState = { keyId: number; chainKey: string; iteration: number; verifyKey: string; epoch: number };
 
 const ownKey = (groupId: string) => `${NS}own:${groupId}`;
 const peerKey = (groupId: string, userId: string) => `${NS}peer:${groupId}:${userId}`;
+const epochKey = (groupId: string) => `${NS}epoch:${groupId}`;
 const getJson = <T,>(k: string): T | null => {
   const s = backend.getItem(k);
   return s ? (JSON.parse(s) as T) : null;
@@ -83,18 +95,52 @@ export function isGroupCiphertext(s: string): boolean {
   return s.startsWith("grp1.");
 }
 
-// Create (once) this member's sender key for a group: a random chain key + an ECDSA
-// signing key pair + a fresh key id.
-async function ensureOwnSenderKey(groupId: string): Promise<OwnState> {
-  const existing = getJson<OwnState>(ownKey(groupId));
-  if (existing) return existing;
+// ── Group epoch (membership generation) ─────────────────────────────────────────
+/** The latest epoch we've learned for a group (from the server). Defaults to 0. */
+export function getGroupEpoch(groupId: string): number {
+  const n = Number.parseInt(backend.getItem(epochKey(groupId)) ?? "0", 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+// Persist the known epoch, never decreasing (the server's epoch only goes up).
+function rememberEpoch(groupId: string, epoch: number): void {
+  if (epoch > getGroupEpoch(groupId)) backend.setItem(epochKey(groupId), String(epoch));
+}
+
+// Mint a fresh sender key (random chain + ECDSA signing pair + key id) at `epoch`,
+// replacing any existing one. Used both for the first key and for rotation.
+async function mintOwnSenderKey(groupId: string, epoch: number): Promise<OwnState> {
   const chainKey = b64(crypto.getRandomValues(new Uint8Array(32)).buffer);
   const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
   const signPriv = await crypto.subtle.exportKey("jwk", pair.privateKey);
   const verifyKey = b64(await crypto.subtle.exportKey("raw", pair.publicKey));
-  const state: OwnState = { keyId: randomKeyId(), chainKey, iteration: 0, signPriv, verifyKey };
+  const state: OwnState = { keyId: randomKeyId(), chainKey, iteration: 0, signPriv, verifyKey, epoch };
   putJson(ownKey(groupId), state);
   return state;
+}
+
+/**
+ * Learn the group's current epoch. If it has advanced past our own sender key's
+ * epoch (a member was added/removed), rotate: mint a fresh key at the new epoch and
+ * return true so the caller re-distributes it to the *current* members. Returns
+ * false when nothing rotated (same/older epoch, or we hold no key yet — the first
+ * key will simply be minted at this epoch on demand).
+ */
+export async function setGroupEpoch(groupId: string, epoch: number): Promise<boolean> {
+  rememberEpoch(groupId, epoch);
+  const own = getJson<OwnState>(ownKey(groupId));
+  if (own && getGroupEpoch(groupId) > (own.epoch ?? 0)) {
+    await mintOwnSenderKey(groupId, getGroupEpoch(groupId));
+    return true;
+  }
+  return false;
+}
+
+// Create (once) this member's sender key for a group, tagged with the group's
+// current epoch so a member joining mid-life starts in the live generation.
+async function ensureOwnSenderKey(groupId: string): Promise<OwnState> {
+  const existing = getJson<OwnState>(ownKey(groupId));
+  if (existing) return { ...existing, epoch: existing.epoch ?? 0 };
+  return mintOwnSenderKey(groupId, getGroupEpoch(groupId));
 }
 
 /** The Sender Key Distribution Message for THIS member's current sender key in a group
@@ -102,13 +148,19 @@ async function ensureOwnSenderKey(groupId: string): Promise<OwnState> {
  *  calls installDistribution(). Distributes the CURRENT chain key + iteration. */
 export async function buildDistribution(groupId: string): Promise<string> {
   const s = await ensureOwnSenderKey(groupId);
-  return JSON.stringify({ kid: s.keyId, ck: s.chainKey, it: s.iteration, vk: s.verifyKey });
+  return JSON.stringify({ kid: s.keyId, ck: s.chainKey, it: s.iteration, vk: s.verifyKey, ep: s.epoch });
 }
 
 /** Install a peer's distributed sender key for a group (from a decrypted SKDM). */
 export function installDistribution(groupId: string, fromUserId: string, skdmJson: string): void {
-  const d = JSON.parse(skdmJson) as { kid: number; ck: string; it: number; vk: string };
-  putJson(peerKey(groupId, fromUserId), { keyId: d.kid, chainKey: d.ck, iteration: d.it, verifyKey: d.vk } as PeerState);
+  const d = JSON.parse(skdmJson) as { kid: number; ck: string; it: number; vk: string; ep?: number };
+  putJson(peerKey(groupId, fromUserId), {
+    keyId: d.kid,
+    chainKey: d.ck,
+    iteration: d.it,
+    verifyKey: d.vk,
+    epoch: d.ep ?? 0,
+  } as PeerState);
 }
 
 /** Encrypt a message for the group with our sender key. Returns `grp1.<b64(json)>`,
@@ -124,7 +176,7 @@ export async function groupEncrypt(groupId: string, plaintext: string): Promise<
     "sign",
   ]);
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, signKey, ct);
-  const envelope = { kid: s.keyId, it: s.iteration, ct: b64(ct), sig: b64(sig) };
+  const envelope = { kid: s.keyId, it: s.iteration, ct: b64(ct), sig: b64(sig), ep: s.epoch ?? 0 };
   // Ratchet forward (forward secrecy: this message key can't be re-derived).
   s.chainKey = b64(await nextChainOf(ck));
   s.iteration += 1;
@@ -140,12 +192,16 @@ export async function groupDecrypt(groupId: string, fromUserId: string, wire: st
   if (!wire.startsWith("grp1.")) return null;
   const peer = getJson<PeerState>(peerKey(groupId, fromUserId));
   if (!peer) return null;
-  let env: { kid: number; it: number; ct: string; sig: string };
+  let env: { kid: number; it: number; ct: string; sig: string; ep?: number };
   try {
     env = JSON.parse(td.decode(unb64(wire.slice(5))));
   } catch {
     return null;
   }
+  // Epoch gate: only decrypt within the membership generation we hold this peer's key
+  // for. A message from a newer epoch means the peer rekeyed and we await their fresh
+  // SKDM; an older epoch is a generation we've rotated past. Either way → null.
+  if ((env.ep ?? 0) !== (peer.epoch ?? 0)) return null;
   if (env.kid !== peer.keyId || env.it < peer.iteration) return null;
   // Ratchet this sender's chain forward to the message's iteration.
   let ck = unb64(peer.chainKey);

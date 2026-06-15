@@ -46,6 +46,7 @@ import {
   isGroupCiphertext,
   buildDistribution,
   installDistribution,
+  setGroupEpoch,
 } from "./lib/senderKeys";
 import { formatDuration } from "./lib/disappearing";
 import { initVaultBackend } from "./lib/tauriVault";
@@ -91,6 +92,9 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
   const [servers, setServers] = useState<ServerWithChannels[]>([]);
   const [dms, setDms] = useState<Channel[]>([]);
+  // Live participant lists for group DMs, keyed by channel id (kept fresh by
+  // GroupMembersUpdate; seeded on demand by the members popover).
+  const [groupMembers, setGroupMembers] = useState<Record<string, PublicUser[]>>({});
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -372,12 +376,30 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- key on user identity; sends via the gateway ref
   }, [currentUser?.id]);
 
+  // Learn a group's current rekey epoch from the server. If it advanced past our own
+  // sender key, setGroupEpoch rotates us to a fresh key — then re-fan it to the
+  // remaining members (clear the once-per-session guard so the next send redistributes,
+  // and push it now if the group is already in encrypted mode). Hoisted, so the gateway
+  // handler can call it before distributeMySenderKey is declared below.
+  function syncGroupEpoch(channelId: string, epoch: number | undefined): void {
+    void setGroupEpoch(channelId, epoch ?? 0).then((rotated) => {
+      if (!rotated) return;
+      distributedGroupsRef.current.delete(channelId);
+      if (e2eChannelsRef.current.has(channelId)) void distributeMySenderKey(channelId);
+    });
+  }
+
   function handleGatewayEvent(event: GatewayEvent) {
     switch (event.t) {
       case "Ready":
         setCurrentUser(event.d.user);
         setServers(event.d.servers);
         setDms(event.d.dms);
+        // Catch up on group rekeys that happened while we were offline: if a group's
+        // server epoch is ahead of our own sender key, this rotates us and redistributes.
+        for (const d of event.d.dms) {
+          if (d.channel_type === "group_dm") syncGroupEpoch(d.id, d.epoch);
+        }
         // Seed unread badges from the server so they no longer wipe to zero on reload.
         setUnread(event.d.unread ?? {});
         // Per-account onboarding flag (same batch as currentUser → no onboarding flash).
@@ -490,6 +512,34 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         break;
       }
 
+      case "GroupMembersUpdate": {
+        // A group DM's membership changed. If we're no longer in the participant list,
+        // we were removed (or left) → drop the channel. Otherwise reflect the new epoch
+        // (rotating our sender key if it advanced) and refresh the member list.
+        const { channel_id, epoch, participants } = event.d;
+        const myId = currentUserRef.current?.id;
+        if (myId && !participants.some((p) => p.id === myId)) {
+          setDms((prev) => prev.filter((d) => d.id !== channel_id));
+          setGroupMembers((m) => {
+            const next = { ...m };
+            delete next[channel_id];
+            return next;
+          });
+          if (selectedChannelRef.current?.id === channel_id) {
+            setSelectedChannel(null);
+            selectedChannelRef.current = null;
+            toast("You were removed from the group");
+          }
+          break;
+        }
+        const patchEpoch = (c: Channel): Channel => (c.id === channel_id ? { ...c, epoch } : c);
+        setDms((prev) => prev.map(patchEpoch));
+        setSelectedChannel((prev) => (prev ? patchEpoch(prev) : prev));
+        setGroupMembers((m) => ({ ...m, [channel_id]: participants }));
+        syncGroupEpoch(channel_id, epoch);
+        break;
+      }
+
       case "ServerCreate":
         // Upsert: also used as a "server changed" signal (categories, channel moves).
         setServers((prev) =>
@@ -513,6 +563,9 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         } else {
           // A DM / group DM (no server) → add it to the DM list live.
           setDms((prev) => (prev.some((d) => d.id === event.d.id) ? prev : [event.d, ...prev]));
+          // Joining a group at its current epoch seeds our first sender key in the live
+          // generation (a member added mid-life starts at epoch N, not 0).
+          if (event.d.channel_type === "group_dm") syncGroupEpoch(event.d.id, event.d.epoch);
         }
         break;
 
@@ -1407,6 +1460,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         watchSession={watchSession}
         onWatchControl={sendWatchControl}
         e2eEnabled={selectedChannel ? e2eChannels.has(selectedChannel.id) : false}
+        groupMembers={selectedChannel ? groupMembers[selectedChannel.id] : undefined}
         onToggleE2e={
           selectedChannel?.channel_type === "dm" || selectedChannel?.channel_type === "group_dm"
             ? () => toggleE2e(selectedChannel.id)

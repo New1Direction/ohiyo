@@ -40,6 +40,11 @@ export type Channel = {
   category_id?: string | null;
   /** Disappearing-message TTL in seconds; null/undefined = off. */
   disappearing_seconds?: number | null;
+  /** Group-DM membership generation; bumped on every add/remove so clients rotate
+   *  their sender keys. 0/undefined for non-group channels. */
+  epoch?: number;
+  /** Group-DM owner (creator); only they may remove other members. */
+  owner_id?: string | null;
 };
 
 export type Category = {
@@ -491,6 +496,19 @@ export const api = {
   // Participants of a DM / group DM — used to fan out sender-key distributions.
   listRecipients: (token: string, channelId: string) =>
     request<PublicUser[]>(`/channels/${channelId}/recipients`, {}, token),
+
+  // Add someone to a group DM (any member may add). Bumps the group's rekey epoch.
+  addRecipient: (token: string, channelId: string, userId: string) =>
+    request<void>(
+      `/channels/${channelId}/recipients`,
+      { method: "POST", body: JSON.stringify({ user_id: userId }) },
+      token,
+    ),
+
+  // Remove a member (owner only) or leave the group (user_id === self). Bumps the
+  // rekey epoch so the remaining members rotate their sender keys.
+  removeRecipient: (token: string, channelId: string, userId: string) =>
+    request<void>(`/channels/${channelId}/recipients/${userId}`, { method: "DELETE" }, token),
 
   // Relay encrypted Sender Key Distribution Messages to the group (group E2E bootstrap).
   distributeSenderKey: (token: string, channelId: string, envelopes: Record<string, string>) =>

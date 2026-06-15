@@ -148,6 +148,8 @@ pub async fn open_dm(
         created_at: now,
         category_id: None,
         disappearing_seconds: None,
+        epoch: 0,
+        owner_id: None,
     };
 
     Ok(Json(channel))
@@ -185,15 +187,18 @@ pub async fn open_group_dm(
         .filter(|n| !n.trim().is_empty())
         .unwrap_or_else(|| "Group".to_owned());
 
-    sqlx::query("INSERT INTO channels (id, name, channel_type, position, created_at) VALUES (?,?,?,?,?)")
-        .bind(&id)
-        .bind(&name)
-        .bind("group_dm")
-        .bind(0i64)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query(
+        "INSERT INTO channels (id, name, channel_type, position, created_at, owner_id) VALUES (?,?,?,?,?,?)",
+    )
+    .bind(&id)
+    .bind(&name)
+    .bind("group_dm")
+    .bind(0i64)
+    .bind(now)
+    .bind(&auth.0)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let participants: Vec<String> = std::iter::once(auth.0.clone()).chain(members).collect();
     for uid in &participants {
@@ -215,6 +220,8 @@ pub async fn open_group_dm(
         created_at: now,
         category_id: None,
         disappearing_seconds: None,
+        epoch: 0,
+        owner_id: Some(auth.0.clone()),
     };
 
     // Tell every participant about the new group live.
@@ -249,6 +256,213 @@ pub async fn list_recipients(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(users.into_iter().map(PublicUser::from).collect()))
+}
+
+// ── Group-DM membership management (with rekey) ─────────────────────────────────
+
+fn internal(e: impl std::fmt::Display) -> (StatusCode, String) {
+    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+}
+
+/// (channel_type, owner_id) for a channel, or 404 if it doesn't exist.
+async fn channel_meta(
+    state: &AppState,
+    channel_id: &str,
+) -> Result<(String, Option<String>), (StatusCode, String)> {
+    sqlx::query_as("SELECT channel_type, owner_id FROM channels WHERE id = ?")
+        .bind(channel_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(internal)?
+        .ok_or((StatusCode::NOT_FOUND, "no such channel".into()))
+}
+
+/// Bump a group's rekey epoch and return the new value. Atomic increment-and-read
+/// (RETURNING, SQLite ≥3.35) so concurrent membership changes can't observe a torn
+/// epoch — the value always moves strictly forward.
+async fn bump_epoch(state: &AppState, channel_id: &str) -> Result<i64, (StatusCode, String)> {
+    sqlx::query_scalar("UPDATE channels SET epoch = epoch + 1 WHERE id = ? RETURNING epoch")
+        .bind(channel_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(internal)
+}
+
+async fn participant_users(state: &AppState, channel_id: &str) -> Vec<PublicUser> {
+    let users: Vec<User> = sqlx::query_as(
+        "SELECT u.* FROM users u JOIN dm_participants dp ON dp.user_id = u.id WHERE dp.channel_id = ?",
+    )
+    .bind(channel_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+    users.into_iter().map(PublicUser::from).collect()
+}
+
+fn members_event(
+    channel_id: &str,
+    epoch: i64,
+    participants: Vec<PublicUser>,
+) -> crate::types::GatewayEvent {
+    crate::types::GatewayEvent::GroupMembersUpdate {
+        channel_id: channel_id.to_owned(),
+        epoch,
+        participants,
+    }
+}
+
+/// Tell the current participants their group's membership/epoch changed (so they rotate).
+async fn broadcast_members(state: &AppState, channel_id: &str, epoch: i64) {
+    let participants = participant_users(state, channel_id).await;
+    crate::gateway::broadcast_to_channel(
+        state,
+        channel_id,
+        &members_event(channel_id, epoch, participants),
+    )
+    .await;
+}
+
+#[derive(Deserialize)]
+pub struct AddRecipientBody {
+    pub user_id: String,
+}
+
+/// POST /channels/{channel_id}/recipients — add someone to a group DM. Any current
+/// member may add. Bumps the rekey epoch so everyone rotates, and hands the newcomer
+/// the channel itself.
+pub async fn add_recipient(
+    auth: AuthUser,
+    axum::extract::Path(channel_id): axum::extract::Path<String>,
+    State(state): State<AppState>,
+    Json(body): Json<AddRecipientBody>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let new_user = body.user_id.trim().to_owned();
+    if new_user.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "missing user_id".into()));
+    }
+    let (kind, _owner) = channel_meta(&state, &channel_id).await?;
+    if kind != "group_dm" {
+        return Err((StatusCode::BAD_REQUEST, "not a group DM".into()));
+    }
+    if !crate::api::messages::user_can_access(&state, &channel_id, &auth.0).await {
+        return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
+    }
+    let exists: Option<String> = sqlx::query_scalar("SELECT id FROM users WHERE id = ?")
+        .bind(&new_user)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(internal)?;
+    if exists.is_none() {
+        return Err((StatusCode::NOT_FOUND, "no such user".into()));
+    }
+    let already: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM dm_participants WHERE channel_id = ? AND user_id = ?")
+            .bind(&channel_id)
+            .bind(&new_user)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(internal)?;
+    if already.is_some() {
+        return Ok(StatusCode::NO_CONTENT); // already a member → idempotent
+    }
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM dm_participants WHERE channel_id = ?")
+            .bind(&channel_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(internal)?;
+    if count >= 21 {
+        return Err((StatusCode::BAD_REQUEST, "group is full (max 21)".into()));
+    }
+    sqlx::query("INSERT INTO dm_participants (channel_id, user_id) VALUES (?,?)")
+        .bind(&channel_id)
+        .bind(&new_user)
+        .execute(&state.db)
+        .await
+        .map_err(internal)?;
+    let epoch = bump_epoch(&state, &channel_id).await?;
+    // The newcomer has no row for this channel yet — send them the channel first.
+    if let Some(ch) = sqlx::query_as::<_, Channel>("SELECT * FROM channels WHERE id = ?")
+        .bind(&channel_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+    {
+        crate::gateway::broadcast_to_user(
+            &state.sessions,
+            &new_user,
+            &crate::types::GatewayEvent::ChannelCreate(ch),
+        );
+    }
+    broadcast_members(&state, &channel_id, epoch).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /channels/{channel_id}/recipients/{user_id} — remove a member (owner only)
+/// or leave the group yourself. Bumps the rekey epoch so the remaining members rotate
+/// their sender keys; the removed member can decrypt no future message.
+pub async fn remove_recipient(
+    auth: AuthUser,
+    axum::extract::Path((channel_id, target)): axum::extract::Path<(String, String)>,
+    State(state): State<AppState>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let (kind, owner) = channel_meta(&state, &channel_id).await?;
+    if kind != "group_dm" {
+        return Err((StatusCode::BAD_REQUEST, "not a group DM".into()));
+    }
+    if !crate::api::messages::user_can_access(&state, &channel_id, &auth.0).await {
+        return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
+    }
+    let is_self = target == auth.0;
+    let is_owner = owner.as_deref() == Some(auth.0.as_str());
+    if !is_self && !is_owner {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "only the group owner can remove others".into(),
+        ));
+    }
+    let removed = sqlx::query("DELETE FROM dm_participants WHERE channel_id = ? AND user_id = ?")
+        .bind(&channel_id)
+        .bind(&target)
+        .execute(&state.db)
+        .await
+        .map_err(internal)?
+        .rows_affected();
+    if removed == 0 {
+        return Ok(StatusCode::NO_CONTENT); // wasn't a member → nothing to do
+    }
+    // If the owner just left, hand ownership to the earliest-joined remaining member so
+    // the group stays administerable (otherwise nobody could remove anyone afterward).
+    // Clients pick up the new owner on their next Ready/refetch.
+    if owner.as_deref() == Some(target.as_str()) {
+        let next_owner: Option<String> = sqlx::query_scalar(
+            "SELECT user_id FROM dm_participants WHERE channel_id = ? ORDER BY rowid LIMIT 1",
+        )
+        .bind(&channel_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(internal)?;
+        sqlx::query("UPDATE channels SET owner_id = ? WHERE id = ?")
+            .bind(&next_owner) // None → NULL when the group is now empty
+            .bind(&channel_id)
+            .execute(&state.db)
+            .await
+            .map_err(internal)?;
+    }
+    let epoch = bump_epoch(&state, &channel_id).await?;
+    // Remaining members rotate. The query for broadcast resolves the *current* member
+    // set, so the removed user is already excluded here.
+    broadcast_members(&state, &channel_id, epoch).await;
+    // Notify the removed user directly (they're no longer a channel recipient): they
+    // see themselves absent from `participants` and drop the channel locally.
+    let participants = participant_users(&state, &channel_id).await;
+    crate::gateway::broadcast_to_user(
+        &state.sessions,
+        &target,
+        &members_event(&channel_id, epoch, participants),
+    );
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ── Dead-man's switch (account-level inactivity wipe) ───────────────────────────
@@ -313,14 +527,16 @@ pub async fn set_deadman(
         .seconds
         .filter(|s| *s > 0)
         .map(|s| s.clamp(5, 365 * 86_400));
-    sqlx::query("UPDATE users SET deadman_seconds = ?, deadman_scope = ?, last_active_at = ? WHERE id = ?")
-        .bind(secs)
-        .bind(scope)
-        .bind(now_unix())
-        .bind(&auth.0)
-        .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query(
+        "UPDATE users SET deadman_seconds = ?, deadman_scope = ?, last_active_at = ? WHERE id = ?",
+    )
+    .bind(secs)
+    .bind(scope)
+    .bind(now_unix())
+    .bind(&auth.0)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
