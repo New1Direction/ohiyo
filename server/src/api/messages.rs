@@ -105,25 +105,32 @@ pub async fn list_messages(
     }
     let limit = q.limit.min(100);
 
+    // Never serve an already-expired disappearing message, even in the window before
+    // the background sweeper physically deletes it.
+    let now = now_unix();
     let messages: Vec<Message> = if let Some(before) = q.before {
         // Cursor by time — ids are random UUID v4, so `id < ?` is NOT time-ordered.
         sqlx::query_as(
             "SELECT * FROM messages
              WHERE channel_id = ?
                AND created_at < (SELECT created_at FROM messages WHERE id = ?)
+               AND (expires_at IS NULL OR expires_at > ?)
              ORDER BY created_at DESC LIMIT ?",
         )
         .bind(&channel_id)
         .bind(&before)
+        .bind(now)
         .bind(limit)
         .fetch_all(&state.db)
         .await
     } else {
         sqlx::query_as(
             "SELECT * FROM messages WHERE channel_id = ?
+               AND (expires_at IS NULL OR expires_at > ?)
              ORDER BY created_at DESC LIMIT ?",
         )
         .bind(&channel_id)
+        .bind(now)
         .bind(limit)
         .fetch_all(&state.db)
         .await
@@ -160,6 +167,7 @@ pub async fn list_messages(
             reactions,
             reply_to,
             poll,
+            expires_at: msg.expires_at,
         });
     }
 
@@ -292,6 +300,8 @@ pub async fn send_message(
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
+    // Refresh liveness so an active user never trips their dead-man's switch.
+    crate::api::users::touch_active(&state.db, &auth.0).await;
     // Per-user spam throttle (generous for humans, blocks flooders).
     if !state
         .rate
@@ -353,6 +363,17 @@ pub async fn send_message(
     let now = now_unix();
     let content = body.content.trim().to_owned();
 
+    // Disappearing messages: if the channel has a TTL, this message self-destructs.
+    let disappearing: Option<i64> =
+        sqlx::query_scalar("SELECT disappearing_seconds FROM channels WHERE id = ?")
+            .bind(&channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+    let expires_at = disappearing.filter(|s| *s > 0).map(|s| now + s);
+
     // Only honour a reply target that actually exists in this channel.
     let reply_to: Option<String> = match body.reply_to.filter(|s| !s.is_empty()) {
         Some(rid) => {
@@ -369,7 +390,7 @@ pub async fn send_message(
     };
 
     sqlx::query(
-        "INSERT INTO messages (id, channel_id, author_id, content, created_at, attachments, reply_to) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO messages (id, channel_id, author_id, content, created_at, attachments, reply_to, expires_at) VALUES (?,?,?,?,?,?,?,?)",
     )
     .bind(&id)
     .bind(&channel_id)
@@ -378,6 +399,7 @@ pub async fn send_message(
     .bind(now)
     .bind(&attachments_json)
     .bind(&reply_to)
+    .bind(expires_at)
     .execute(&state.db)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -400,6 +422,7 @@ pub async fn send_message(
         pinned: false,
         poll: None,
         embeds: None,
+        expires_at,
     };
 
     broadcast_to_channel(
@@ -460,6 +483,7 @@ pub async fn build_full(
         reactions,
         reply_to,
         poll,
+        expires_at: msg.expires_at,
     })
 }
 
@@ -837,4 +861,141 @@ pub async fn delete_message(
     .await;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct DisappearingBody {
+    /// TTL in seconds; 0 or null turns disappearing messages off.
+    pub seconds: Option<i64>,
+}
+
+/// PATCH /channels/{id}/disappearing — set (or clear) the channel's message TTL.
+/// Allowed for any DM participant, or MANAGE_CHANNELS on a server channel.
+pub async fn set_disappearing(
+    auth: AuthUser,
+    Path(channel_id): Path<String>,
+    State(state): State<AppState>,
+    Json(body): Json<DisappearingBody>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if !user_can_access(&state, &channel_id, &auth.0).await {
+        return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
+    }
+    // On a server channel, require MANAGE_CHANNELS; DMs are open to participants.
+    let server_id: Option<String> =
+        sqlx::query_scalar("SELECT server_id FROM channels WHERE id = ?")
+            .bind(&channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+    if let Some(sid) = server_id {
+        if !crate::api::roles::has_perm(
+            &state,
+            &sid,
+            &auth.0,
+            crate::api::roles::perm::MANAGE_CHANNELS,
+        )
+        .await
+        {
+            return Err((StatusCode::FORBIDDEN, "need Manage Channels".into()));
+        }
+    }
+    // Clamp to a sane range (max 7 days); 0/None/negative disables.
+    let secs = body.seconds.filter(|s| *s > 0).map(|s| s.min(7 * 86_400));
+    sqlx::query("UPDATE channels SET disappearing_seconds = ? WHERE id = ?")
+        .bind(secs)
+        .bind(&channel_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    broadcast_to_channel(
+        &state,
+        &channel_id,
+        &GatewayEvent::DisappearingUpdate {
+            channel_id: channel_id.clone(),
+            seconds: secs,
+        },
+    )
+    .await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct SenderKeyBody {
+    /// recipient user_id → pairwise-encrypted SKDM envelope (only they can open it).
+    pub envelopes: std::collections::HashMap<String, String>,
+}
+
+/// POST /channels/{id}/sender-key — relay a member's encrypted Sender Key Distribution
+/// Messages to the group (group E2E bootstrap). The server only forwards opaque
+/// ciphertext; it never sees the sender key.
+pub async fn distribute_sender_key(
+    auth: AuthUser,
+    Path(channel_id): Path<String>,
+    State(state): State<AppState>,
+    Json(body): Json<SenderKeyBody>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if !user_can_access(&state, &channel_id, &auth.0).await {
+        return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
+    }
+    if body.envelopes.len() > 64 {
+        return Err((StatusCode::BAD_REQUEST, "too many recipients".into()));
+    }
+    for (uid, envelope) in body.envelopes {
+        if envelope.len() > 20_000 {
+            continue;
+        }
+        crate::gateway::broadcast_to_user(
+            &state.sessions,
+            &uid,
+            &GatewayEvent::SenderKeyDistribution {
+                channel_id: channel_id.clone(),
+                from_user_id: auth.0.clone(),
+                envelope,
+            },
+        );
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Delete disappearing messages whose TTL has lapsed and tell connected clients.
+/// Driven by a periodic task in `main`. Bounded per pass so a huge backlog can't
+/// monopolize the connection (the next pass picks up the rest).
+pub async fn sweep_expired(state: &AppState) {
+    let now = now_unix();
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT id, channel_id FROM messages
+         WHERE expires_at IS NOT NULL AND expires_at <= ? LIMIT 500",
+    )
+    .bind(now)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+    if rows.is_empty() {
+        return;
+    }
+    for (id, channel_id) in rows {
+        if sqlx::query("DELETE FROM messages WHERE id = ?")
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .is_err()
+        {
+            continue;
+        }
+        if crate::search::search_enabled() {
+            tokio::spawn(crate::search::delete_message(id.clone()));
+        }
+        broadcast_to_channel(
+            state,
+            &channel_id,
+            &GatewayEvent::MessageDelete {
+                id,
+                channel_id: channel_id.clone(),
+            },
+        )
+        .await;
+    }
 }

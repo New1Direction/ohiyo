@@ -12,6 +12,7 @@ import { BirdMark } from "./BirdMark";
 import { PollWidget } from "./PollWidget";
 import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions";
+import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { Icon } from "./Icon";
 
 // ── Link preview types ────────────────────────────────────────────────────────
@@ -62,6 +63,10 @@ type Props = {
   /** Whether this DM is in end-to-end encrypted mode, and the toggle (DMs only). */
   e2eEnabled?: boolean;
   onToggleE2e?: () => void;
+  /** Lazily compute the Signal safety number for the peer (null if no session yet). */
+  onRequestSafetyNumber?: () => Promise<string | null>;
+  /** Set this channel's disappearing-message TTL in seconds (null turns it off). */
+  onSetDisappearing?: (seconds: number | null) => void;
 };
 
 /** Delivered / Seen line under your latest sent message — DMs only (iMessage-style). */
@@ -143,6 +148,8 @@ export function ChatPane({
   onWatchControl,
   e2eEnabled = false,
   onToggleE2e,
+  onRequestSafetyNumber,
+  onSetDisappearing,
 }: Props) {
   const [input, setInput] = useState("");
   const [watchInput, setWatchInput] = useState<string | null>(null);
@@ -165,6 +172,14 @@ export function ChatPane({
   const [emojiPickerFor, setEmojiPickerFor] = useState<string | null>(null);
   const [pickerPos, setPickerPos] = useState<{ x: number; y: number } | null>(null);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
+  // Signal safety number: revealed only on demand (optional verification).
+  const [safety, setSafety] = useState<{ open: boolean; value: string | null; loading: boolean }>({
+    open: false,
+    value: null,
+    loading: false,
+  });
+  // Disappearing-message duration picker (open on demand from the header clock).
+  const [disappearOpen, setDisappearOpen] = useState(false);
   const profileAnchorRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<List>(null);
   const listOuterRef = useRef<HTMLDivElement>(null);
@@ -254,6 +269,8 @@ export function ChatPane({
     setInput(next ? draftsRef.current[next] ?? "" : "");
     setReplyTarget(null);
     setMention(null);
+    setSafety({ open: false, value: null, loading: false }); // safety number is per-peer
+    setDisappearOpen(false);
     prevChannelRef.current = next;
     forceBottomRef.current = true; // a freshly-opened channel starts at the bottom
     setShowJump(false);
@@ -548,6 +565,70 @@ export function ChatPane({
             {e2eEnabled ? "🔒" : "🔓"}
           </button>
         )}
+        {onSetDisappearing && (
+          <div className="relative flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setDisappearOpen((v) => !v)}
+              aria-label="Disappearing messages"
+              aria-expanded={disappearOpen}
+              title={
+                channel?.disappearing_seconds
+                  ? `Disappearing messages: ${formatDuration(channel.disappearing_seconds)}`
+                  : "Disappearing messages"
+              }
+              className="kc-icon-btn flex-shrink-0 text-base"
+              style={channel?.disappearing_seconds ? { color: "var(--accent)" } : undefined}
+            >
+              ⏱️
+            </button>
+            {disappearOpen && (
+              <>
+                <button
+                  type="button"
+                  aria-hidden
+                  tabIndex={-1}
+                  className="fixed inset-0 z-10"
+                  style={{ background: "transparent", cursor: "default" }}
+                  onClick={() => setDisappearOpen(false)}
+                />
+                <div
+                  className="kc-float absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg py-1"
+                  style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}
+                  role="listbox"
+                  aria-label="Disappearing message duration"
+                >
+                  <div
+                    className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide"
+                    style={{ color: "var(--text-secondary)" }}
+                  >
+                    Disappear after
+                  </div>
+                  {DISAPPEAR_OPTIONS.map((opt) => {
+                    const active = (channel?.disappearing_seconds ?? null) === opt.seconds;
+                    return (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        className="kc-interactive flex w-full items-center justify-between px-3 py-1.5 text-sm"
+                        style={{ color: active ? "var(--accent)" : "var(--text-primary)", background: "transparent" }}
+                        onClick={() => {
+                          onSetDisappearing(opt.seconds);
+                          setDisappearOpen(false);
+                        }}
+                      >
+                        <span>{opt.label}</span>
+                        {active && <span aria-hidden>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Upload progress */}
@@ -570,12 +651,73 @@ export function ChatPane({
         </div>
       )}
 
-      {e2eEnabled && (
-        <div className="kc-e2e-banner mx-3 mt-2 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs">
-          🔒{" "}
+      {channel?.disappearing_seconds ? (
+        <div
+          className="mx-3 mt-2 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs"
+          style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }}
+        >
+          ⏱️{" "}
           <span>
-            <strong>Switched to end-to-end encrypted.</strong> Messages here are encrypted on your device — not even the server can read them.
+            <strong style={{ color: "var(--text-primary)" }}>Disappearing messages on.</strong> New messages here vanish{" "}
+            {formatDuration(channel.disappearing_seconds)} after they're sent.
           </span>
+        </div>
+      ) : null}
+
+      {e2eEnabled && (
+        <div className="kc-e2e-banner mx-3 mt-2 rounded-md px-3 py-1.5 text-xs">
+          <div className="flex items-center gap-2">
+            🔒{" "}
+            <span>
+              <strong>Switched to end-to-end encrypted.</strong> Messages here are encrypted on your device — not even the server can read them.
+            </span>
+            {onRequestSafetyNumber && (
+              <button
+                type="button"
+                aria-label="Verify encryption safety number"
+                aria-expanded={safety.open}
+                className="kc-interactive ml-auto flex-shrink-0 rounded px-2 py-0.5 font-semibold whitespace-nowrap"
+                style={{ border: "1px solid var(--accent)", color: "var(--accent)", cursor: "pointer", background: "transparent" }}
+                onClick={async () => {
+                  if (safety.open) {
+                    setSafety((s) => ({ ...s, open: false }));
+                    return;
+                  }
+                  setSafety({ open: true, value: null, loading: true });
+                  try {
+                    const value = await onRequestSafetyNumber();
+                    setSafety({ open: true, value, loading: false });
+                  } catch (err) {
+                    console.error("safety number failed", err);
+                    setSafety({ open: true, value: null, loading: false });
+                  }
+                }}
+              >
+                {safety.open ? "Hide" : "Verify"}
+              </button>
+            )}
+          </div>
+          {safety.open && (
+            <div className="mt-2 border-t pt-2" style={{ borderColor: "var(--bg-hover)" }}>
+              {safety.loading ? (
+                <span style={{ color: "var(--text-secondary)" }}>Computing safety number…</span>
+              ) : safety.value ? (
+                <>
+                  <code className="block font-mono leading-relaxed tracking-wider" style={{ wordBreak: "break-all" }}>
+                    {(safety.value.match(/.{1,5}/g) ?? [safety.value]).join(" ")}
+                  </code>
+                  <span className="mt-1 block" style={{ color: "var(--text-secondary)" }}>
+                    Compare these digits with your friend in person or over a call you trust. If they match, no one is
+                    intercepting your messages.
+                  </span>
+                </>
+              ) : (
+                <span style={{ color: "var(--text-secondary)" }}>
+                  No secure session yet — send a message first, then verify.
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -710,6 +852,14 @@ export function ChatPane({
                               {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={!!(msg.embeds && msg.embeds.length)} />}
                               {msg.edited_at && (
                                 <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 5 }}>(edited)</span>
+                              )}
+                              {msg.expires_at && (
+                                <span
+                                  title="Disappearing message"
+                                  style={{ fontSize: 11, color: "var(--accent)", marginLeft: 6 }}
+                                >
+                                  ⏱️ {timeLeft(msg.expires_at)}
+                                </span>
                               )}
                               {msg.attachments && msg.attachments.length > 0 && (
                                 <AttachmentList attachments={msg.attachments} />

@@ -40,6 +40,10 @@ pub fn router() -> Router<AppState> {
         .route("/users/search", get(users::search_users))
         .route("/users/@me/dms", get(users::list_dms))
         .route("/users/@me/dms", post(users::open_dm))
+        .route("/users/@me/group-dms", post(users::open_group_dm))
+        .route("/channels/{channel_id}/recipients", get(users::list_recipients))
+        .route("/users/@me/deadman", get(users::get_deadman))
+        .route("/users/@me/deadman", post(users::set_deadman))
         // Profile
         .route("/users/@me/profile", get(profile::get_profile))
         .route("/users/@me/profile", patch(profile::update_profile))
@@ -137,6 +141,14 @@ pub fn router() -> Router<AppState> {
             post(messages::send_message),
         )
         .route("/channels/{channel_id}/reads", get(messages::list_reads))
+        .route(
+            "/channels/{channel_id}/disappearing",
+            patch(messages::set_disappearing),
+        )
+        .route(
+            "/channels/{channel_id}/sender-key",
+            post(messages::distribute_sender_key),
+        )
         .route("/channels/{channel_id}/watch", get(watch::get_watch))
         .route(
             "/channels/{channel_id}/messages/{id}",
@@ -193,7 +205,7 @@ pub fn router() -> Router<AppState> {
         // Signal Protocol (X3DH) prekey directory — forward-secret sessions
         .route("/signal/keys", post(signal::publish_keys))
         .route("/signal/keys/count", get(signal::prekey_count))
-        .route("/users/{user_id}/prekey-bundle", get(signal::get_bundle))
+        .route("/users/{user_id}/prekey-bundles", get(signal::get_bundles))
         // WebRTC ICE config: STUN + time-limited TURN credentials
         .route("/ice-servers", get(ice::ice_servers))
         // LiveKit SFU: feature-flagged config + room-scoped join tokens

@@ -30,6 +30,17 @@ import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendin
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
 import { myKeyPair, deriveSharedKey, encryptMessage, decryptMessage, isEncrypted } from "./lib/e2e";
+import { initSignal, encryptFor, decryptFrom, isSignalCiphertext, safetyNumber } from "./lib/signal";
+import { cachePlaintext, getCachedPlaintext } from "./lib/e2eCache";
+import {
+  groupEncrypt,
+  groupDecrypt,
+  isGroupCiphertext,
+  buildDistribution,
+  installDistribution,
+} from "./lib/senderKeys";
+import { formatDuration } from "./lib/disappearing";
+import { initVaultBackend } from "./lib/tauriVault";
 import type { UseWebRTCReturn } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -184,11 +195,20 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   useEffect(() => {
     if (!currentUser) return;
     let alive = true;
-    myKeyPair()
-      .then((kp) => {
-        if (alive) void api.publishKey(token, JSON.stringify(kp.publicJwk));
-      })
-      .catch(() => {});
+    void (async () => {
+      // Desktop: move E2E key storage into the native locked-RAM vault BEFORE any key
+      // access (no-op + localStorage in a browser). Keys never sit plaintext on disk.
+      await initVaultBackend();
+      if (!alive) return;
+      myKeyPair()
+        .then((kp) => {
+          if (alive) void api.publishKey(token, JSON.stringify(kp.publicJwk));
+        })
+        .catch(() => {});
+      // Generate + publish Signal prekeys (forward-secret X3DH sessions). Idempotent;
+      // makes every signed-in user Signal-capable. The DM-flow switch builds on this.
+      void initSignal(token);
+    })();
     return () => {
       alive = false;
     };
@@ -227,6 +247,23 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   });
 
   useEffect(() => { selectedChannelRef.current = selectedChannel; }, [selectedChannel]);
+
+  // Disappearing messages: prune locally the instant a message's TTL lapses, so it
+  // vanishes immediately rather than lingering until the server's sweep broadcast.
+  // The interval only runs while at least one timed message is on screen.
+  const hasTimedMessages = messages.some((m) => m.expires_at);
+  useEffect(() => {
+    if (!hasTimedMessages) return;
+    const id = setInterval(() => {
+      const now = Math.floor(Date.now() / 1000);
+      setMessages((prev) =>
+        prev.some((m) => m.expires_at && m.expires_at <= now)
+          ? prev.filter((m) => !(m.expires_at && m.expires_at <= now))
+          : prev
+      );
+    }, 1000);
+    return () => clearInterval(id);
+  }, [hasTimedMessages]);
   useEffect(() => {
     currentUserRef.current = currentUser;
     window.__kikkacordUser = currentUser;
@@ -317,7 +354,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         typing.clearTyping(msg.channel_id, msg.author.id);
         if (selectedChannelRef.current?.id === msg.channel_id) {
           setMessages((prev) => [...prev, msg]);
-          if (isEncrypted(msg.content)) {
+          if (isEncrypted(msg.content) || isSignalCiphertext(msg.content) || isGroupCiphertext(msg.content)) {
             void decryptMessages(msg.channel_id, [msg]).then((dec) => {
               const dm = dec[0];
               if (dm) setMessages((prev) => prev.map((m) => (m.id === dm.id ? dm : m)));
@@ -343,7 +380,11 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
             return next;
           });
         }
-        maybeNotify(isEncrypted(msg.content) ? { ...msg, content: "🔒 Sent an encrypted message" } : msg);
+        maybeNotify(
+          isEncrypted(msg.content) || isSignalCiphertext(msg.content) || isGroupCiphertext(msg.content)
+            ? { ...msg, content: "🔒 Sent an encrypted message" }
+            : msg
+        );
         pluginManagerRef.current.emit("message", msg);
         break;
       }
@@ -357,6 +398,29 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       case "MessageDelete":
         setMessages((prev) => prev.filter((m) => m.id !== event.d.id));
         break;
+
+      case "DisappearingUpdate": {
+        const { channel_id, seconds } = event.d;
+        const patch = (c: Channel): Channel =>
+          c.id === channel_id ? { ...c, disappearing_seconds: seconds } : c;
+        setDms((prev) => prev.map(patch));
+        setServers((prev) => prev.map((s) => ({ ...s, channels: s.channels.map(patch) })));
+        setSelectedChannel((prev) => (prev ? patch(prev) : prev));
+        if (selectedChannelRef.current?.id === channel_id) {
+          toast(seconds ? `Disappearing messages: ${formatDuration(seconds)}` : "Disappearing messages off");
+        }
+        break;
+      }
+
+      case "SenderKeyDistribution": {
+        // A group member handed us their sender key (group E2E bootstrap). Decrypt the
+        // pairwise envelope and install it so we can read their group messages.
+        const { channel_id, from_user_id, envelope } = event.d;
+        void decryptFrom(from_user_id, envelope).then((skdm) => {
+          if (skdm) installDistribution(channel_id, from_user_id, skdm);
+        });
+        break;
+      }
 
       case "ServerCreate":
         // Upsert: also used as a "server changed" signal (categories, channel moves).
@@ -372,13 +436,16 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         break;
 
       case "ChannelCreate":
-        setServers((prev) =>
-          prev.map((s) =>
-            s.id === event.d.server_id
-              ? { ...s, channels: [...s.channels, event.d] }
-              : s
-          )
-        );
+        if (event.d.server_id) {
+          setServers((prev) =>
+            prev.map((s) =>
+              s.id === event.d.server_id ? { ...s, channels: [...s.channels, event.d] } : s
+            )
+          );
+        } else {
+          // A DM / group DM (no server) → add it to the DM list live.
+          setDms((prev) => (prev.some((d) => d.id === event.d.id) ? prev : [event.d, ...prev]));
+        }
         break;
 
       case "MemberJoin": {
@@ -643,8 +710,15 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     }
   }
 
+  // Resolve a DM peer's user id (learned from message authors, or dmUsers).
+  const dmPeerId = useCallback(
+    (channelId: string): string | undefined =>
+      dmPeerRef.current.get(channelId) ?? dmUsersRef.current[channelId]?.id,
+    []
+  );
+
   // E2E: derive (and cache) the shared AES key for a DM from my private key + the
-  // peer's published public key — the user never sees or trades a key.
+  // peer's published public key (LEGACY static-key scheme; new sessions use Signal).
   const getDmKey = useCallback(
     async (channelId: string): Promise<CryptoKey | null> => {
       const cached = dmKeyCacheRef.current.get(channelId);
@@ -666,10 +740,41 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     [token]
   );
 
-  // Decrypt any E2E ciphertext in a message list for display (plaintext stays local).
+  // Decrypt E2E ciphertext in a message list for display (plaintext stays on-device).
+  // Two schemes coexist: forward-secret Signal (`sig1.`) and legacy static-key (`v1.`).
+  // Signal messages can only be decrypted once — the ratchet destroys the key — so we
+  // cache the plaintext locally and reuse it on later reloads.
+  // Group E2E (sender keys): distribute MY sender key to every other group member,
+  // encrypted pairwise so the server stays blind. Idempotent — once per group/session.
+  const distributedGroupsRef = useRef<Set<string>>(new Set());
+  const distributeMySenderKey = useCallback(
+    async (channelId: string) => {
+      if (distributedGroupsRef.current.has(channelId)) return;
+      distributedGroupsRef.current.add(channelId);
+      try {
+        const recipients = await api.listRecipients(token, channelId);
+        const myId = currentUserRef.current?.id;
+        const skdm = await buildDistribution(channelId);
+        const envelopes: Record<string, string> = {};
+        for (const r of recipients) {
+          if (r.id === myId) continue;
+          const env = await encryptFor(token, r.id, skdm);
+          if (env) envelopes[r.id] = env;
+        }
+        if (Object.keys(envelopes).length) await api.distributeSenderKey(token, channelId, envelopes);
+      } catch {
+        distributedGroupsRef.current.delete(channelId); // allow a retry on next send
+      }
+    },
+    [token]
+  );
+
   const decryptMessages = useCallback(
     async (channelId: string, msgs: Message[]): Promise<Message[]> => {
-      if (!msgs.some((m) => isEncrypted(m.content))) return msgs;
+      if (
+        !msgs.some((m) => isEncrypted(m.content) || isSignalCiphertext(m.content) || isGroupCiphertext(m.content))
+      )
+        return msgs;
       // The conversation is encrypted → reflect it locally (sticky + mutual): the
       // recipient's UI flips to encrypted mode and their replies encrypt too.
       setE2eChannels((prev) => {
@@ -685,37 +790,68 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         const peer = msgs.find((m) => m.author.id !== myId)?.author.id;
         if (peer) dmPeerRef.current.set(channelId, peer);
       }
-      const key = await getDmKey(channelId);
-      return Promise.all(
-        msgs.map(async (m) => {
-          if (!isEncrypted(m.content)) return m;
-          const pt = key ? await decryptMessage(key, m.content) : null;
-          return { ...m, content: pt ?? "🔒 Encrypted message", _encrypted: true };
-        })
-      );
+      const peerId = dmPeerId(channelId);
+      // Legacy static key only fetched if any v1 messages are present.
+      const legacyKey = msgs.some((m) => isEncrypted(m.content)) ? await getDmKey(channelId) : null;
+      // Sequential: the Double Ratchet requires in-order processing of new messages.
+      const out: Message[] = [];
+      for (const m of msgs) {
+        if (isGroupCiphertext(m.content)) {
+          // Group sender-key message — decrypt from the message author's sender key.
+          const cached = getCachedPlaintext(m.id);
+          if (cached !== null) {
+            out.push({ ...m, content: cached, _encrypted: true });
+            continue;
+          }
+          const pt = await groupDecrypt(channelId, m.author.id, m.content);
+          if (pt !== null) cachePlaintext(m.id, pt);
+          out.push({ ...m, content: pt ?? "🔒 Encrypted message", _encrypted: true });
+        } else if (isSignalCiphertext(m.content)) {
+          const cached = getCachedPlaintext(m.id);
+          if (cached !== null) {
+            out.push({ ...m, content: cached, _encrypted: true });
+            continue;
+          }
+          const pt = peerId ? await decryptFrom(peerId, m.content) : null;
+          if (pt !== null) cachePlaintext(m.id, pt);
+          out.push({ ...m, content: pt ?? "🔒 Encrypted message", _encrypted: true });
+        } else if (isEncrypted(m.content)) {
+          const pt = legacyKey ? await decryptMessage(legacyKey, m.content) : null;
+          out.push({ ...m, content: pt ?? "🔒 Encrypted message", _encrypted: true });
+        } else {
+          out.push(m);
+        }
+      }
+      return out;
     },
-    [getDmKey]
+    [getDmKey, dmPeerId]
   );
 
   // Flip a DM into (or out of) end-to-end encrypted mode — persisted; the chat shifts
   // to a darker "encrypted" look. Keys are handled automatically; the user just clicks.
   const toggleE2e = useCallback(
     (channelId: string) => {
+      const isGroup = selectedChannelRef.current?.channel_type === "group_dm";
       setE2eChannels((prev) => {
         const next = new Set(prev);
         if (next.has(channelId)) {
           next.delete(channelId);
         } else {
           next.add(channelId);
-          void getDmKey(channelId).then((k) => {
-            if (!k) toast("Your friend hasn't set up encryption yet — they just need to open Kikkacord once.");
-          });
+          if (isGroup) {
+            // Group: hand my sender key to every member so they can read my messages.
+            void distributeMySenderKey(channelId);
+          } else {
+            void getDmKey(channelId).then((k) => {
+              if (!k) toast("Your friend hasn't set up encryption yet — they just need to open Kikkacord once.");
+            });
+          }
         }
         localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
         return next;
       });
     },
-    [getDmKey, toast]
+    [getDmKey, toast, distributeMySenderKey]
   );
 
   const handleSend = useCallback(
@@ -748,13 +884,41 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       }
       try {
         const cid = selectedChannelRef.current!.id;
+        const isGroup = selectedChannelRef.current!.channel_type === "group_dm";
         let wire = content;
         // E2E: encrypt on this device before it leaves — the server only sees ciphertext.
         if (content && e2eChannelsRef.current.has(cid)) {
-          const key = await getDmKey(cid);
-          if (key) wire = await encryptMessage(key, content);
+          if (isGroup) {
+            // Group: encrypt once with our sender key (every member decrypts the same
+            // ciphertext). Ensure our key is distributed first (idempotent).
+            await distributeMySenderKey(cid);
+            const g = await groupEncrypt(cid, content);
+            if (g) wire = g;
+          } else {
+            // 1:1: prefer the forward-secret Signal session; fall back to the legacy
+            // static key if the peer hasn't published Signal prekeys yet.
+            const peerId = dmPeerId(cid);
+            const sig = peerId ? await encryptFor(token, peerId, content) : null;
+            if (sig) {
+              wire = sig;
+            } else {
+              const key = await getDmKey(cid);
+              if (key) wire = await encryptMessage(key, content);
+              else toast("Your friend hasn't set up encryption yet — they just need to open Kikkacord once.");
+            }
+          }
         }
-        await api.sendMessage(token, cid, wire, attachmentIds, replyTo);
+        const created = await api.sendMessage(token, cid, wire, attachmentIds, replyTo);
+        // Forward secrecy: we can't decrypt our own outgoing ciphertext later (1:1
+        // ratchet or group sender key), so cache the plaintext by the real message id.
+        if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
+          cachePlaintext(created.id, content);
+          // If the gateway echo already rendered this as a placeholder (it can't
+          // self-decrypt), patch it back to plaintext now.
+          setMessages((prev) =>
+            prev.map((m) => (m.id === created.id ? { ...m, content, _encrypted: true } : m))
+          );
+        }
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         removeFromOutbox(tempId);
       } catch {
@@ -763,7 +927,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         setOutboxState(tempId, "failed");
       }
     },
-    [token, getDmKey]
+    [token, getDmKey, dmPeerId, toast, distributeMySenderKey]
   );
 
   // Retry a failed/queued message using its stored send args.
@@ -776,10 +940,27 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       try {
         let wire = send.content;
         if (send.content && e2eChannelsRef.current.has(msg.channel_id)) {
-          const key = await getDmKey(msg.channel_id);
-          if (key) wire = await encryptMessage(key, send.content);
+          // A group sender key exists only for group channels (else null → 1:1 path).
+          const g = await groupEncrypt(msg.channel_id, send.content);
+          if (g) {
+            wire = g;
+          } else {
+            const peerId = dmPeerId(msg.channel_id);
+            const sig = peerId ? await encryptFor(token, peerId, send.content) : null;
+            if (sig) wire = sig;
+            else {
+              const key = await getDmKey(msg.channel_id);
+              if (key) wire = await encryptMessage(key, send.content);
+            }
+          }
         }
-        await api.sendMessage(token, msg.channel_id, wire, send.attachmentIds, send.replyTo ?? null);
+        const created = await api.sendMessage(token, msg.channel_id, wire, send.attachmentIds, send.replyTo ?? null);
+        if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
+          cachePlaintext(created.id, send.content);
+          setMessages((prev) =>
+            prev.map((m) => (m.id === created.id ? { ...m, content: send.content, _encrypted: true } : m))
+          );
+        }
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
         removeFromOutbox(msg.id);
       } catch {
@@ -787,7 +968,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         setOutboxState(msg.id, "failed");
       }
     },
-    [token, getDmKey]
+    [token, getDmKey, dmPeerId]
   );
 
   // Drop a failed message (it never reached the server).
@@ -1119,7 +1300,31 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         watchSession={watchSession}
         onWatchControl={sendWatchControl}
         e2eEnabled={selectedChannel ? e2eChannels.has(selectedChannel.id) : false}
-        onToggleE2e={selectedChannel?.channel_type === "dm" ? () => toggleE2e(selectedChannel.id) : undefined}
+        onToggleE2e={
+          selectedChannel?.channel_type === "dm" || selectedChannel?.channel_type === "group_dm"
+            ? () => toggleE2e(selectedChannel.id)
+            : undefined
+        }
+        onRequestSafetyNumber={
+          selectedChannel?.channel_type === "dm"
+            ? async () => {
+                const peer = dmPeerId(selectedChannel.id);
+                const me = currentUser?.id;
+                return peer && me ? safetyNumber(me, peer) : null;
+              }
+            : undefined
+        }
+        onSetDisappearing={
+          selectedChannel
+            ? async (seconds) => {
+                try {
+                  await api.setDisappearing(token, selectedChannel.id, seconds);
+                } catch {
+                  toast("Couldn't update disappearing messages.");
+                }
+              }
+            : undefined
+        }
       />
 
       {/* Voice / video / screen-share call overlay */}

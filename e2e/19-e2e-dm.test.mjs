@@ -64,6 +64,29 @@ try {
   log("B opened the DM and DECRYPTED A's message ✓");
   await shot(pageB, "36-e2e-decrypted");
 
+  // ── B verifies the Signal safety number (optional identity check, one click) ──
+  await pageB.click('button[aria-label="Verify encryption safety number"]');
+  await pageB.waitForSelector("text=/Compare these digits/", { timeout: 6000 });
+  log("B revealed the Signal safety number (MITM verification) ✓");
+
+  // ── B replies — its UI auto-flipped to encrypted (sticky + mutual) → A decrypts ──
+  const reply = `reply-secret-${u}`;
+  const composerB = pageB.locator('input[placeholder="Say something…"]');
+  await composerB.fill(reply);
+  await composerB.press("Enter");
+  await pageA.waitForSelector(`text=${reply}`, { timeout: 10000 });
+  log("B replied (mutual encryption, no toggle) and A DECRYPTED it ✓");
+
+  // ── A reloads: own sent message + B's reply both survive (forward-secrecy cache).
+  //    The Double Ratchet can't re-decrypt either, so this proves the local cache. ──
+  await pageA.reload({ waitUntil: "domcontentloaded" });
+  await pageA.click('button[aria-label="Direct Messages"]');
+  await pageA.waitForSelector('button:has-text("Direct Message")', { timeout: 8000 });
+  await pageA.click('button:has-text("Direct Message")');
+  await pageA.waitForSelector(`text=${secret}`, { timeout: 10000 });
+  await pageA.waitForSelector(`text=${reply}`, { timeout: 10000 });
+  log("A reloaded → own message + reply both still readable (forward-secrecy cache) ✓");
+
   // ── PROOF: the server stored only CIPHERTEXT (it cannot read the message) ──
   const tokenA = await pageA.evaluate(() => localStorage.getItem("token"));
   const dms = await (
@@ -76,11 +99,15 @@ try {
   ).json();
   const stored = msgs[msgs.length - 1]?.content ?? "";
   if (stored.includes(secret)) throw new Error(`server stored PLAINTEXT! content="${stored}"`);
-  if (!/^v1\./.test(stored)) throw new Error(`server content is not our ciphertext envelope: "${stored}"`);
+  // Both users publish Signal prekeys on login, so the flow uses the forward-secret
+  // multi-device Signal envelope (`sig2.`). `sig1.` is the older single-device format
+  // and `v1.` the legacy static scheme — both kept only as fallbacks.
+  if (!/^(sig2|sig1|v1)\./.test(stored)) throw new Error(`server content is not our ciphertext envelope: "${stored}"`);
+  if (!/^sig2\./.test(stored)) console.warn(`  ⚠ stored as "${stored.slice(0, 6)}…" — expected multi-device sig2.`);
   log(`server stores ciphertext only: "${stored.slice(0, 30)}…" (NOT the plaintext) ✓`);
 
   console.log(
-    "\n✅ E2E DM FLOW PASSED (one-click toggle → encrypt → peer decrypts; server sees only ciphertext)"
+    `\n✅ E2E DM FLOW PASSED (one-click toggle → ${/^sig2\./.test(stored) ? "Signal forward-secret multi-device" : "legacy"} encrypt → peer decrypts; server sees only ciphertext)`
   );
 } catch (err) {
   failed = true;

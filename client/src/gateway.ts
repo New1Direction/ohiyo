@@ -28,6 +28,8 @@ export type GatewayEvent =
   | { t: "MessageCreate"; d: Message }
   | { t: "MessageUpdate"; d: Message }
   | { t: "MessageDelete"; d: { id: string; channel_id: string } }
+  | { t: "DisappearingUpdate"; d: { channel_id: string; seconds: number | null } }
+  | { t: "SenderKeyDistribution"; d: { channel_id: string; from_user_id: string; envelope: string } }
   | { t: "ServerCreate"; d: ServerWithChannels }
   | { t: "ServerDelete"; d: { id: string } }
   | { t: "ChannelCreate"; d: Channel }

@@ -93,6 +93,20 @@ async fn main() -> anyhow::Result<()> {
         watch: gateway::new_watch_sessions(),
     };
 
+    // Disappearing messages: a periodic sweeper deletes lapsed messages server-side
+    // and notifies connected clients (so ciphertext doesn't linger past its TTL).
+    {
+        let sweep_state = state.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                api::messages::sweep_expired(&sweep_state).await;
+                // Account-level dead-man's switch: wipe data for users gone too long.
+                api::users::sweep_deadman(&sweep_state).await;
+            }
+        });
+    }
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
