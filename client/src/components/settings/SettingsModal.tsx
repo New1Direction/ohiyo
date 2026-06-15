@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { PublicUser, ServerEmoji, ServerWithChannels } from "../../api";
 import { API_BASE, FILE_BASE, api } from "../../api";
-import type { Theme } from "../../themes";
+import type { Theme, ThemeVar } from "../../themes";
 import {
   BUILTIN_THEMES,
   getCustomThemes,
@@ -11,11 +11,14 @@ import {
   exportTheme,
   importTheme,
   loadTheme,
+  createCustomTheme,
+  THEME_VAR_GROUPS,
 } from "../../themes";
+import { isValidHex } from "../../lib/color";
 import type { PluginManager } from "../../plugins/registry";
 import { isDesktop } from "../../lib/desktop";
 import { burnVault } from "../../lib/tauriVault";
-import { ACCENT_PRESETS, getActiveAccent, loadAccent, setAccent } from "../../lib/appearance";
+import { ACCENT_PRESETS, applyActiveAppearance, getActiveAccent, loadAccent, setAccent } from "../../lib/appearance";
 
 type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
 
@@ -136,6 +139,40 @@ function AppearanceTab({ onToast }: { onToast: (t: string, type?: "info" | "succ
     setAccentVal(currentTheme.vars["--accent"]);
     setAccentOverride(false);
     onToast("Accent reset to theme default", "success");
+  }
+
+  // ── Visual theme editor ──────────────────────────────────────────────────
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftVars, setDraftVars] = useState<ThemeVar>(() => ({ ...currentTheme.vars }));
+
+  function openEditor() {
+    setDraftVars({ ...currentTheme.vars });
+    setDraftName("");
+    setEditing(true);
+  }
+
+  function editVar(key: keyof ThemeVar, value: string) {
+    document.documentElement.style.setProperty(key, value); // live preview
+    setDraftVars((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function cancelEditor() {
+    setEditing(false);
+    applyActiveAppearance(); // restore the real active theme + accent
+  }
+
+  function saveEditor() {
+    const theme = createCustomTheme(draftName, draftVars);
+    saveCustomTheme(theme);
+    setCustomThemes(getCustomThemes());
+    applyTheme(theme);
+    setAccent(null); // the edited theme's own accent wins; drop any override
+    setCurrentTheme(theme);
+    setAccentVal(theme.vars["--accent"]);
+    setAccentOverride(false);
+    setEditing(false);
+    onToast(`Theme "${theme.name}" saved`, "success");
   }
 
   function handleExport(theme: Theme) {
@@ -302,7 +339,84 @@ function AppearanceTab({ onToast }: { onToast: (t: string, type?: "info" | "succ
         })}
       </div>
 
-      {/* Export / Import */}
+      {/* Build your own theme — visual editor (no JSON required) */}
+      <div className="mb-6">
+        {!editing ? (
+          <button
+            type="button"
+            onClick={openEditor}
+            className="kc-interactive rounded-lg px-4 py-2 text-sm font-semibold"
+            style={{ background: "var(--bg-sidebar)", color: "var(--text-primary)", border: "1px solid var(--bg-hover)" }}
+          >
+            🎨 Create your own theme
+          </button>
+        ) : (
+          <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)" }}>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-semibold">Create your own theme</div>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Changes preview live ✨
+              </span>
+            </div>
+            <input
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              placeholder="Theme name"
+              aria-label="Theme name"
+              className="mb-4 w-full rounded px-3 py-2 text-sm outline-none"
+              style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
+            />
+            {THEME_VAR_GROUPS.map((grp) => (
+              <div key={grp.group} className="mb-3">
+                <div
+                  className="mb-1.5 text-xs font-semibold uppercase"
+                  style={{ color: "var(--text-muted)", letterSpacing: "0.04em" }}
+                >
+                  {grp.group}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
+                  {grp.vars.map((v) => (
+                    <label
+                      key={v.key}
+                      className="flex items-center gap-2 text-xs"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
+                      <input
+                        type="color"
+                        value={isValidHex(draftVars[v.key]) ? draftVars[v.key] : "#000000"}
+                        onChange={(e) => editVar(v.key, e.target.value)}
+                        aria-label={`${grp.group} ${v.label} color`}
+                        className="kc-color-input"
+                      />
+                      {v.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={saveEditor}
+                className="rounded px-3 py-1.5 text-sm font-semibold"
+                style={{ background: "var(--accent)", color: "#fff" }}
+              >
+                Save theme
+              </button>
+              <button
+                type="button"
+                onClick={cancelEditor}
+                className="kc-interactive rounded px-3 py-1.5 text-sm"
+                style={{ color: "var(--text-secondary)", border: "1px solid var(--bg-hover)", background: "transparent" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Export / Import (advanced) */}
       <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)" }}>
         <div className="mb-2 font-semibold text-sm">Import / Export Theme</div>
         <button

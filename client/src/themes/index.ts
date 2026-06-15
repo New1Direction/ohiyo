@@ -226,3 +226,49 @@ export function importTheme(json: string): Theme {
   if (!t.id || !t.name || !t.vars) throw new Error("Invalid theme JSON");
   return t;
 }
+
+// ── Visual theme editor support ─────────────────────────────────────────────
+/** The 12 theme colors grouped + labeled for the editor's color pickers. */
+export const THEME_VAR_GROUPS: { group: string; vars: { key: keyof ThemeVar; label: string }[] }[] = [
+  {
+    group: "Backgrounds",
+    vars: [
+      { key: "--bg-base", label: "Base" },
+      { key: "--bg-sidebar", label: "Sidebar" },
+      { key: "--bg-channel", label: "Channel" },
+      { key: "--bg-input", label: "Input" },
+      { key: "--bg-hover", label: "Hover" },
+    ],
+  },
+  {
+    group: "Text",
+    vars: [
+      { key: "--text-primary", label: "Primary" },
+      { key: "--text-secondary", label: "Secondary" },
+      { key: "--text-muted", label: "Muted" },
+    ],
+  },
+  {
+    group: "Accents",
+    vars: [
+      { key: "--accent", label: "Accent" },
+      { key: "--accent-hover", label: "Accent hover" },
+      { key: "--green", label: "Success" },
+      { key: "--danger", label: "Danger" },
+    ],
+  },
+];
+
+/** A unique id for a user-built theme. */
+export function makeThemeId(): string {
+  const rnd =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+  return "custom-" + rnd;
+}
+
+/** Build a custom theme from a name + edited vars (copies vars; defaults a blank name). */
+export function createCustomTheme(name: string, vars: ThemeVar, id?: string): Theme {
+  return { id: id ?? makeThemeId(), name: name.trim() || "My Theme", author: "You", vars: { ...vars } };
+}
