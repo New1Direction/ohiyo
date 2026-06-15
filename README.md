@@ -103,5 +103,7 @@ Production runs on Fly.io. Full walkthrough — Docker image, volume-backed SQLi
 
 ## License
 
-Not yet licensed for redistribution — “free” here means free to use, not yet an OSI
-license. A license will be added before any public release.
+[AGPL-3.0](LICENSE). You're free to use, modify, self-host, and redistribute
+Kikkacord. The one obligation: if you run a **modified** version as a network
+service, you must offer your users its source. That's deliberate — it keeps every
+hosted fork of a *free* chat app free.
