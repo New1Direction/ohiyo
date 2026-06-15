@@ -568,7 +568,7 @@ export function ChatPane({
             autoFocus
             value={watchInput}
             onChange={(e) => setWatchInput(e.target.value)}
-            placeholder="Paste a video URL (.mp4/.webm) to watch together…"
+            placeholder="Paste a YouTube or video URL to watch together…"
             aria-label="Watch-party video URL"
             className="flex-1 rounded-md px-3 py-1.5 text-sm outline-none"
             style={{ background: "var(--bg-input)", color: "var(--text-primary)", border: "1px solid var(--bg-hover)" }}
