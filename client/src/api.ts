@@ -146,6 +146,7 @@ export type UserProfile = {
   banner_color: string | null;
   custom_status: string | null;
   avatar_url: string | null;
+  last_active_at: number | null;
   social_spotify: string | null;
   social_github: string | null;
   social_twitter: string | null;

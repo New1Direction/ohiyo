@@ -37,6 +37,16 @@ export function mentionsUser(content: string, username: string): boolean {
   return re.test(content);
 }
 
+/** True if `content` contains a channel-wide `@everyone` / `@here` mention. */
+export function mentionsEveryone(content: string): boolean {
+  return /(?:^|\s)@(everyone|here)(?![a-zA-Z0-9_])/i.test(content);
+}
+
+/** True if `content` mentions you — directly or via `@everyone`/`@here`. */
+export function mentionsYou(content: string, username: string): boolean {
+  return mentionsEveryone(content) || mentionsUser(content, username);
+}
+
 /** Split text into runs, marking `@username` tokens for pill rendering. */
 export function splitMentions(text: string): { text: string; mention?: string }[] {
   const re = new RegExp(`@(${NAME})`, "g");

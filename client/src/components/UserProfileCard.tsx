@@ -3,6 +3,15 @@ import { createPortal } from "react-dom";
 import type { UserProfile } from "../api";
 import { api } from "../api";
 
+/** Compact "last seen" label from a unix timestamp. */
+function relativeTime(ts: number): string {
+  const s = Math.max(0, Math.floor(Date.now() / 1000) - ts);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
 type SocialLink = {
   key: keyof UserProfile;
   label: string;
@@ -138,6 +147,11 @@ export function UserProfileCard({ userId, token, anchorRef, onClose }: Props) {
             {profile.pronouns && (
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
                 {profile.pronouns}
+              </div>
+            )}
+            {profile.last_active_at && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+                🕒 Active {relativeTime(profile.last_active_at)}
               </div>
             )}
             {profile.custom_status && (

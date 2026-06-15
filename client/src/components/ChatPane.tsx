@@ -16,6 +16,25 @@ import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { Icon } from "./Icon";
 
+// Composer drafts persisted per channel so a half-written message survives a reload,
+// not just a channel switch. Cleared on send.
+const DRAFT_PREFIX = "kc:draft:";
+function persistDraft(channelId: string, text: string) {
+  try {
+    if (text.trim()) localStorage.setItem(DRAFT_PREFIX + channelId, text);
+    else localStorage.removeItem(DRAFT_PREFIX + channelId);
+  } catch {
+    /* storage off */
+  }
+}
+function loadDraft(channelId: string): string {
+  try {
+    return localStorage.getItem(DRAFT_PREFIX + channelId) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 // ── Link preview types ────────────────────────────────────────────────────────
 type OgData = {
   url: string;
@@ -152,7 +171,9 @@ export function ChatPane({
   onRequestSafetyNumber,
   onSetDisappearing,
 }: Props) {
-  const [input, setInput] = useState("");
+  // Initialize from the persisted draft so a reload (which mounts straight into the
+  // restored channel, with prevChannelRef already equal) still shows it.
+  const [input, setInput] = useState(() => (channel?.id ? loadDraft(channel.id) : ""));
   const [watchInput, setWatchInput] = useState<string | null>(null);
   // Composer is sacred: remember unsent text per channel so a switch never loses it.
   const draftsRef = useRef<Record<string, string>>({});
@@ -205,6 +226,8 @@ export function ChatPane({
     setInput(value);
     setMention(activeMentionQuery(value, caret));
     notifyTyping();
+    // Persist immediately so a reload never loses it (beforeunload is just a backstop).
+    if (channel?.id) persistDraft(channel.id, value);
   }
 
   function pickMention(username: string) {
@@ -266,8 +289,13 @@ export function ChatPane({
     const prev = prevChannelRef.current;
     const next = channel?.id ?? null;
     if (prev === next) return;
-    if (prev) draftsRef.current[prev] = inputRef.current;
-    setInput(next ? draftsRef.current[next] ?? "" : "");
+    if (prev) {
+      draftsRef.current[prev] = inputRef.current;
+      persistDraft(prev, inputRef.current); // survive a reload, not just a switch
+    }
+    let restored = next ? draftsRef.current[next] ?? "" : "";
+    if (next && !restored) restored = loadDraft(next);
+    setInput(restored);
     setReplyTarget(null);
     setMention(null);
     setSafety({ open: false, value: null, loading: false }); // safety number is per-peer
@@ -275,6 +303,19 @@ export function ChatPane({
     prevChannelRef.current = next;
     forceBottomRef.current = true; // a freshly-opened channel starts at the bottom
     setShowJump(false);
+  }, [channel?.id]);
+
+  // Persist the CURRENT channel's draft on reload/close (the switch effect only fires
+  // on a change, so a straight reload would otherwise drop it).
+  useEffect(() => {
+    const save = () => {
+      if (channel?.id) persistDraft(channel.id, inputRef.current);
+    };
+    window.addEventListener("beforeunload", save);
+    return () => {
+      save();
+      window.removeEventListener("beforeunload", save);
+    };
   }, [channel?.id]);
 
   // Close emoji picker on outside click.
@@ -334,6 +375,8 @@ export function ChatPane({
       forceBottomRef.current = true; // always follow your own message to the bottom
       onSend(transformed, pendingFiles.map((f) => f.id), replyTarget?.id ?? null);
       setInput("");
+      draftsRef.current[channel.id] = "";
+      persistDraft(channel.id, ""); // sent → no lingering draft
       setPendingFiles([]);
       setReplyTarget(null);
     },
@@ -1537,7 +1580,10 @@ function InlineText({ text, serverEmojis, currentUsername = "", suppressLinkPrev
 function renderMentions(text: string, currentUsername: string, keyPrefix: string): React.ReactNode[] {
   return splitMentions(text).map((seg, i) => {
     if (!seg.mention) return seg.text;
-    const isMe = currentUsername && seg.mention.toLowerCase() === currentUsername.toLowerCase();
+    const m = seg.mention.toLowerCase();
+    // @everyone / @here include you, so give them the stronger "you" highlight too.
+    const isMe =
+      m === "everyone" || m === "here" || (!!currentUsername && m === currentUsername.toLowerCase());
     return (
       <span
         key={`${keyPrefix}-m${i}`}

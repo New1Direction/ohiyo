@@ -80,6 +80,13 @@ pub fn new_activities() -> Activities {
     Arc::new(RwLock::new(HashMap::new()))
 }
 
+// Set of connected user_ids currently idle (client reported no input). Ephemeral.
+pub type IdleSet = Arc<RwLock<std::collections::HashSet<String>>>;
+
+pub fn new_idle_set() -> IdleSet {
+    Arc::new(RwLock::new(std::collections::HashSet::new()))
+}
+
 // Map channel_id → active watch-party session (synced video). Ephemeral.
 pub type WatchSessions = Arc<RwLock<HashMap<String, crate::types::WatchSession>>>;
 
@@ -321,6 +328,7 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     };
     if last_connection {
         state.activities.write().unwrap().remove(&user_id);
+        state.idle.write().unwrap().remove(&user_id);
         broadcast_presence(&state, &user_id, false).await;
     }
 }
@@ -533,6 +541,20 @@ async fn handle_client_event(
             broadcast_presence(state, user_id, true).await;
         }
 
+        ClientEvent::SetPresence { idle } => {
+            let changed = {
+                let mut set = state.idle.write().unwrap();
+                if idle {
+                    set.insert(user_id.to_string())
+                } else {
+                    set.remove(user_id)
+                }
+            };
+            if changed {
+                broadcast_presence(state, user_id, true).await; // re-broadcast online/idle
+            }
+        }
+
         ClientEvent::WatchControl {
             channel_id,
             action,
@@ -681,14 +703,41 @@ async fn load_public_user(state: &AppState, user_id: &str) -> Option<PublicUser>
 }
 
 /// Announce online/offline to all servers the user belongs to.
+/// online → "online" unless the client reported idle; otherwise "offline".
+fn presence_status(state: &AppState, user_id: &str, online: bool) -> String {
+    if !online {
+        "offline".to_string()
+    } else if state.idle.read().unwrap().contains(user_id) {
+        "idle".to_string()
+    } else {
+        "online".to_string()
+    }
+}
+
+/// Everyone who can see this user's presence: people who share a server with them OR
+/// share a DM / group DM with them (includes the user themselves, so their own
+/// sessions get the echo). Distinct user_ids.
+async fn presence_audience(state: &AppState, user_id: &str) -> Vec<String> {
+    sqlx::query_scalar(
+        "SELECT DISTINCT u FROM (
+           SELECT sm2.user_id AS u FROM server_members sm1
+             JOIN server_members sm2 ON sm2.server_id = sm1.server_id
+             WHERE sm1.user_id = ?
+           UNION
+           SELECT dp2.user_id AS u FROM dm_participants dp1
+             JOIN dm_participants dp2 ON dp2.channel_id = dp1.channel_id
+             WHERE dp1.user_id = ?
+         )",
+    )
+    .bind(user_id)
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default()
+}
+
 async fn broadcast_presence(state: &AppState, user_id: &str, online: bool) {
-    let server_ids: Vec<String> =
-        sqlx::query_scalar("SELECT server_id FROM server_members WHERE user_id = ?")
-            .bind(user_id)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_default();
-    // Attach the user's current activity when online (read + drop the lock before awaiting).
+    let status = presence_status(state, user_id, online);
     let activity = if online {
         state.activities.read().unwrap().get(user_id).cloned()
     } else {
@@ -697,10 +746,12 @@ async fn broadcast_presence(state: &AppState, user_id: &str, online: bool) {
     let event = GatewayEvent::PresenceUpdate {
         user_id: user_id.to_string(),
         online,
+        status,
         activity,
     };
-    for sid in server_ids {
-        broadcast_to_server(state, &sid, &event).await;
+    // Audience now includes DM-only contacts, not just shared-server members.
+    for uid in presence_audience(state, user_id).await {
+        broadcast_to_user(&state.sessions, &uid, &event);
     }
 }
 
@@ -712,29 +763,24 @@ async fn send_presence_snapshot(
     user_id: &str,
     tx: &broadcast::Sender<GatewayEvent>,
 ) {
-    let online: Vec<String> = sqlx::query_scalar(
-        "SELECT DISTINCT sm2.user_id
-         FROM server_members sm1
-         JOIN server_members sm2 ON sm2.server_id = sm1.server_id
-         WHERE sm1.user_id = ? AND sm2.user_id != ?",
-    )
-    .bind(user_id)
-    .bind(user_id)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    // Co-members AND DM/group-DM partners, so DM-only contacts show online too.
+    let audience = presence_audience(state, user_id).await;
 
     // Sync section — no await while the locks are held.
     let sessions = state.sessions.read().unwrap();
     let acts = state.activities.read().unwrap();
-    for uid in online {
-        if sessions.contains_key(&uid) {
-            let _ = tx.send(GatewayEvent::PresenceUpdate {
-                user_id: uid.clone(),
-                online: true,
-                activity: acts.get(&uid).cloned(),
-            });
+    let idle = state.idle.read().unwrap();
+    for uid in audience {
+        if uid == user_id || !sessions.contains_key(&uid) {
+            continue;
         }
+        let status = if idle.contains(&uid) { "idle" } else { "online" };
+        let _ = tx.send(GatewayEvent::PresenceUpdate {
+            user_id: uid.clone(),
+            online: true,
+            status: status.to_string(),
+            activity: acts.get(&uid).cloned(),
+        });
     }
 }
 

@@ -31,6 +31,8 @@ pub struct AppState {
     pub tickets: gateway::WsTickets,
     /// Live rich-presence: user_id → current activity (playing/watching/working).
     pub activities: gateway::Activities,
+    /// Connected users currently idle (no input) → drives the idle presence dot.
+    pub idle: gateway::IdleSet,
     /// Live watch-party sessions: channel_id → synced video state.
     pub watch: gateway::WatchSessions,
 }
@@ -90,6 +92,7 @@ async fn main() -> anyhow::Result<()> {
         rate: RateLimiter::new(),
         tickets: gateway::new_ws_tickets(),
         activities: gateway::new_activities(),
+        idle: gateway::new_idle_set(),
         watch: gateway::new_watch_sessions(),
     };
 

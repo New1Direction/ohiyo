@@ -25,7 +25,7 @@ import { SavedModal } from "./components/SavedModal";
 import { CategoriesModal } from "./components/CategoriesModal";
 import { ForwardModal } from "./components/ForwardModal";
 import { PERM, can } from "./permissions";
-import { mentionsUser } from "./lib/mentions";
+import { mentionsYou } from "./lib/mentions";
 import { notify, ensureNotificationPermission, initDeepLinks, claimNotification } from "./lib/desktop";
 import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendingFailedOutbox, reconcileStalePending } from "./lib/outbox";
 import { useWebRTC } from "./hooks/useWebRTC";
@@ -129,6 +129,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     return () => cleanup();
   }, []);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [idleUsers, setIdleUsers] = useState<Set<string>>(new Set());
   const [activities, setActivities] = useState<Map<string, Activity>>(new Map());
   const [watchSession, setWatchSession] = useState<WatchSession | null>(null);
   const [voiceMembers, setVoiceMembers] = useState<Map<string, string>>(new Map()); // userId → voice channelId
@@ -330,6 +331,36 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- (re)connect only when the token changes; handleGatewayEvent reads latest state via refs, so the closure here is intentional
   }, [token]);
 
+  // Idle detection: no input for 5 minutes (or the tab hidden) → tell the server we're
+  // idle so peers see an amber dot; any activity flips us back to online.
+  useEffect(() => {
+    if (!currentUser) return;
+    const IDLE_MS = 5 * 60 * 1000;
+    let idle = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const setIdle = (next: boolean) => {
+      if (next === idle) return;
+      idle = next;
+      gatewayRef.current?.send({ t: "SetPresence", d: { idle: next } });
+    };
+    const onActivity = () => {
+      setIdle(false);
+      clearTimeout(timer);
+      timer = setTimeout(() => setIdle(true), IDLE_MS);
+    };
+    const onVisibility = () => (document.hidden ? setIdle(true) : onActivity());
+    const events: (keyof WindowEventMap)[] = ["mousemove", "keydown", "mousedown", "touchstart", "scroll"];
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    document.addEventListener("visibilitychange", onVisibility);
+    onActivity(); // start the timer
+    return () => {
+      clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, onActivity));
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- key on user identity; sends via the gateway ref
+  }, [currentUser?.id]);
+
   function handleGatewayEvent(event: GatewayEvent) {
     switch (event.t) {
       case "Ready":
@@ -398,7 +429,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
           currentUserRef.current &&
           msg.author.id !== currentUserRef.current.id &&
           selectedChannelRef.current?.id !== msg.channel_id &&
-          mentionsUser(msg.content, currentUserRef.current.username)
+          mentionsYou(msg.content, currentUserRef.current.username)
         ) {
           setMentions((prev) => {
             const next = new Set(prev);
@@ -552,10 +583,18 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       }
 
       case "PresenceUpdate": {
-        const { user_id, online, activity } = event.d;
+        const { user_id, online, status, activity } = event.d;
         setOnlineUsers((prev) => {
           const next = new Set(prev);
           if (online) next.add(user_id);
+          else next.delete(user_id);
+          return next;
+        });
+        setIdleUsers((prev) => {
+          const isIdle = online && status === "idle";
+          if (isIdle === prev.has(user_id)) return prev;
+          const next = new Set(prev);
+          if (isIdle) next.add(user_id);
           else next.delete(user_id);
           return next;
         });
@@ -1287,6 +1326,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
             currentUser={currentUser}
             connStatus={connStatus}
             onlineUsers={onlineUsers}
+            idleUsers={idleUsers}
             activeVoiceChannelId={webrtc.channelId}
             voiceParticipantCount={webrtc.participants.length + (webrtc.channelId ? 1 : 0)}
             unread={unread}
@@ -1440,6 +1480,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
           ownerId={selectedServer.owner_id}
           currentUserId={currentUser.id}
           onlineUsers={onlineUsers}
+          idleUsers={idleUsers}
           activities={activities}
           voiceMembers={voiceMembers}
           onJoinVoice={joinVoiceById}
