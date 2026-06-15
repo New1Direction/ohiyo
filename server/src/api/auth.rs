@@ -163,3 +163,140 @@ pub async fn login(
         user: user.into(),
     }))
 }
+
+// ── Device linking (QR / one-time code) ─────────────────────────────────────────
+const LINK_TTL_SECS: i64 = 120;
+const LINK_MAX_PER_MIN: usize = 20;
+
+/// A one-time link code: 12 chars from a 31-char unambiguous alphabet (~59 bits, via the
+/// OS-seeded ChaCha CSPRNG). With the 2-minute TTL, single use, and per-IP rate limit on
+/// redeem, it can't be brute-forced.
+fn gen_link_code() -> String {
+    use rand::Rng;
+    const ALPHA: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    let mut rng = rand::thread_rng();
+    (0..12)
+        .map(|_| ALPHA[rng.gen_range(0..ALPHA.len())] as char)
+        .collect()
+}
+
+/// Periodic GC: drop expired device-link codes so the table can't grow unbounded.
+pub async fn sweep_link_tokens(state: &AppState) {
+    let _ = sqlx::query("DELETE FROM device_link_tokens WHERE expires_at < ?")
+        .bind(now_unix())
+        .execute(&state.db)
+        .await;
+}
+
+#[derive(Serialize)]
+pub struct LinkStartResponse {
+    pub code: String,
+    pub expires_at: i64,
+}
+
+/// POST /devices/link/start — (auth) mint a short-lived one-time code that links a NEW
+/// device to THIS account without re-entering the password. Shown as text + QR on the
+/// primary device; the new device redeems it at /devices/link/complete.
+pub async fn link_start(
+    auth: crate::auth::AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<LinkStartResponse>, (StatusCode, String)> {
+    // One active code per user: clear any previous ones first (caps the table per user
+    // and means a fresh request supersedes an unused old code).
+    sqlx::query("DELETE FROM device_link_tokens WHERE user_id = ?")
+        .bind(&auth.0)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "db error clearing link codes");
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
+        })?;
+    let code = gen_link_code();
+    let expires_at = now_unix() + LINK_TTL_SECS;
+    sqlx::query("INSERT INTO device_link_tokens (code, user_id, expires_at) VALUES (?,?,?)")
+        .bind(&code)
+        .bind(&auth.0)
+        .bind(expires_at)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "db error minting link code");
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
+        })?;
+    Ok(Json(LinkStartResponse { code, expires_at }))
+}
+
+#[derive(Deserialize)]
+pub struct LinkCompleteBody {
+    pub code: String,
+}
+
+/// POST /devices/link/complete — (no auth) redeem a link code from a new device and get a
+/// session token for the linked account. Single-use (atomically claimed) + short TTL +
+/// per-IP rate-limited so the code can't be brute-forced.
+pub async fn link_complete(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<LinkCompleteBody>,
+) -> Result<Json<AuthResponse>, (StatusCode, String)> {
+    let ip = client_ip(&headers, &addr);
+    if !state.rate.check(
+        &format!("link:{}", ip),
+        LINK_MAX_PER_MIN,
+        Duration::from_secs(60),
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many attempts — give it a moment".into(),
+        ));
+    }
+    // Normalize: strip grouping/whitespace, uppercase.
+    let code: String = body
+        .code
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_uppercase();
+    if code.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "missing code".into()));
+    }
+    // Atomically claim the code (delete + return its row) so it can't be redeemed twice.
+    let row: Option<(String, i64)> = sqlx::query_as(
+        "DELETE FROM device_link_tokens WHERE code = ? RETURNING user_id, expires_at",
+    )
+    .bind(&code)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "db error redeeming link code");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal error".to_owned(),
+        )
+    })?;
+    // Same response whether the code never existed, was already used, or expired (it's
+    // consumed either way) — so the endpoint isn't an oracle for which codes existed.
+    let invalid = || (StatusCode::NOT_FOUND, "invalid or expired code".to_owned());
+    let (user_id, expires_at) = row.ok_or_else(invalid)?;
+    if expires_at < now_unix() {
+        return Err(invalid());
+    }
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        .bind(&user_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| invalid())?;
+    let secret = jwt_secret();
+    let token = create_token(&user.id, &secret).map_err(|e| {
+        tracing::error!(error = %e, "token error in link_complete");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal error".to_owned(),
+        )
+    })?;
+    Ok(Json(AuthResponse {
+        token,
+        user: user.into(),
+    }))
+}
