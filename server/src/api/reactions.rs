@@ -31,7 +31,7 @@ pub async fn toggle_reaction(
             .bind(&channel_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     if belongs.is_none() {
         return Err((StatusCode::NOT_FOUND, "message not found".into()));
     }
@@ -44,7 +44,7 @@ pub async fn toggle_reaction(
     .bind(&emoji)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     let added = if existing > 0 {
         sqlx::query("DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?")
@@ -53,7 +53,7 @@ pub async fn toggle_reaction(
             .bind(&emoji)
             .execute(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
         false
     } else {
         sqlx::query(
@@ -65,7 +65,7 @@ pub async fn toggle_reaction(
         .bind(now_unix())
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
         true
     };
 

@@ -135,7 +135,7 @@ pub async fn list_messages(
         .fetch_all(&state.db)
         .await
     }
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     // N+1 (author + reactions + reply preview per message) — acceptable on
     // in-process SQLite at limit≤100; batch with JOINs if profiling shows contention.
@@ -145,7 +145,7 @@ pub async fn list_messages(
             .bind(&msg.author_id)
             .fetch_one(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
 
         let reactions = fetch_reactions(&state.db, &msg.id, &auth.0).await;
         let reply_to = match &msg.reply_to {
@@ -329,7 +329,7 @@ pub async fn send_message(
         .bind(&auth.0)
         .fetch_one(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     // Look up attachment metadata and build JSON.
     let attachments_json = if body.attachment_ids.is_empty() {
@@ -343,7 +343,7 @@ pub async fn send_message(
             .bind(file_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
 
             if let Some((filename, content_type, size_bytes, width, height)) = row {
                 metas.push(AttachmentMeta {
@@ -383,7 +383,7 @@ pub async fn send_message(
                     .bind(&channel_id)
                     .fetch_optional(&state.db)
                     .await
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                    .map_err(|e| crate::api::error::internal(e))?;
             exists.map(|_| rid)
         }
         None => None,
@@ -402,7 +402,7 @@ pub async fn send_message(
     .bind(expires_at)
     .execute(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     let reply_preview = match &reply_to {
         Some(rid) => fetch_reply_preview(&state.db, rid).await,
@@ -463,7 +463,7 @@ pub async fn build_full(
         .bind(&msg.author_id)
         .fetch_one(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     let reactions = fetch_reactions(&state.db, &msg.id, viewer_id).await;
     let reply_to = match &msg.reply_to {
         Some(rid) => fetch_reply_preview(&state.db, rid).await,
@@ -544,7 +544,7 @@ pub async fn list_reads(
     .bind(&channel_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     let cursors = rows
         .into_iter()
@@ -589,7 +589,7 @@ pub async fn edit_message(
             .bind(&channel_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     let msg = msg.ok_or((StatusCode::NOT_FOUND, "message not found".into()))?;
 
     if msg.author_id != auth.0 {
@@ -604,7 +604,7 @@ pub async fn edit_message(
         .bind(&id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     let updated = Message {
         content,
@@ -654,7 +654,7 @@ async fn set_pin(
             .bind(channel_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     if let Some((Some(sid),)) = chan {
         if !crate::api::roles::has_perm(
             state,
@@ -676,7 +676,7 @@ async fn set_pin(
             .bind(channel_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     let msg = msg.ok_or((StatusCode::NOT_FOUND, "message not found".into()))?;
 
     let flag = if pinned { 1 } else { 0 };
@@ -685,7 +685,7 @@ async fn set_pin(
         .bind(id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     let updated = Message {
         pinned: flag,
@@ -738,7 +738,7 @@ pub async fn search_messages(
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     if member.is_none() {
         return Err((StatusCode::FORBIDDEN, "not a member of this server".into()));
     }
@@ -763,7 +763,7 @@ pub async fn search_messages(
     .bind(&pattern)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     let mut out = Vec::with_capacity(messages.len());
     for msg in messages {
@@ -787,7 +787,7 @@ pub async fn list_pins(
     .bind(&channel_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     let mut out = Vec::with_capacity(messages.len());
     for msg in messages {
@@ -810,7 +810,7 @@ pub async fn delete_message(
             .bind(&channel_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
 
     let msg = msg.ok_or((StatusCode::NOT_FOUND, "message not found".into()))?;
 
@@ -844,7 +844,7 @@ pub async fn delete_message(
         .bind(&id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     if crate::search::search_enabled() {
         tokio::spawn(crate::search::delete_message(id.clone()));
@@ -908,7 +908,7 @@ pub async fn set_disappearing(
         .bind(&channel_id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     broadcast_to_channel(
         &state,

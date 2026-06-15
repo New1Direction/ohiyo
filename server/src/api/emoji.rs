@@ -62,7 +62,7 @@ pub async fn list_emojis(
     .bind(&server_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(Json(rows.into_iter().map(Into::into).collect()))
 }
@@ -95,7 +95,7 @@ pub async fn create_emoji(
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
 
     if is_member.is_none() {
         return Err((StatusCode::FORBIDDEN, "Not a member of this server".into()));
@@ -106,7 +106,7 @@ pub async fn create_emoji(
         .bind(&body.file_id)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     let _path = file_url.ok_or_else(|| (StatusCode::NOT_FOUND, "File not found".into()))?;
     let url = format!("/files/{}", body.file_id);
@@ -134,7 +134,7 @@ pub async fn create_emoji(
                 format!("Emoji :{name}: already exists"),
             )
         } else {
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            crate::api::error::internal(e)
         }
     })?;
 
@@ -160,7 +160,7 @@ pub async fn delete_emoji(
             .bind(&server_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
 
     let (creator,) = row.ok_or_else(|| (StatusCode::NOT_FOUND, "Emoji not found".into()))?;
     if creator != auth.0 {
@@ -174,7 +174,7 @@ pub async fn delete_emoji(
         .bind(&emoji_id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(StatusCode::NO_CONTENT)
 }

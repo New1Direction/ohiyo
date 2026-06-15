@@ -36,7 +36,7 @@ pub async fn publish_key(
         .bind(&auth.0)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -52,7 +52,7 @@ pub async fn get_key(
             .bind(&user_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .map_err(|e| crate::api::error::internal(e))?
             .flatten();
     Ok(Json(PublicKey { public_key }))
 }

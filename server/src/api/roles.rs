@@ -121,7 +121,7 @@ pub async fn list_roles(
             .bind(&server_id)
             .fetch_all(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     Ok(Json(roles))
 }
 
@@ -181,7 +181,7 @@ pub async fn create_role(
     .bind(role.created_at)
     .execute(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(Json(role))
 }
@@ -200,7 +200,7 @@ pub async fn delete_role(
         .bind(&server_id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     // Anyone who held this role just lost permissions — refresh the whole server.
     broadcast_to_server(
         &state,
@@ -240,7 +240,7 @@ pub async fn assign_role(
         .bind(&role_id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     // Push the affected member a live permissions refresh.
     broadcast_to_user(
         &state.sessions,
@@ -267,7 +267,7 @@ pub async fn unassign_role(
         .bind(&role_id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     broadcast_to_user(
         &state.sessions,
         &user_id,
@@ -293,6 +293,6 @@ pub async fn member_role_ids(
             .bind(&user_id)
             .fetch_all(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     Ok(Json(ids.into_iter().map(|(id,)| id).collect()))
 }

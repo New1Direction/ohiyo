@@ -26,7 +26,7 @@ pub async fn list_servers(
     .bind(&auth.0)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     let mut out = Vec::new();
     for server in servers {
@@ -83,7 +83,7 @@ pub async fn create_server(
         .bind(now)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     // Add owner as member.
     sqlx::query("INSERT INTO server_members (server_id, user_id, joined_at) VALUES (?,?,?)")
@@ -92,7 +92,7 @@ pub async fn create_server(
         .bind(now)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     // Seed a fresh server so it feels alive on first open: a #general text
     // channel plus a "General" voice room — voice is one click away, no setup.
@@ -109,7 +109,7 @@ pub async fn create_server(
         .bind(now)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     }
 
     let full = fetch_full(&server_id, &state).await?;
@@ -143,13 +143,13 @@ pub async fn join_server(
     .bind(now)
     .execute(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
         .bind(&auth.0)
         .fetch_one(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     broadcast_to_server(
         &state,
@@ -199,7 +199,7 @@ pub async fn leave_server(
         .bind(&auth.0)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -216,7 +216,7 @@ async fn require_mod_action(
         .bind(server_id)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     let owner_id = owner_id.ok_or((StatusCode::NOT_FOUND, "server not found".into()))?;
     if target_id == owner_id {
         return Err((StatusCode::BAD_REQUEST, "the owner can't be removed".into()));
@@ -259,7 +259,7 @@ async fn remove_member(
         .bind(target_id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     Ok(())
 }
 
@@ -287,7 +287,7 @@ pub async fn ban_member(
     .bind(now_unix())
     .execute(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     remove_member(&state, &server_id, &target_id).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -312,7 +312,7 @@ pub async fn unban_member(
         .bind(&target_id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -358,7 +358,7 @@ pub async fn delete_server(
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
 
     if server.is_none() {
         return Err((StatusCode::FORBIDDEN, "not the owner".into()));
@@ -372,7 +372,7 @@ pub async fn delete_server(
         .bind(&id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     Ok(StatusCode::NO_CONTENT)
 }

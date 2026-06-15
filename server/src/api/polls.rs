@@ -126,7 +126,7 @@ pub async fn create_poll(
     .bind(now)
     .execute(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     sqlx::query("INSERT INTO polls (message_id, question, multi, closes_at) VALUES (?,?,?,?)")
         .bind(&message_id)
@@ -135,7 +135,7 @@ pub async fn create_poll(
         .bind(closes_at)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     for (i, text) in options.iter().enumerate() {
         sqlx::query("INSERT INTO poll_options (id, message_id, text, position) VALUES (?,?,?,?)")
@@ -145,14 +145,14 @@ pub async fn create_poll(
             .bind(i as i64)
             .execute(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     }
 
     let msg: Message = sqlx::query_as("SELECT * FROM messages WHERE id = ?")
         .bind(&message_id)
         .fetch_one(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     let full = build_full(&state, msg, &auth.0).await?;
     broadcast_to_channel(
         &state,
@@ -184,7 +184,7 @@ pub async fn vote_poll(
             .bind(&message_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     let (multi, closes_at) = poll.ok_or((StatusCode::NOT_FOUND, "poll not found".into()))?;
 
     if closes_at.is_some_and(|c| c <= now_unix()) {
@@ -225,7 +225,7 @@ pub async fn vote_poll(
         .bind(&auth.0)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     } else {
         // Single-choice polls keep only one vote per user.
         if multi == 0 {
@@ -234,7 +234,7 @@ pub async fn vote_poll(
                 .bind(&auth.0)
                 .execute(&state.db)
                 .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                .map_err(|e| crate::api::error::internal(e))?;
         }
         sqlx::query(
             "INSERT OR IGNORE INTO poll_votes (message_id, option_id, user_id) VALUES (?,?,?)",
@@ -244,14 +244,14 @@ pub async fn vote_poll(
         .bind(&auth.0)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     }
 
     let msg: Message = sqlx::query_as("SELECT * FROM messages WHERE id = ?")
         .bind(&message_id)
         .fetch_one(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
     let full = build_full(&state, msg, &auth.0).await?;
     broadcast_to_channel(
         &state,

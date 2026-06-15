@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::{auth::AuthUser, types::now_unix, AppState};
 
 fn ise<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    crate::api::error::internal(e)
 }
 
 #[derive(Deserialize)]

@@ -2,6 +2,7 @@ pub mod auth;
 pub mod channels;
 pub mod embeds;
 pub mod emoji;
+pub mod error;
 pub mod events;
 pub mod files;
 pub mod ice;

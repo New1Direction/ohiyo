@@ -52,7 +52,7 @@ pub async fn list_events(
     .bind(&server_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     let mut out = Vec::with_capacity(rows.len());
     for (id, title, description, starts_at, created_by) in rows {
@@ -119,7 +119,7 @@ pub async fn create_event(
     .bind(now_unix())
     .execute(&state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| crate::api::error::internal(e))?;
 
     broadcast_to_server(
         &state,
@@ -155,14 +155,14 @@ pub async fn rsvp_event(
             .bind(&auth.0)
             .execute(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     } else {
         sqlx::query("INSERT OR IGNORE INTO event_rsvps (event_id, user_id) VALUES (?,?)")
             .bind(&event_id)
             .bind(&auth.0)
             .execute(&state.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| crate::api::error::internal(e))?;
     }
     broadcast_to_server(
         &state,
@@ -209,7 +209,7 @@ pub async fn delete_event(
         .bind(&event_id)
         .execute(&state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| crate::api::error::internal(e))?;
 
     broadcast_to_server(
         &state,
