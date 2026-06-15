@@ -587,6 +587,14 @@ export const api = {
   signalPrekeyCount: (token: string, deviceId: number) =>
     request<{ count: number }>(`/signal/keys/count?device_id=${deviceId}`, {}, token),
 
+  // This account's registered Signal devices (read-only; doesn't consume prekeys).
+  listDevices: (token: string) =>
+    request<{ device_id: number; updated_at: number }[]>("/users/@me/devices", {}, token),
+
+  // Revoke a device from the directory (drop its identity + prekeys).
+  removeDevice: (token: string, deviceId: number) =>
+    request<void>(`/users/@me/devices/${deviceId}`, { method: "DELETE" }, token),
+
   // ── Invites & people ──────────────────────────────────────────────────────
   createInvite: (
     token: string,

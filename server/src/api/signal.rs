@@ -58,6 +58,25 @@ pub async fn publish_keys(
         return Err((StatusCode::BAD_REQUEST, "too many one-time prekeys".into()));
     }
 
+    // Pin the identity key per device. Once a device has published its identity key it
+    // can't be changed (only its prekeys rotate; a reinstall gets a fresh device_id).
+    // This stops a token-holder from silently replacing ANOTHER of the user's devices'
+    // identity key to MITM messages fanned out to that device.
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT identity_key FROM signal_identity WHERE user_id = ? AND device_id = ?",
+    )
+    .bind(&auth.0)
+    .bind(b.device_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(ise)?;
+    if existing.is_some_and(|k| k != b.identity_key) {
+        return Err((
+            StatusCode::CONFLICT,
+            "identity key is pinned for this device".into(),
+        ));
+    }
+
     let mut tx = state.db.begin().await.map_err(ise)?;
     sqlx::query(
         "INSERT INTO signal_identity
@@ -208,4 +227,56 @@ pub async fn prekey_count(
     .await
     .unwrap_or(0);
     Json(serde_json::json!({ "count": n }))
+}
+
+#[derive(Serialize)]
+pub struct DeviceOut {
+    pub device_id: i64,
+    pub updated_at: i64,
+}
+
+/// GET /users/@me/devices — list this account's registered Signal devices. Read-only;
+/// does NOT pop one-time prekeys (unlike get_bundles), so it's safe for display.
+pub async fn list_devices(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<DeviceOut>>, (StatusCode, String)> {
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT device_id, updated_at FROM signal_identity WHERE user_id = ? ORDER BY device_id",
+    )
+    .bind(&auth.0)
+    .fetch_all(&state.db)
+    .await
+    .map_err(ise)?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(device_id, updated_at)| DeviceOut {
+                device_id,
+                updated_at,
+            })
+            .collect(),
+    ))
+}
+
+/// DELETE /users/@me/devices/{device_id} — revoke a device from the directory: drop its
+/// identity key + prekeys so no one can start new sessions with it. Used to deregister a
+/// lost or stale device.
+pub async fn remove_device(
+    auth: AuthUser,
+    Path(device_id): Path<i64>,
+    State(state): State<AppState>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    sqlx::query("DELETE FROM signal_one_time_prekeys WHERE user_id = ? AND device_id = ?")
+        .bind(&auth.0)
+        .bind(device_id)
+        .execute(&state.db)
+        .await
+        .map_err(ise)?;
+    sqlx::query("DELETE FROM signal_identity WHERE user_id = ? AND device_id = ?")
+        .bind(&auth.0)
+        .bind(device_id)
+        .execute(&state.db)
+        .await
+        .map_err(ise)?;
+    Ok(StatusCode::NO_CONTENT)
 }

@@ -11,6 +11,7 @@ import {
 } from "@privacyresearch/libsignal-protocol-typescript";
 import { api } from "../api";
 import { recordKeySeen, setIdentityTrustBackend } from "./identityTrust";
+import { computeSafetyNumber } from "./safetyNumber";
 
 const NS = "kc:sig:";
 const PREKEY_BATCH = 100;
@@ -355,57 +356,30 @@ export async function decryptFrom(senderUserId: string, wire: string): Promise<s
 // version tag + identity key + identifier, encoded as 5-digit chunks), but computed
 // with the browser's NATIVE crypto.subtle. The library's FingerprintGenerator routes
 // through bundled msrcrypto whose worker-backed digest never settles under Vite.
-const FP_VERSION = new Uint16Array([0]).buffer; // 2-byte LE version 0
-const FP_ITERATIONS = 1024;
-
-function concatAB(bufs: ArrayBuffer[]): ArrayBuffer {
-  const total = bufs.reduce((n, b) => n + b.byteLength, 0);
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const b of bufs) {
-    out.set(new Uint8Array(b), off);
-    off += b.byteLength;
-  }
-  return out.buffer;
-}
-
-async function iterateHash(data: ArrayBuffer, key: ArrayBuffer, count: number): Promise<ArrayBuffer> {
-  let acc = data;
-  for (let i = 0; i < count; i++) acc = await crypto.subtle.digest("SHA-512", concatAB([acc, key]));
-  return acc;
-}
-
-function encodeChunk(h: Uint8Array, off: number): string {
-  const chunk =
-    (h[off] * 2 ** 32 + h[off + 1] * 2 ** 24 + h[off + 2] * 2 ** 16 + h[off + 3] * 2 ** 8 + h[off + 4]) % 100000;
-  return chunk.toString().padStart(5, "0");
-}
-
-async function displayFor(id: string, key: ArrayBuffer): Promise<string> {
-  const bytes = concatAB([FP_VERSION, key, new TextEncoder().encode(id).buffer]);
-  const hash = new Uint8Array(await iterateHash(bytes, key, FP_ITERATIONS));
-  return [0, 5, 10, 15, 20, 25].map((o) => encodeChunk(hash, o)).join("");
-}
-
-// Load any stored identity key for a user (identities are keyed by full address
-// "user.device"). Picks the lowest device id for determinism. With multiple peer
-// devices the safety number covers one of them; cross-device aggregation is a
-// follow-up — the single-device case (the common one) verifies exactly.
-function loadAnyIdentity(userId: string): ArrayBuffer | undefined {
+// Load ALL stored identity keys for a user (identities are keyed by full address
+// "user.device", so this returns one per device we've seen). Used to aggregate a
+// contact's devices into one safety number.
+function loadAllIdentities(userId: string): ArrayBuffer[] {
   const prefix = NS + "identity" + userId + ".";
-  const keys = backend.keys().filter((k) => k.startsWith(prefix)).sort();
-  if (!keys.length) return undefined;
-  const s = backend.getItem(keys[0]);
-  return s ? (dec(s) as ArrayBuffer) : undefined;
+  return backend
+    .keys()
+    .filter((k) => k.startsWith(prefix))
+    .sort()
+    .map((k) => backend.getItem(k))
+    .filter((s): s is string => s !== null && s !== "")
+    .map((s) => dec(s) as ArrayBuffer);
 }
 
 /** Safety number (identity fingerprint) for verifying a peer out-of-band; needs a
- *  session to already exist (so the peer's identity key is known). Both peers derive
- *  the same 60-digit value (the two display strings are sorted before joining). */
+ *  session to already exist (so the peer's identity key is known). Aggregates EVERY
+ *  device key on each side, so verifying a contact once covers all their devices. Both
+ *  peers derive the same 60-digit value. */
 export async function safetyNumber(myId: string, peerId: string): Promise<string | null> {
   const mine = await store.getIdentityKeyPair();
-  const theirs = loadAnyIdentity(peerId);
-  if (!mine || !theirs) return null;
-  const [local, remote] = await Promise.all([displayFor(myId, mine.pubKey), displayFor(peerId, theirs)]);
-  return [local, remote].sort().join("");
+  if (!mine) return null;
+  // My current device's key plus any other of my devices I've seen (combinedIdentity
+  // dedupes, so including the current key twice is harmless).
+  const myKeys = [mine.pubKey, ...loadAllIdentities(myId)];
+  const theirKeys = loadAllIdentities(peerId);
+  return computeSafetyNumber(myId, myKeys, peerId, theirKeys);
 }
