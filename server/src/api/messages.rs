@@ -972,6 +972,46 @@ pub async fn distribute_sender_key(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+pub struct VoiceKeyBody {
+    /// recipient user_id → pairwise-encrypted voice-key envelope.
+    pub envelopes: std::collections::HashMap<String, String>,
+}
+
+/// POST /channels/{id}/voice-key — relay encrypted voice/video E2EE room keys to call
+/// participants. Like the sender-key relay the server only forwards opaque ciphertext;
+/// it never sees the key. Each recipient is membership-checked via `user_can_access`,
+/// so a key can't be pushed to a non-member — and this works for both server voice
+/// channels (guild membership) and DM/group calls (participant list).
+pub async fn distribute_voice_key(
+    auth: AuthUser,
+    Path(channel_id): Path<String>,
+    State(state): State<AppState>,
+    Json(body): Json<VoiceKeyBody>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if !user_can_access(&state, &channel_id, &auth.0).await {
+        return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
+    }
+    if body.envelopes.len() > 64 {
+        return Err((StatusCode::BAD_REQUEST, "too many recipients".into()));
+    }
+    for (uid, envelope) in body.envelopes {
+        if envelope.len() > 20_000 || !user_can_access(&state, &channel_id, &uid).await {
+            continue;
+        }
+        crate::gateway::broadcast_to_user(
+            &state.sessions,
+            &uid,
+            &GatewayEvent::VoiceKeyDistribution {
+                channel_id: channel_id.clone(),
+                from_user_id: auth.0.clone(),
+                envelope,
+            },
+        );
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Delete disappearing messages whose TTL has lapsed and tell connected clients.
 /// Driven by a periodic task in `main`. Bounded per pass so a huge backlog can't
 /// monopolize the connection (the next pass picks up the rest).

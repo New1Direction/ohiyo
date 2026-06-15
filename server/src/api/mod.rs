@@ -160,6 +160,10 @@ pub fn router() -> Router<AppState> {
             "/channels/{channel_id}/sender-key",
             post(messages::distribute_sender_key),
         )
+        .route(
+            "/channels/{channel_id}/voice-key",
+            post(messages::distribute_voice_key),
+        )
         .route("/channels/{channel_id}/watch", get(watch::get_watch))
         .route(
             "/channels/{channel_id}/messages/{id}",

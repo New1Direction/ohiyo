@@ -525,6 +525,15 @@ export const api = {
       token
     ),
 
+  // Relay encrypted voice/video E2EE room-key envelopes to call participants. Server
+  // forwards opaque ciphertext only; each recipient is membership-checked.
+  distributeVoiceKey: (token: string, channelId: string, envelopes: Record<string, string>) =>
+    request<void>(
+      `/channels/${channelId}/voice-key`,
+      { method: "POST", body: JSON.stringify({ envelopes }) },
+      token
+    ),
+
   /** Fetch STUN + time-limited TURN ICE servers for WebRTC. */
   getIceServers: (token: string) =>
     request<{ iceServers: RTCIceServer[]; ttlExpiresAt?: number }>("/ice-servers", {}, token),

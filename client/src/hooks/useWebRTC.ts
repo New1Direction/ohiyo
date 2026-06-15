@@ -477,6 +477,9 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     onRoster,
     onPeerSignal,
     onVoiceState,
+    // Voice E2EE key gossip — a no-op in mesh mode (P2P media isn't relayed through an
+    // SFU, so there's nothing to frame-encrypt); only the LiveKit engine implements it.
+    onVoiceKey: (_channelId: string, _fromUserId: string, _envelope: string) => {},
   };
 }
 
