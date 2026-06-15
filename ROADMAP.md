@@ -42,7 +42,8 @@ A calm, fast place to get things done with a team.
 - [x] Presence **snapshot on connect** (see who's online + their activity the moment you open the app)
 - [ ] Multi-node scale: NATS/Redis gateway fan-out, Postgres option
 - [ ] Mobile build (Tauri mobile); push notifications
-- [ ] Federation + E2E encryption (the things incumbents *won't* do)
+- [~] **E2E encryption** (incumbents won't) — crypto core (ECDH P-256 + AES-GCM, round-trip verified) + public-key directory **shipped**; wiring encrypt/decrypt into the DM message flow is the next focused step (deserves two-client verification, not a rushed one)
+- [ ] Federation
 
 ## Design north star
 Every surface should feel **intentional and alive**: smooth motion, real depth, presence
