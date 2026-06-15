@@ -17,6 +17,7 @@ pub mod roles;
 pub mod saved;
 pub mod search;
 pub mod servers;
+pub mod signal;
 pub mod users;
 pub mod watch;
 
@@ -186,9 +187,13 @@ pub fn router() -> Router<AppState> {
         )
         // Avatar upload
         .route("/users/@me/avatar", post(profile::set_avatar))
-        // E2E encryption public-key directory
+        // E2E encryption public-key directory (legacy static-key scheme)
         .route("/users/@me/key", post(keys::publish_key))
         .route("/users/{user_id}/key", get(keys::get_key))
+        // Signal Protocol (X3DH) prekey directory — forward-secret sessions
+        .route("/signal/keys", post(signal::publish_keys))
+        .route("/signal/keys/count", get(signal::prekey_count))
+        .route("/users/{user_id}/prekey-bundle", get(signal::get_bundle))
         // WebRTC ICE config: STUN + time-limited TURN credentials
         .route("/ice-servers", get(ice::ice_servers))
         // LiveKit SFU: feature-flagged config + room-scoped join tokens
