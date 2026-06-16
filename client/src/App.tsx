@@ -90,6 +90,9 @@ export default function App() {
 function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const { toasts, push: toast } = useToast();
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
+  // Whether this server runs the LiveKit SFU — fetched at runtime from /livekit/config,
+  // so the same desktop build works against a mesh-only or an SFU-backed deployment.
+  const [liveKitEnabled, setLiveKitEnabled] = useState(false);
   const [servers, setServers] = useState<ServerWithChannels[]>([]);
   const [dms, setDms] = useState<Channel[]>([]);
   // Live participant lists for group DMs, keyed by channel id (kept fresh by
@@ -234,9 +237,9 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const webrtcRef = useRef<UseWebRTCReturn | null>(null);
   const activeVoiceRef = useRef<string | null>(null);
 
-  // Voice engine. Both hooks are called unconditionally (rules of hooks); the build
-  // flag picks the P2P mesh (default) or LiveKit SFU (scales past ~5 participants).
-  // Either way signaling/presence flows through the gateway.
+  // Voice engine. Both hooks are called unconditionally (rules of hooks); liveKitEnabled
+  // (fetched at runtime from /livekit/config) picks the P2P mesh (default) or the LiveKit
+  // SFU (scales past ~5 participants). Either way signaling/presence flows through the gateway.
   const webrtcCallbacks = {
     currentUserId: currentUser?.id ?? "",
     getIceServers: async () => (await api.getIceServers(token)).iceServers,
@@ -253,7 +256,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   };
   const mesh = useWebRTC(webrtcCallbacks);
   const sfu = useWebRTCLiveKit(webrtcCallbacks, token);
-  const webrtc = import.meta.env.VITE_LIVEKIT_ENABLED === "true" ? sfu : mesh;
+  const webrtc = liveKitEnabled ? sfu : mesh;
   // Keep refs in sync after commit (concurrent-safe — no ref writes during render).
   useLayoutEffect(() => {
     webrtcRef.current = webrtc;
@@ -262,6 +265,24 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
     // stale closure: handleGatewayEvent is registered once per token).
     handleSelectChannelRef.current = handleSelectChannel;
   });
+
+  // Discover whether this deployment runs the LiveKit SFU (runtime, not a build-time
+  // flag), so one shipped build adapts to either a mesh-only or an SFU-backed server.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    api
+      .getLiveKitConfig(token)
+      .then((cfg) => {
+        if (!cancelled) setLiveKitEnabled(cfg.enabled);
+      })
+      .catch(() => {
+        if (!cancelled) setLiveKitEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   useEffect(() => { selectedChannelRef.current = selectedChannel; }, [selectedChannel]);
 
