@@ -14,7 +14,7 @@ type Props = {
 const SUGGESTIONS = ["My Hangout", "Study Group", "Game Night"];
 
 const VALUE_BULLETS: { icon: string; title: string; body: string }[] = [
-  { icon: "💬", title: "Chat that flies", body: "Messages, files of any size, reactions — instantly." },
+  { icon: "🔒", title: "Yours alone", body: "End-to-end encrypted — not even our servers can read it." },
   { icon: "🎙️", title: "Crystal voice", body: "Studio-grade audio. Hop into a call in one tap." },
   { icon: "🖥️", title: "Share your screen", body: "Up to 4K, 60fps — free, no catch." },
 ];
@@ -76,11 +76,11 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
             letterSpacing: "var(--tracking-tight)",
           }}
         >
-          Welcome in, {firstName} 👋
+          oh, hi {firstName} 👋
         </h1>
         <p className="mt-2 text-base" style={{ color: "var(--text-secondary)", maxWidth: 440 }}>
-          Kikkacord is your place to talk, hang out, and share — all free, forever.
-          Let's spin up your first space. It takes about three seconds.
+          Your place to talk, hang out, and share — free forever, and private by design:
+          we genuinely can't read a word. Let's make your first space — about three seconds.
         </p>
 
         {/* Create-your-first-space card */}

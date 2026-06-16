@@ -368,7 +368,7 @@ export function AuthScreen({ onAuth }: Props) {
             </>
           ) : (
             <>
-              Already flying with us?{" "}
+              Already settled in?{" "}
               <button onClick={() => switchMode("login")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
                 Sign in
               </button>
@@ -377,7 +377,7 @@ export function AuthScreen({ onAuth }: Props) {
         </p>
 
         <p className="mt-4 text-center text-xs" style={{ color: "var(--text-muted)", opacity: 0.8 }}>
-          No ads · No tracking · Your data stays yours
+          End-to-end encrypted · No ads · No tracking · Yours
         </p>
       </div>
     </main>
