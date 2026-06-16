@@ -5,8 +5,8 @@ on:
     branches: [main]
   pull_request:
 
-# Quality gate so regressions can't merge. Hard gates fail the build; fmt/clippy
-# are reported but non-blocking (existing drift is tracked, not enforced yet).
+# Quality gate so regressions can't merge. Every step is a hard gate — a failing
+# format check, lint, build, or test blocks the merge.
 jobs:
   client:
     name: Client (lint · types · unit · build)
@@ -47,13 +47,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: server
+      - name: Format check
+        run: cargo fmt --check
+      - name: Clippy (warnings as errors)
+        run: cargo clippy --all-targets --locked -- -D warnings
       - name: Build
         run: cargo build --locked
       - name: Test
         run: cargo test --locked
-      - name: Format check (non-blocking)
-        run: cargo fmt --check
-        continue-on-error: true
-      - name: Clippy (non-blocking)
-        run: cargo clippy
-        continue-on-error: true

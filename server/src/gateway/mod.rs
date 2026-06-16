@@ -774,7 +774,11 @@ async fn send_presence_snapshot(
         if uid == user_id || !sessions.contains_key(&uid) {
             continue;
         }
-        let status = if idle.contains(&uid) { "idle" } else { "online" };
+        let status = if idle.contains(&uid) {
+            "idle"
+        } else {
+            "online"
+        };
         let _ = tx.send(GatewayEvent::PresenceUpdate {
             user_id: uid.clone(),
             online: true,
@@ -906,8 +910,8 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
     // Per-server channels/members/categories: run the three queries concurrently per
     // server, and all servers concurrently (WAL + 16-conn pool) — instead of 3N serial
     // queries on the connect critical path.
-    let server_list: Vec<ServerWithChannels> = futures_util::future::join_all(
-        servers.into_iter().map(|server| {
+    let server_list: Vec<ServerWithChannels> =
+        futures_util::future::join_all(servers.into_iter().map(|server| {
             let db = &state.db;
             async move {
                 let (channels, members, categories) = tokio::join!(
@@ -940,9 +944,8 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
                     categories: categories.unwrap_or_default(),
                 }
             }
-        }),
-    )
-    .await;
+        }))
+        .await;
 
     let dms = sqlx::query_as::<_, crate::types::Channel>(
         "SELECT c.* FROM channels c
