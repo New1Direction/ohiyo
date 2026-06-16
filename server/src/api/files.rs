@@ -18,6 +18,50 @@ use crate::{
 
 const UPLOAD_DIR: &str = "uploads";
 
+/// Default per-user cumulative upload cap (bytes). Overridable via
+/// `MAX_UPLOAD_BYTES_PER_USER` so operators can size it to their volume — it stops a
+/// single account from exhausting the shared disk and breaking the DB for everyone.
+const DEFAULT_MAX_BYTES_PER_USER: i64 = 500 * 1024 * 1024; // 500 MiB
+
+fn max_bytes_per_user() -> i64 {
+    std::env::var("MAX_UPLOAD_BYTES_PER_USER")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_MAX_BYTES_PER_USER)
+}
+
+/// Media types we are willing to serve INLINE (rendered by the browser). Everything
+/// else — notably `text/html` and `image/svg+xml`, which can execute script — is forced
+/// to download as an opaque octet-stream, so an uploaded file can never run as a
+/// document in a user's browser. Parameters (`; charset=…`) and case are ignored.
+fn is_inline_safe(content_type: &str) -> bool {
+    let base = content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    matches!(
+        base.as_str(),
+        "image/png"
+            | "image/jpeg"
+            | "image/gif"
+            | "image/webp"
+            | "image/avif"
+            | "audio/mpeg"
+            | "audio/ogg"
+            | "audio/wav"
+            | "audio/webm"
+            | "audio/mp4"
+            | "audio/aac"
+            | "video/mp4"
+            | "video/webm"
+            | "video/ogg"
+            | "video/quicktime"
+    )
+}
+
 #[derive(Serialize)]
 pub struct FileInfo {
     pub id: String,
@@ -38,6 +82,16 @@ pub async fn upload_file(
     tokio::fs::create_dir_all(UPLOAD_DIR)
         .await
         .map_err(crate::api::error::internal)?;
+
+    // Per-user storage quota. `used` starts at the bytes already attributable to this
+    // account and grows as new (non-deduplicated) files are committed this request.
+    let quota = max_bytes_per_user();
+    let mut used: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(size_bytes), 0) FROM files WHERE uploader_id = ?")
+            .bind(&auth.0)
+            .fetch_one(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
 
     let mut results = Vec::new();
 
@@ -70,8 +124,19 @@ pub async fn upload_file(
             .await
             .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
         {
-            hasher.update(&chunk);
             size_bytes += chunk.len() as i64;
+            // Abort the moment this upload would push the user over quota — so an
+            // over-limit file is never fully written to disk in the first place.
+            if used + size_bytes > quota {
+                tmp_file.flush().await.ok();
+                drop(tmp_file);
+                tokio::fs::remove_file(&tmp_path).await.ok();
+                return Err((
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "upload quota exceeded".into(),
+                ));
+            }
+            hasher.update(&chunk);
             tmp_file
                 .write_all(&chunk)
                 .await
@@ -131,6 +196,8 @@ pub async fn upload_file(
             .await
             .map_err(crate::api::error::internal)?;
 
+            // Newly stored bytes count toward the user's quota (dedup hits don't).
+            used += size_bytes;
             (file_id, path_str, w, h)
         };
 
@@ -182,13 +249,44 @@ pub async fn serve_file(
         })
         .collect();
 
+    // Only render known-safe media inline; force everything else (html, svg, scripts,
+    // unknown types) to download as an opaque octet-stream so an uploaded file can
+    // never execute as a document. Defense-in-depth alongside the response CSP/nosniff.
+    let (served_type, disposition) = if is_inline_safe(&content_type) {
+        (
+            content_type,
+            format!("inline; filename=\"{safe_filename}\""),
+        )
+    } else {
+        (
+            "application/octet-stream".to_owned(),
+            format!("attachment; filename=\"{safe_filename}\""),
+        )
+    };
+
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, content_type)
-        .header(
-            header::CONTENT_DISPOSITION,
-            format!("inline; filename=\"{}\"", safe_filename),
-        )
+        .header(header::CONTENT_TYPE, served_type)
+        .header(header::CONTENT_DISPOSITION, disposition)
         .body(body)
         .unwrap())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inline_safe_allows_media_and_blocks_active_content() {
+        assert!(is_inline_safe("image/png"));
+        assert!(is_inline_safe("image/jpeg; charset=binary"));
+        assert!(is_inline_safe("VIDEO/MP4")); // case-insensitive
+        assert!(is_inline_safe("audio/mpeg"));
+        // Active-content types must NEVER render inline.
+        assert!(!is_inline_safe("text/html"));
+        assert!(!is_inline_safe("image/svg+xml"));
+        assert!(!is_inline_safe("application/pdf"));
+        assert!(!is_inline_safe("application/octet-stream"));
+        assert!(!is_inline_safe(""));
+    }
 }
