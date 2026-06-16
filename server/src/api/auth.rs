@@ -86,13 +86,13 @@ pub async fn register(
         .bind(&body.username)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
 
     if existing.is_some() {
         return Err((StatusCode::CONFLICT, "username taken".into()));
     }
 
-    let hash = hash_password(&body.password).map_err(|e| crate::api::error::internal(e))?;
+    let hash = hash_password(&body.password).map_err(crate::api::error::internal)?;
 
     let id = new_id();
     let display_name = body.display_name.unwrap_or_else(|| body.username.clone());
@@ -107,7 +107,7 @@ pub async fn register(
     .bind(now_unix())
     .execute(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     let user = User {
         id: id.clone(),
@@ -119,7 +119,7 @@ pub async fn register(
     };
 
     let secret = jwt_secret();
-    let token = create_token(&id, &secret).map_err(|e| crate::api::error::internal(e))?;
+    let token = create_token(&id, &secret).map_err(crate::api::error::internal)?;
 
     Ok(Json(AuthResponse {
         token,
@@ -144,7 +144,7 @@ pub async fn login(
         .bind(&body.username)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
 
     let user = user.ok_or((StatusCode::UNAUTHORIZED, "invalid credentials".into()))?;
 
@@ -153,7 +153,7 @@ pub async fn login(
     }
 
     let secret = jwt_secret();
-    let token = create_token(&user.id, &secret).map_err(|e| crate::api::error::internal(e))?;
+    let token = create_token(&user.id, &secret).map_err(crate::api::error::internal)?;
 
     Ok(Json(AuthResponse {
         token,

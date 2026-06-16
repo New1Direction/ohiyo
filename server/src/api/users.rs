@@ -50,7 +50,7 @@ pub async fn search_users(
     .bind(&prefix)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     Ok(Json(users.into_iter().map(PublicUser::from).collect()))
 }
@@ -81,7 +81,7 @@ pub async fn list_dms(
     .bind(&auth.0)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     Ok(Json(dms))
 }
@@ -108,7 +108,7 @@ pub async fn open_dm(
     .bind(&body.recipient_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     if let Some(ch) = existing {
         return Ok(Json(ch));
@@ -127,7 +127,7 @@ pub async fn open_dm(
     .bind(now)
     .execute(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     for uid in [&auth.0, &body.recipient_id] {
         sqlx::query("INSERT INTO dm_participants (channel_id, user_id) VALUES (?,?)")
@@ -135,7 +135,7 @@ pub async fn open_dm(
             .bind(uid)
             .execute(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
     }
 
     let channel = Channel {
@@ -198,7 +198,7 @@ pub async fn open_group_dm(
     .bind(&auth.0)
     .execute(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     let participants: Vec<String> = std::iter::once(auth.0.clone()).chain(members).collect();
     for uid in &participants {
@@ -207,7 +207,7 @@ pub async fn open_group_dm(
             .bind(uid)
             .execute(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
     }
 
     let channel = Channel {
@@ -254,7 +254,7 @@ pub async fn list_recipients(
     .bind(&channel_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
     Ok(Json(users.into_iter().map(PublicUser::from).collect()))
 }
 
@@ -502,7 +502,7 @@ pub async fn get_deadman(
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
     let (seconds, scope) = row.unwrap_or((None, None));
     Ok(Json(DeadmanConfig {
         seconds,
@@ -536,7 +536,7 @@ pub async fn set_deadman(
     .bind(&auth.0)
     .execute(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

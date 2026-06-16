@@ -62,7 +62,7 @@ pub async fn list_emojis(
     .bind(&server_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     Ok(Json(rows.into_iter().map(Into::into).collect()))
 }
@@ -95,7 +95,7 @@ pub async fn create_emoji(
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
 
     if is_member.is_none() {
         return Err((StatusCode::FORBIDDEN, "Not a member of this server".into()));
@@ -106,7 +106,7 @@ pub async fn create_emoji(
         .bind(&body.file_id)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
 
     let _path = file_url.ok_or_else(|| (StatusCode::NOT_FOUND, "File not found".into()))?;
     let url = format!("/files/{}", body.file_id);
@@ -160,7 +160,7 @@ pub async fn delete_emoji(
             .bind(&server_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
 
     let (creator,) = row.ok_or_else(|| (StatusCode::NOT_FOUND, "Emoji not found".into()))?;
     if creator != auth.0 {
@@ -174,7 +174,7 @@ pub async fn delete_emoji(
         .bind(&emoji_id)
         .execute(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
 
     Ok(StatusCode::NO_CONTENT)
 }

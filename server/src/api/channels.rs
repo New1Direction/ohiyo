@@ -43,7 +43,7 @@ pub async fn list_channels(
             .bind(&server_id)
             .fetch_all(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
 
     Ok(Json(channels))
 }
@@ -91,7 +91,7 @@ pub async fn create_channel(
     .bind(&category_id)
     .execute(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     let channel = Channel {
         id,
@@ -159,7 +159,7 @@ pub async fn create_category(
     .bind(category.created_at)
     .execute(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     broadcast_server(&state, &server_id).await;
     Ok(Json(category))
@@ -179,7 +179,7 @@ pub async fn delete_category(
         .bind(&server_id)
         .execute(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
     broadcast_server(&state, &server_id).await;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -206,7 +206,7 @@ pub async fn set_channel_category(
         .bind(&server_id)
         .execute(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
     broadcast_server(&state, &server_id).await;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -243,7 +243,7 @@ pub async fn delete_channel(
         .bind(&id)
         .execute(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
 
     Ok(StatusCode::NO_CONTENT)
 }

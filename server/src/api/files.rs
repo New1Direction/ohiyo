@@ -37,7 +37,7 @@ pub async fn upload_file(
 ) -> Result<Json<Vec<FileInfo>>, (StatusCode, String)> {
     tokio::fs::create_dir_all(UPLOAD_DIR)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
 
     let mut results = Vec::new();
 
@@ -59,7 +59,7 @@ pub async fn upload_file(
         let tmp_path = PathBuf::from(UPLOAD_DIR).join(format!("tmp-{}", new_id()));
         let mut tmp_file = tokio::fs::File::create(&tmp_path)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
 
         let mut hasher = Sha256::new();
         let mut size_bytes: i64 = 0;
@@ -75,7 +75,7 @@ pub async fn upload_file(
             tmp_file
                 .write_all(&chunk)
                 .await
-                .map_err(|e| crate::api::error::internal(e))?;
+                .map_err(crate::api::error::internal)?;
         }
         tmp_file.flush().await.ok();
 
@@ -87,7 +87,7 @@ pub async fn upload_file(
                 .bind(&sha256)
                 .fetch_optional(&state.db)
                 .await
-                .map_err(|e| crate::api::error::internal(e))?;
+                .map_err(crate::api::error::internal)?;
 
         let (file_id, final_path, width, height) = if let Some((id, path, w, h)) = existing {
             // Reuse existing — remove temp.
@@ -104,7 +104,7 @@ pub async fn upload_file(
             }
             tokio::fs::rename(&tmp_path, &final_path)
                 .await
-                .map_err(|e| crate::api::error::internal(e))?;
+                .map_err(crate::api::error::internal)?;
 
             // Read image pixel dimensions (cheap header parse; None for non-images).
             let (w, h) = match imagesize::size(&final_path) {
@@ -129,7 +129,7 @@ pub async fn upload_file(
             .bind(h)
             .execute(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
 
             (file_id, path_str, w, h)
         };
@@ -160,7 +160,7 @@ pub async fn serve_file(
             .bind(&id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
 
     let (path, filename, content_type) = row.ok_or((StatusCode::NOT_FOUND, "not found".into()))?;
 
