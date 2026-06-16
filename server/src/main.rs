@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use server::{api, build_app, build_state, db, ensure_jwt_secret, search};
+use server::{api, build_app, build_state, db, search, validate_config};
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -13,7 +13,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    ensure_jwt_secret();
+    // Fail fast on misconfiguration before binding (release builds only — dev gets
+    // convenient localhost defaults). See validate_config for the guarantees.
+    validate_config()?;
 
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:kikkacord.db".to_owned());

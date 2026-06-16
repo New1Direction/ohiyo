@@ -9,7 +9,7 @@ services:
     network_mode: host
     command: >
       -c /etc/coturn/turnserver.conf
-      --static-auth-secret=${TURN_SECRET}
+      --static-auth-secret=${TURN_SECRET:?set TURN_SECRET — must equal the Kikkacord server TURN_SECRET}
       --realm=${TURN_REALM}
       --external-ip=${TURN_EXTERNAL_IP}
     volumes:

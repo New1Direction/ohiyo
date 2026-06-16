@@ -25,9 +25,8 @@ pub async fn set_avatar(
         return Err((StatusCode::NOT_FOUND, "File not found".into()));
     }
 
-    // Configurable for production; defaults to the local dev server.
-    let base =
-        std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_owned());
+    // Absolute URL prefix for served files; guaranteed present by validate_config().
+    let base = crate::public_base_url();
     let avatar_url = format!("{base}/files/{}", body.file_id);
     sqlx::query("UPDATE users SET avatar_url = ? WHERE id = ?")
         .bind(&avatar_url)
@@ -65,8 +64,7 @@ pub async fn set_banner(
         return Err((StatusCode::NOT_FOUND, "File not found".into()));
     }
 
-    let base =
-        std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_owned());
+    let base = crate::public_base_url();
     let banner_url = format!("{base}/files/{}", body.file_id);
     sqlx::query("UPDATE users SET banner_url = ? WHERE id = ?")
         .bind(&banner_url)

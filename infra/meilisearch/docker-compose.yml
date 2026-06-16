@@ -15,11 +15,15 @@ services:
     container_name: kikkacord-meilisearch
     restart: unless-stopped
     ports:
-      - "7700:7700"
+      # Loopback only — the search index holds plaintext message content and must
+      # never be exposed to the internet. Reach it from the server over the host or a
+      # shared private network; do NOT publish 0.0.0.0:7700.
+      - "127.0.0.1:7700:7700"
     environment:
       # Generate a strong key: `openssl rand -hex 32`. MUST match the server's
-      # MEILISEARCH_API_KEY. Without it, Meilisearch runs unauthenticated (dev only).
-      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-CHANGE_ME_meili_master_key}
+      # MEILISEARCH_API_KEY. Required — compose refuses to start without it, so we
+      # never ship a known/default master key.
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY (openssl rand -hex 32)}
       MEILI_ENV: production
     volumes:
       - ./data.ms:/meili_data

@@ -18,6 +18,9 @@ primary_region = "iad"
   BIND_ADDR = "0.0.0.0:3000"
   DATABASE_URL = "sqlite:/data/kikkacord.db"
   RUST_LOG = "server=info,tower_http=warn"
+  # REQUIRED: the public URL of THIS app — it prefixes stored avatar/banner URLs.
+  # The server refuses to start in release without it. Set to your Fly app's URL:
+  # PUBLIC_BASE_URL = "https://kikkacord-<you>.fly.dev"
   # TURN/STUN for voice: set TURN_SECRET + TURN_URLS as secrets (see DEPLOY.md).
   STUN_URLS = "stun:stun.l.google.com:19302"
 
