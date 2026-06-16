@@ -67,7 +67,7 @@ try {
 
   // ── Register → expect onboarding (no empty-app cliff) ───────────
   await page.click('button:has-text("Create my account")');
-  await page.waitForSelector("text=/Welcome in,/", { timeout: 12000 });
+  await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   log("ONBOARDING shown after register — cliff removed ✓");
   await shot(page, "03-onboarding-1440");
 

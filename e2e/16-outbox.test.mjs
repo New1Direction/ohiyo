@@ -10,7 +10,7 @@ try {
   const page = await ctx.newPage();
   page.on("pageerror", (e) => console.error("  ERR:", e.message));
   await register(page, `ob_${u}`, "Otto");
-  await page.waitForSelector("text=/Welcome in,/", { timeout: 12000 });
+  await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Outbox HQ");
   await page.click('button:has-text("Let\'s go")');
   await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
