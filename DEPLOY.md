@@ -81,10 +81,11 @@ encrypted `key_backups` blobs. Losing it is unrecoverable, so back it up.
   # restore into a fresh volume:
   fly volumes create kikkacord_data --snapshot-id <snap> --region iad
   ```
-- **Continuous backup (recommended for launch).** Run
-  [Litestream](https://litestream.io) beside the server to stream the SQLite WAL
-  to object storage (S3/R2) for point-in-time recovery — it wraps the server
-  process and needs only a bucket + credentials.
+- **Continuous backup (recommended — already wired in).** The runtime image bundles
+  [Litestream](https://litestream.io). Set `LITESTREAM_REPLICA_URL` (+ store
+  credentials) and the SQLite WAL streams to object storage (S3/R2) for point-in-time
+  recovery, and the DB is auto-restored on a fresh volume. Setup:
+  [`infra/litestream/README.md`](infra/litestream/README.md). Unset = off (no-op).
 
 > A daily snapshot can lose up to 24h of messages; Litestream closes that gap.
 
@@ -194,12 +195,22 @@ Obtain a code-signing certificate (OV/EV) and set the `tauri.conf.json`
 
 ---
 
-## 5. Recommended CI/CD
+## 5. CI/CD
 
-Use [`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action) in
-GitHub Actions with a `macos-latest` + `windows-latest` + `ubuntu-latest` matrix
-to build all three installers on every tag, attach them to a GitHub Release, and
-(once signing is set up) publish the `latest.json` the updater reads.
+`.github/workflows/release.yml` builds the macOS (Apple Silicon + Intel), Windows,
+and Linux installers on every `v*` tag (or via manual dispatch) and attaches them to
+a **draft** GitHub Release. It signs + notarizes when these repo secrets are present,
+and produces an unsigned build otherwise:
+
+| Secret | Purpose |
+|--------|---------|
+| `VITE_SERVER_URL` | Backend URL baked into the bundle (`https://<app>.fly.dev`) |
+| `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | macOS Developer ID signing + notarization (§4) |
+| `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Tauri auto-updater signing (§4) |
+
+Cut a release with `git tag v0.1.1 && git push --tags`. The end-to-end suite runs
+separately (`.github/workflows/e2e.yml`, manual + weekly) — it is not yet a merge
+gate (a couple of crypto suites are timing-sensitive; stabilise on a runner first).
 
 ---
 

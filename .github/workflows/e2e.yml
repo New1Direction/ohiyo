@@ -1,0 +1,61 @@
+name: E2E
+
+# The end-to-end suite drives a real browser against a full running stack (axum
+# server + Vite client + Chromium). It is deliberately NOT a pull-request gate yet:
+# a couple of the crypto suites are timing-sensitive, and this job has not been
+# validated on a hosted runner. It runs on demand and on a weekly schedule; promote
+# it to a required check once it's proven stable here.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+jobs:
+  e2e:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+
+      - name: Install client deps + Chromium
+        working-directory: client
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build + start the server on :3000
+        working-directory: server
+        env:
+          JWT_SECRET: ci-e2e-secret-not-for-production-0123456789
+        run: |
+          cargo build --locked
+          ./target/debug/server &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/healthz && break || sleep 1; done
+
+      - name: Start the client dev server on :1420
+        working-directory: client
+        env:
+          VITE_SERVER_URL: http://localhost:3000
+        run: |
+          npm run dev &
+          for i in $(seq 1 30); do curl -sf http://localhost:1420 >/dev/null && break || sleep 1; done
+
+      - name: Run the E2E suites
+        env:
+          # Dev Vite (no production CSP) so http://localhost:3000 isn't blocked.
+          KIKKA_ORIGIN: http://localhost:1420
+        run: |
+          # Point the (mac-centric) harness at the Linux Playwright Chromium via env —
+          # no harness code change needed, it already honours KIKKA_CHROMIUM.
+          export KIKKA_CHROMIUM="$(node -e "console.log(require('./client/node_modules/playwright-core').chromium.executablePath())")"
+          node e2e/run.mjs
