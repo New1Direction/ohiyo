@@ -72,7 +72,7 @@ impl FlyProvisioner {
                 "env": {
                     "JWT_SECRET": req.jwt_secret,
                     "PUBLIC_BASE_URL": req.public_url,
-                    "DATABASE_URL": "sqlite:/data/kikkacord.db",
+                    "DATABASE_URL": "sqlite:/data/ohiyo.db",
                     "BIND_ADDR": "0.0.0.0:3000"
                 },
                 "services": [{
@@ -208,7 +208,7 @@ mod tests {
         );
         assert_eq!(
             cfg["config"]["env"]["DATABASE_URL"],
-            "sqlite:/data/kikkacord.db"
+            "sqlite:/data/ohiyo.db"
         );
         assert_eq!(cfg["config"]["mounts"][0]["path"], "/data");
         // Regression guard: the mount must reference a real volume id, never "".

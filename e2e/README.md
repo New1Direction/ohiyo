@@ -6,18 +6,13 @@ full client↔server↔gateway round trip.
 
 ## Suites
 
-| File | Covers |
-|------|--------|
-| `01-signup.test.mjs` | Register → onboarding → create space → land in channel → send · login + remembered username + friendly error · password show/hide · responsive auth · mobile drawer |
-| `02-invite.test.mjs` | Invite link → open logged-out → register → accept → join · live message delivery · find-people → DM |
-| `03-alive.test.mjs` | Typing indicators · replies (+ quote both sides) · unread badges · custom status (+ persist across reload) |
-| `04-actions.test.mjs` | Edit (+ "(edited)") · pin/unpin · delete (inline confirm) · tab-title unread badge |
-| `05-moderation.test.mjs` | Message search + jump-to-channel · members panel · owner kick (member dropped live) |
+Each `NN-*.test.mjs` file is one journey; the filename names it. See the directory
+for all 22.
 
 ## Prerequisites
 
 1. **Server** running on `:3000` — `cd server && cargo run`
-2. **Vite dev** running on `:5173` — `cd client && npm run dev`
+2. **Vite dev** running on `:1420` — `cd client && npm run dev`
 3. **Chromium** available — `cd client && npx playwright install chromium`
    (the harness auto-locates the cached "Chrome for Testing" binary)
 
@@ -37,7 +32,7 @@ node e2e/run.mjs invite
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `KIKKA_ORIGIN` | `http://localhost:5173` | client URL under test |
+| `KIKKA_ORIGIN` | `http://localhost:1420` | client URL under test |
 | `KIKKA_CHROMIUM` | auto-detected | path to a Chromium/Chrome binary |
 | `KIKKA_SHOTS` | `/tmp/kikka-shots` | screenshot output dir |
 

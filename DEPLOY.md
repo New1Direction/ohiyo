@@ -31,25 +31,25 @@ brew install flyctl          # or: curl -L https://fly.io/install.sh | sh
 fly auth login
 
 # App names are GLOBALLY unique. Pick yours and set it as `app = "..."` in
-# fly.toml (it ships as "kikkacord"). Create the app without deploying yet:
-fly apps create kikkacord-<you>
+# fly.toml (it ships as "ohiyo"). Create the app without deploying yet:
+fly apps create ohiyo-<you>
 
 # Create the persistent volume that fly.toml mounts at /data (DB + uploads).
 # Keep it in the same region as primary_region in fly.toml (default: iad).
-fly volumes create kikkacord_data --region iad --size 3   # 3 GB
+fly volumes create ohiyo_data --region iad --size 3   # 3 GB
 
 # Required config — the server REFUSES to start in release without both.
 #   JWT_SECRET       stable session-signing key (else every restart logs everyone out)
 #   PUBLIC_BASE_URL  this app's public URL — it prefixes stored avatar/banner URLs,
 #                    so a wrong/unset value bakes dead localhost links into the DB.
 fly secrets set JWT_SECRET="$(openssl rand -base64 48)"
-fly secrets set PUBLIC_BASE_URL="https://kikkacord-<you>.fly.dev"
+fly secrets set PUBLIC_BASE_URL="https://ohiyo-<you>.fly.dev"
 
 # Ship it. fly.toml + Dockerfile do the rest.
 fly deploy
 
 # Verify.
-curl https://kikkacord-<you>.fly.dev/healthz     # → ok
+curl https://ohiyo-<you>.fly.dev/healthz     # → ok
 ```
 
 Notes baked into the config:
@@ -60,7 +60,7 @@ Notes baked into the config:
   `min_machines_running = 1`). A chat/voice server holds live WebSocket
   connections and presence — it must not sleep.
 - **WebSockets** (`/gateway`) work over Fly's HTTP service automatically.
-- The volume at `/data` holds both `kikkacord.db` and the `uploads/` directory,
+- The volume at `/data` holds both `ohiyo.db` and the `uploads/` directory,
   so messages and files survive deploys and restarts.
 
 > **Scaling caveat:** SQLite on a local volume means exactly **one** machine — do
@@ -79,7 +79,7 @@ encrypted `key_backups` blobs. Losing it is unrecoverable, so back it up.
   fly volumes snapshots list <volume-id>
   fly volumes update <volume-id> --snapshot-retention 30
   # restore into a fresh volume:
-  fly volumes create kikkacord_data --snapshot-id <snap> --region iad
+  fly volumes create ohiyo_data --snapshot-id <snap> --region iad
   ```
 - **Continuous backup (recommended — already wired in).** The runtime image bundles
   [Litestream](https://litestream.io). Set `LITESTREAM_REPLICA_URL` (+ store
@@ -104,7 +104,7 @@ STUN alone works on a LAN. Real calls between people behind home routers need a
 cd server
 fly secrets set \
   TURN_SECRET="<same as coturn static-auth-secret>" \
-  TURN_URLS="turn:turn.kikkacord-<you>.com:3478?transport=udp" \
+  TURN_URLS="turn:turn.ohiyo-<you>.com:3478?transport=udp" \
   TURN_TTL=86400
 ```
 
@@ -122,7 +122,7 @@ cd client
 
 # Point the packaged app at YOUR backend (this is baked in at build time).
 # Edit client/.env.production:
-#   VITE_SERVER_URL=https://kikkacord-<you>.fly.dev
+#   VITE_SERVER_URL=https://ohiyo-<you>.fly.dev
 
 npm install
 npm run tauri build
@@ -142,7 +142,7 @@ Installers land in `client/src-tauri/target/release/bundle/`:
 
 ### What's already native (Discord-like)
 
-- **Brand icon & window** — coral bird icon, "Ohiyo" titled 1180×760 window
+- **Brand icon & window** — coral Kikka (chinchilla) icon, "Ohiyo" titled 1180×760 window
   with a sensible minimum size, generated from `src-tauri/app-icon.svg`.
 - **Single instance** — launching again focuses the running window instead of
   opening a second one.
@@ -176,7 +176,7 @@ Obtain a code-signing certificate (OV/EV) and set the `tauri.conf.json`
 ### Auto-update (silent, Discord-style)
 1. Generate the updater keypair (this is separate from code-signing certs):
    ```bash
-   npm run tauri signer generate -- -w ~/.kikkacord/updater.key
+   npm run tauri signer generate -- -w ~/.ohiyo/updater.key
    ```
    Keep the **private** key secret; the **public** key goes in config.
 2. Add to `tauri.conf.json`:
@@ -184,7 +184,7 @@ Obtain a code-signing certificate (OV/EV) and set the `tauri.conf.json`
    "plugins": {
      "updater": {
        "pubkey": "<public key>",
-       "endpoints": ["https://github.com/<you>/kikkacord/releases/latest/download/latest.json"]
+       "endpoints": ["https://github.com/<you>/ohiyo/releases/latest/download/latest.json"]
      }
    }
    ```
@@ -222,7 +222,7 @@ These are tracked follow-ups, not blockers for a first test build:
       executing arbitrary JS in the app's context). Built-in plugins still work.
       Before re-enabling remote plugins, sandbox them in an iframe/Worker.
 - [ ] **Tighten CSP `connect-src`** from `https: wss:` to your exact backend host
-      once it's fixed (`https://kikkacord-<you>.fly.dev wss://...`).
+      once it's fixed (`https://ohiyo-<you>.fly.dev wss://...`).
 - [ ] **Token storage.** The web client keeps the session token in
       `localStorage`. Acceptable in the packaged app; revisit if you ship a pure
       web build to untrusted origins.

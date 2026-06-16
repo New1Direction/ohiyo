@@ -64,8 +64,8 @@ the moment `FLY_API_TOKEN` is present.
 
 ## 4. Optional — move the API onto the brand domain **[you]**
 
-Today the desktop app talks to `kikkacord.fly.dev`
-([`client/.env.production`](client/.env.production)). If you'd like `api.ohiyo.gg` instead:
+Today the desktop app talks to your own self-hosted backend (e.g. `your-app.fly.dev`),
+set in [`client/.env.production`](client/.env.production). If you'd like `api.ohiyo.gg` instead:
 add a Cloudflare `CNAME api → <fly-app>.fly.dev`, `fly certs add api.ohiyo.gg`, set
 `VITE_SERVER_URL=https://api.ohiyo.gg`, and rebuild the desktop app.
 

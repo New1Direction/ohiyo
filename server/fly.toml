@@ -1,14 +1,14 @@
 # Fly.io deploy config for the Ohiyo backend.
 #
 # IMPORTANT: app names are globally unique on Fly. Change `app` below to your own
-# (e.g. "kikkacord-acme"), then point the desktop client at it by setting
+# (e.g. "ohiyo-acme"), then point the desktop client at it by setting
 # VITE_SERVER_URL=https://<app>.fly.dev in client/.env.production.
 #
 # This app uses SQLite on a single attached volume, so it runs as exactly ONE
 # machine (no horizontal scaling). See DEPLOY.md for the LiteFS/Postgres path
 # when you outgrow a single node.
 
-app = "kikkacord"
+app = "ohiyo"
 primary_region = "iad"
 
 [build]
@@ -16,17 +16,17 @@ primary_region = "iad"
 
 [env]
   BIND_ADDR = "0.0.0.0:3000"
-  DATABASE_URL = "sqlite:/data/kikkacord.db"
+  DATABASE_URL = "sqlite:/data/ohiyo.db"
   RUST_LOG = "server=info,tower_http=warn"
   # REQUIRED: the public URL of THIS app — it prefixes stored avatar/banner URLs.
   # The server refuses to start in release without it. Set to your Fly app's URL:
-  # PUBLIC_BASE_URL = "https://kikkacord-<you>.fly.dev"
+  # PUBLIC_BASE_URL = "https://ohiyo-<you>.fly.dev"
   # TURN/STUN for voice: set TURN_SECRET + TURN_URLS as secrets (see DEPLOY.md).
   STUN_URLS = "stun:stun.l.google.com:19302"
 
-# Persists the SQLite DB (/data/kikkacord.db) AND uploaded files (/data/uploads).
+# Persists the SQLite DB (/data/ohiyo.db) AND uploaded files (/data/uploads).
 [[mounts]]
-  source = "kikkacord_data"
+  source = "ohiyo_data"
   destination = "/data"
 
 [http_service]

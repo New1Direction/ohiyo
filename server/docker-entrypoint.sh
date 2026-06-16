@@ -12,7 +12,7 @@ set -e
 
 # Litestream needs the file path, not the `sqlite:` URL the app uses.
 DB_FILE="${DATABASE_URL#sqlite:}"
-DB_FILE="${DB_FILE:-/data/kikkacord.db}"
+DB_FILE="${DB_FILE:-/data/ohiyo.db}"
 
 if [ -n "$LITESTREAM_REPLICA_URL" ]; then
   echo "litestream: $DB_FILE -> $LITESTREAM_REPLICA_URL"
@@ -20,7 +20,7 @@ if [ -n "$LITESTREAM_REPLICA_URL" ]; then
   # a no-op when the DB already exists.
   litestream restore -if-db-not-exists -if-replica-exists -o "$DB_FILE" "$LITESTREAM_REPLICA_URL"
   # Replicate while running the server as a managed subprocess.
-  exec litestream replicate -exec "kikkacord-server" "$DB_FILE" "$LITESTREAM_REPLICA_URL"
+  exec litestream replicate -exec "ohiyo-server" "$DB_FILE" "$LITESTREAM_REPLICA_URL"
 fi
 
-exec kikkacord-server
+exec ohiyo-server

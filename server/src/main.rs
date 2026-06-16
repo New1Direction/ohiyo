@@ -18,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
     validate_config()?;
 
     let database_url =
-        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:kikkacord.db".to_owned());
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:ohiyo.db".to_owned());
 
     let db = db::connect(&database_url).await?;
     tracing::info!("Database connected");
