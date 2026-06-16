@@ -103,6 +103,20 @@
       </div>
     </section>
 
+    <!-- · INSTANT SERVERS -->
+    <section class="slide" data-title="Instant Servers">
+      <div class="wrap stack">
+        <span class="eyebrow" data-rise="1">Instant Servers</span>
+        <h2 data-rise="2">Your own server, <span class="serif-i grad">in one tap.</span></h2>
+        <p class="lead" data-rise="3" style="max-width:60ch">We host it so it just works — but it's end-to-end encrypted (we can't read it), you can export everything anytime, and you're one button from moving it to your own box. Minecraft Realms, if Realms couldn't read your world.</p>
+        <div class="road" data-rise="4">
+          <div class="col glass"><div class="when">Discord Nitro</div><h4>$9.99/mo · per person</h4><ul><li>A fancier avatar, bigger emoji, HD — for <b>one person</b></li><li>Real server perks paywalled again behind Boosts (~$4.99 ea)</li><li>20 people who all want HD ≈ <b>$200/mo</b>, forever</li></ul></div>
+          <div class="col glass" style="border-color:rgba(255,122,77,.4)"><div class="when" style="color:var(--coral)">Ohiyo · &lt; one Nitro</div><h4>One server · the whole crew</h4><ul><li>Always-on encrypted server for <b>everyone</b>, all perks included</li><li>Or run it <b>free</b> (it naps when idle), or self-host for <b>$0</b></li><li>Cost-per-person only <b>drops</b> as you grow</li></ul></div>
+        </div>
+        <p class="secnote" data-rise="5">One Discord Nitro buys you a fancier avatar. The same money runs your whole community — <b>encrypted</b> — on Ohiyo. We host it; we can't read it; you can leave with everything.</p>
+      </div>
+    </section>
+
     <!-- 5 · SECURITY ARCHITECTURE -->
     <section class="slide" data-title="Security architecture">
       <div class="wrap stack">
@@ -125,7 +139,7 @@
         <span class="eyebrow" data-rise="1">Where we stand</span>
         <h2 data-rise="2">Built like it's going to be <span class="serif-i grad">attacked.</span></h2>
         <div class="stats" data-rise="3">
-          <div class="stat glass"><div class="n grad">26</div><div class="l">PRs shipped &amp; merged to main</div></div>
+          <div class="stat glass"><div class="n grad">33</div><div class="l">PRs shipped &amp; merged to main</div></div>
           <div class="stat glass"><div class="n grad">85</div><div class="l">unit &amp; integration tests<br>+ 22 end-to-end suites</div></div>
           <div class="stat glass"><div class="n grad">8</div><div class="l">hard CI checks gate every merge</div></div>
           <div class="stat glass"><div class="n grad">0</div><div class="l">plaintext messages on the server</div></div>
@@ -139,6 +153,7 @@
           <div class="done"><span class="s">✓</span> Fail-fast config; graceful shutdown; DB health</div>
           <div class="done"><span class="s">✓</span> Hard fmt/clippy/build/test CI gates</div>
           <div class="done"><span class="s">✓</span> Signed-release pipeline + Litestream backups (wired)</div>
+          <div class="done"><span class="s">✓</span> Instant Servers — one-tap provisioning (Phase 1), adversarially reviewed</div>
           <div class="part"><span class="s">◐</span> Voice/video E2E — implemented; needs a live SFU to fully verify</div>
           <div class="part"><span class="s">◐</span> E2E suite in CI — wired, non-blocking; needs a hosted run</div>
           <div class="todo"><span class="s">○</span> Code-signing certs (Apple / Windows accounts)</div>
@@ -155,7 +170,7 @@
         <h2 data-rise="2">From <span class="serif-i grad">solid</span> to shipped.</h2>
         <div class="road" data-rise="3">
           <div class="col glass"><div class="when">Now → days</div><h4>Sign &amp; verify</h4><ul><li>Add Apple/Windows certs → the release pipeline auto-signs</li><li>Stand up a LiveKit + TURN node to verify encrypted calls end-to-end</li><li>Stabilize the e2e suite on a hosted runner</li></ul></div>
-          <div class="col glass"><div class="when">Weeks</div><h4>Harden the edges</h4><ul><li>Move the session token into the desktop vault</li><li>Enable Litestream backups against real object storage</li><li>Privacy policy + Terms; first signed public installers</li></ul></div>
+          <div class="col glass"><div class="when">Weeks</div><h4>Harden the edges</h4><ul><li>Instant Servers: sleep/wake + notification relay + export</li><li>Move the session token into the desktop vault</li><li>Enable Litestream backups against real object storage</li><li>Privacy policy + Terms; first signed public installers</li></ul></div>
           <div class="col glass"><div class="when">The frontier</div><h4>Beyond Signal</h4><ul><li>Sealed sender — hide who-talks-to-whom metadata</li><li>Federation between self-hosted instances</li><li>Bots &amp; plugins, sandboxed against the E2E core</li></ul></div>
         </div>
       </div>

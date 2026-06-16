@@ -46,6 +46,12 @@ stakes. Mascot: **Kikka**, a coral chinchilla. Never lean on the Ohio meme — l
 - "the things Discord charges $9.99/mo for are just how Ohiyo works. for $0. forever."
 - "self-hostable, end-to-end encrypted, and the mascot is a chinchilla. what more do you want."
 
+### X — Instant Servers (the one-tap hook)
+- "launch your own end-to-end-encrypted server in one tap. we host it, we can't read it, and you can leave with everything — for less than a Discord Nitro. 🐭"
+- "one Nitro = a fancier avatar, for you. the same money on Ohiyo = an always-on encrypted server for your whole crew. and cost-per-person only drops as you grow."
+- "it's Minecraft Realms for your group chat — one tap, we run it — except Realms can read your world, and we genuinely *can't* read your messages."
+- "don't trust us to host it? export everything and move it to your own box in one click. or self-host from day one for $0. the door's always open. 🔒"
+
 ### Reddit — r/selfhosted & r/privacy
 > **Title:** Ohiyo — a self-hostable, end-to-end-encrypted Discord alternative (Rust + Tauri, free & open)
 >
