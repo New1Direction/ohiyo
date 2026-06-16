@@ -7,7 +7,7 @@ pub fn run() {
     let mut builder = tauri::Builder::default();
 
     // Single-instance must be registered FIRST. A second launch (e.g. opening a
-    // kikkacord:// invite link while the app is already running on Windows/Linux)
+    // ohiyo:// invite link while the app is already running on Windows/Linux)
     // focuses the existing window instead of spawning a duplicate.
     #[cfg(desktop)]
     {
@@ -36,5 +36,5 @@ pub fn run() {
             vault::vault_burn,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Kikkacord");
+        .expect("error while running Ohiyo");
 }

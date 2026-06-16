@@ -1,6 +1,6 @@
 # Vendored from New1Direction/ningen-shikkaku (dazai), MIT-licensed. Secure-memory
 # primitives: page-locked (mlock), non-swappable, explicitly-wiped buffers. Kept as a
-# standalone crate (workspace inheritance stripped) so Kikkacord's Tauri app can build
+# standalone crate (workspace inheritance stripped) so Ohiyo's Tauri app can build
 # it directly. Upstream: https://github.com/New1Direction/ningen-shikkaku
 [package]
 name = "goodnight"

@@ -1,4 +1,4 @@
-# Kikkacord E2E suite
+# Ohiyo E2E suite
 
 Browser-driven end-to-end tests covering the critical user journeys. Each file
 drives one or more real Chromium contexts via `playwright-core` and asserts the

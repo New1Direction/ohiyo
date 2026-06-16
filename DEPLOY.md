@@ -1,12 +1,12 @@
-# Shipping Kikkacord to real people
+# Shipping Ohiyo to real people
 
-Kikkacord has two halves. A desktop installer is worthless on its own — like
+Ohiyo has two halves. A desktop installer is worthless on its own — like
 Discord, it needs a **server in the cloud** to connect to. This guide takes you
 from "runs on my localhost" to "my friends download an app and it just works."
 
 ```
 ┌─────────────────────────┐         ┌──────────────────────────────────┐
-│  Kikkacord.app / .msi   │  HTTPS  │  Fly.io                          │
+│  Ohiyo.app / .msi   │  HTTPS  │  Fly.io                          │
 │  (Tauri desktop client) │ ──────▶ │  • axum server  (Docker)         │
 │  React bundle inside     │   WSS   │  • SQLite + uploads (volume)     │
 │  a native window         │ ◀─────▶ │  • coturn (voice TURN, optional) │
@@ -98,7 +98,7 @@ STUN alone works on a LAN. Real calls between people behind home routers need a
 
 1. Run coturn on a public host (a small VPS, or a second Fly app) using
    `infra/coturn/docker-compose.yml`. Set its `static-auth-secret`.
-2. Point the Kikkacord server at it with secrets matching that value:
+2. Point the Ohiyo server at it with secrets matching that value:
 
 ```bash
 cd server
@@ -132,9 +132,9 @@ Installers land in `client/src-tauri/target/release/bundle/`:
 
 | Platform | Output |
 |----------|--------|
-| macOS    | `dmg/Kikkacord_<ver>_aarch64.dmg` and `macos/Kikkacord.app` |
-| Windows  | `msi/Kikkacord_<ver>_x64_en-US.msi`, `nsis/...-setup.exe`   |
-| Linux    | `appimage/Kikkacord_<ver>_amd64.AppImage`, `deb/`, `rpm/`   |
+| macOS    | `dmg/Ohiyo_<ver>_aarch64.dmg` and `macos/Ohiyo.app` |
+| Windows  | `msi/Ohiyo_<ver>_x64_en-US.msi`, `nsis/...-setup.exe`   |
+| Linux    | `appimage/Ohiyo_<ver>_amd64.AppImage`, `deb/`, `rpm/`   |
 
 > You can only build a platform's installer **on that platform** (or in CI). On
 > your Mac you get the `.dmg`; use GitHub Actions runners for Windows/Linux —
@@ -142,11 +142,11 @@ Installers land in `client/src-tauri/target/release/bundle/`:
 
 ### What's already native (Discord-like)
 
-- **Brand icon & window** — coral bird icon, "Kikkacord" titled 1180×760 window
+- **Brand icon & window** — coral bird icon, "Ohiyo" titled 1180×760 window
   with a sensible minimum size, generated from `src-tauri/app-icon.svg`.
 - **Single instance** — launching again focuses the running window instead of
   opening a second one.
-- **Deep links** — `kikkacord://invite/<code>` opens the app straight to the
+- **Deep links** — `ohiyo://invite/<code>` opens the app straight to the
   join screen (the client falls back to `?invite=<code>` web links in a browser).
   On macOS the scheme is registered via the bundle; on Linux/Windows the
   installer registers it.

@@ -1,6 +1,6 @@
 # Litestream — continuous SQLite backup
 
-The Kikkacord runtime image (`server/Dockerfile`) bundles
+The Ohiyo runtime image (`server/Dockerfile`) bundles
 [Litestream](https://litestream.io) and runs it via `server/docker-entrypoint.sh`.
 It is **opt-in and a no-op unless `LITESTREAM_REPLICA_URL` is set** — the entrypoint
 otherwise execs the server unchanged.

@@ -29,7 +29,7 @@ kikka-vault = { path = "crates/vault" }
 rand = "0.8"
 
 # Single-instance focuses the existing window on a second launch (and carries
-# kikkacord:// deep links into the running app on Windows/Linux). Desktop only.
+# ohiyo:// deep links into the running app on Windows/Linux). Desktop only.
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 

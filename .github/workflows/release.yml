@@ -73,7 +73,7 @@ jobs:
         with:
           projectPath: client
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
-          releaseName: "Kikkacord v__VERSION__"
+          releaseName: "Ohiyo v__VERSION__"
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}

@@ -643,7 +643,7 @@ function PluginsTab({
           Install Plugin from URL
         </div>
         <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-          Paste a URL to a JavaScript ES module that exports a default KikkacordPlugin object.
+          Paste a URL to a JavaScript ES module that exports a default OhiyoPlugin object.
         </p>
         <div className="flex gap-2">
           <input
@@ -1398,7 +1398,7 @@ function SecurityTab({
           ⏳ Dead man&apos;s switch
         </div>
         <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-          If you don&apos;t open Kikkacord for this long, your data is wiped automatically.
+          If you don&apos;t open Ohiyo for this long, your data is wiped automatically.
         </p>
         <div className="mb-3 flex flex-wrap gap-2">
           {DEADMAN_PRESETS.map((p) => {

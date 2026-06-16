@@ -1,4 +1,4 @@
-# Fly.io deploy config for the Kikkacord backend.
+# Fly.io deploy config for the Ohiyo backend.
 #
 # IMPORTANT: app names are globally unique on Fly. Change `app` below to your own
 # (e.g. "kikkacord-acme"), then point the desktop client at it by setting

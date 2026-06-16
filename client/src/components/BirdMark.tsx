@@ -1,5 +1,5 @@
 /**
- * Kikkacord's chinchilla mark — vectorized from the brand logo. Single-color via
+ * Ohiyo's chinchilla mark — vectorized from the brand logo. Single-color via
  * `currentColor` so it tints to context (coral in the nav, white on dark, etc.).
  * The viewBox pads the 746x700 art to a 746-square and centers it vertically.
  */
@@ -29,7 +29,7 @@ export function BirdMark({ size = 28, className }: { size?: number; className?: 
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
       role="img"
-      aria-label="Kikkacord"
+      aria-label="Ohiyo"
       className={className}
     >
       {CHINCHILLA_PATHS.map((d, i) => (

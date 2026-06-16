@@ -59,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
 
     let addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_owned());
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    tracing::info!("Kikkacord server listening on {addr}");
+    tracing::info!("Ohiyo server listening on {addr}");
     // Connect-info lets auth handlers rate-limit by client IP. Graceful shutdown lets
     // in-flight requests drain on SIGTERM (Fly sends it on deploy/stop) or Ctrl-C,
     // instead of being cut off mid-flight.

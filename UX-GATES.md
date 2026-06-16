@@ -1,4 +1,4 @@
-# Kikkacord UX Gates — world-class messaging checklist
+# Ohiyo UX Gates — world-class messaging checklist
 
 The bar for a messaging app people *love* isn't features — it's feel. These are the
 gates, scored honestly against the current build. **Legend:** ✅ meets the bar ·

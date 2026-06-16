@@ -134,7 +134,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const typing = useTyping(currentUser?.id ?? "");
   const [connStatus, setConnStatus] = useState<ConnectionStatus>("connecting");
 
-  // Desktop deep links: opening kikkacord://invite/<code> (cold start or while
+  // Desktop deep links: opening ohiyo://invite/<code> (cold start or while
   // running) routes into the join screen. No-op in the browser.
   useEffect(() => {
     let cleanup = () => {};
@@ -321,7 +321,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   // Reflect total unread in the tab title so it's visible when backgrounded.
   useEffect(() => {
     const total = Object.values(unread).reduce((sum, n) => sum + n, 0);
-    document.title = total > 0 ? `(${total}) Kikkacord` : "Kikkacord";
+    document.title = total > 0 ? `(${total}) Ohiyo` : "Ohiyo";
   }, [unread]);
 
   // My effective permissions for the selected server (gates moderation UI).
@@ -1013,7 +1013,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
             void distributeMySenderKey(channelId);
           } else {
             void getDmKey(channelId).then((k) => {
-              if (!k) toast("Your friend hasn't set up encryption yet — they just need to open Kikkacord once.");
+              if (!k) toast("Your friend hasn't set up encryption yet — they just need to open Ohiyo once.");
             });
           }
         }
@@ -1072,7 +1072,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
             const peerId = dmPeerId(cid);
             const sig = peerId ? await encryptFor(token, peerId, content) : null;
             if (!sig) {
-              toast("Can't send encrypted yet — your friend needs to open Kikkacord once to set up encryption.");
+              toast("Can't send encrypted yet — your friend needs to open Ohiyo once to set up encryption.");
               throw new Error("no-signal-session");
             }
             wire = sig;

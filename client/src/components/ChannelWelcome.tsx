@@ -3,7 +3,7 @@ import { BirdMark } from "./BirdMark";
 
 /**
  * The empty-channel state. Always greets the channel; the FIRST time a brand-new
- * account lands in an empty channel it also unfolds the full Kikkacord welcome — a
+ * account lands in an empty channel it also unfolds the full Ohiyo welcome — a
  * thank-you, what we believe, and a nudge to spread the vibe. Shown once, ever.
  */
 
@@ -11,7 +11,7 @@ import { BirdMark } from "./BirdMark";
 const seenKey = (userId?: string) => `kc:welcome-manifesto-seen:${userId ?? "anon"}`;
 
 const SHARE_NOTE =
-  "I just switched to Kikkacord 🐭 — a free, open chat with real end-to-end encryption and " +
+  "I just switched to Ohiyo 🐭 — a free, open chat with real end-to-end encryption and " +
   "nothing to sell you. No ads, no tracking, no paywall. Come hang out: https://github.com/New1Direction/kikkacord";
 
 type Props = {
@@ -105,7 +105,7 @@ export function ChannelWelcome({ channelName, isDM, userId }: Props) {
               marginBottom: "0.6rem",
             }}
           >
-            🐭 Welcome to Kikkacord.
+            🐭 Welcome to Ohiyo.
           </div>
           <div className="space-y-3 text-sm" style={{ color: "var(--text-secondary)", lineHeight: 1.7 }}>
             <p>

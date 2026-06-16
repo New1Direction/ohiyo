@@ -1,7 +1,7 @@
 export default {
   id: "fps-counter",
   name: "FPS Counter",
-  description: "Shows a real-time FPS overlay to prove Kikkacord runs at 60fps",
+  description: "Shows a real-time FPS overlay to prove Ohiyo runs at 60fps",
   version: "1.0.0",
   css: `
     #kk-fps {

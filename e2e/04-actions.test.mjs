@@ -11,7 +11,7 @@ async function register(page, u, d) {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector("text=Create an account", { timeout: 10000 });
   await page.click("text=Create an account");
-  await page.waitForSelector("text=Join Kikkacord");
+  await page.waitForSelector("text=Join Ohiyo");
   await page.fill('input[autocomplete="username"]', u);
   await page.fill('input[autocomplete="nickname"]', d);
   await page.fill("#kc-password", PASS);
@@ -115,12 +115,12 @@ try {
   await pageB.locator('input[placeholder*="Say something"]').fill("hey are you there");
   await pageB.locator('input[placeholder*="Say something"]').press("Enter");
   // A's tab title should show unread count
-  await pageA.waitForFunction(() => /^\(\d+\) Kikkacord/.test(document.title), { timeout: 8000 });
+  await pageA.waitForFunction(() => /^\(\d+\) Ohiyo/.test(document.title), { timeout: 8000 });
   const title = await pageA.evaluate(() => document.title);
   log(`A tab title shows unread: "${title}" ✓`);
   // opening the channel clears the title
   await pageA.click('button:has-text("general")');
-  await pageA.waitForFunction(() => document.title === "Kikkacord", { timeout: 6000 });
+  await pageA.waitForFunction(() => document.title === "Ohiyo", { timeout: 6000 });
   log("title resets after reading ✓");
 
   console.log("\n✅ MESSAGE ACTIONS FLOW PASSED (edit · pin · delete · title badge)");

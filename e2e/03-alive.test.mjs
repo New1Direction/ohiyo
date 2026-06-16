@@ -18,7 +18,7 @@ async function register(page, username, displayName) {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector("text=Create an account", { timeout: 10000 });
   await page.click("text=Create an account");
-  await page.waitForSelector("text=Join Kikkacord");
+  await page.waitForSelector("text=Join Ohiyo");
   await page.fill('input[autocomplete="username"]', username);
   await page.fill('input[autocomplete="nickname"]', displayName);
   await page.fill("#kc-password", PASS);

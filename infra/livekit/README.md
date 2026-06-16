@@ -1,6 +1,6 @@
-# LiveKit SFU — scalable voice/video for Kikkacord
+# LiveKit SFU — scalable voice/video for Ohiyo
 
-Kikkacord ships with peer-to-peer WebRTC voice that works great for small calls
+Ohiyo ships with peer-to-peer WebRTC voice that works great for small calls
 (~4-5 people) but degrades as everyone connects to everyone. LiveKit replaces the
 mesh with a **selective forwarding unit (SFU)**: each client sends its media once to
 LiveKit, which forwards it — so large rooms stay cheap and reliable.

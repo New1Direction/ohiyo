@@ -3,7 +3,7 @@ name = "kikka-vault"
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0"
-description = "Locked-RAM key vault for Kikkacord E2E keys (dazai/goodnight-backed) with AES-256-GCM sealed-at-rest persistence and explicit burn."
+description = "Locked-RAM key vault for Ohiyo E2E keys (dazai/goodnight-backed) with AES-256-GCM sealed-at-rest persistence and explicit burn."
 
 [dependencies]
 goodnight = { path = "../goodnight" }

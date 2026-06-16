@@ -1,4 +1,4 @@
-//! Kikkacord server library.
+//! Ohiyo server library.
 //!
 //! The binary (`main.rs`) is a thin wrapper around this crate: it wires up logging,
 //! the database, the background sweep loop, and the network listener. Everything that
