@@ -11,6 +11,7 @@ pub mod api;
 pub mod auth;
 pub mod db;
 pub mod gateway;
+pub mod instance_router;
 pub mod provision;
 pub mod ratelimit;
 pub mod search;
@@ -272,6 +273,9 @@ pub fn build_app(state: AppState) -> Router {
             .allow_headers(Any),
     };
 
+    // The Instant-Servers edge router needs the DB; clone state before it's moved in.
+    let router_state = state.clone();
+
     Router::new()
         .nest("/api/v1", api::router())
         .route("/gateway", get(gateway::ws_handler))
@@ -283,6 +287,12 @@ pub fn build_app(state: AppState) -> Router {
         .layer(cors)
         // 16 MiB default for JSON/avatar/emoji; the /upload route overrides to 2 GiB.
         .layer(DefaultBodyLimit::max(16 * 1024 * 1024))
+        // Outermost: route `<sub>.ohiyo.gg` straight to its provisioned machine via
+        // fly-replay, before any normal handling. Passthrough for every other Host.
+        .layer(axum::middleware::from_fn_with_state(
+            router_state,
+            instance_router::instance_router,
+        ))
 }
 
 #[cfg(test)]
