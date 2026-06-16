@@ -26,28 +26,28 @@ volume snapshots (keep both — see `DEPLOY.md`).
    ```bash
    cd server
    fly secrets set \
-     LITESTREAM_REPLICA_URL="s3://your-bucket/kikkacord.db" \
+     LITESTREAM_REPLICA_URL="s3://your-bucket/ohiyo.db" \
      LITESTREAM_ACCESS_KEY_ID="<access-key>" \
      LITESTREAM_SECRET_ACCESS_KEY="<secret-key>"
 
    # Non-AWS endpoints (R2/Tigris/B2/MinIO) also need the endpoint:
-   fly secrets set LITESTREAM_REPLICA_URL="s3://your-bucket/kikkacord.db?endpoint=https://<account>.r2.cloudflarestorage.com&region=auto"
+   fly secrets set LITESTREAM_REPLICA_URL="s3://your-bucket/ohiyo.db?endpoint=https://<account>.r2.cloudflarestorage.com&region=auto"
    ```
 
-   `DATABASE_URL` already points at `/data/kikkacord.db`; the entrypoint derives the
+   `DATABASE_URL` already points at `/data/ohiyo.db`; the entrypoint derives the
    file path from it.
 
 3. `fly deploy`. Confirm in the logs:
 
    ```
-   litestream: /data/kikkacord.db -> s3://your-bucket/kikkacord.db
+   litestream: /data/ohiyo.db -> s3://your-bucket/ohiyo.db
    ```
 
 ## Verify a restore (do this before you trust it)
 
 ```bash
 # From a machine with the same LITESTREAM_* env, into a scratch file:
-litestream restore -o /tmp/restored.db "s3://your-bucket/kikkacord.db"
+litestream restore -o /tmp/restored.db "s3://your-bucket/ohiyo.db"
 sqlite3 /tmp/restored.db "SELECT count(*) FROM users;"
 ```
 

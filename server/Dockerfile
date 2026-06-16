@@ -35,12 +35,12 @@ ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VE
 RUN dpkg -i /tmp/litestream.deb && rm /tmp/litestream.deb
 
 WORKDIR /data
-COPY --from=builder /build/target/release/server /usr/local/bin/kikkacord-server
+COPY --from=builder /build/target/release/server /usr/local/bin/ohiyo-server
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV BIND_ADDR=0.0.0.0:3000 \
-    DATABASE_URL=sqlite:/data/kikkacord.db \
+    DATABASE_URL=sqlite:/data/ohiyo.db \
     RUST_LOG=server=info,tower_http=warn
 
 EXPOSE 3000
