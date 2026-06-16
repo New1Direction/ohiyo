@@ -106,13 +106,13 @@ export async function claimNotification(id: string): Promise<boolean> {
   }
 }
 
-/** Parse a `kikkacord://invite/<code>` (or `?invite=<code>`) URL into its code. */
+/** Parse an `ohiyo://invite/<code>` (or legacy `kikkacord://`, or `?invite=<code>`) URL into its code. */
 export function parseInviteUrl(url: string): string | null {
   try {
     const u = new URL(url);
-    if (u.protocol === "kikkacord:") {
-      // kikkacord://invite/CODE → hostname="invite", pathname="/CODE"
-      // kikkacord://CODE        → hostname="CODE"
+    if (u.protocol === "ohiyo:" || u.protocol === "kikkacord:") {
+      // ohiyo://invite/CODE → hostname="invite", pathname="/CODE"
+      // ohiyo://CODE        → hostname="CODE"
       const fromPath = u.pathname.replace(/^\/+/, "").trim();
       if (u.hostname === "invite") return fromPath || null;
       if (u.hostname) return u.hostname;
@@ -126,7 +126,7 @@ export function parseInviteUrl(url: string): string | null {
 }
 
 /**
- * Register a handler for `kikkacord://` deep links — both ones that launched the
+ * Register a handler for `ohiyo://` deep links — both ones that launched the
  * app (cold start) and ones opened while it runs. No-op in the browser.
  * Returns a cleanup function.
  */

@@ -64,7 +64,7 @@ fn http() -> &'static reqwest::Client {
     HTTP.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
-            .user_agent("Kikkacord/1.0 (link preview bot)")
+            .user_agent("Ohiyo/1.0 (link preview bot)")
             // No auto-redirects: we follow manually so EVERY hop is SSRF-checked
             // (a public URL must not be able to bounce us to an internal address).
             .redirect(reqwest::redirect::Policy::none())

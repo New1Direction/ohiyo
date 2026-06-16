@@ -1,4 +1,4 @@
-/* Kikkacord pitch deck — navigation + interactions. No dependencies. */
+/* Ohiyo pitch deck — navigation + interactions. No dependencies. */
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);

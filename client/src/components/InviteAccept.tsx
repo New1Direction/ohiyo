@@ -85,7 +85,7 @@ export function InviteAccept({ token, code, onJoin, onDismiss }: Props) {
               onClick={onDismiss}
               className="kc-cta mt-6 w-full py-3 text-sm"
             >
-              Go to Kikkacord
+              Go to Ohiyo
             </button>
           </>
         ) : preview ? (

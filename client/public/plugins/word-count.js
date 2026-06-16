@@ -1,5 +1,5 @@
 /**
- * Word Count Plugin for Kikkacord
+ * Word Count Plugin for Ohiyo
  *
  * Install URL: http://localhost:5173/plugins/word-count.js
  *

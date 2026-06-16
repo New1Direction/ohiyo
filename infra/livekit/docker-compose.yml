@@ -1,4 +1,4 @@
-# LiveKit SFU — scalable group voice/video/screen-share for Kikkacord.
+# LiveKit SFU — scalable group voice/video/screen-share for Ohiyo.
 #
 # This is the OPTIONAL path. With LiveKit disabled, calls use the built-in
 # peer-to-peer WebRTC mesh (fine up to ~4-5 participants). LiveKit lifts that

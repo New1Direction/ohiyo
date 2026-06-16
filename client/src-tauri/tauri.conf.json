@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Kikkacord",
+  "productName": "Ohiyo",
   "version": "0.1.0",
-  "identifier": "app.kikkacord.desktop",
+  "identifier": "app.ohiyo.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Kikkacord",
+        "title": "Ohiyo",
         "width": 1180,
         "height": 760,
         "minWidth": 940,
@@ -30,7 +30,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["kikkacord"]
+        "schemes": ["ohiyo"]
       }
     }
   },
@@ -39,7 +39,7 @@
     "targets": "all",
     "category": "SocialNetworking",
     "shortDescription": "The warm, free place for your group chat.",
-    "longDescription": "Kikkacord is a free, open Discord alternative — voice, video, 4K screen-share, polls, events, roles, and plugins, with nothing locked behind a paywall.",
+    "longDescription": "Ohiyo is a free, open Discord alternative — voice, video, 4K screen-share, polls, events, roles, and plugins, with nothing locked behind a paywall.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

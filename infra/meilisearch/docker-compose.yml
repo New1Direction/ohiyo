@@ -1,4 +1,4 @@
-# Meilisearch — full-text message search for Kikkacord.
+# Meilisearch — full-text message search for Ohiyo.
 #
 # Bring it up:   docker compose -f infra/meilisearch/docker-compose.yml up -d
 # Then set on the server (see server/.env.example):

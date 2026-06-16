@@ -24,7 +24,7 @@ export const BUILTIN_THEMES: Theme[] = [
   {
     id: "daybreak",
     name: "Daybreak",
-    author: "Kikkacord",
+    author: "Ohiyo",
     vars: {
       "--bg-base": "#f4e9dd",
       "--bg-sidebar": "#fbf3ea",
@@ -43,7 +43,7 @@ export const BUILTIN_THEMES: Theme[] = [
   {
     id: "dusk",
     name: "Dusk",
-    author: "Kikkacord",
+    author: "Ohiyo",
     vars: {
       "--bg-base": "#171311",
       "--bg-sidebar": "#1e1815",
@@ -61,8 +61,8 @@ export const BUILTIN_THEMES: Theme[] = [
   },
   {
     id: "kikkacord-dark",
-    name: "Kikkacord Dark",
-    author: "Kikkacord",
+    name: "Ohiyo Dark",
+    author: "Ohiyo",
     vars: {
       "--bg-base": "#1e1f22",
       "--bg-sidebar": "#2b2d31",
@@ -81,7 +81,7 @@ export const BUILTIN_THEMES: Theme[] = [
   {
     id: "midnight",
     name: "Midnight",
-    author: "Kikkacord",
+    author: "Ohiyo",
     vars: {
       "--bg-base": "#0d0e12",
       "--bg-sidebar": "#14151a",
@@ -100,7 +100,7 @@ export const BUILTIN_THEMES: Theme[] = [
   {
     id: "tokyo-night",
     name: "Tokyo Night",
-    author: "Kikkacord",
+    author: "Ohiyo",
     vars: {
       "--bg-base": "#1a1b2e",
       "--bg-sidebar": "#16213e",
@@ -119,7 +119,7 @@ export const BUILTIN_THEMES: Theme[] = [
   {
     id: "rose-pine",
     name: "Rosé Pine",
-    author: "Kikkacord",
+    author: "Ohiyo",
     vars: {
       "--bg-base": "#191724",
       "--bg-sidebar": "#1f1d2e",
@@ -137,8 +137,8 @@ export const BUILTIN_THEMES: Theme[] = [
   },
   {
     id: "light",
-    name: "Kikkacord Light",
-    author: "Kikkacord",
+    name: "Ohiyo Light",
+    author: "Ohiyo",
     vars: {
       "--bg-base": "#e3e5e8",
       "--bg-sidebar": "#f2f3f5",
@@ -157,7 +157,7 @@ export const BUILTIN_THEMES: Theme[] = [
   {
     id: "amoled",
     name: "AMOLED Black",
-    author: "Kikkacord",
+    author: "Ohiyo",
     vars: {
       "--bg-base": "#000000",
       "--bg-sidebar": "#0a0a0a",

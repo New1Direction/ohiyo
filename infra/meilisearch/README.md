@@ -1,6 +1,6 @@
-# Meilisearch — message search for Kikkacord
+# Meilisearch — message search for Ohiyo
 
-Kikkacord can serve full-text message search from [Meilisearch](https://www.meilisearch.com/)
+Ohiyo can serve full-text message search from [Meilisearch](https://www.meilisearch.com/)
 (typo-tolerant, relevance-ranked). It's **optional**: with search disabled, the
 `GET /servers/{id}/search` endpoint falls back to a SQL `LIKE` query, so nothing
 breaks — Meilisearch just makes it fast and fuzzy.

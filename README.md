@@ -1,4 +1,4 @@
-# Kikkacord
+# Ohiyo
 
 A free, self-hostable Discord alternative — servers, channels, DMs, and real-time
 voice / video / screen-share, with a sandboxed plugin system and a brand of its own.
@@ -104,6 +104,6 @@ Production runs on Fly.io. Full walkthrough — Docker image, volume-backed SQLi
 ## License
 
 [AGPL-3.0](LICENSE). You're free to use, modify, self-host, and redistribute
-Kikkacord. The one obligation: if you run a **modified** version as a network
+Ohiyo. The one obligation: if you run a **modified** version as a network
 service, you must offer your users its source. That's deliberate — it keeps every
 hosted fork of a *free* chat app free.

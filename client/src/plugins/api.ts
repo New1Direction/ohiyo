@@ -31,7 +31,7 @@ export type PluginEventName =
 export type PluginEventHandler = (data: unknown) => void;
 
 // What a plugin module must export as default.
-export type KikkacordPlugin = {
+export type OhiyoPlugin = {
   id: string;
   name: string;
   description: string;

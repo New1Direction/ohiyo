@@ -1,4 +1,4 @@
-# Kikkacord Roadmap — the hub for doing things together
+# Ohiyo Roadmap — the hub for doing things together
 
 **Vision:** the best place for friends to *be together* while they play games, watch
 things, or work — not just a chat app, but the room you hang out in. Free, self-hostable,
@@ -47,7 +47,7 @@ A calm, fast place to get things done with a team.
 - [x] **Group E2E (Sender Keys)** — Signal/WhatsApp group scheme: a per-member, per-group chain key ratcheted to a fresh AES-256-GCM key per message + an ECDSA P-256 signature so members can't forge each other. Sender keys distributed (Sender Key Distribution Messages) over the pairwise Signal sessions; the server only relays opaque ciphertext (`grp1.`). **Verified: 3-member group DM, one ciphertext, all decrypt, server blind.**
 - [x] **Disappearing messages** — per-conversation TTL; messages carry `expires_at`, a background sweeper deletes them server-side (ciphertext doesn't linger) and a client timer drops them instantly. One-click duration picker + live banner. **Two-client verified: self-destruct with no reload.** (Also the engine for an account-level dead-man's switch.)
 - [x] **Desktop key vault** (dazai/ningen-shikkaku) — on the desktop app, E2E private keys live in **page-locked, non-swappable RAM** (vendored `goodnight::SecretBuffer`), persisted only as an **AES-256-GCM sealed blob** (master key in the OS keychain) — never plaintext on disk like the old localStorage. An on-demand **burn** (wipe RAM + sealed blob + keychain key) is the dead-man's switch. Web build keeps localStorage (no mlock in a browser). *Vault core unit-tested; Tauri integration compiles; in-use keys still transit JS heap (full native crypto is a later phase).*
-- [x] **Dead-man's switch (inactivity wipe)** — opt-in, cross-platform: if you don't open Kikkacord for N days (7/30/90), a server sweeper wipes your authored messages, and optionally your server-side Signal directory (scope = history / keys). Configurable in Settings → Privacy & Security. **Two-user verified: armed+inactive user's history wiped, others' survive.**
+- [x] **Dead-man's switch (inactivity wipe)** — opt-in, cross-platform: if you don't open Ohiyo for N days (7/30/90), a server sweeper wipes your authored messages, and optionally your server-side Signal directory (scope = history / keys). Configurable in Settings → Privacy & Security. **Two-user verified: armed+inactive user's history wiped, others' survive.**
 - [ ] Sealed sender (metadata hiding — needs sender certs + server trust-model change)
 - [ ] Federation
 

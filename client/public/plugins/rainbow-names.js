@@ -1,5 +1,5 @@
 /**
- * Rainbow Names Plugin for Kikkacord
+ * Rainbow Names Plugin for Ohiyo
  *
  * Install URL: http://localhost:5173/plugins/rainbow-names.js
  *

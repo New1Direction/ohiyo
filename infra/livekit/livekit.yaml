@@ -1,4 +1,4 @@
-# LiveKit server config for Kikkacord. Mounted read-only into the container.
+# LiveKit server config for Ohiyo. Mounted read-only into the container.
 port: 7880
 
 rtc:

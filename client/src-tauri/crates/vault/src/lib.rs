@@ -1,4 +1,4 @@
-//! Locked-RAM key vault for Kikkacord's E2E key material.
+//! Locked-RAM key vault for Ohiyo's E2E key material.
 //!
 //! E2E private keys (Signal identity, ratchet state, sender keys) and the decrypted
 //! plaintext cache normally live in the webview's `localStorage` — plaintext, on disk,

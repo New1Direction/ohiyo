@@ -17,7 +17,7 @@ const MAX_USERNAME = 32;
 function friendlyError(raw: string, mode: Mode): string {
   const m = raw.toLowerCase();
   if (m.includes("failed to fetch") || m.includes("networkerror") || m.includes("load failed")) {
-    return "Can't reach Kikkacord right now — check your connection and try again.";
+    return "Can't reach Ohiyo right now — check your connection and try again.";
   }
   if (m.includes("username taken")) return "That username's already taken — try another?";
   if (m.includes("invalid credentials")) return "Hmm, that username or password doesn't match.";
@@ -106,7 +106,7 @@ export function AuthScreen({ onAuth }: Props) {
           : m.includes("too many")
             ? "Too many tries — give it a moment and try again."
             : m.includes("failed to fetch") || m.includes("load failed")
-              ? "Can't reach Kikkacord right now — check your connection."
+              ? "Can't reach Ohiyo right now — check your connection."
               : "Couldn't link this device. Try again?"
       );
       setLoading(false);
@@ -169,7 +169,7 @@ export function AuthScreen({ onAuth }: Props) {
           <h1
             style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-2xl)", color: "var(--text-primary)" }}
           >
-            {mode === "login" ? "Welcome back" : mode === "register" ? "Join Kikkacord" : "Link this device"}
+            {mode === "login" ? "Welcome back" : mode === "register" ? "Join Ohiyo" : "Link this device"}
           </h1>
           <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
             {mode === "login"
@@ -356,7 +356,7 @@ export function AuthScreen({ onAuth }: Props) {
         <p className="mt-5 text-center text-xs" style={{ color: "var(--text-muted)" }}>
           {mode === "login" ? (
             <>
-              New to Kikkacord?{" "}
+              New to Ohiyo?{" "}
               <button onClick={() => switchMode("register")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
                 Create an account
               </button>

@@ -49,7 +49,7 @@ try {
 
   // ── Switch to register ──────────────────────────────────────────
   await page.click("text=Create an account");
-  await page.waitForSelector("text=Join Kikkacord", { timeout: 5000 });
+  await page.waitForSelector("text=Join Ohiyo", { timeout: 5000 });
   await shot(page, "02-auth-register-1440");
 
   // Live password strength hint

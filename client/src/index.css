@@ -129,7 +129,7 @@ input, textarea, select {
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* ═══════════════════════════════════════════════════════════
-   Kikkacord motion & interaction
+   Ohiyo motion & interaction
    ═══════════════════════════════════════════════════════════ */
 @keyframes kc-message-in {
   from { opacity: 0; transform: translateY(8px); }

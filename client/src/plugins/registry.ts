@@ -1,15 +1,15 @@
-import type { KikkacordPlugin, PluginAPI, PluginEventHandler, PluginEventName } from "./api";
+import type { OhiyoPlugin, PluginAPI, PluginEventHandler, PluginEventName } from "./api";
 import type { Message } from "../api";
 import { SandboxHost, sanitizePluginCss } from "./sandbox";
 
 // ── Built-in plugins ──────────────────────────────────────────────────────────
 
-const compactModePlugin: KikkacordPlugin = {
+const compactModePlugin: OhiyoPlugin = {
   id: "compact-mode",
   name: "Compact Mode",
   description: "Reduces message padding for denser chat layout.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   onLoad: () => {
     document.documentElement.classList.add("plugin-compact");
   },
@@ -24,12 +24,12 @@ const compactModePlugin: KikkacordPlugin = {
   `,
 };
 
-const customCssPlugin: KikkacordPlugin = {
+const customCssPlugin: OhiyoPlugin = {
   id: "custom-css",
   name: "Custom CSS",
-  description: "Inject your own CSS into Kikkacord.",
+  description: "Inject your own CSS into Ohiyo.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   onLoad: (api) => {
     const css = api.store.get<string>("custom-css") ?? "";
     injectStyle("custom-css-plugin", css);
@@ -39,12 +39,12 @@ const customCssPlugin: KikkacordPlugin = {
   },
 };
 
-const mentionHighlightPlugin: KikkacordPlugin = {
+const mentionHighlightPlugin: OhiyoPlugin = {
   id: "mention-highlight",
   name: "Mention Highlight",
   description: "Highlights messages that mention your username.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   transformMessage: (msg) => {
     const user = window.__kikkacordUser ?? null;
     if (!user) return msg;
@@ -58,12 +58,12 @@ const mentionHighlightPlugin: KikkacordPlugin = {
   },
 };
 
-const linkPreviewPlugin: KikkacordPlugin = {
+const linkPreviewPlugin: OhiyoPlugin = {
   id: "link-preview",
   name: "Link Preview",
   description: "Shows URL previews in messages (title + favicon).",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   css: `
     .link-preview {
       display: inline-flex;
@@ -82,12 +82,12 @@ const linkPreviewPlugin: KikkacordPlugin = {
   `,
 };
 
-const codeHighlightPlugin: KikkacordPlugin = {
+const codeHighlightPlugin: OhiyoPlugin = {
   id: "code-highlight",
   name: "Code Highlight",
   description: "Syntax-highlights ``` code blocks in messages.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   css: `
     .code-block {
       display: block;
@@ -104,12 +104,12 @@ const codeHighlightPlugin: KikkacordPlugin = {
   `,
 };
 
-const messageSoundPlugin: KikkacordPlugin = {
+const messageSoundPlugin: OhiyoPlugin = {
   id: "message-sound",
   name: "Message Sounds",
   description: "Plays a subtle sound on new messages.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   onLoad: (api) => {
     api.on("message", () => {
       playTick();
@@ -117,12 +117,12 @@ const messageSoundPlugin: KikkacordPlugin = {
   },
 };
 
-const keyboardNavPlugin: KikkacordPlugin = {
+const keyboardNavPlugin: OhiyoPlugin = {
   id: "keyboard-nav",
   name: "Keyboard Navigator",
   description: "Alt+1..9 to jump to servers, Ctrl+K to open channel search.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   onLoad: () => {
     document.addEventListener("keydown", handleKeyNav);
   },
@@ -131,12 +131,12 @@ const keyboardNavPlugin: KikkacordPlugin = {
   },
 };
 
-const zenModePlugin: KikkacordPlugin = {
+const zenModePlugin: OhiyoPlugin = {
   id: "zen-mode",
   name: "Zen Mode",
   description: "Hides server and channel sidebars for focused chat.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   onLoad: () => {
     document.documentElement.classList.add("plugin-zen");
   },
@@ -149,12 +149,12 @@ const zenModePlugin: KikkacordPlugin = {
   `,
 };
 
-const fontPickerPlugin: KikkacordPlugin = {
+const fontPickerPlugin: OhiyoPlugin = {
   id: "font-picker",
   name: "Font Picker",
   description: "Change the app font. Configure in plugin settings.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   onLoad: (api) => {
     const font = api.store.get<string>("font") ?? "inherit";
     injectStyle("font-picker-plugin", `body { font-family: ${font}, sans-serif !important; }`);
@@ -164,12 +164,12 @@ const fontPickerPlugin: KikkacordPlugin = {
   },
 };
 
-const spoilerPlugin: KikkacordPlugin = {
+const spoilerPlugin: OhiyoPlugin = {
   id: "spoiler-text",
   name: "Spoiler Text",
   description: "Wrap text in ||spoiler|| to hide it — click to reveal.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   transformMessage: (msg) => {
     if (!msg.content.includes("||")) return msg;
     return {
@@ -194,12 +194,12 @@ const spoilerPlugin: KikkacordPlugin = {
   `,
 };
 
-const chatCommandsPlugin: KikkacordPlugin = {
+const chatCommandsPlugin: OhiyoPlugin = {
   id: "chat-commands",
   name: "Chat Commands",
   description: "/shrug /me /tableflip /unflip /lenny in your messages.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   transformSend: (text) => {
     const trimmed = text.trim();
     if (trimmed === "/shrug") return "¯\\_(ツ)_/¯";
@@ -213,12 +213,12 @@ const chatCommandsPlugin: KikkacordPlugin = {
   },
 };
 
-const bigEmojiPlugin: KikkacordPlugin = {
+const bigEmojiPlugin: OhiyoPlugin = {
   id: "big-emoji",
   name: "Big Emoji",
   description: "Messages containing only 1–3 emoji are displayed larger.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   transformMessage: (msg) => {
     const stripped = msg.content.replace(/\s/g, "");
     const emojiRe = /^(\p{Emoji_Presentation}|\p{Extended_Pictographic})+$/u;
@@ -235,12 +235,12 @@ const bigEmojiPlugin: KikkacordPlugin = {
   `,
 };
 
-const timestampPlugin: KikkacordPlugin = {
+const timestampPlugin: OhiyoPlugin = {
   id: "discord-timestamps",
   name: "Discord Timestamps",
   description: "Renders <t:UNIX> and <t:UNIX:R> like Discord's timestamp format.",
   version: "1.0.0",
-  author: "Kikkacord",
+  author: "Ohiyo",
   transformMessage: (msg) => {
     if (!/<t:\d+/.test(msg.content)) return msg;
     const content = msg.content.replace(/<t:(\d+)(:R)?>/g, (_m, ts, rel) => {
@@ -260,7 +260,7 @@ const timestampPlugin: KikkacordPlugin = {
   },
 };
 
-export const BUILTIN_PLUGINS: KikkacordPlugin[] = [
+export const BUILTIN_PLUGINS: OhiyoPlugin[] = [
   compactModePlugin,
   customCssPlugin,
   mentionHighlightPlugin,
@@ -281,20 +281,20 @@ export const BUILTIN_PLUGINS: KikkacordPlugin[] = [
 const ENABLED_KEY = "kikkacord:plugins:enabled";
 
 export class PluginManager {
-  private loaded = new Map<string, KikkacordPlugin>();
+  private loaded = new Map<string, OhiyoPlugin>();
   private styleElements = new Map<string, HTMLStyleElement>();
   private eventHandlers = new Map<string, Set<PluginEventHandler>>();
   // Worker sandboxes for untrusted (user-installed) plugins, keyed by plugin id.
   private sandboxes = new Map<string, SandboxHost>();
   private api: PluginAPI;
-  private plugins: KikkacordPlugin[];
+  private plugins: OhiyoPlugin[];
 
-  constructor(api: PluginAPI, extraPlugins: KikkacordPlugin[] = []) {
+  constructor(api: PluginAPI, extraPlugins: OhiyoPlugin[] = []) {
     this.api = api;
     this.plugins = [...BUILTIN_PLUGINS, ...extraPlugins];
   }
 
-  allPlugins(): KikkacordPlugin[] {
+  allPlugins(): OhiyoPlugin[] {
     return this.plugins;
   }
 
@@ -432,7 +432,7 @@ export class PluginManager {
     host.bindStore(this.makeStore(manifest.id));
     this.sandboxes.set(manifest.id, host);
 
-    const plugin: KikkacordPlugin = {
+    const plugin: OhiyoPlugin = {
       id: manifest.id,
       name: manifest.name,
       description: manifest.description,
