@@ -22,15 +22,19 @@ pub async fn instance_router(State(state): State<AppState>, req: Request, next: 
         return next.run(req).await;
     };
 
-    let machine_id: Option<String> = sqlx::query_scalar(
-        "SELECT machine_id FROM hosted_instances
-         WHERE subdomain = ? AND status = 'healthy' AND machine_id IS NOT NULL",
+    // Fetch the row with query_as (the same pattern the working /instances endpoints
+    // use). query_scalar on the nullable machine_id column proved unreliable against the
+    // live SQLite — query_as round-trips the full row correctly. Filter status in Rust.
+    let machine_id: Option<String> = sqlx::query_as::<_, crate::types::HostedInstance>(
+        "SELECT * FROM hosted_instances WHERE subdomain = ? LIMIT 1",
     )
     .bind(&sub)
     .fetch_optional(&state.db)
     .await
     .ok()
-    .flatten();
+    .flatten()
+    .filter(|i| i.status == "healthy")
+    .and_then(|i| i.machine_id);
 
     match machine_id {
         Some(id) => fly_replay(&id),
