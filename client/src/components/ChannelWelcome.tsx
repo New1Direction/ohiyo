@@ -12,7 +12,7 @@ const seenKey = (userId?: string) => `kc:welcome-manifesto-seen:${userId ?? "ano
 
 const SHARE_NOTE =
   "I just switched to Ohiyo 🐭 — a free, open chat with real end-to-end encryption and " +
-  "nothing to sell you. No ads, no tracking, no paywall. Come hang out: https://github.com/New1Direction/kikkacord";
+  "nothing to sell you. No ads, no tracking, no paywall. Come hang out: https://github.com/New1Direction/ohiyo";
 
 type Props = {
   /** The channel name (server text channels). Ignored for DMs. */
@@ -130,7 +130,7 @@ export function ChannelWelcome({ channelName, isDM, userId }: Props) {
               {copied ? "Copied — go spread the vibe! 🎉" : "📣 Tell a friend"}
             </button>
             <a
-              href="https://github.com/New1Direction/kikkacord"
+              href="https://github.com/New1Direction/ohiyo"
               target="_blank"
               rel="noopener noreferrer"
               className="kc-interactive rounded-full px-4 py-2 text-sm font-semibold"
