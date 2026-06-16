@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ohiyo — Launch Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="icon" href="kikka.svg" />
+<style>
+:root{
+  --base:#171311;--surface:#1f1916;--surface2:#251d19;--line:#3a2f29;
+  --cream:#f5ece4;--warm:#c5b4a7;--muted:#8a7a6e;
+  --coral:#ff7a4d;--persimmon:#f2683c;--amber:#e0992f;--emerald:#3fc489;--rose:#eb6f92;--grape:#7c6dfa;--sky:#3da5f2;
+  --grad:linear-gradient(120deg,#ff7a4d,#f2683c 40%,#e0992f);
+  --fun:"Baloo 2",system-ui,sans-serif;--disp:"Fraunces",Georgia,serif;--ui:"Inter",system-ui,sans-serif;
+  --r:16px;--ease:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:90px}
+body{background:var(--base);color:var(--cream);font-family:var(--ui);-webkit-font-smoothing:antialiased;line-height:1.55;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(60% 45% at 82% -5%,rgba(255,122,77,.16),transparent 60%),radial-gradient(50% 50% at 0% 100%,rgba(224,153,47,.10),transparent 55%)}
+body::after{content:"";position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:.04;mix-blend-mode:overlay;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
+
+/* nav */
+nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(23,19,17,.72);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{display:flex;align-items:center;gap:.55rem;font-family:var(--fun);font-weight:800;font-size:1.4rem}
+.brand img{width:30px;filter:brightness(0) invert(.92)}
+.brand .hi{color:var(--coral)}
+nav .links{display:flex;gap:1.4rem;align-items:center}
+nav .links a{color:var(--warm);text-decoration:none;font-size:.92rem;font-weight:550;transition:color .2s}
+nav .links a:hover{color:var(--cream)}
+nav .links a.cta{background:var(--grad);color:#1a120e;padding:.5rem 1rem;border-radius:999px;font-weight:700}
+@media(max-width:760px){nav .links a:not(.cta){display:none}}
+
+/* hero */
+.hero{text-align:center;padding:clamp(4rem,10vw,8rem) 0 3rem}
+.hero img.logo{width:clamp(90px,11vw,124px);filter:brightness(0) invert(.92) drop-shadow(0 10px 30px rgba(255,122,77,.4));animation:float 7s ease-in-out infinite}
+@keyframes float{50%{transform:translateY(-12px)}}
+.wordmark{font-family:var(--fun);font-weight:800;font-size:clamp(3.6rem,12vw,7.5rem);line-height:1;margin:.5rem 0 .3rem}
+.wordmark .hi{color:var(--coral)}
+.hero .tag{font-family:var(--disp);font-style:italic;font-size:clamp(1.2rem,2.4vw,1.8rem)}
+.hero .sub{color:var(--muted);margin-top:.8rem;font-size:1.05rem}
+.hero .btns{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap;margin-top:2rem}
+.btn{display:inline-flex;align-items:center;gap:.5rem;padding:.85rem 1.4rem;border-radius:999px;font-weight:650;font-size:.96rem;text-decoration:none;cursor:pointer;border:none;transition:transform .25s var(--ease),box-shadow .25s}
+.btn.solid{background:var(--grad);color:#1a120e;box-shadow:0 0 50px -12px rgba(255,122,77,.6)}
+.btn.solid:hover{transform:translateY(-2px);box-shadow:0 0 70px -8px rgba(255,122,77,.75)}
+.btn.ghost{background:transparent;color:var(--cream);border:1px solid var(--line)}
+.btn.ghost:hover{border-color:var(--coral);transform:translateY(-2px)}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin:2.5rem 0}
+.stat{text-align:center;padding:1.3rem 1rem;background:linear-gradient(160deg,rgba(255,255,255,.04),rgba(255,255,255,.01));border:1px solid var(--line);border-radius:var(--r)}
+.stat .n{font-family:var(--disp);font-weight:600;font-size:2.6rem;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat .l{color:var(--muted);font-size:.82rem;margin-top:.2rem}
+@media(max-width:680px){.stats{grid-template-columns:repeat(2,1fr)}}
+
+/* sections */
+section{padding:3.5rem 0;scroll-margin-top:80px}
+.eyebrow{font-size:.78rem;letter-spacing:.22em;text-transform:uppercase;color:var(--coral);font-weight:700;display:inline-flex;align-items:center;gap:.6rem}
+.eyebrow::before{content:"";width:26px;height:2px;background:var(--grad);border-radius:2px}
+h2{font-family:var(--disp);font-weight:600;font-size:clamp(1.9rem,3.6vw,2.8rem);letter-spacing:-.02em;margin:.6rem 0 .3rem}
+.lede{color:var(--warm);max-width:52ch;margin-bottom:1.8rem}
+.grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* card grid + copy cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:1rem}
+.card{background:linear-gradient(160deg,rgba(255,255,255,.045),rgba(255,255,255,.012));border:1px solid var(--line);border-radius:var(--r);padding:1.1rem 1.2rem;display:flex;flex-direction:column;gap:.7rem;transition:border-color .25s,transform .25s var(--ease)}
+.card:hover{border-color:rgba(255,122,77,.4);transform:translateY(-3px)}
+.card .top{display:flex;align-items:center;justify-content:space-between;gap:.6rem}
+.tag{font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--coral);background:rgba(255,122,77,.1);border:1px solid rgba(255,122,77,.28);padding:.25rem .6rem;border-radius:999px}
+.tag.v{color:var(--grape);background:rgba(124,109,250,.1);border-color:rgba(124,109,250,.3)}
+.tag.i{color:var(--sky);background:rgba(61,165,242,.1);border-color:rgba(61,165,242,.3)}
+.tag.g{color:var(--emerald);background:rgba(63,196,137,.1);border-color:rgba(63,196,137,.3)}
+.copy{background:var(--surface2);border:1px solid var(--line);color:var(--warm);font-family:var(--ui);font-size:.76rem;font-weight:600;padding:.32rem .7rem;border-radius:999px;cursor:pointer;transition:all .2s;flex:none}
+.copy:hover{border-color:var(--coral);color:var(--cream)}
+.copy.done{background:rgba(63,196,137,.15);border-color:var(--emerald);color:var(--emerald)}
+.snip{font-size:.92rem;color:var(--cream);white-space:pre-wrap}
+.snip.mono{font-family:ui-monospace,Menlo,monospace;font-size:.82rem;color:var(--warm);background:rgba(0,0,0,.25);padding:.7rem .8rem;border-radius:10px;border:1px solid var(--line)}
+.snip .m{color:var(--muted)}
+
+/* deck cards */
+.deck-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.deck-card{display:block;text-decoration:none;color:var(--cream);background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.012));border:1px solid var(--line);border-radius:var(--r);padding:1.6rem;transition:border-color .25s,transform .25s var(--ease)}
+.deck-card:hover{border-color:var(--coral);transform:translateY(-3px)}
+.deck-card .k{font-size:.74rem;letter-spacing:.16em;text-transform:uppercase;color:var(--coral);font-weight:700}
+.deck-card h3{font-family:var(--disp);font-weight:600;font-size:1.5rem;margin:.4rem 0 .3rem}
+.deck-card p{color:var(--muted);font-size:.92rem}
+@media(max-width:680px){.deck-row{grid-template-columns:1fr}}
+
+/* voice */
+.voice-quote{font-family:var(--disp);font-style:italic;font-size:clamp(1.3rem,2.6vw,1.9rem);color:var(--cream);max-width:60ch;line-height:1.4}
+.rule{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.6rem}
+.rule div{padding:1.2rem 1.3rem;border-radius:var(--r);border:1px solid var(--line)}
+.rule .play{background:rgba(255,122,77,.07)}
+.rule .straight{background:rgba(63,196,137,.06)}
+.rule h4{font-size:1rem;margin-bottom:.4rem}
+.rule p{color:var(--warm);font-size:.9rem}
+@media(max-width:680px){.rule{grid-template-columns:1fr}}
+
+footer{border-top:1px solid var(--line);padding:2.5rem 0;text-align:center;color:var(--muted);font-size:.88rem;margin-top:2rem}
+footer .brand{justify-content:center;margin-bottom:.6rem}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--emerald);color:#0c1a13;font-weight:700;font-size:.85rem;padding:.6rem 1.1rem;border-radius:999px;opacity:0;transition:all .3s var(--ease);z-index:200;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <div class="brand"><img src="kikka.svg" alt=""/> o<span class="hi">Hi</span>Yo</div>
+  <div class="links">
+    <a href="#deck">Deck</a><a href="#social">Social</a><a href="#prompts">AI prompts</a><a href="#voice">Voice</a>
+    <a class="cta" href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">GitHub ↗</a>
+  </div>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <img class="logo" src="kikka.svg" alt="Kikka the chinchilla"/>
+  <div class="wordmark">o<span class="hi">Hi</span>Yo</div>
+  <div class="tag">oh, hi — the encrypted home for your people.</div>
+  <div class="sub">The launch kit, the deck, and the voice — everything in one place.</div>
+  <div class="btns">
+    <a class="btn solid" href="https://www.figma.com/slides/SC44fcJ2MbIQ2retvZvGV4" target="_blank" rel="noopener">Open the deck ↗</a>
+    <a class="btn ghost" href="index.html">Interactive deck →</a>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="n">31</div><div class="l">PRs shipped &amp; merged</div></div>
+    <div class="stat"><div class="n">85</div><div class="l">unit &amp; integration tests</div></div>
+    <div class="stat"><div class="n">8</div><div class="l">hard CI gates per merge</div></div>
+    <div class="stat"><div class="n">0</div><div class="l">plaintext on the server</div></div>
+  </div>
+</div></header>
+
+<section id="deck"><div class="wrap">
+  <span class="eyebrow">The deck</span>
+  <h2>Pitch it <span class="grad">two ways.</span></h2>
+  <p class="lede">Both tell the same story — problem, thesis, vs Discord, the product line, security, where we stand.</p>
+  <div class="deck-row">
+    <a class="deck-card" href="https://www.figma.com/slides/SC44fcJ2MbIQ2retvZvGV4" target="_blank" rel="noopener">
+      <div class="k">Figma Slides</div><h3>Editable &amp; presentable</h3>
+      <p>8 native slides in the brand. Present, tweak, or export to PDF/Keynote.</p>
+    </a>
+    <a class="deck-card" href="index.html">
+      <div class="k">Interactive HTML</div><h3>Self-contained &amp; shareable</h3>
+      <p>Keyboard-navigable, product explorer, verification-aware comparison. Send the file, it just works.</p>
+    </a>
+  </div>
+</div></section>
+
+<section id="social"><div class="wrap">
+  <span class="eyebrow">Launch content</span>
+  <h2>Social posts <span class="grad">— click to copy.</span></h2>
+  <p class="lede">Written in the Ohiyo voice. Warm where it greets, dead-straight about the privacy.</p>
+  <div class="grid" id="social-grid"></div>
+</div></section>
+
+<section id="prompts"><div class="wrap">
+  <span class="eyebrow">AI generation</span>
+  <h2>Visual prompts <span class="grad">— brand-locked.</span></h2>
+  <p class="lede">Kikka + the warm-dusk palette baked into each. Paste the brand kit first wherever the tool allows a style reference.</p>
+  <div class="grid" id="prompt-grid"></div>
+</div></section>
+
+<section id="voice"><div class="wrap">
+  <span class="eyebrow">Brand voice</span>
+  <h2>How Ohiyo <span class="grad">talks.</span></h2>
+  <p class="voice-quote">"A warm friend who happens to be a security expert. The room is cozy; the door is steel — and they never fight."</p>
+  <div class="rule">
+    <div class="play"><h4>🐭 Playful — in the chrome</h4><p>The welcome, Kikka, empty states, button microcopy, success moments. Warm, light, a little whimsical.</p></div>
+    <div class="straight"><h4>🔒 Straight — about the stakes</h4><p>Encryption, their data, security settings, safety warnings. Calm, plain, confident — <b>no jokes.</b></p></div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="brand"><img src="kikka.svg" alt=""/> o<span class="hi">Hi</span>Yo</div>
+  oh, hi. · ohiyo.gg · free &amp; open · built in Rust + React + Tauri
+</div></footer>
+
+<div class="toast" id="toast">Copied ✓</div>
+
+<script>
+const SOCIAL=[
+ ["X · launch thread","oh, hi. 👋\nToday we're launching Ohiyo — the group chat that can't read your messages. Everything you love about Discord. End-to-end encrypted. Free. Self-hostable. 🧵"],
+ ["X · one-liner","your group chat shouldn't be readable by the company that hosts it. oh, hi — meet Ohiyo. 🐭🔒"],
+ ["X · one-liner","we made a Discord that can't snitch."],
+ ["X · one-liner","the things Discord charges $9.99/mo for are just how Ohiyo works. for $0. forever."],
+ ["Reddit · r/selfhosted","Ohiyo — a self-hostable, end-to-end-encrypted Discord alternative (Rust + Tauri, free & open)\n\nDoes the Discord things (servers, channels, DMs, voice/video, 4K screen-share, roles, polls) with Signal-Protocol E2E on by default — the server only ever relays ciphertext. One Rust (axum) binary + SQLite + a Tauri app. No ads, no tracking, no paywall.\n\nHonest status: text E2E (DMs + groups) is proven by integration tests; encrypted voice is implemented but I'm still hardening the live-SFU path. Code: github.com/New1Direction/ohiyo"],
+ ["Hacker News · Show HN","Show HN: Ohiyo – a self-hostable, end-to-end-encrypted Discord alternative\n\nCommunity chat where the server is designed to be blind to message content — Signal Protocol for DMs and groups, epoch-based rekeying so a removed member can't read future messages. Rust backend (axum + SQLite), React + Tauri client, single-binary self-host. Free, open. No hand-rolled crypto."],
+ ["Product Hunt · tagline","The group chat that can't read your messages."],
+ ["TikTok / Reels · hook","POV: your group chat literally can't read your messages. → montage of servers/voice/screenshare → free. open. yours. oh, hi. 🐭"],
+ ["LinkedIn · founder","We kept treating \"private messaging\" and \"fun community chat\" as a trade-off. Signal is private but spartan; Discord is delightful but reads everything and paywalls the rest. Ohiyo is the refusal to choose: Signal-grade E2E encryption AND the full warm Discord-style experience — free and self-hostable. The server can't read your messages by design, not by promise. oh, hi. 👋"]
+];
+const BRAND="Ohiyo — a cozy, self-hostable, end-to-end-encrypted group chat. Mascot: Kikka, a small round chinchilla with soft coral-grey fur, big dark friendly eyes, tiny round ears. Palette: warm dusk — near-black brown #171311, coral #ff7a4d, amber #e0992f, cream #f5ece4. Mood: dawn warmth + quiet safety — a cozy room with a steel door. Lantern/sunrise light, soft film grain, shallow depth of field, inviting, never cold.";
+const PROMPTS=[
+ ["Brand kit · paste first","g",BRAND],
+ ["Veo 3 · hero loop (8s)","v","Cinematic close-up, golden-hour interior at dawn. Cozy dim room — soft coral and amber light through a window, warm film grain, shallow depth of field. A small fluffy coral-grey chinchilla with big dark eyes sits on a wooden desk beside a softly glowing phone. It looks up at the lens and gives a gentle little wave. Camera slowly pushes in. Audio: warm ambient morning hum, a soft chime + gentle 'click' as a message seals. On-screen text fades in: 'oh, hi.' 24fps, intimate, inviting."],
+ ["Veo 3 · the steel door (8s)","v","A warm, lamplit living room full of soft pillows and string lights — faint laughter. Slow dolly back reveals the cozy room sits behind a single heavy brushed-steel vault door, slightly ajar, warm light glowing through the gap. Coral accent lighting. Audio: cozy room tone, then a soft reassuring deep 'thunk' as the door seals. Text: 'warm inside. sealed shut.' Cinematic, premium, calm."],
+ ["Grok Imagine · mascot","i","Cozy 3D-render chinchilla mascot, soft coral-grey fur, big friendly eyes, waving hello, sitting on a glowing phone, warm dusk lighting, coral and amber palette, dark cozy background, Pixar-soft, inviting. (Then animate the wave + a slow light bloom.)"],
+ ["Midjourney / Flux · hero","i","cozy coral chinchilla mascot, big dark eyes, soft fur, waving, sitting beside a glowing phone at dawn, warm dusk palette #171311 #ff7a4d #e0992f, soft film grain, shallow depth of field, intimate product hero, premium --ar 16:9 --style raw"],
+ ["Nano Banana / Gemini · consistency","i","[with a Kikka reference image] Keep this exact chinchilla character and palette. Place Kikka peeking out from behind a softly glowing speech bubble that says 'oh, hi'. Warm dusk lighting, coral accent, cozy dark background. (Reuse to make a set: waving / sleeping / on a call / holding a tiny lock.)"],
+ ["Ideogram · wordmark poster","i","Bold rounded playful logotype 'oHiYo' (Animal-Crossing style), the 'Hi' in coral #ff7a4d, rest cream, on a warm near-black #171311 background with soft grain, a small coral chinchilla beside it, tagline below: 'the encrypted home for your people'."],
+ ["Sora / Runway · montage (10s)","v","Warm cinematic montage: a phone screen showing cozy group chats, then the message visibly wraps in a soft coral shield of light before flying off; cut to a chinchilla waving good morning; warm dusk grade, soft grain, gentle motion."],
+ ["Launch trailer · storyboard","g","1. Black → soft coral dawn glow. 'your conversations…'\n2. Warm montage: a server, a voice call, a screen-share, a reaction. '…all of them.'\n3. A message types, then visibly SEALS in coral light. 'sealed before they leave your device.'\n4. Pull back to the cozy-room-behind-a-steel-door. 'a warm place that can't read you.'\n5. Kikka waves. Wordmark oHiYo blooms in. 'oh, hi. · ohiyo.gg · free & open.'\nAudio: warm morning pad, one seal-chime, a soft final thunk."]
+];
+function cardHtml(tag,cls,text){
+  return `<div class="card"><div class="top"><span class="tag ${cls||''}">${tag}</span><button class="copy">Copy</button></div><div class="snip${cls==='v'||cls==='i'||cls==='g'?' mono':''}">${text.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div></div>`;
+}
+document.getElementById('social-grid').innerHTML=SOCIAL.map(([t,x])=>cardHtml(t,'',x)).join('');
+document.getElementById('prompt-grid').innerHTML=PROMPTS.map(([t,c,x])=>cardHtml(t,c,x)).join('');
+
+const toast=document.getElementById('toast');
+let toastT;
+document.addEventListener('click',e=>{
+  const b=e.target.closest('.copy'); if(!b)return;
+  const snip=b.closest('.card').querySelector('.snip');
+  navigator.clipboard.writeText(snip.innerText).then(()=>{
+    b.classList.add('done');b.textContent='Copied ✓';
+    toast.classList.add('show');clearTimeout(toastT);
+    toastT=setTimeout(()=>{b.classList.remove('done');b.textContent='Copy';toast.classList.remove('show');},1600);
+  });
+});
+</script>
+</body>
+</html>
