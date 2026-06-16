@@ -324,14 +324,11 @@ fn extract_attr(tag: &str, attr: &str) -> Option<String> {
     let lower = tag.to_ascii_lowercase();
     let pos = lower.find(&search)?;
     let rest = &tag[pos + search.len()..];
-    let (quote, end_q) = if rest.starts_with('"') {
-        ('"', rest[1..].find('"').map(|i| (1, i + 1)))
-    } else if rest.starts_with('\'') {
-        ('\'', rest[1..].find('\'').map(|i| (1, i + 1)))
-    } else {
-        return None;
-    };
-    let _ = quote;
-    let (start, end) = end_q?;
-    Some(rest[start..end].to_owned())
+    // The attribute value is wrapped in either single or double quotes; take
+    // everything up to the matching closing quote.
+    let inner = rest
+        .strip_prefix('"')
+        .and_then(|r| r.split_once('"'))
+        .or_else(|| rest.strip_prefix('\'').and_then(|r| r.split_once('\'')))?;
+    Some(inner.0.to_owned())
 }

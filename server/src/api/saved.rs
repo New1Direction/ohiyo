@@ -39,7 +39,7 @@ pub async fn save_message(
     .bind(now_unix())
     .execute(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -54,7 +54,7 @@ pub async fn unsave_message(
         .bind(&message_id)
         .execute(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -70,7 +70,7 @@ pub async fn list_saved(
     .bind(&auth.0)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     let mut out = Vec::with_capacity(ids.len());
     for (mid,) in ids {
@@ -78,7 +78,7 @@ pub async fn list_saved(
             .bind(&mid)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
         if let Some(msg) = msg {
             out.push(build_full(&state, msg, &auth.0).await?);
         }

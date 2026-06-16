@@ -28,7 +28,7 @@ pub async fn search_messages(
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
     if member.is_none() {
         return Err((StatusCode::FORBIDDEN, "not a member of this server".into()));
     }
@@ -53,7 +53,7 @@ pub async fn search_messages(
                 .bind(&server_id)
                 .fetch_optional(&state.db)
                 .await
-                .map_err(|e| crate::api::error::internal(e))?;
+                .map_err(crate::api::error::internal)?;
                 if let Some(msg) = msg {
                     out.push(build_full(&state, msg, &auth.0).await?);
                 }

@@ -36,7 +36,7 @@ async fn is_member(
             .bind(user_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
     Ok(found.is_some())
 }
 
@@ -104,7 +104,7 @@ pub async fn create_invite(
     .bind(&server_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     // Retry on the (vanishingly rare) code collision.
     for _ in 0..6 {
@@ -175,7 +175,7 @@ pub async fn get_invite(
             .bind(&inv.server_id)
             .fetch_one(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
 
     Ok(Json(InvitePreview {
         code: inv.code,
@@ -212,7 +212,7 @@ pub async fn redeem_invite(
     .bind(now)
     .execute(&state.db)
     .await
-    .map_err(|e| crate::api::error::internal(e))?;
+    .map_err(crate::api::error::internal)?;
 
     // Only count + announce a genuinely new membership.
     if result.rows_affected() > 0 {
@@ -225,13 +225,13 @@ pub async fn redeem_invite(
         .bind(&code)
         .execute(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
 
         let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
             .bind(&auth.0)
             .fetch_one(&state.db)
             .await
-            .map_err(|e| crate::api::error::internal(e))?;
+            .map_err(crate::api::error::internal)?;
 
         broadcast_to_server(
             &state,
@@ -257,14 +257,14 @@ pub async fn revoke_invite(
         .bind(&code)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
     let inv = inv.ok_or((StatusCode::NOT_FOUND, "invite not found".into()))?;
 
     let owner_id: Option<String> = sqlx::query_scalar("SELECT owner_id FROM servers WHERE id = ?")
         .bind(&inv.server_id)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
 
     let is_owner = owner_id.as_deref() == Some(auth.0.as_str());
     if inv.created_by != auth.0 && !is_owner {
@@ -278,7 +278,7 @@ pub async fn revoke_invite(
         .bind(&code)
         .execute(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -290,7 +290,7 @@ async fn lookup_alive_invite(state: &AppState, code: &str) -> Result<Invite, (St
         .bind(code)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| crate::api::error::internal(e))?;
+        .map_err(crate::api::error::internal)?;
 
     let inv = inv.ok_or((
         StatusCode::NOT_FOUND,
