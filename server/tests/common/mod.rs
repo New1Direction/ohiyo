@@ -140,6 +140,25 @@ impl TestServer {
             .expect("request sent")
     }
 
+    /// POST a raw body with a chosen Content-Type and bearer token — used to send a
+    /// hand-built multipart/form-data upload without pulling reqwest's multipart feature.
+    pub async fn post_raw_auth(
+        &self,
+        path: &str,
+        token: &str,
+        content_type: &str,
+        body: Vec<u8>,
+    ) -> reqwest::Response {
+        self.client
+            .post(self.url(path))
+            .bearer_auth(token)
+            .header(reqwest::header::CONTENT_TYPE, content_type)
+            .body(body)
+            .send()
+            .await
+            .expect("request sent")
+    }
+
     pub async fn get_auth(&self, path: &str, token: &str) -> reqwest::Response {
         self.client
             .get(self.url(path))
@@ -189,4 +208,26 @@ pub fn now_unix() -> i64 {
         .duration_since(UNIX_EPOCH)
         .expect("clock after epoch")
         .as_secs() as i64
+}
+
+/// Build a minimal `multipart/form-data` body with one file part. Returns the
+/// `Content-Type` header value (with boundary) and the raw body bytes — enough for
+/// the server's `Multipart` extractor, without depending on reqwest's multipart feature.
+pub fn multipart_file(
+    field: &str,
+    filename: &str,
+    content_type: &str,
+    bytes: &[u8],
+) -> (String, Vec<u8>) {
+    let boundary = "kikkacordtestboundaryB7f3aE9";
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        format!("Content-Disposition: form-data; name=\"{field}\"; filename=\"{filename}\"\r\n")
+            .as_bytes(),
+    );
+    body.extend_from_slice(format!("Content-Type: {content_type}\r\n\r\n").as_bytes());
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
 }
