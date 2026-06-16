@@ -38,9 +38,12 @@ fly apps create kikkacord-<you>
 # Keep it in the same region as primary_region in fly.toml (default: iad).
 fly volumes create kikkacord_data --region iad --size 3   # 3 GB
 
-# Required secret: stable session-signing key. Without it, every restart logs
-# everyone out (the server falls back to an ephemeral per-process secret).
+# Required config — the server REFUSES to start in release without both.
+#   JWT_SECRET       stable session-signing key (else every restart logs everyone out)
+#   PUBLIC_BASE_URL  this app's public URL — it prefixes stored avatar/banner URLs,
+#                    so a wrong/unset value bakes dead localhost links into the DB.
 fly secrets set JWT_SECRET="$(openssl rand -base64 48)"
+fly secrets set PUBLIC_BASE_URL="https://kikkacord-<you>.fly.dev"
 
 # Ship it. fly.toml + Dockerfile do the rest.
 fly deploy
