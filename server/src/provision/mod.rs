@@ -108,28 +108,23 @@ pub async fn create_instance(
         ));
     }
 
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM hosted_instances WHERE owner_id = ?")
-        .bind(owner_id)
-        .fetch_one(db)
-        .await
-        .map_err(crate::api::error::internal)?;
-    if count >= MAX_FREE_INSTANCES {
-        return Err((
-            StatusCode::CONFLICT,
-            "free-tier instance limit reached".into(),
-        ));
-    }
-
     let id = new_id();
     let now = now_unix();
     let subdomain = make_subdomain(name, &id);
     let region = std::env::var("FLY_PRIMARY_REGION").unwrap_or_else(|_| "iad".into());
     let public_url = format!("https://{subdomain}.ohiyo.gg");
 
-    sqlx::query(
+    // Atomic cap enforcement: the row is inserted only if the owner is under the
+    // free-tier limit, evaluated in the same statement under SQLite's write lock. This
+    // closes the check-then-insert TOCTOU (concurrent requests can't each read a stale
+    // count and all insert) and excludes terminal-`failed` rows, so a run of provisioning
+    // errors can't permanently lock a user out of their own quota.
+    let inserted = sqlx::query(
         "INSERT INTO hosted_instances
          (id, owner_id, name, subdomain, region, tier, status, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?)",
+         SELECT ?,?,?,?,?,?,?,?,?
+         WHERE (SELECT COUNT(*) FROM hosted_instances
+                WHERE owner_id = ? AND status != 'failed') < ?",
     )
     .bind(&id)
     .bind(owner_id)
@@ -140,9 +135,31 @@ pub async fn create_instance(
     .bind("provisioning")
     .bind(now)
     .bind(now)
+    .bind(owner_id)
+    .bind(MAX_FREE_INSTANCES)
     .execute(db)
     .await
-    .map_err(crate::api::error::internal)?;
+    .map_err(|e| {
+        // A subdomain clash is a client-actionable conflict, not an internal error.
+        if e.as_database_error()
+            .map(|d| d.is_unique_violation())
+            .unwrap_or(false)
+        {
+            (
+                StatusCode::CONFLICT,
+                "that name is taken — try another".into(),
+            )
+        } else {
+            crate::api::error::internal(e)
+        }
+    })?;
+
+    if inserted.rows_affected() == 0 {
+        return Err((
+            StatusCode::CONFLICT,
+            "free-tier instance limit reached".into(),
+        ));
+    }
 
     let req = ProvisionRequest {
         instance_id: id.clone(),
@@ -194,7 +211,26 @@ pub async fn create_instance(
 mod create_tests {
     use super::*;
     use crate::provision::fake::FakeProvisioner;
+    use async_trait::async_trait;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    /// A provisioner that always fails — exercises the error branch of `create_instance`.
+    struct FailingProvisioner;
+    #[async_trait]
+    impl MachineProvisioner for FailingProvisioner {
+        async fn provision(
+            &self,
+            _req: ProvisionRequest,
+        ) -> Result<ProvisionedMachine, ProvisionError> {
+            Err(ProvisionError::Upstream("injected failure".into()))
+        }
+        async fn status(&self, _id: &str) -> Result<MachineState, ProvisionError> {
+            Err(ProvisionError::NotFound)
+        }
+        async fn destroy(&self, _id: &str) -> Result<(), ProvisionError> {
+            Ok(())
+        }
+    }
 
     /// A single-connection in-memory pool: a multi-connection `:memory:` pool would
     /// hand out separate empty databases, so the seeded user would vanish between queries.
@@ -248,6 +284,39 @@ mod create_tests {
                 .unwrap();
         }
         let err = create_instance(&db, &p, "u1", "over").await.unwrap_err();
+        assert_eq!(err.0, StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn failed_provision_marks_row_and_returns_502() {
+        let db = test_db().await;
+        let err = create_instance(&db, &FailingProvisioner, "u1", "doomed")
+            .await
+            .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_GATEWAY);
+
+        let (status, error): (String, Option<String>) =
+            sqlx::query_as("SELECT status, error FROM hosted_instances WHERE owner_id = 'u1'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(status, "failed");
+        assert!(error.is_some(), "the failure reason should be recorded");
+    }
+
+    #[tokio::test]
+    async fn cap_excludes_failed_instances() {
+        let db = test_db().await;
+        // A failed attempt must NOT consume a cap slot.
+        let _ = create_instance(&db, &FailingProvisioner, "u1", "doomed").await;
+        let ok = FakeProvisioner::default();
+        for i in 0..MAX_FREE_INSTANCES {
+            create_instance(&db, &ok, "u1", &format!("s{i}"))
+                .await
+                .expect("healthy instances provision despite the earlier failed row");
+        }
+        // Now genuinely at the cap (3 healthy); the next is rejected.
+        let err = create_instance(&db, &ok, "u1", "over").await.unwrap_err();
         assert_eq!(err.0, StatusCode::CONFLICT);
     }
 }

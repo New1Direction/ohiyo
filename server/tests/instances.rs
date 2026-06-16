@@ -2,6 +2,7 @@ mod common;
 
 use common::TestServer;
 use serde_json::{json, Value};
+use server::provision::MAX_FREE_INSTANCES;
 
 #[tokio::test]
 async fn create_then_list_and_get_instance() {
@@ -56,7 +57,7 @@ async fn instances_require_auth() {
 async fn free_tier_cap_is_enforced() {
     let srv = TestServer::start().await;
     let alice = srv.register("alice", "supersecret123").await;
-    for i in 0..3 {
+    for i in 0..MAX_FREE_INSTANCES {
         let res = srv
             .post_json_auth(
                 "/api/v1/instances",
@@ -99,5 +100,19 @@ async fn other_user_cannot_read_my_instance() {
         res.status(),
         404,
         "owner-scoping must hide other users' instances"
+    );
+
+    // ...and Bob's list must come back empty even though Alice has an instance —
+    // proves the list query is owner-scoped, not global.
+    let bob_list: Value = srv
+        .get_auth("/api/v1/instances", &bob.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        bob_list.as_array().unwrap().len(),
+        0,
+        "list endpoint must be owner-scoped"
     );
 }

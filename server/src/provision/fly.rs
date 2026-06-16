@@ -1,5 +1,5 @@
-//! Real Fly Machines provisioner. Launches one microVM per instance from the Ohiyo
-//! server image, with a fresh volume and the per-instance env the server needs to boot.
+//! Real Fly Machines provisioner. For each instance it creates a persistent volume,
+//! then launches one microVM from the Ohiyo server image mounting that volume at /data.
 //!
 //! Live provisioning needs `FLY_API_TOKEN`, `FLY_APP_NAME`, and `FLY_IMAGE`. The
 //! request-payload builder is unit-tested; the network calls are not exercised in CI.
@@ -9,6 +9,9 @@ use super::{
 };
 use async_trait::async_trait;
 use serde_json::{json, Value};
+
+/// Persistent volume size (GiB) for an instance's SQLite DB + uploads. Matches `fly.toml`.
+const VOLUME_SIZE_GB: u32 = 3;
 
 pub struct FlyProvisioner {
     token: String,
@@ -33,8 +36,34 @@ impl FlyProvisioner {
         format!("https://api.machines.dev/v1/apps/{}", self.app)
     }
 
+    /// Create a persistent volume for this instance and return its id. A machine without
+    /// a volume mounts /data as ephemeral tmpfs — the SQLite DB would be wiped on every
+    /// restart — so this MUST succeed before the machine is created.
+    async fn create_volume(&self, region: &str) -> Result<String, ProvisionError> {
+        let body = json!({ "name": "ohiyo_data", "region": region, "size_gb": VOLUME_SIZE_GB });
+        let res = self
+            .client
+            .post(format!("{}/volumes", self.base()))
+            .bearer_auth(&self.token)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProvisionError::Upstream(e.to_string()))?;
+        if !res.status().is_success() {
+            return Err(ProvisionError::Upstream(format!(
+                "fly volume create returned {}",
+                res.status()
+            )));
+        }
+        let v: Value = res
+            .json()
+            .await
+            .map_err(|e| ProvisionError::Upstream(e.to_string()))?;
+        Ok(v["id"].as_str().unwrap_or_default().to_string())
+    }
+
     /// The Fly Machines `POST /machines` body for one instance. Pure — unit-tested.
-    fn machine_config(&self, req: &ProvisionRequest) -> Value {
+    fn machine_config(&self, req: &ProvisionRequest, volume_id: &str) -> Value {
         json!({
             "name": format!("ohiyo-{}", req.subdomain),
             "region": req.region,
@@ -54,7 +83,7 @@ impl FlyProvisioner {
                     "protocol": "tcp",
                     "internal_port": 3000
                 }],
-                "mounts": [{ "volume": "", "path": "/data" }],
+                "mounts": [{ "volume": volume_id, "path": "/data" }],
                 "guest": { "cpu_kind": "shared", "cpus": 1, "memory_mb": 512 },
                 "checks": {
                     "health": {
@@ -70,7 +99,8 @@ impl FlyProvisioner {
 #[async_trait]
 impl MachineProvisioner for FlyProvisioner {
     async fn provision(&self, req: ProvisionRequest) -> Result<ProvisionedMachine, ProvisionError> {
-        let body = self.machine_config(&req);
+        let volume_id = self.create_volume(&req.region).await?;
+        let body = self.machine_config(&req, &volume_id);
         let res = self
             .client
             .post(format!("{}/machines", self.base()))
@@ -90,10 +120,6 @@ impl MachineProvisioner for FlyProvisioner {
             .await
             .map_err(|e| ProvisionError::Upstream(e.to_string()))?;
         let machine_id = v["id"].as_str().unwrap_or_default().to_string();
-        let volume_id = v["config"]["mounts"][0]["volume"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string();
         Ok(ProvisionedMachine {
             machine_id,
             volume_id,
@@ -112,6 +138,12 @@ impl MachineProvisioner for FlyProvisioner {
         if res.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(ProvisionError::NotFound);
         }
+        if !res.status().is_success() {
+            return Err(ProvisionError::Upstream(format!(
+                "fly status returned {}",
+                res.status()
+            )));
+        }
         let v: Value = res
             .json()
             .await
@@ -125,12 +157,19 @@ impl MachineProvisioner for FlyProvisioner {
     }
 
     async fn destroy(&self, machine_id: &str) -> Result<(), ProvisionError> {
-        self.client
+        let res = self
+            .client
             .delete(format!("{}/machines/{machine_id}?force=true", self.base()))
             .bearer_auth(&self.token)
             .send()
             .await
             .map_err(|e| ProvisionError::Upstream(e.to_string()))?;
+        if !res.status().is_success() {
+            return Err(ProvisionError::Upstream(format!(
+                "fly delete returned {}",
+                res.status()
+            )));
+        }
         Ok(())
     }
 }
@@ -150,14 +189,14 @@ mod tests {
     }
 
     #[test]
-    fn machine_config_carries_required_env_and_mount() {
+    fn machine_config_carries_required_env_and_real_volume() {
         let p = FlyProvisioner {
             token: "t".into(),
             app: "ohiyo-instances".into(),
             image: "registry.fly.io/ohiyo-instances:latest".into(),
             client: reqwest::Client::new(),
         };
-        let cfg = p.machine_config(&req());
+        let cfg = p.machine_config(&req(), "vol_abc123");
         assert_eq!(cfg["region"], "iad");
         assert_eq!(
             cfg["config"]["env"]["PUBLIC_BASE_URL"],
@@ -172,6 +211,12 @@ mod tests {
             "sqlite:/data/kikkacord.db"
         );
         assert_eq!(cfg["config"]["mounts"][0]["path"], "/data");
+        // Regression guard: the mount must reference a real volume id, never "".
+        assert_eq!(cfg["config"]["mounts"][0]["volume"], "vol_abc123");
+        assert!(!cfg["config"]["mounts"][0]["volume"]
+            .as_str()
+            .unwrap()
+            .is_empty());
         assert_eq!(cfg["config"]["checks"]["health"]["path"], "/healthz");
     }
 }
