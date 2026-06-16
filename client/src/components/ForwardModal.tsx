@@ -54,8 +54,8 @@ export function ForwardModal({ message, servers, onForward, onClose }: Props) {
                     type="button"
                     disabled={busy}
                     onClick={() => pick(c.id)}
-                    className="kc-interactive flex items-center gap-1.5 px-2.5 py-1.5 text-left text-sm"
-                    style={{ borderRadius: "var(--radius-md)", background: "transparent", color: "var(--text-secondary)" }}
+                    className="kc-pick-row kc-interactive flex items-center gap-1.5 px-2.5 py-1.5 text-left text-sm"
+                    style={{ borderRadius: "var(--radius-md)", color: "var(--text-secondary)" }}
                   >
                     <span style={{ color: "var(--text-muted)" }}>#</span>
                     {c.name}

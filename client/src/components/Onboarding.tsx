@@ -115,6 +115,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
               <button
                 type="submit"
                 disabled={!trimmed || busy}
+                aria-busy={busy}
                 className="kc-cta flex flex-shrink-0 items-center justify-center gap-2 px-5 py-3 text-sm"
                 style={{ opacity: !trimmed || busy ? 0.65 : 1, cursor: !trimmed || busy ? "default" : "pointer" }}
               >

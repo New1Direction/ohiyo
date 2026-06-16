@@ -201,7 +201,7 @@ export function AuthScreen({ onAuth }: Props) {
               className="kc-field px-3.5 py-3 text-sm outline-none"
             />
             {showUsernameHint && (
-              <p className="mt-1 px-1 text-xs" style={{ color: "var(--text-muted)" }}>
+              <p className="mt-1 px-1 text-xs" aria-live="polite" style={{ color: "var(--text-muted)" }}>
                 {username.trim().length < MIN_USERNAME
                   ? `A little longer — ${MIN_USERNAME}+ characters.`
                   : `Keep it under ${MAX_USERNAME} characters.`}
@@ -253,12 +253,12 @@ export function AuthScreen({ onAuth }: Props) {
             </div>
 
             {mode === "register" && (
-              <p className="mt-1 px-1 text-xs" style={{ color: passwordHintColor, fontWeight: passwordOk ? 600 : 400 }}>
+              <p className="mt-1 px-1 text-xs" aria-live="polite" style={{ color: passwordHintColor, fontWeight: passwordOk ? 600 : 400 }}>
                 {passwordOk ? "✓ Strong enough — you're good." : `At least ${MIN_PASSWORD} characters.`}
               </p>
             )}
             {capsLock && (
-              <p className="mt-1 px-1 text-xs font-semibold" style={{ color: "#E8A23D" }}>
+              <p className="mt-1 px-1 text-xs font-semibold" aria-live="polite" style={{ color: "#E8A23D" }}>
                 ⇪ Caps Lock is on.
               </p>
             )}
@@ -282,6 +282,7 @@ export function AuthScreen({ onAuth }: Props) {
           <button
             type="submit"
             disabled={!canSubmit}
+            aria-busy={loading}
             className="kc-cta mt-1 flex items-center justify-center gap-2 py-3 text-sm"
             style={{ opacity: canSubmit ? 1 : 0.65, cursor: canSubmit ? "pointer" : "default" }}
           >
@@ -365,6 +366,18 @@ export function AuthScreen({ onAuth }: Props) {
               <button onClick={() => switchMode("link")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
                 Link a device
               </button>
+              <br />
+              <span style={{ color: "var(--text-muted)", opacity: 0.85 }}>
+                Forgot it? If you saved a recovery code you can{" "}
+                <button onClick={() => switchMode("link")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
+                  link a device
+                </button>{" "}
+                or{" "}
+                <button onClick={() => switchMode("register")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
+                  start fresh
+                </button>
+                .
+              </span>
             </>
           ) : (
             <>

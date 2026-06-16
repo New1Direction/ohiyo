@@ -74,8 +74,8 @@ export function SearchModal({ token, serverId, channels, onJump, onClose }: Prop
                 key={m.id}
                 type="button"
                 onClick={() => { onJump(m.channel_id); onClose(); }}
-                className="kc-interactive flex flex-col px-3 py-2 text-left"
-                style={{ borderRadius: "var(--radius-md)", background: "transparent" }}
+                className="kc-pick-row kc-interactive flex flex-col px-3 py-2 text-left"
+                style={{ borderRadius: "var(--radius-md)" }}
               >
                 <div className="text-xs" style={{ color: "var(--text-muted)" }}>
                   <span style={{ color: "var(--accent)", fontWeight: 600 }}>#{nameOf(m.channel_id)}</span>

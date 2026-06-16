@@ -9,9 +9,10 @@ import { BirdMark } from "./BirdMark";
 
 // Per-account so a different login on a shared device still gets the welcome.
 const seenKey = (userId?: string) => `kc:welcome-manifesto-seen:${userId ?? "anon"}`;
+const recoveryNudgeKey = (userId?: string) => `kc:recovery-nudge-seen:${userId ?? "anon"}`;
 
 const SHARE_NOTE =
-  "I just switched to Ohiyo 🐭 — a free, open chat with real end-to-end encryption and " +
+  "I just switched to Ohiyo 🐿️ — a free, open chat with real end-to-end encryption and " +
   "nothing to sell you. No ads, no tracking, no paywall. Come hang out: https://github.com/New1Direction/ohiyo";
 
 type Props = {
@@ -21,9 +22,11 @@ type Props = {
   isDM?: boolean;
   /** Current user id, so the one-time manifesto is per-account, not per-device. */
   userId?: string;
+  /** Opens Settings → Backup & recovery; when present, a one-time recovery-code nudge shows. */
+  onSaveRecovery?: () => void;
 };
 
-export function ChannelWelcome({ channelName, isDM, userId }: Props) {
+export function ChannelWelcome({ channelName, isDM, userId, onSaveRecovery }: Props) {
   // Full manifesto only the first time THIS account sees an empty channel.
   const [showManifesto] = useState(() => {
     try {
@@ -33,6 +36,22 @@ export function ChannelWelcome({ channelName, isDM, userId }: Props) {
     }
   });
   const [copied, setCopied] = useState(false);
+  // One-time, dismissible recovery-code nudge (per account).
+  const [showRecovery, setShowRecovery] = useState(() => {
+    try {
+      return localStorage.getItem(recoveryNudgeKey(userId)) === null;
+    } catch {
+      return false;
+    }
+  });
+  function dismissRecovery() {
+    setShowRecovery(false);
+    try {
+      localStorage.setItem(recoveryNudgeKey(userId), "1");
+    } catch {
+      /* storage off — non-fatal */
+    }
+  }
 
   useEffect(() => {
     if (showManifesto) {
@@ -105,7 +124,7 @@ export function ChannelWelcome({ channelName, isDM, userId }: Props) {
               marginBottom: "0.6rem",
             }}
           >
-            🐭 Welcome to Ohiyo.
+            🐿️ Welcome to Ohiyo.
           </div>
           <div className="space-y-3 text-sm" style={{ color: "var(--text-secondary)", lineHeight: 1.7 }}>
             <p>
@@ -117,7 +136,7 @@ export function ChannelWelcome({ channelName, isDM, userId }: Props) {
               thing and get out of your way.
             </p>
             <p style={{ color: "var(--text-primary)", fontWeight: 600 }}>
-              If it lands, tell a friend. Chinchillin&apos; rest of your day. 🐭💛
+              If it lands, tell a friend. Chinchillin&apos; rest of your day. 🐿️💛
             </p>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -138,6 +157,57 @@ export function ChannelWelcome({ channelName, isDM, userId }: Props) {
             >
               See what&apos;s new →
             </a>
+          </div>
+        </div>
+      )}
+
+      {onSaveRecovery && showRecovery && (
+        <div
+          className="mt-4 text-left"
+          style={{
+            maxWidth: "var(--welcome-w, 540px)",
+            width: "100%",
+            background: "color-mix(in oklch, var(--accent) 8%, var(--bg-sidebar))",
+            border: "1px solid color-mix(in oklch, var(--accent) 28%, transparent)",
+            borderRadius: "var(--radius-xl, 18px)",
+            padding: "1.1rem 1.25rem",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: 700,
+              fontSize: "1.05rem",
+              color: "var(--text-primary)",
+              marginBottom: "0.35rem",
+            }}
+          >
+            🔑 One quick thing — save a recovery code
+          </div>
+          <p className="text-sm" style={{ color: "var(--text-secondary)", lineHeight: 1.6 }}>
+            Because only you hold your keys, a recovery code is how you get your messages back on a new
+            device if you ever lose this one. Takes about ten seconds.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onSaveRecovery();
+                dismissRecovery();
+              }}
+              className="kc-interactive rounded-full px-4 py-2 text-sm font-semibold"
+              style={{ background: "var(--accent)", color: "#fff", border: "none", cursor: "pointer" }}
+            >
+              Save a recovery code
+            </button>
+            <button
+              type="button"
+              onClick={dismissRecovery}
+              className="kc-interactive rounded-full px-4 py-2 text-sm font-semibold"
+              style={{ background: "transparent", color: "var(--text-muted)", border: "none", cursor: "pointer" }}
+            >
+              Maybe later
+            </button>
           </div>
         </div>
       )}

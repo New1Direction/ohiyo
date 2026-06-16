@@ -95,15 +95,15 @@ export function RolesModal({ token, serverId, members, ownerId, onClose }: Props
                 onClick={() => setPerms((cur) => (on ? cur & ~p.flag : cur | p.flag))}
                 title={p.hint}
                 aria-pressed={on}
-                className="kc-interactive px-2.5 py-1 text-xs font-semibold"
+                className="kc-interactive kc-perm-chip px-2.5 py-1 text-xs font-semibold"
                 style={{
                   borderRadius: "var(--radius-full)",
                   border: `1px solid ${on ? "var(--accent)" : "var(--bg-hover)"}`,
-                  background: on ? "color-mix(in oklch, var(--accent) 14%, transparent)" : "transparent",
+                  background: on ? "color-mix(in oklch, var(--accent) 14%, transparent)" : "var(--bg-input)",
                   color: on ? "var(--accent)" : "var(--text-secondary)",
                 }}
               >
-                {on ? "✓ " : ""}{p.label}
+                {on ? "✓ " : "○ "}{p.label}
               </button>
             );
           })}
