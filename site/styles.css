@@ -205,3 +205,79 @@ footer .f-links { display: flex; gap: 1.3rem; flex-wrap: wrap; }
   .reveal { opacity: 1; transform: none; transition: none; }
   .hero .logo, .final .logo { animation: none; }
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Cuteness — playful chrome only. (Security copy stays calm; per the voice.)
+─────────────────────────────────────────────────────────────────────────── */
+
+/* the wordmark letters spring in, one after another */
+.wm-l { display: inline-block; opacity: 0; transform-origin: center bottom; animation: pop-in .7s var(--ease) both; }
+.wm-l:nth-child(1) { animation-delay: .04s; }
+.wm-l:nth-child(2) { animation-delay: .12s; }
+.wm-l:nth-child(3) { animation-delay: .20s; }
+.wm-l:nth-child(4) { animation-delay: .28s; }
+.wm-l:nth-child(5) { animation-delay: .36s; }
+@keyframes pop-in {
+  0% { opacity: 0; transform: translateY(42px) scale(.5) rotate(-6deg); }
+  65% { opacity: 1; transform: translateY(-7px) scale(1.08) rotate(2deg); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* Kikka: a gentle idle bob + ear-wiggle, and a happy boop when you poke her */
+.mascot { display: inline-block; transform-origin: center bottom; animation: kikka-idle 6.5s ease-in-out infinite; }
+.mascot .logo { animation: none; cursor: pointer; transition: transform .35s var(--ease); }
+.mascot:hover .logo { transform: scale(1.12) rotate(-8deg); }
+@keyframes kikka-idle {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  20% { transform: translateY(-12px) rotate(-3deg); }
+  40% { transform: translateY(0) rotate(0); }
+  52% { transform: translateY(-5px) rotate(4deg); }
+  64% { transform: translateY(0) rotate(0); }
+}
+
+/* the wave 👋 */
+.wave { display: inline-block; transform-origin: 70% 80%; animation: wave-hand 2.8s var(--ease) infinite; }
+@keyframes wave-hand {
+  0%, 55%, 100% { transform: rotate(0); }
+  10%, 30% { transform: rotate(16deg); }
+  20%, 40% { transform: rotate(-10deg); }
+}
+
+/* gradient text gets a slow living shimmer */
+.grad { background-size: 220% auto; animation: shimmer 7s linear infinite; }
+@keyframes shimmer { to { background-position: 220% center; } }
+
+/* bento icons boop on hover */
+.tile .ic { display: inline-block; transition: transform .2s var(--ease); }
+.tile:hover .ic { animation: boop .55s var(--ease); }
+@keyframes boop {
+  0%, 100% { transform: translateY(0) rotate(0) scale(1); }
+  35% { transform: translateY(-7px) rotate(-9deg) scale(1.18); }
+  70% { transform: translateY(0) rotate(6deg) scale(1.06); }
+}
+
+/* a sheen sweeps the primary button on hover */
+.btn.solid { position: relative; overflow: hidden; }
+.btn.solid::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .5), transparent);
+  transform: translateX(-260%) skewX(-18deg); pointer-events: none; }
+.btn.solid:hover::after { animation: shine .85s var(--ease); }
+@keyframes shine { to { transform: translateX(520%) skewX(-18deg); } }
+
+/* cozy dawn dust, drifting up */
+.motes { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.mote { position: absolute; bottom: -12px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 150, 95, .75), transparent 70%); animation: drift linear infinite; }
+@keyframes drift {
+  0% { transform: translateY(0); opacity: 0; }
+  12% { opacity: .55; }
+  85% { opacity: .35; }
+  100% { transform: translateY(-102vh); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wm-l, .mascot, .mascot .logo, .wave, .grad, .tile:hover .ic, .btn.solid::after, .mote { animation: none !important; }
+  .wm-l { opacity: 1; }
+  .grad { background-position: 0 0; }
+  .motes { display: none; }
+}
