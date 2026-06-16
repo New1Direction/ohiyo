@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ohiyo — Instant Servers · Design Spec</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #171311;
+    --ink-2: #211a16;
+    --ink-3: #2c2320;
+    --cream: #f5ece4;
+    --cream-dim: #d8cabf;
+    --coral: #ff7a4d;
+    --amber: #e0992f;
+    --line: color-mix(in oklch, var(--cream) 14%, transparent);
+    --muted: color-mix(in oklch, var(--cream) 58%, transparent);
+    --muted-2: color-mix(in oklch, var(--cream) 40%, transparent);
+    --font-ui: "Inter", system-ui, sans-serif;
+    --font-display: "Fraunces", Georgia, serif;
+    --font-word: "Baloo 2", system-ui, sans-serif;
+    --maxw: 860px;
+    --radius: 16px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: var(--font-ui);
+    color: var(--cream);
+    background:
+      radial-gradient(1100px 620px at 78% -8%, color-mix(in oklch, var(--coral) 16%, transparent), transparent 60%),
+      radial-gradient(900px 600px at 8% 4%, color-mix(in oklch, var(--amber) 12%, transparent), transparent 55%),
+      var(--ink);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* subtle grain */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    z-index: 9999;
+  }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  /* ---- masthead ---- */
+  header.mast {
+    padding: 64px 0 28px;
+    border-bottom: 1px solid var(--line);
+  }
+  .word {
+    font-family: var(--font-word);
+    font-weight: 800;
+    font-size: clamp(2.4rem, 1.4rem + 4vw, 3.6rem);
+    letter-spacing: -0.01em;
+    line-height: 1;
+    margin: 0;
+  }
+  .word .hi { color: var(--coral); }
+  .kikka { font-size: 0.7em; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 0.74rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--amber); margin: 0 0 18px;
+  }
+  h1.doctitle {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(2rem, 1.2rem + 3.4vw, 3rem);
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    margin: 22px 0 10px;
+  }
+  .sub {
+    font-size: 1.06rem; color: var(--muted); max-width: 60ch; margin: 0 0 22px;
+    font-family: var(--font-display); font-style: italic; font-weight: 500;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font-size: 0.76rem; font-weight: 600; letter-spacing: 0.02em;
+    padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--line);
+    background: color-mix(in oklch, var(--cream) 5%, transparent);
+    color: var(--cream-dim);
+  }
+  .chip.ok { color: var(--coral); border-color: color-mix(in oklch, var(--coral) 40%, transparent); }
+
+  /* ---- toc ---- */
+  nav.toc {
+    margin: 34px 0 8px; padding: 18px 20px;
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: color-mix(in oklch, var(--cream) 3%, transparent);
+  }
+  nav.toc h2 { font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); margin: 0 0 12px; font-weight: 700; }
+  nav.toc ol { margin: 0; padding: 0; list-style: none; columns: 2; column-gap: 28px; }
+  @media (max-width: 620px) { nav.toc ol { columns: 1; } }
+  nav.toc li { margin: 0 0 7px; font-size: 0.92rem; break-inside: avoid; }
+  nav.toc a { color: var(--cream-dim); text-decoration: none; display: flex; gap: 9px; }
+  nav.toc a:hover { color: var(--coral); }
+  nav.toc a .n { color: var(--coral); font-variant-numeric: tabular-nums; font-weight: 700; min-width: 1.4em; }
+
+  /* ---- sections ---- */
+  section { padding: 40px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: 0; }
+  h2.sec {
+    font-family: var(--font-display); font-weight: 600;
+    font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2rem);
+    letter-spacing: -0.01em; margin: 0 0 14px; line-height: 1.12;
+    display: flex; gap: 14px; align-items: baseline;
+  }
+  h2.sec .n {
+    font-family: var(--font-ui); font-weight: 700; font-size: 0.82rem;
+    color: var(--ink); background: var(--coral);
+    border-radius: 7px; padding: 3px 8px; letter-spacing: 0.02em;
+    position: relative; top: -4px; flex: none;
+  }
+  h3 {
+    font-family: var(--font-ui); font-weight: 700; font-size: 1.04rem;
+    margin: 26px 0 8px; color: var(--cream);
+  }
+  p { margin: 0 0 14px; color: color-mix(in oklch, var(--cream) 86%, transparent); }
+  a.inl { color: var(--coral); text-decoration: underline; text-underline-offset: 2px; }
+  strong { color: var(--cream); font-weight: 700; }
+  em { color: var(--amber); font-style: italic; }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.86em;
+    background: var(--ink-3); border: 1px solid var(--line);
+    padding: 1px 6px; border-radius: 6px; color: var(--amber);
+  }
+  ul, ol.body { padding-left: 1.2em; margin: 0 0 14px; }
+  li { margin: 0 0 9px; color: color-mix(in oklch, var(--cream) 86%, transparent); }
+  li::marker { color: var(--coral); }
+
+  /* ---- callout ---- */
+  .callout {
+    margin: 18px 0; padding: 18px 22px;
+    border-left: 3px solid var(--coral);
+    background: linear-gradient(100deg, color-mix(in oklch, var(--coral) 12%, transparent), transparent 80%);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-family: var(--font-display); font-size: 1.12rem; font-weight: 500; line-height: 1.45;
+    color: var(--cream);
+  }
+  .callout.amber { border-left-color: var(--amber); background: linear-gradient(100deg, color-mix(in oklch, var(--amber) 12%, transparent), transparent 80%); }
+
+  /* ---- table ---- */
+  .tablewrap { overflow-x: auto; margin: 18px 0; border: 1px solid var(--line); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th { background: color-mix(in oklch, var(--cream) 5%, transparent); font-weight: 700; color: var(--cream); font-size: 0.86rem; }
+  tbody th { font-weight: 600; color: var(--muted); white-space: nowrap; }
+  tbody td { color: color-mix(in oklch, var(--cream) 84%, transparent); }
+  .col-paid { color: var(--coral) !important; font-weight: 600; }
+  tr:last-child td, tr:last-child th { border-bottom: 0; }
+
+  /* ---- principle / phase cards ---- */
+  .grid { display: grid; gap: 12px; margin: 18px 0; }
+  @media (min-width: 640px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+  .card {
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 18px; background: color-mix(in oklch, var(--cream) 3%, transparent);
+  }
+  .card .lead { font-weight: 700; color: var(--cream); display: block; margin-bottom: 4px; }
+  .card .lead .num { color: var(--coral); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  .card p { font-size: 0.92rem; margin: 0; color: var(--muted); }
+
+  .phases { counter-reset: ph; list-style: none; padding: 0; margin: 18px 0; }
+  .phases li {
+    position: relative; padding: 12px 16px 12px 54px; margin: 0 0 10px;
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: color-mix(in oklch, var(--cream) 3%, transparent);
+  }
+  .phases li::before {
+    counter-increment: ph; content: counter(ph);
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--coral); color: var(--ink); font-weight: 700; font-size: 0.9rem;
+  }
+  .phases li.mvp::before { background: var(--amber); }
+  .phases b { color: var(--cream); }
+
+  footer { padding: 40px 0 80px; color: var(--muted-2); font-size: 0.86rem; }
+  footer .path { font-family: ui-monospace, Menlo, monospace; color: var(--muted); }
+
+  .lead-note { color: var(--amber); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">🐭 Ohiyo · Internal Design Spec</p>
+    <p class="word">o<span class="hi">Hi</span>Yo</p>
+    <h1 class="doctitle">Instant Servers</h1>
+    <p class="sub">Stand up your own encrypted community server in one tap — and still genuinely own your data.</p>
+    <div class="chips">
+      <span class="chip">2026-06-16</span>
+      <span class="chip ok">✓ Approved design</span>
+      <span class="chip">Pre-implementation</span>
+      <span class="chip">Brainstormed with Connor</span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Contents">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#s1"><span class="n">1</span> North star</a></li>
+      <li><a href="#s2"><span class="n">2</span> Problem</a></li>
+      <li><a href="#s3"><span class="n">3</span> The model</a></li>
+      <li><a href="#s4"><span class="n">4</span> The three tiers</a></li>
+      <li><a href="#s5"><span class="n">5</span> Free-tier principles</a></li>
+      <li><a href="#s6"><span class="n">6</span> Architecture</a></li>
+      <li><a href="#s7"><span class="n">7</span> Data flow</a></li>
+      <li><a href="#s8"><span class="n">8</span> Error handling</a></li>
+      <li><a href="#s9"><span class="n">9</span> Security &amp; privacy</a></li>
+      <li><a href="#s10"><span class="n">10</span> Testing</a></li>
+      <li><a href="#s11"><span class="n">11</span> Scope &amp; build order</a></li>
+      <li><a href="#s12"><span class="n">12</span> Open questions</a></li>
+    </ol>
+  </nav>
+
+  <section id="s1">
+    <h2 class="sec"><span class="n">1</span> North star</h2>
+    <p>Let anyone stand up their own Ohiyo community server <strong>in one tap, without thinking about infrastructure</strong> — and still genuinely <em>own their data</em>. The model is Minecraft&nbsp;Realms, not Discord: we host it so it "just works," but it's end-to-end encrypted (we can't read it), exportable at any time, and one button away from moving to their own box.</p>
+    <div class="callout">Reach Signal-and-Wickr-level encryption <strong>without sacrificing ease of use.</strong> Instant Servers is the ease-of-use half made concrete.</div>
+  </section>
+
+  <section id="s2">
+    <h2 class="sec"><span class="n">2</span> Problem</h2>
+    <p>Self-hosting is the privacy story, but raw self-hosting is where most people quit ("what's my IP, how do I port-forward, how do I keep it alive"). Discord solves ease of use but reads your data and taxes the good features per-head. We want Discord's zero-friction onboarding <em>and</em> Signal's ownership — at the same time.</p>
+    <p>The tension we resolved: <strong>"don't make them think about it" pulls toward us hosting it, but someone still pays for the box and keeps it alive.</strong> Minecraft already solved this: Realms is managed + one-click + paid by a small sub, and <em>world data is downloadable</em> — so "we host it" and "you own your data" coexist. With E2E, our version is strictly stronger: even the managed box only ever holds ciphertext.</p>
+  </section>
+
+  <section id="s3">
+    <h2 class="sec"><span class="n">3</span> The model — Realms-shaped hosting + real ownership</h2>
+    <p>We host the server (best UX), but ownership is guaranteed by three properties layered on top:</p>
+    <ul>
+      <li><strong>Unreadable</strong> — the per-community server is E2E; it relays/stores ciphertext only. The control plane never holds message plaintext or E2E keys.</li>
+      <li><strong>Exportable</strong> — "Download my server" produces the full encrypted data set on demand, always, including on the free tier.</li>
+      <li><strong>Portable</strong> — "Graduate to my own box" hands over the image + their data and/or one-click-deploys it into their own cloud. They can leave anytime with everything.</li>
+    </ul>
+    <p>This is the thing Discord structurally cannot offer and Minecraft Realms can only half-offer (Mojang can read your world; we cannot read your messages).</p>
+  </section>
+
+  <section id="s4">
+    <h2 class="sec"><span class="n">4</span> The three tiers</h2>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>&nbsp;</th><th>Free (managed)</th><th class="col-paid">Paid (managed)</th><th>Self-host</th></tr>
+        </thead>
+        <tbody>
+          <tr><th>Who runs the box</th><td>Us</td><td class="col-paid">Us</td><td>You</td></tr>
+          <tr><th>Cost</th><td>$0, no card</td><td class="col-paid">&lt; one Nitro (~$5–8/mo)</td><td>$0 forever</td></tr>
+          <tr><th>Uptime</th><td>Sleeps when idle, sub-second wake</td><td class="col-paid">Always-on</td><td>However you run it</td></tr>
+          <tr><th>Caps</th><td>Cost-honest member/storage caps</td><td class="col-paid">Higher caps, custom domain</td><td>None</td></tr>
+          <tr><th>Onboarding</th><td>One tap in-app</td><td class="col-paid">One tap + upgrade</td><td>One-liner / one-click-to-cloud / BYO-VM</td></tr>
+          <tr><th>E2E · export · migrate</th><td>✅</td><td class="col-paid">✅</td><td>✅</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>All three share the same server image and the same ownership guarantees. Users can migrate <strong>between</strong> tiers with one click (free → paid → self-host and back).</p>
+
+    <h3>Pricing anchor — the Nitro comparison</h3>
+    <p>The paid tier is deliberately pinned <strong>below one Discord Nitro</strong>, because the comparison is both a price anchor and the headline marketing hook:</p>
+    <ul>
+      <li>Discord Nitro (~$9.99/mo) buys <em>one person</em> a fancier avatar + HD; real server perks are paywalled again behind Server Boosts (~$4.99 each). It's a <strong>per-head</strong> tax — a 20-person crew that all wants HD pays ~$200/mo, forever, for cosmetics.</li>
+      <li>The same ~$8/mo on Ohiyo runs an <strong>always-on, encrypted server for the entire community</strong>, all "premium" features included for everyone, with cost-per-person <em>dropping</em> as you grow.</li>
+    </ul>
+    <div class="callout amber">One Discord Nitro gets you a shinier avatar. The same money runs your whole community — encrypted — on Ohiyo.</div>
+    <p>A side-by-side Nitro-vs-Ohiyo block is a landing-page deliverable (out of scope for this spec; see §11).</p>
+  </section>
+
+  <section id="s5">
+    <h2 class="sec"><span class="n">5</span> Free-tier principles — the trust contract</h2>
+    <p>The audience is two crowds — the self-host/privacy crowd (values no-lock-in, no rug-pull, honest pricing) and Discord-refugee community-runners (value "it just works, free, no card"). The free tier serves both <strong>only if</strong> it follows four principles:</p>
+    <div class="grid two">
+      <div class="card"><span class="lead"><span class="num">1</span>Cost-honest, never coercive</span><p>Limits exist because compute costs money (it naps when idle; storage is capped) — never to <em>force</em> an upgrade. No artificial member walls, no "your server dies in 3 days," no nag popups.</p></div>
+      <div class="card"><span class="lead"><span class="num">2</span>Untouchable $0 self-host floor</span><p>Self-host is free forever and loudly advertised: "Don't like that it sleeps? Run it yourself for $0." This single fact disarms the entire "free-tier trap" suspicion.</p></div>
+      <div class="card"><span class="lead"><span class="num">3</span>Radical transparency</span><p>Publish the real economics: "a server costs us ~$X/mo; managed-always-on is $Y; here's how free stays alive." Open-book pricing is a trust-builder with this audience.</p></div>
+      <div class="card"><span class="lead"><span class="num">4</span>Export + graduate always available</span><p>On every tier including free. The escape hatch is never paywalled.</p></div>
+    </div>
+  </section>
+
+  <section id="s6">
+    <h2 class="sec"><span class="n">6</span> Architecture</h2>
+    <p>Four components. Only the control plane and notification relay are new; the per-community server already exists.</p>
+
+    <h3>6.1 Control plane <span class="lead-note">(new, small orchestrator)</span></h3>
+    <p>The only stateful piece we own. Authenticated — creating a server is an authed action. Responsibilities:</p>
+    <ul>
+      <li><strong>Provision</strong> — create a per-community instance from the existing server image, attach a fresh volume, inject a unique <code>JWT_SECRET</code> and the assigned <code>PUBLIC_BASE_URL</code>, wait for <code>/healthz</code>, return the URL.</li>
+      <li><strong>Registry</strong> — infra metadata only: <code>{community_id → machine_id, volume_id, subdomain, owner_account, tier, status}</code>. <strong>No message data, no E2E keys.</strong></li>
+      <li><strong>Lifecycle</strong> — start/stop (sleep), suspend (non-payment/abuse), delete, trigger export.</li>
+      <li><strong>DNS</strong> — assign a <code>*.ohiyo.gg</code> subdomain routed to the instance.</li>
+    </ul>
+
+    <h3>6.2 Per-community instance <span class="lead-note">(reuse — already built)</span></h3>
+    <p>Exactly today's server: one axum binary + SQLite DB + uploads on a persistent volume, with Litestream continuous backup. Recommended substrate: <strong>Fly Machines</strong> (Firecracker microVMs: sub-second boot, per-second billing, <strong>auto-stop when idle</strong> and <strong>wake-on-request</strong> via Fly Proxy — the "Aternos nap" built in, but ~1000× faster to wake). Already in the repo: <code>server/Dockerfile</code>, <code>server/fly.toml</code>, <code>docker-entrypoint.sh</code>, <code>infra/litestream/</code>, <code>/healthz</code>. The missing layer is orchestration, not the box.</p>
+
+    <h3>6.3 Notification relay <span class="lead-note">(new — solves the chat sleep wrinkle)</span></h3>
+    <p>A Minecraft world can sleep with zero downside; a <strong>chat server that sleeps can't push a 2am DM notification.</strong> Resolution: a single always-on, shared, lightweight relay holds device push tokens (APNs/FCM) and emits pushes.</p>
+    <p>Key insight that makes sleep safe: <strong>receiving a message inherently wakes the server</strong> — a sender has to connect to deliver, which boots the microVM. So at the moment a message lands, the community server is awake and fires a push <em>request</em> to the relay before going back to sleep. The push payload carries <strong>no content</strong> (it's E2E); it just says "you have a message." The relay learns only metadata — documented, and self-hosters can run their own relay or disable push.</p>
+
+    <h3>6.4 Existing building blocks reused</h3>
+    <p><code>Dockerfile</code>, <code>fly.toml</code>, Litestream backups, <code>/healthz</code>, and <code>infra/coturn/</code> (TURN for voice) all carry over unchanged.</p>
+  </section>
+
+  <section id="s7">
+    <h2 class="sec"><span class="n">7</span> Data flow</h2>
+    <ul>
+      <li><strong>Create</strong> — Tap "Create your server" → control plane provisions instance + volume + subdomain → waits for <code>/healthz</code> → app drops the user straight into the live server. No cloud console, no card (free tier).</li>
+      <li><strong>Message while asleep</strong> — Sender connects → Fly Proxy wakes the microVM → server accepts + stores ciphertext → fires a content-free push request to the relay for offline recipients → idles back to sleep. Recipients' reconnect wakes it again to sync.</li>
+      <li><strong>Export</strong> — "Download my server" → signed tarball of the latest Litestream snapshot (encrypted DB + uploads). Available on every tier.</li>
+      <li><strong>Graduate to own box</strong> — Hand over (a) the public Docker image, (b) the data export, and (c) a one-click deploy-to-your-cloud template that ingests the export; user repoints the app's server URL. Optional redirect from the old subdomain.</li>
+    </ul>
+  </section>
+
+  <section id="s8">
+    <h2 class="sec"><span class="n">8</span> Error handling &amp; failure modes</h2>
+    <ul>
+      <li><strong>Provision fails</strong> (capacity, API error) — registry marks <code>failed</code>, no orphan volume charged, app shows a friendly retry; provisioning is idempotent on <code>community_id</code>.</li>
+      <li><strong>Wake fails / cold-start slow</strong> — app shows "waking your server…" with a bounded timeout and retry; falls back to a status page, never a silent hang.</li>
+      <li><strong>Quota / abuse</strong> — per-account server cap + rate limits at the control plane. Because E2E means we <strong>cannot</strong> moderate content, abuse handling relies on metadata rate limits, reports, and machine <strong>suspension</strong> — plus the self-host escape valve. Acknowledged honestly, not hand-waved.</li>
+      <li><strong>Non-payment</strong> (paid tier) — grace period → sleep/suspend (never instant delete); export stays available; data retained for a stated window before deletion.</li>
+    </ul>
+  </section>
+
+  <section id="s9">
+    <h2 class="sec"><span class="n">9</span> Security &amp; privacy</h2>
+    <ul>
+      <li>Control plane stores infra metadata only — <strong>never</strong> plaintext or E2E keys.</li>
+      <li>Each instance gets a <strong>unique</strong> <code>JWT_SECRET</code>; a correct <code>PUBLIC_BASE_URL</code> (no baked-in localhost links).</li>
+      <li>Push payloads are content-free; relay sees metadata only, documented and self-hostable.</li>
+      <li>E2E boundary tests (already in CI) must continue to prove a removed member can't read the next message — the hosting layer changes nothing about the crypto boundary.</li>
+    </ul>
+  </section>
+
+  <section id="s10">
+    <h2 class="sec"><span class="n">10</span> Testing strategy</h2>
+    <ul>
+      <li><strong>Control plane unit tests</strong> — provision/sleep/wake/suspend/delete state machine; idempotent provisioning; quota enforcement.</li>
+      <li><strong>Integration</strong> — provision a real instance in a staging Fly org (or a faked Machines API), assert <code>/healthz</code> and subdomain routing.</li>
+      <li><strong>Export round-trip</strong> — create → write data → export → import into a fresh instance → data intact.</li>
+      <li><strong>Graduate</strong> — export → deploy-to-cloud template ingests it → app reconnects to the new URL.</li>
+      <li><strong>Notification relay</strong> — message on a sleeping server → content-free push fired to the right tokens; no content leakage.</li>
+      <li><strong>Privacy regression</strong> — control plane never observes plaintext/keys; existing E2E boundary suite stays green.</li>
+    </ul>
+  </section>
+
+  <section id="s11">
+    <h2 class="sec"><span class="n">11</span> Scope &amp; build order</h2>
+    <p>This spec is the architecture for the whole feature; implementation decomposes into phases, each getting its own implementation plan:</p>
+    <ol class="phases">
+      <li class="mvp"><b>MVP — provision + connect.</b> Control plane creates a real per-community instance on Fly and drops the app into it. (Always-on at first; no sleep yet.)</li>
+      <li><b>Sleep / wake.</b> Auto-stop idle, wake-on-request, "waking…" UX.</li>
+      <li><b>Notification relay.</b> Content-free push for sleeping servers.</li>
+      <li><b>Export + graduate.</b> Download-my-server + move-to-own-box flows.</li>
+      <li><b>Tiers + billing.</b> Free vs paid limits, payment processor, grace/suspend lifecycle.</li>
+      <li><b>Landing comparison.</b> Nitro-vs-Ohiyo block + "launch your own server" CTA.</li>
+    </ol>
+    <h3>Out of scope / YAGNI (for now)</h3>
+    <ul>
+      <li>Multi-region / geo-routing of instances.</li>
+      <li>Federation between community servers.</li>
+      <li>A bespoke billing system (integrate a standard processor at phase 5).</li>
+      <li>The full public marketing landing page (separate track; this feature only owns the comparison block + CTA).</li>
+    </ul>
+  </section>
+
+  <section id="s12">
+    <h2 class="sec"><span class="n">12</span> Open questions</h2>
+    <ul>
+      <li><strong>Substrate confirm</strong> — Fly Machines is the recommendation (sub-second wake + auto-stop). Hetzner/DO are cheaper for always-on but lack built-in wake-on-request — revisit if Fly per-instance cost is too high at scale.</li>
+      <li><strong>Free-tier exact caps</strong> — member/storage numbers set from real measured per-instance cost (cost-honest, generous, never coercive).</li>
+      <li><strong>Subdomain vs custom domain</strong> — free gets <code>*.ohiyo.gg</code>; custom domain is a paid perk — confirm.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>Source of truth: <span class="path">docs/superpowers/specs/2026-06-16-instant-servers-design.md</span> · this HTML is a rendered view.</p>
+    <p>oh, hi. 🐭</p>
+  </footer>
+
+</div>
+</body>
+</html>
