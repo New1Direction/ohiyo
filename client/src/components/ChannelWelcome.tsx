@@ -46,7 +46,7 @@ export function ChannelWelcome({ channelName, isDM, userId }: Props) {
 
   const title = isDM ? "Say hi 👋" : channelName ? `Welcome to #${channelName}!` : "This channel's all quiet";
   const sub = isDM
-    ? "This is the very beginning of your conversation. It's all yours."
+    ? "The very beginning of your conversation — end-to-end encrypted, so only the two of you can ever read it."
     : channelName
       ? `This is the start of the #${channelName} channel — say something to kick it off.`
       : "Say something — it's a great place to start.";
@@ -105,15 +105,19 @@ export function ChannelWelcome({ channelName, isDM, userId }: Props) {
               marginBottom: "0.6rem",
             }}
           >
-            🦔 Welcome to Kikkacord.
+            🐭 Welcome to Kikkacord.
           </div>
           <div className="space-y-3 text-sm" style={{ color: "var(--text-secondary)", lineHeight: 1.7 }}>
+            <p>
+              <strong style={{ color: "var(--text-primary)" }}>Your messages are end-to-end encrypted.</strong> Not
+              &ldquo;trust us&rdquo; encrypted — we genuinely can&apos;t read them, and we built it that way on purpose.
+            </p>
             <p>
               <strong style={{ color: "var(--text-primary)" }}>No ads, no tracking, no paywall.</strong> We build the
               thing and get out of your way.
             </p>
             <p style={{ color: "var(--text-primary)", fontWeight: 600 }}>
-              If it lands, tell a friend. Chinchillin&apos; rest of your day. 🦔💛
+              If it lands, tell a friend. Chinchillin&apos; rest of your day. 🐭💛
             </p>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
