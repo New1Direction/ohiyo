@@ -510,6 +510,20 @@ pub async fn get_deadman(
     }))
 }
 
+/// Minimum dead-man inactivity window. The switch performs an IRREVERSIBLE wipe, so we
+/// refuse anything shorter than an hour — a too-small value (a bug, or a hostile API
+/// call) would otherwise delete a user's data almost the instant they went offline.
+const MIN_DEADMAN_SECS: i64 = 3600; // 1 hour
+const MAX_DEADMAN_SECS: i64 = 365 * 86_400; // 1 year
+
+/// Normalise a requested dead-man window: `None`/0/negative disables the switch;
+/// otherwise clamp into `[MIN_DEADMAN_SECS, MAX_DEADMAN_SECS]`.
+fn clamp_deadman(seconds: Option<i64>) -> Option<i64> {
+    seconds
+        .filter(|s| *s > 0)
+        .map(|s| s.clamp(MIN_DEADMAN_SECS, MAX_DEADMAN_SECS))
+}
+
 /// POST /users/@me/deadman — arm/disarm the switch. Resets liveness so it can't fire
 /// immediately on configuration.
 pub async fn set_deadman(
@@ -521,12 +535,9 @@ pub async fn set_deadman(
         Some("keys") => "keys",
         _ => "history",
     };
-    // Clamp to [5 seconds, 1 year]; None/0/negative disables. (The UI offers day-scale
-    // presets; a very short window via the raw API is a deliberate power-user choice.)
-    let secs = body
-        .seconds
-        .filter(|s| *s > 0)
-        .map(|s| s.clamp(5, 365 * 86_400));
+    // None/0/negative disables; otherwise clamp into the safe range. The floor is an
+    // HOUR, not seconds, because tripping the switch is irreversible — see clamp_deadman.
+    let secs = clamp_deadman(body.seconds);
     sqlx::query(
         "UPDATE users SET deadman_seconds = ?, deadman_scope = ?, last_active_at = ? WHERE id = ?",
     )
@@ -557,6 +568,8 @@ pub async fn sweep_deadman(state: &AppState) {
     .unwrap_or_default();
 
     for (uid, scope) in tripped {
+        // Leave an audit trail in the logs before the irreversible wipe.
+        tracing::warn!(user_id = %uid, scope = ?scope, "dead-man's switch tripped — wiping data");
         let _ = sqlx::query("DELETE FROM messages WHERE author_id = ?")
             .bind(&uid)
             .execute(&state.db)
@@ -570,5 +583,37 @@ pub async fn sweep_deadman(state: &AppState) {
                 let _ = sqlx::query(q).bind(&uid).execute(&state.db).await;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod deadman_tests {
+    use super::*;
+
+    #[test]
+    fn disables_on_none_zero_or_negative() {
+        assert_eq!(clamp_deadman(None), None);
+        assert_eq!(clamp_deadman(Some(0)), None);
+        assert_eq!(clamp_deadman(Some(-100)), None);
+    }
+
+    #[test]
+    fn enforces_one_hour_floor() {
+        // A dangerously short window is raised to the safe minimum, not honored.
+        assert_eq!(clamp_deadman(Some(5)), Some(MIN_DEADMAN_SECS));
+        assert_eq!(
+            clamp_deadman(Some(MIN_DEADMAN_SECS - 1)),
+            Some(MIN_DEADMAN_SECS)
+        );
+    }
+
+    #[test]
+    fn passes_through_and_caps_reasonable_windows() {
+        let week = 7 * 86_400;
+        assert_eq!(clamp_deadman(Some(week)), Some(week));
+        assert_eq!(
+            clamp_deadman(Some(MAX_DEADMAN_SECS + 1)),
+            Some(MAX_DEADMAN_SECS)
+        );
     }
 }

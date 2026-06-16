@@ -16,8 +16,8 @@ pub mod search;
 pub mod types;
 
 use axum::{
-    extract::{DefaultBodyLimit, Request},
-    http::HeaderValue,
+    extract::{DefaultBodyLimit, Request, State},
+    http::{HeaderValue, StatusCode},
     middleware::Next,
     response::Response,
     routing::get,
@@ -223,6 +223,19 @@ async fn security_headers(req: Request, next: Next) -> Response {
     res
 }
 
+/// Readiness probe — actually queries the database, so the platform health check fails
+/// (diverting traffic / restarting the machine) when the DB is wedged, not merely when
+/// the process is up.
+async fn health(State(state): State<AppState>) -> Result<&'static str, StatusCode> {
+    match sqlx::query("SELECT 1").execute(&state.db).await {
+        Ok(_) => Ok("ok"),
+        Err(e) => {
+            tracing::error!(error = %e, "health check failed — database unreachable");
+            Err(StatusCode::SERVICE_UNAVAILABLE)
+        }
+    }
+}
+
 /// Assemble the full application router with the production middleware stack
 /// (security headers, permissive CORS, 16 MiB default body limit). The returned
 /// `Router` still needs connect-info wired in by the caller via
@@ -250,8 +263,8 @@ pub fn build_app(state: AppState) -> Router {
         .nest("/api/v1", api::router())
         .route("/gateway", get(gateway::ws_handler))
         .route("/files/{id}", get(api::files::serve_file))
-        // Liveness probe for the platform load balancer (Fly health check).
-        .route("/healthz", get(|| async { "ok" }))
+        // Readiness probe for the platform load balancer — touches the DB (Fly check).
+        .route("/healthz", get(health))
         .with_state(state)
         .layer(axum::middleware::from_fn(security_headers))
         .layer(cors)
