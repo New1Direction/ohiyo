@@ -22,6 +22,15 @@ pub async fn instance_router(State(state): State<AppState>, req: Request, next: 
         return next.run(req).await;
     };
 
+    // If the request targets OUR OWN subdomain, we're a provisioned leaf instance serving
+    // itself — a fly-replayed request that arrived home. Serve it normally. Only the
+    // control plane (whose PUBLIC_BASE_URL is the apex/fly.dev, not an ohiyo.gg subdomain)
+    // looks instances up and replays; without this guard the leaf would 404 the replay
+    // against its own empty registry and the request would never be served.
+    if own_subdomain().as_deref() == Some(sub.as_str()) {
+        return next.run(req).await;
+    }
+
     // Fetch the row with query_as (the same pattern the working /instances endpoints
     // use). query_scalar on the nullable machine_id column proved unreliable against the
     // live SQLite — query_as round-trips the full row correctly. Filter status in Rust.
@@ -52,6 +61,18 @@ fn community_subdomain(host: Option<&HeaderValue>) -> Option<String> {
         return None;
     }
     Some(label.to_string())
+}
+
+/// This server's own `*.ohiyo.gg` subdomain, parsed from `PUBLIC_BASE_URL`. `Some("the-roost-…")`
+/// on a provisioned leaf instance; `None` on the control plane (apex / `*.fly.dev`).
+fn own_subdomain() -> Option<String> {
+    let base = std::env::var("PUBLIC_BASE_URL").ok()?;
+    let host = base
+        .strip_prefix("https://")
+        .or_else(|| base.strip_prefix("http://"))
+        .unwrap_or(&base);
+    let host = host.split('/').next().unwrap_or("");
+    community_subdomain(Some(&HeaderValue::from_str(host).ok()?))
 }
 
 /// The `fly-replay` response that hands the request to a specific machine in the instances
