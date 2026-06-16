@@ -38,6 +38,27 @@ function loadDraft(channelId: string): string {
   }
 }
 
+// Reading position persisted per channel, so leaving a channel mid-history and coming
+// back lands you where you were — not yanked to the bottom. Stored only when scrolled
+// up; cleared (→ open at bottom) when the user was already at the latest message.
+const SCROLL_PREFIX = "kc:scroll:";
+function persistScroll(channelId: string, offset: number | null) {
+  try {
+    if (offset != null && offset > 0) localStorage.setItem(SCROLL_PREFIX + channelId, String(Math.round(offset)));
+    else localStorage.removeItem(SCROLL_PREFIX + channelId);
+  } catch {
+    /* storage off */
+  }
+}
+function loadScroll(channelId: string): number | null {
+  try {
+    const v = localStorage.getItem(SCROLL_PREFIX + channelId);
+    return v == null ? null : Number(v) || null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Link preview types ────────────────────────────────────────────────────────
 type OgData = {
   url: string;
@@ -244,6 +265,11 @@ export function ChatPane({
   const atBottomRef = useRef(true);
   const forceBottomRef = useRef(true);
   const [showJump, setShowJump] = useState(false);
+  // Per-channel reading position. scrollMapRef is the live (in-session) map; a switch
+  // (or reload) persists it. pendingRestoreRef carries an offset to re-apply after the
+  // incoming channel's rows have rendered.
+  const scrollMapRef = useRef<Record<string, { offset: number; atBottom: boolean }>>({});
+  const pendingRestoreRef = useRef<number | null>(null);
 
   // Members matching the open @-mention query (max 6).
   const mentionMatches = mention
@@ -308,6 +334,16 @@ export function ChatPane({
     listRef.current?.resetAfterIndex(0);
     const last = groups.length - 1;
     if (last < 0) return;
+    // A channel switch may have stashed a reading position to restore once the new
+    // channel's rows exist. Consume it before the auto-scroll-to-bottom logic.
+    const restore = pendingRestoreRef.current;
+    if (restore != null) {
+      pendingRestoreRef.current = null;
+      listRef.current?.scrollTo(restore);
+      atBottomRef.current = false;
+      setShowJump(true); // they're reading history → offer the jump pill
+      return;
+    }
     if (forceBottomRef.current || atBottomRef.current) {
       listRef.current?.scrollToItem(last, "end");
       forceBottomRef.current = false;
@@ -318,12 +354,14 @@ export function ChatPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- groups is derived from messages (declared below); re-running on messages already covers groups.length
   }, [messages]);
 
-  // Track whether the user is pinned to the bottom (read off the scroll container).
+  // Track whether the user is pinned to the bottom (read off the scroll container) and
+  // remember this channel's reading position for restore-on-return.
   function handleListScroll() {
     const el = listOuterRef.current;
     if (!el) return;
     atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
     if (atBottomRef.current) setShowJump(false);
+    if (channel?.id) scrollMapRef.current[channel.id] = { offset: el.scrollTop, atBottom: atBottomRef.current };
   }
 
   function jumpToBottom() {
@@ -348,6 +386,9 @@ export function ChatPane({
     if (prev) {
       draftsRef.current[prev] = inputRef.current;
       persistDraft(prev, inputRef.current); // survive a reload, not just a switch
+      // Stash where the user was reading in the channel they're leaving.
+      const s = scrollMapRef.current[prev];
+      persistScroll(prev, s && !s.atBottom ? s.offset : null);
     }
     let restored = next ? draftsRef.current[next] ?? "" : "";
     if (next && !restored) restored = loadDraft(next);
@@ -357,7 +398,20 @@ export function ChatPane({
     setSafety({ open: false, value: null, loading: false }); // safety number is per-peer
     setDisappearOpen(false);
     prevChannelRef.current = next;
-    forceBottomRef.current = true; // a freshly-opened channel starts at the bottom
+
+    // Restore the incoming channel's reading position (in-memory first, then storage);
+    // open at the bottom when there's nothing saved or they were already at the latest.
+    const mem = next ? scrollMapRef.current[next] : undefined;
+    const saved = mem ? (mem.atBottom ? null : mem.offset) : next ? loadScroll(next) : null;
+    if (saved != null && saved > 0) {
+      pendingRestoreRef.current = saved;
+      atBottomRef.current = false;
+      forceBottomRef.current = false;
+    } else {
+      pendingRestoreRef.current = null;
+      atBottomRef.current = true;
+      forceBottomRef.current = true; // a freshly-opened channel starts at the bottom
+    }
     setShowJump(false);
   }, [channel?.id]);
 
@@ -365,7 +419,10 @@ export function ChatPane({
   // on a change, so a straight reload would otherwise drop it).
   useEffect(() => {
     const save = () => {
-      if (channel?.id) persistDraft(channel.id, inputRef.current);
+      if (!channel?.id) return;
+      persistDraft(channel.id, inputRef.current);
+      const s = scrollMapRef.current[channel.id];
+      persistScroll(channel.id, s && !s.atBottom ? s.offset : null);
     };
     window.addEventListener("beforeunload", save);
     return () => {
