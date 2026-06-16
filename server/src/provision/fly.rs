@@ -25,7 +25,10 @@ impl FlyProvisioner {
     pub fn from_env() -> Self {
         FlyProvisioner {
             token: std::env::var("FLY_API_TOKEN").unwrap_or_default(),
-            app: std::env::var("FLY_APP_NAME").unwrap_or_else(|_| "ohiyo-instances".into()),
+            // NB: `FLY_APP_NAME` is RESERVED — Fly auto-sets it to the host machine's own
+            // app, so a secret of that name is ignored. Read `FLY_INSTANCES_APP` for the
+            // target app (the same var the edge router uses for fly-replay).
+            app: std::env::var("FLY_INSTANCES_APP").unwrap_or_else(|_| "ohiyo-instances".into()),
             image: std::env::var("FLY_IMAGE")
                 .unwrap_or_else(|_| "registry.fly.io/ohiyo-instances:latest".into()),
             client: reqwest::Client::new(),
