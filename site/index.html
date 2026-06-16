@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ohiyo — the encrypted home for your people</title>
+<meta name="description" content="A free, self-hostable Discord alternative with Signal-level end-to-end encryption. Servers, voice, video, screen-share — and launch your own encrypted server in one tap, for less than a Nitro." />
+<meta name="theme-color" content="#171311" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Ohiyo — the encrypted home for your people" />
+<meta property="og:description" content="Signal-level privacy. Discord-level everything. Free, open, and yours to host. Launch your own encrypted server in one tap." />
+<meta property="og:image" content="https://ohiyo.gg/kikka.svg" />
+<meta property="og:url" content="https://ohiyo.gg" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" href="kikka.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="bg"></div><div class="grain"></div>
+
+<nav id="nav"><div class="wrap">
+  <a class="brand" href="#top" style="text-decoration:none;color:inherit"><img src="kikka.svg" alt="" /> o<span class="hi">Hi</span>Yo</a>
+  <div class="nav-links">
+    <a class="l" href="#servers">Instant Servers</a>
+    <a class="l" href="#features">Features</a>
+    <a class="l" href="#security">Security</a>
+    <a class="l" href="#host">Self-host</a>
+    <a class="btn ghost sm" href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">GitHub ↗</a>
+  </div>
+</div></nav>
+
+<!-- HERO -->
+<header class="hero" id="top"><div class="wrap">
+  <span class="pill reveal">🔒 <b>0</b> plaintext messages on the server — by design</span>
+  <div class="reveal"><img class="logo" src="kikka.svg" alt="Kikka, the Ohiyo chinchilla" /></div>
+  <div class="wordmark reveal">o<span class="hi">Hi</span>Yo</div>
+  <h1 class="reveal"><span class="serif-i grad">Signal-level</span> privacy. <span class="serif-i">Discord-level</span> everything.</h1>
+  <p class="sub reveal">The warm, free place for your people — servers, voice, video, 4K screen-share — on a server that <b style="color:var(--cream)">literally can't read your messages</b>. Open source. Yours to host.</p>
+  <div class="cta-row reveal">
+    <a class="btn solid" href="https://github.com/New1Direction/ohiyo/releases" target="_blank" rel="noopener">Get Ohiyo — free →</a>
+    <a class="btn ghost" href="#host">Self-host in minutes</a>
+  </div>
+  <div class="trust reveal">
+    <span><b>✓</b> End-to-end encrypted</span>
+    <span><b>✓</b> Free forever — no Nitro</span>
+    <span><b>✓</b> Self-hostable, AGPL</span>
+    <span><b>✓</b> Built in Rust</span>
+  </div>
+</div></header>
+
+<!-- INSTANT SERVERS -->
+<section id="servers"><div class="wrap">
+  <span class="eyebrow reveal">Instant Servers</span>
+  <h2 class="reveal">Launch your own server <span class="serif-i grad">in one tap.</span></h2>
+  <p class="lede reveal">We host it so it just works — but it's end-to-end encrypted (we can't read it), you can export everything anytime, and you're one button from moving it to your own box. <b style="color:var(--cream)">Minecraft Realms, if Realms couldn't read your world.</b></p>
+  <div class="compare reveal">
+    <div class="cmp-card them">
+      <div class="cmp-head"><h3>Discord Nitro</h3><span class="price">$9.99/mo · per person</span></div>
+      <p>A shinier avatar, bigger emoji, HD — <b>for one person.</b> The real server perks are paywalled <em>again</em> behind Boosts (~$4.99 each). A 20-person crew that all wants HD pays <b>~$200/mo</b>. Forever.</p>
+    </div>
+    <div class="cmp-card us">
+      <div class="cmp-head"><h3>Ohiyo Instant Server</h3><span class="price">&lt; one Nitro · whole crew</span></div>
+      <p>An <b>always-on, encrypted server for your entire community</b> — every "premium" thing included, for everyone. Or run it <b>free</b> (it naps when idle). Or self-host for <b>$0</b>. Cost-per-person only drops as you grow.</p>
+    </div>
+  </div>
+  <p class="punch reveal">One Discord Nitro buys you a fancier avatar. The same money runs your whole community — <span class="grad">encrypted</span> — on Ohiyo.</p>
+</div></section>
+
+<!-- FEATURES (bento) -->
+<section id="features"><div class="wrap">
+  <span class="eyebrow reveal">Everything, included</span>
+  <h2 class="reveal">The whole thing — <span class="serif-i grad">not a teaser.</span></h2>
+  <p class="lede reveal">All the stuff Discord charges Nitro for is just how Ohiyo works. For $0.</p>
+  <div class="bento reveal">
+    <div class="tile hero-tile t-2x2">
+      <span class="ic">🔒</span>
+      <h3>End-to-end encrypted — DMs, groups &amp; calls</h3>
+      <p>Built on the <b>Signal Protocol</b> (no hand-rolled crypto): X3DH + Double Ratchet for 1:1, sender keys + epoch rekey for groups. A removed member can't read a single future message. The server only ever relays <b>ciphertext</b>.</p>
+      <span class="tag">integration-tested</span>
+    </div>
+    <div class="tile t-3">
+      <span class="ic">🎙️</span>
+      <h3>Voice, video &amp; 4K screen-share</h3>
+      <p>Hop into a call in one tap. Studio-grade audio, HD video, high-fps screen-share — free, no catch.</p>
+    </div>
+    <div class="tile t-3">
+      <span class="ic">⏳</span>
+      <h3>Disappearing messages + dead-man switch</h3>
+      <p>Per-conversation TTL that wipes server-side, plus an inactivity wipe if you go dark for N days.</p>
+    </div>
+    <div class="tile t-2w">
+      <span class="ic">💸</span>
+      <h3>Free forever — no paywalls, no tracking</h3>
+      <p>Bigger uploads, custom emoji, HD video, themes, roles, polls, events. The things behind Nitro are just… included. No ads, no telemetry.</p>
+    </div>
+    <div class="tile t-1">
+      <span class="ic">🧩</span>
+      <h3>Sandboxed plugins</h3>
+      <p>Third-party plugins run in a genuinely isolated Web Worker — no network, no token access.</p>
+    </div>
+    <div class="tile t-3">
+      <span class="ic">🎨</span>
+      <h3>A real design system</h3>
+      <p>The warm <b>Daybreak</b> &amp; <b>Dusk</b> themes, a build-your-own theme editor, and motion that respects reduced-motion.</p>
+    </div>
+    <div class="tile t-3">
+      <span class="ic">🏠</span>
+      <h3>Yours to host</h3>
+      <p>One Rust binary + SQLite. Deploy to a $5 box and own your community — code, server, and conversations.</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- SECURITY -->
+<section id="security"><div class="wrap">
+  <div class="sec-grid">
+    <div>
+      <span class="eyebrow reveal">Under the hood</span>
+      <h2 class="reveal">A cozy room with a <span class="serif-i grad">steel door.</span></h2>
+      <p class="lede reveal">Warm inside, sealed shut. We didn't invent the crypto — we used the real, audited thing, and built the server to be blind by design.</p>
+      <p class="sec-note reveal">The server moves <b>sealed envelopes</b> between devices, enforces membership, and stores nothing it can read — proven by a Rust integration suite that shows a removed member loses access and a pinned identity can't be silently swapped.</p>
+    </div>
+    <div class="sec-flow reveal">
+      <div class="node"><span class="k">Handshake</span><b>X3DH</b><p>Async key agreement — message someone offline, forward-secret from the first byte.</p></div>
+      <div class="node"><span class="k">1:1 sessions</span><b>Double Ratchet</b><p>Per-message keys with forward secrecy &amp; post-compromise recovery, via audited libsignal.</p></div>
+      <div class="node"><span class="k">Groups</span><b>Sender keys + epochs</b><p>Every membership change rekeys; a removed member reads zero future messages.</p></div>
+      <div class="node"><span class="k">Trust</span><b>Safety numbers</b><p>Out-of-band verification across a contact's devices; a swapped key raises a loud banner.</p></div>
+    </div>
+  </div>
+</div></section>
+
+<!-- VS DISCORD -->
+<section id="compare"><div class="wrap">
+  <span class="eyebrow reveal">Head to head</span>
+  <h2 class="reveal">oHiYo <span style="color:var(--muted);font-family:var(--ui);font-weight:600;font-size:.6em">vs</span> Discord</h2>
+  <div class="table-wrap reveal">
+    <table class="cmp">
+      <thead><tr><th></th><th class="us">Ohiyo</th><th>Discord</th></tr></thead>
+      <tbody>
+        <tr><td>End-to-end encrypted DMs &amp; groups</td><td class="us-col"><span class="yes">✓</span> Signal Protocol</td><td class="them-col"><span class="no">✕</span> plaintext on servers</td></tr>
+        <tr><td>The full feature set</td><td class="us-col"><span class="yes">✓</span> everything free</td><td class="them-col"><span class="no">✕</span> Nitro subscription</td></tr>
+        <tr><td>Launch your own server</td><td class="us-col"><span class="yes">✓</span> one tap, &lt; a Nitro</td><td class="them-col"><span class="no">✕</span> not a thing</td></tr>
+        <tr><td>Self-hostable &amp; open source</td><td class="us-col"><span class="yes">✓</span> single binary, AGPL</td><td class="them-col"><span class="no">✕</span> closed SaaS</td></tr>
+        <tr><td>Disappearing messages &amp; dead-man switch</td><td class="us-col"><span class="yes">✓</span> built in</td><td class="them-col"><span class="no">✕</span> none</td></tr>
+        <tr><td>Reads your data to monetize it</td><td class="us-col"><span class="yes">✓</span> can't — blind server</td><td class="them-col"><span class="no">✕</span> analytics &amp; ads</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div></section>
+
+<!-- SELF-HOST -->
+<section id="host"><div class="wrap">
+  <div class="host reveal">
+    <span class="eyebrow" style="justify-content:center">Own it</span>
+    <h2 style="margin-top:.6rem">Self-host in <span class="serif-i grad">minutes.</span></h2>
+    <p class="lede" style="margin:0 auto">One Rust binary + SQLite. Deploy to a tiny box, point the app at it, and your community is genuinely yours — no exit tax, no rug-pull.</p>
+    <code>git clone https://github.com/New1Direction/ohiyo</code>
+    <div class="cta-row" style="justify-content:center">
+      <a class="btn solid" href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">Self-host on GitHub →</a>
+      <a class="btn ghost" href="https://github.com/New1Direction/ohiyo/blob/main/DEPLOY.md" target="_blank" rel="noopener">Read the deploy guide</a>
+    </div>
+  </div>
+</div></section>
+
+<!-- FINAL CTA -->
+<section class="final"><div class="wrap">
+  <div class="reveal"><img class="logo" src="kikka.svg" alt="" /></div>
+  <h2 class="reveal">oh, hi. <span class="grad">👋</span></h2>
+  <p class="lede reveal" style="margin:0 auto 2rem">The warmth and reach of Discord, the privacy of Signal, and a server that can't betray you because it can't read you. Kikka kept you a seat.</p>
+  <div class="cta-row reveal" style="justify-content:center">
+    <a class="btn solid" href="https://github.com/New1Direction/ohiyo/releases" target="_blank" rel="noopener">Get Ohiyo — free →</a>
+    <a class="btn ghost" href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">Star on GitHub ★</a>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="brand"><img src="kikka.svg" alt="" style="width:24px" /> o<span class="hi" style="color:var(--coral)">Hi</span>Yo</div>
+  <div class="f-links">
+    <a href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">GitHub</a>
+    <a href="#security">Security</a>
+    <a href="#host">Self-host</a>
+    <a href="https://github.com/New1Direction/ohiyo/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0</a>
+  </div>
+  <div>oh, hi · ohiyo.gg · free &amp; open · built in Rust + React + Tauri</div>
+</div></footer>
+
+<script src="app.js"></script>
+</body>
+</html>
