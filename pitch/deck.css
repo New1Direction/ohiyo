@@ -1,0 +1,314 @@
+/* ============================================================================
+   Kikkacord — pitch deck
+   Direction: warm "Dusk" dark luxury. Coral→amber accents, cream editorial type
+   (Fraunces display + Inter UI), glass depth, film grain, motion that guides.
+   ========================================================================== */
+
+:root {
+  /* Brand palette — taken straight from the product's Dusk theme + accents. */
+  --ink: #120e0c;
+  --base: #171311;
+  --surface: #1f1916;
+  --surface-2: #271f1b;
+  --line: #3a2f29;
+  --cream: #f5ece4;
+  --warm-2: #c5b4a7;
+  --muted: #8a7a6e;
+  --coral: #ff7a4d;
+  --persimmon: #f2683c;
+  --ember: #db5429;
+  --amber: #e0992f;
+  --grape: #7c6dfa;
+  --emerald: #3fc489;
+  --rose: #eb6f92;
+
+  --grad-warm: linear-gradient(120deg, #ff7a4d 0%, #f2683c 38%, #e0992f 100%);
+  --grad-warm-soft: linear-gradient(120deg, #ff8a5e22, #e0992f18);
+
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-fun: "Baloo 2", "Fredoka", ui-rounded, "Segoe UI", system-ui, sans-serif;
+
+  --maxw: 1180px;
+  --r-lg: 22px;
+  --r-md: 16px;
+  --r-sm: 11px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.7);
+  --glow: 0 0 60px -10px rgba(255, 122, 77, 0.45);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--base);
+  color: var(--cream);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Atmosphere: layered warm radials + a fine grain that lifts the flatness. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(60% 50% at 78% 12%, rgba(255, 122, 77, 0.16), transparent 60%),
+    radial-gradient(55% 60% at 12% 92%, rgba(224, 153, 47, 0.12), transparent 55%),
+    radial-gradient(40% 40% at 50% 50%, rgba(124, 109, 250, 0.05), transparent 70%);
+  pointer-events: none;
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── Deck mechanics ───────────────────────────────────────────────────────── */
+.deck { position: relative; height: 100vh; z-index: 1; }
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(2.2rem, 5vw, 5.5rem);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(26px) scale(0.985);
+  transition: opacity 0.6s var(--ease), transform 0.7s var(--ease), visibility 0s 0.7s;
+}
+.slide.is-active {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.7s var(--ease), transform 0.8s var(--ease);
+}
+.slide.is-prev { transform: translateY(-26px) scale(0.985); }
+
+.wrap { width: 100%; max-width: var(--maxw); }
+
+/* Staggered reveal of a slide's children once it activates. */
+.slide.is-active [data-rise] {
+  animation: rise 0.8s var(--ease) both;
+}
+.slide.is-active [data-rise="1"] { animation-delay: 0.05s; }
+.slide.is-active [data-rise="2"] { animation-delay: 0.14s; }
+.slide.is-active [data-rise="3"] { animation-delay: 0.23s; }
+.slide.is-active [data-rise="4"] { animation-delay: 0.32s; }
+.slide.is-active [data-rise="5"] { animation-delay: 0.41s; }
+@keyframes rise { from { opacity: 0; transform: translateY(20px); } }
+
+/* ── Typography & shared bits ─────────────────────────────────────────────── */
+.eyebrow {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--coral);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.eyebrow::before {
+  content: "";
+  width: 26px;
+  height: 2px;
+  background: var(--grad-warm);
+  border-radius: 2px;
+}
+h1, h2 { font-family: var(--font-display); font-weight: 600; line-height: 1.02; letter-spacing: -0.02em; }
+h1 { font-size: clamp(2.8rem, 7vw, 6rem); }
+h2 { font-size: clamp(2rem, 4.4vw, 3.5rem); }
+.lead { font-size: clamp(1.05rem, 1.7vw, 1.4rem); color: var(--warm-2); line-height: 1.55; max-width: 46ch; }
+.grad { background: var(--grad-warm); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.serif-i { font-family: var(--font-display); font-style: italic; }
+
+/* Brand wordmark — playful rounded (Animal-Crossing-like). Reads "oh · Hi · yo". */
+.wordmark { font-family: var(--font-fun); font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
+.wordmark .o { color: var(--cream); }
+.wordmark .hi { color: var(--coral); }
+.wordmark .yo { color: var(--cream); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.4rem 0.85rem; border-radius: 999px;
+  background: rgba(255, 122, 77, 0.1);
+  border: 1px solid rgba(255, 122, 77, 0.28);
+  color: var(--coral); font-size: 0.8rem; font-weight: 600;
+}
+
+.glass {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
+  border: 1px solid rgba(245, 236, 228, 0.09);
+  border-radius: var(--r-md);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+}
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.6rem;
+  padding: 0.95rem 1.5rem; border-radius: 999px;
+  font-family: var(--font-ui); font-weight: 650; font-size: 0.98rem;
+  color: var(--ink); background: var(--grad-warm);
+  border: none; cursor: pointer; text-decoration: none;
+  box-shadow: var(--glow); transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease);
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 0 80px -8px rgba(255, 122, 77, 0.7); }
+.btn.ghost { background: transparent; color: var(--cream); border: 1px solid var(--line); box-shadow: none; }
+.btn.ghost:hover { border-color: var(--coral); transform: translateY(-2px); }
+
+/* ── Cover ────────────────────────────────────────────────────────────────── */
+.cover { text-align: center; }
+.cover .logo {
+  width: clamp(150px, 20vw, 230px);
+  filter: brightness(0) invert(0.92) drop-shadow(0 14px 40px rgba(255, 122, 77, 0.45));
+  animation: float 7s ease-in-out infinite;
+}
+@keyframes float { 50% { transform: translateY(-14px); } }
+.cover h1 { margin: 1.2rem 0 0.4rem; font-size: clamp(3.4rem, 10vw, 8rem); }
+.cover .tag { font-size: clamp(1.1rem, 2.2vw, 1.65rem); color: var(--cream); font-family: var(--font-display); font-style: italic; }
+.cover .sub { margin-top: 0.9rem; color: var(--muted); font-size: 1rem; letter-spacing: 0.01em; }
+.cover .cta-row { margin-top: 2.4rem; display: flex; gap: 0.9rem; justify-content: center; flex-wrap: wrap; }
+
+/* ── Generic two-column slide ─────────────────────────────────────────────── */
+.split { display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(2rem, 5vw, 5rem); align-items: center; }
+.split.solo { grid-template-columns: 1fr; max-width: 60ch; }
+.stack > * + * { margin-top: 1.25rem; }
+
+/* Problem list */
+.problems { list-style: none; display: grid; gap: 0.9rem; }
+.problems li { display: flex; gap: 1rem; align-items: flex-start; padding: 1.1rem 1.25rem; }
+.problems .x { color: var(--rose); font-size: 1.3rem; line-height: 1.2; flex: none; }
+.problems b { display: block; font-size: 1.08rem; margin-bottom: 0.2rem; }
+.problems span { color: var(--warm-2); font-size: 0.96rem; line-height: 1.5; }
+
+/* ── Comparison table ─────────────────────────────────────────────────────── */
+.cmp { width: 100%; border-collapse: separate; border-spacing: 0; }
+.cmp th, .cmp td { padding: 0.9rem 1rem; text-align: left; }
+.cmp thead th { font-family: var(--font-ui); font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
+.cmp thead .us { color: var(--coral); }
+.cmp tbody tr { transition: background 0.25s var(--ease); }
+.cmp tbody tr:hover { background: rgba(255, 122, 77, 0.06); }
+.cmp td:first-child { color: var(--warm-2); font-weight: 500; width: 38%; }
+.cmp .us-col { font-weight: 600; color: var(--cream); }
+.cmp .them-col { color: var(--muted); }
+.cmp .yes { color: var(--emerald); font-weight: 700; }
+.cmp .no { color: var(--rose); }
+.cmp .meh { color: var(--amber); }
+.cmp tbody tr + tr td { border-top: 1px solid rgba(58, 47, 41, 0.55); }
+.verif { font-size: 0.72rem; color: var(--muted); margin-left: 0.4rem; opacity: 0; transition: opacity 0.3s; }
+.cmp.show-verif .verif { opacity: 1; }
+.toggle-row { display: flex; align-items: center; gap: 0.8rem; margin-top: 1rem; color: var(--muted); font-size: 0.85rem; }
+.switch { position: relative; width: 42px; height: 24px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); cursor: pointer; transition: background 0.3s; flex: none; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform 0.3s var(--ease), background 0.3s; }
+.switch.on { background: rgba(255, 122, 77, 0.25); border-color: var(--coral); }
+.switch.on::after { transform: translateX(18px); background: var(--coral); }
+
+/* ── Product explorer ─────────────────────────────────────────────────────── */
+.explorer { display: grid; grid-template-columns: 300px 1fr; gap: 1.5rem; min-height: 380px; }
+.rail { display: grid; gap: 0.5rem; align-content: start; }
+.rail button {
+  display: flex; align-items: center; gap: 0.85rem; width: 100%;
+  padding: 0.85rem 1rem; border-radius: var(--r-sm);
+  background: transparent; border: 1px solid transparent; cursor: pointer;
+  color: var(--warm-2); font-family: var(--font-ui); font-size: 0.98rem; font-weight: 550; text-align: left;
+  transition: all 0.25s var(--ease);
+}
+.rail button .ic { font-size: 1.15rem; filter: grayscale(0.2); }
+.rail button:hover { color: var(--cream); background: rgba(255, 255, 255, 0.03); }
+.rail button.active { color: var(--cream); background: rgba(255, 122, 77, 0.1); border-color: rgba(255, 122, 77, 0.3); box-shadow: inset 3px 0 0 var(--coral); }
+.panel { padding: 1.8rem 2rem; }
+.panel h3 { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600; margin-bottom: 0.4rem; }
+.panel .pdesc { color: var(--warm-2); margin-bottom: 1.3rem; line-height: 1.55; max-width: 52ch; }
+.feat { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem 1.4rem; }
+.feat div { display: flex; gap: 0.6rem; align-items: flex-start; font-size: 0.92rem; color: var(--cream); }
+.feat .c { color: var(--coral); flex: none; font-weight: 700; }
+.feat small { display: block; color: var(--muted); font-size: 0.78rem; }
+.panel.swap { animation: swap 0.45s var(--ease); }
+@keyframes swap { from { opacity: 0; transform: translateX(14px); } }
+
+/* ── Security architecture ────────────────────────────────────────────────── */
+.flow { display: flex; align-items: stretch; gap: 0.6rem; flex-wrap: wrap; }
+.node { flex: 1 1 150px; padding: 1.1rem 1.15rem; border-radius: var(--r-sm); position: relative; }
+.node .k { font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--coral); font-weight: 700; }
+.node b { display: block; font-size: 1rem; margin: 0.35rem 0 0.2rem; }
+.node p { font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
+.secnote { margin-top: 1.4rem; color: var(--warm-2); font-size: 0.95rem; line-height: 1.6; max-width: 60ch; }
+.secnote b { color: var(--cream); }
+
+/* ── Stats + checklist ────────────────────────────────────────────────────── */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.8rem; }
+.stat { padding: 1.3rem 1.2rem; text-align: center; }
+.stat .n { font-family: var(--font-display); font-size: clamp(2rem, 4vw, 3rem); font-weight: 600; }
+.stat .l { color: var(--muted); font-size: 0.82rem; margin-top: 0.25rem; line-height: 1.3; }
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1.6rem; }
+.checks div { display: flex; gap: 0.7rem; align-items: baseline; font-size: 0.93rem; padding: 0.35rem 0; }
+.checks .s { flex: none; font-weight: 800; font-size: 0.95rem; }
+.checks .done .s { color: var(--emerald); }
+.checks .part .s { color: var(--amber); }
+.checks .todo .s { color: var(--muted); }
+.checks .todo { color: var(--warm-2); }
+.legend { display: flex; gap: 1.4rem; margin-top: 1.2rem; color: var(--muted); font-size: 0.8rem; flex-wrap: wrap; }
+
+/* ── Roadmap ──────────────────────────────────────────────────────────────── */
+.road { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.road .col { padding: 1.4rem 1.4rem; }
+.road .when { color: var(--coral); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.road h4 { font-family: var(--font-display); font-size: 1.3rem; font-weight: 600; margin: 0.5rem 0 0.9rem; }
+.road ul { list-style: none; display: grid; gap: 0.55rem; }
+.road li { color: var(--warm-2); font-size: 0.9rem; padding-left: 1.1rem; position: relative; line-height: 1.4; }
+.road li::before { content: "→"; position: absolute; left: 0; color: var(--coral); }
+
+/* ── Navigation chrome ────────────────────────────────────────────────────── */
+.progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--grad-warm); z-index: 50; transition: width 0.5s var(--ease); box-shadow: var(--glow); }
+.topbar { position: fixed; top: 1.4rem; left: 1.7rem; right: 1.7rem; display: flex; justify-content: space-between; align-items: center; z-index: 40; pointer-events: none; }
+.topbar .brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; letter-spacing: 0.02em; pointer-events: auto; }
+.topbar .brand img { width: 30px; filter: brightness(0) invert(0.92); }
+.topbar .menu-btn { pointer-events: auto; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); color: var(--cream); padding: 0.5rem 0.9rem; border-radius: 999px; font-size: 0.82rem; cursor: pointer; font-family: var(--font-ui); transition: border-color 0.25s; }
+.topbar .menu-btn:hover { border-color: var(--coral); }
+
+.dots { position: fixed; bottom: 1.6rem; left: 50%; transform: translateX(-50%); display: flex; gap: 0.6rem; z-index: 40; }
+.dots button { width: 9px; height: 9px; border-radius: 50%; border: none; background: var(--line); cursor: pointer; padding: 0; transition: all 0.3s var(--ease); }
+.dots button:hover { background: var(--muted); }
+.dots button.on { background: var(--grad-warm); width: 26px; border-radius: 999px; }
+
+.arrows { position: fixed; bottom: 1.5rem; right: 1.7rem; display: flex; gap: 0.5rem; z-index: 40; }
+.arrows button, .counter { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); color: var(--cream); border-radius: 999px; cursor: pointer; transition: all 0.25s var(--ease); font-family: var(--font-ui); }
+.arrows button { width: 40px; height: 40px; font-size: 1.1rem; }
+.arrows button:hover { border-color: var(--coral); color: var(--coral); }
+.counter { position: fixed; bottom: 1.6rem; left: 1.7rem; z-index: 40; padding: 0.5rem 0.95rem; font-size: 0.82rem; letter-spacing: 0.12em; color: var(--warm-2); }
+.counter b { color: var(--cream); }
+
+/* Jump menu overlay */
+.menu { position: fixed; inset: 0; z-index: 60; background: rgba(18, 14, 12, 0.82); backdrop-filter: blur(14px); display: grid; place-items: center; opacity: 0; visibility: hidden; transition: opacity 0.4s var(--ease), visibility 0s 0.4s; }
+.menu.open { opacity: 1; visibility: visible; transition: opacity 0.4s var(--ease); }
+.menu ol { list-style: none; counter-reset: m; display: grid; gap: 0.3rem; width: min(620px, 86vw); }
+.menu li { counter-increment: m; }
+.menu li button { width: 100%; text-align: left; display: flex; align-items: baseline; gap: 1.1rem; padding: 0.85rem 1.2rem; border-radius: var(--r-sm); background: transparent; border: 1px solid transparent; color: var(--warm-2); font-family: var(--font-display); font-size: clamp(1.1rem, 2.4vw, 1.7rem); font-weight: 500; cursor: pointer; transition: all 0.25s var(--ease); }
+.menu li button::before { content: counter(m, decimal-leading-zero); font-family: var(--font-ui); font-size: 0.8rem; color: var(--coral); font-weight: 700; }
+.menu li button:hover, .menu li button.on { color: var(--cream); background: rgba(255, 122, 77, 0.1); border-color: rgba(255, 122, 77, 0.25); padding-left: 1.5rem; }
+.menu .close-hint { text-align: center; margin-top: 1.4rem; color: var(--muted); font-size: 0.8rem; }
+
+.hint { position: fixed; bottom: 4.4rem; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 0.78rem; z-index: 40; letter-spacing: 0.08em; animation: pulse 2.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.4; } }
+kbd { font-family: var(--font-ui); background: var(--surface-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 0.1rem 0.4rem; font-size: 0.74rem; color: var(--cream); }
+
+@media (max-width: 820px) {
+  .split, .explorer, .road, .stats { grid-template-columns: 1fr; }
+  .feat, .checks { grid-template-columns: 1fr; }
+  .rail { grid-auto-flow: column; overflow-x: auto; }
+  .hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001s !important; transition-duration: 0.12s !important; }
+}
