@@ -11,6 +11,7 @@ pub mod api;
 pub mod auth;
 pub mod db;
 pub mod gateway;
+pub mod provision;
 pub mod ratelimit;
 pub mod search;
 pub mod types;
@@ -49,12 +50,23 @@ pub struct AppState {
     pub idle: gateway::IdleSet,
     /// Live watch-party sessions: channel_id → synced video state.
     pub watch: gateway::WatchSessions,
+    /// Cloud orchestrator for Instant Servers — fake in tests/dev, Fly Machines in prod.
+    pub provisioner: std::sync::Arc<dyn provision::MachineProvisioner>,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
 /// live-presence maps. Shared by `main` and the integration-test harness so both
 /// construct state identically.
 pub fn build_state(db: SqlitePool) -> AppState {
+    // Pick the provisioner: the real Fly Machines client when a token is present,
+    // otherwise the in-memory fake (tests + local dev exercise the full flow with zero
+    // infra, and never accidentally hit a cloud API).
+    let provisioner: std::sync::Arc<dyn provision::MachineProvisioner> =
+        if std::env::var("FLY_API_TOKEN").is_ok() {
+            std::sync::Arc::new(provision::fly::FlyProvisioner::from_env())
+        } else {
+            std::sync::Arc::new(provision::fake::FakeProvisioner::default())
+        };
     AppState {
         db,
         sessions: gateway::new_session_map(),
@@ -65,6 +77,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         activities: gateway::new_activities(),
         idle: gateway::new_idle_set(),
         watch: gateway::new_watch_sessions(),
+        provisioner,
     }
 }
 
