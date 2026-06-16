@@ -35,6 +35,17 @@ A calm, fast place to get things done with a team.
 - [ ] "Heads-down" / focus presence; do-not-disturb
 - [ ] Code blocks with syntax highlighting; collaborative docs/canvas
 
+## 🏠 Host
+Your own encrypted server, in one tap — and you actually own it. Like Minecraft Realms, if Realms couldn't read your world.
+
+- [x] **Instant Servers — Phase 1 (provision + connect)** — a control plane that spins up a dedicated per-community instance behind a `MachineProvisioner` trait (real Fly Machines impl + a zero-infra fake selected by `FLY_API_TOKEN`), an **atomic** free-tier cap, owner-scoped + rate-limited `/api/v1/instances`. **Adversarially reviewed and fixed** (TOCTOU cap-bypass, cap lockout, empty-volume data loss, untested failure path — all closed); build / clippy / 8 new tests green. Live provisioning gated on a Fly token + the `ohiyo.gg` domain.
+- [x] **Realms-shaped ownership model** — we host it, but the box only ever holds ciphertext (E2E); the design bakes in export + one-click "graduate to your own box", priced below one Discord Nitro. Spec: [`docs/superpowers/specs/2026-06-16-instant-servers-design.md`](docs/superpowers/specs/2026-06-16-instant-servers-design.md).
+- [ ] **Phase 2 — sleep/wake** — idle instances auto-stop and wake-on-request (sub-second), with a "waking…" UX
+- [ ] **Phase 3 — notification relay** — content-free pushes so a *sleeping* server can still ping you at 2am
+- [ ] **Phase 4 — export + graduate** — download-my-server + move-to-your-own-box flows
+- [ ] **Phase 5 — tiers + billing** — free (sleeps) vs paid (always-on, custom domain), payment + suspend/grace lifecycle
+- [ ] **Phase 1b — in-app server switch** — point the running client at a freshly-provisioned `*.ohiyo.gg` URL (the client is single-server at build time today)
+
 ## Foundations (cross-cutting)
 - [x] Rust (axum + sqlx/SQLite) server, React 19 + Tauri client, **Daybreak**/Dusk design
 - [x] Quality gate: ESLint (a11y as errors), tsc, cargo test, 18-suite e2e, GitHub Actions CI

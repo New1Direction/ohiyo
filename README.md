@@ -3,7 +3,9 @@
 A free, self-hostable Discord alternative — servers, channels, DMs, and real-time
 voice / video / screen-share, with a sandboxed plugin system and a brand of its own.
 Rust on the backend, React 19 + Tauri on the desktop. No subscriptions, no paywalled
-features, no telemetry.
+features, no telemetry. And **launch your own encrypted server in one tap** — Realms-style
+hosting where the box only ever holds ciphertext, with export and self-host always one
+click away.
 
 > **Status:** v0.1.0 — early but real. 18 end-to-end suites green, live backend at
 > [kikkacord.fly.dev](https://kikkacord.fly.dev). Desktop builds in
@@ -13,6 +15,11 @@ features, no telemetry.
 
 ## Highlights
 
+- **Instant Servers** — launch your own end-to-end-encrypted community server in **one
+  tap**. We host it (Minecraft-Realms-style) but the box only ever holds ciphertext —
+  export anytime, or graduate to your own box, or self-host for **$0**; all for less than
+  one Discord Nitro. *(Phase 1 shipped — control plane + provisioning; design + plan in
+  [`docs/superpowers/`](docs/superpowers/).)*
 - **Text** — servers, channels, threads-of-thought, DMs, reactions, edits/deletes,
   attachments, **read receipts / delivered state** on DMs.
 - **Voice & video** — WebRTC voice, video, and screen-share. STUN-only on LAN;

@@ -6,6 +6,7 @@ pub mod error;
 pub mod events;
 pub mod files;
 pub mod ice;
+pub mod instances;
 pub mod invites;
 pub mod keys;
 pub mod livekit;
@@ -65,6 +66,12 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me/key-backup", get(profile::get_key_backup))
         .route("/users/@me/key-backup", put(profile::put_key_backup))
         .route("/users/@me/key-backup", delete(profile::delete_key_backup))
+        // Instant Servers (control plane) — provision a dedicated Ohiyo instance
+        .route(
+            "/instances",
+            get(instances::list_instances).post(instances::create_instance),
+        )
+        .route("/instances/{id}", get(instances::get_instance))
         // Servers
         .route("/servers", get(servers::list_servers))
         .route("/servers", post(servers::create_server))

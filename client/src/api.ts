@@ -204,6 +204,23 @@ export type InvitePreview = {
   already_member: boolean;
 };
 
+/** A provisioned Instant-Server instance (control-plane view). */
+export interface HostedInstance {
+  id: string;
+  owner_id: string;
+  name: string;
+  subdomain: string;
+  region: string;
+  tier: string;
+  status: "requested" | "provisioning" | "healthy" | "failed";
+  machine_id: string | null;
+  volume_id: string | null;
+  public_url: string | null;
+  error: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -254,6 +271,19 @@ export const api = {
     request<AuthResponse>("/devices/link/complete", { method: "POST", body: JSON.stringify({ code }) }),
 
   me: (token: string) => request<PublicUser>("/users/@me", {}, token),
+
+  // Instant Servers (control plane) — provision/list/status of your own server instances.
+  // NOTE: pointing the running client AT a provisioned instance (runtime server switch)
+  // is deferred — SERVER_ORIGIN is a compile-time constant. These just drive the control plane.
+  createInstance: (name: string, token: string) =>
+    request<HostedInstance>(
+      "/instances",
+      { method: "POST", body: JSON.stringify({ name }) },
+      token
+    ),
+  listInstances: (token: string) => request<HostedInstance[]>("/instances", {}, token),
+  getInstance: (id: string, token: string) =>
+    request<HostedInstance>(`/instances/${id}`, {}, token),
 
   // Dead-man's switch (account-level inactivity wipe).
   getDeadman: (token: string) =>

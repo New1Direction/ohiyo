@@ -112,7 +112,7 @@ footer .brand{justify-content:center;margin-bottom:.6rem}
 <nav><div class="wrap">
   <div class="brand"><img src="kikka.svg" alt=""/> o<span class="hi">Hi</span>Yo</div>
   <div class="links">
-    <a href="#deck">Deck</a><a href="#social">Social</a><a href="#prompts">AI prompts</a><a href="#voice">Voice</a>
+    <a href="#servers">Servers</a><a href="#deck">Deck</a><a href="#social">Social</a><a href="#prompts">AI prompts</a><a href="#voice">Voice</a>
     <a class="cta" href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">GitHub ↗</a>
   </div>
 </div></nav>
@@ -133,6 +133,23 @@ footer .brand{justify-content:center;margin-bottom:.6rem}
     <div class="stat"><div class="n">0</div><div class="l">plaintext on the server</div></div>
   </div>
 </div></header>
+
+<section id="servers"><div class="wrap">
+  <span class="eyebrow">The headline feature</span>
+  <h2>Launch your own server <span class="grad">in one tap.</span></h2>
+  <p class="lede">We host it so it just works — but it's end-to-end encrypted (we can't read it), you can export it anytime, and you're one button from moving it to your own box. Minecraft Realms, if Realms couldn't read your world.</p>
+  <div class="deck-row">
+    <div class="card">
+      <div class="top"><span class="tag i">Discord Nitro</span><span style="font-size:.78rem;color:var(--muted);font-weight:600">$9.99/mo · per person</span></div>
+      <div class="snip">A shinier avatar, bigger emoji, HD — <b>for one person.</b> The real server perks are paywalled again behind Boosts (~$4.99 each). A 20-person crew that all wants HD pays <b>~$200/mo</b>. Forever.</div>
+    </div>
+    <div class="card" style="border-color:rgba(255,122,77,.45)">
+      <div class="top"><span class="tag">Ohiyo Instant Server</span><span style="font-size:.78rem;color:var(--coral);font-weight:700">&lt; one Nitro · whole crew</span></div>
+      <div class="snip">An <b>always-on, encrypted server for your entire community</b> — every "premium" thing included, for everyone. Or run it <b>free</b> (it naps when idle). Or self-host for <b>$0</b>. Cost-per-person only drops as you grow.</div>
+    </div>
+  </div>
+  <p class="voice-quote" style="margin-top:1.6rem;font-size:clamp(1.1rem,2.2vw,1.5rem)">One Discord Nitro buys you a fancier avatar. The same money runs your whole community — <span class="grad">encrypted</span> — on Ohiyo.</p>
+</div></section>
 
 <section id="deck"><div class="wrap">
   <span class="eyebrow">The deck</span>
@@ -187,6 +204,8 @@ const SOCIAL=[
  ["X · one-liner","your group chat shouldn't be readable by the company that hosts it. oh, hi — meet Ohiyo. 🐭🔒"],
  ["X · one-liner","we made a Discord that can't snitch."],
  ["X · one-liner","the things Discord charges $9.99/mo for are just how Ohiyo works. for $0. forever."],
+ ["X · Instant Servers","launch your own end-to-end-encrypted server in one tap. we host it, we can't read it, and you can leave with everything — for less than a Discord Nitro. 🐭"],
+ ["X · Instant Servers","one Nitro = a fancier avatar, for you. the same money on Ohiyo = an always-on encrypted server for your whole crew, and cost-per-person only drops as you grow."],
  ["Reddit · r/selfhosted","Ohiyo — a self-hostable, end-to-end-encrypted Discord alternative (Rust + Tauri, free & open)\n\nDoes the Discord things (servers, channels, DMs, voice/video, 4K screen-share, roles, polls) with Signal-Protocol E2E on by default — the server only ever relays ciphertext. One Rust (axum) binary + SQLite + a Tauri app. No ads, no tracking, no paywall.\n\nHonest status: text E2E (DMs + groups) is proven by integration tests; encrypted voice is implemented but I'm still hardening the live-SFU path. Code: github.com/New1Direction/ohiyo"],
  ["Hacker News · Show HN","Show HN: Ohiyo – a self-hostable, end-to-end-encrypted Discord alternative\n\nCommunity chat where the server is designed to be blind to message content — Signal Protocol for DMs and groups, epoch-based rekeying so a removed member can't read future messages. Rust backend (axum + SQLite), React + Tauri client, single-binary self-host. Free, open. No hand-rolled crypto."],
  ["Product Hunt · tagline","The group chat that can't read your messages."],

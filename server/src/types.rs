@@ -451,3 +451,22 @@ pub fn new_id() -> String {
 pub fn now_unix() -> i64 {
     Utc::now().timestamp()
 }
+
+/// A provisioned Instant-Server instance. Mirrors the `hosted_instances` table —
+/// infra metadata only (never message content or E2E keys).
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct HostedInstance {
+    pub id: String,
+    pub owner_id: String,
+    pub name: String,
+    pub subdomain: String,
+    pub region: String,
+    pub tier: String,
+    pub status: String,
+    pub machine_id: Option<String>,
+    pub volume_id: Option<String>,
+    pub public_url: Option<String>,
+    pub error: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
