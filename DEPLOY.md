@@ -67,6 +67,27 @@ Notes baked into the config:
 > not `fly scale count 2`. When you outgrow a single node, migrate to
 > [LiteFS](https://fly.io/docs/litefs/) (SQLite replication) or Postgres.
 
+### Backups — set this up before you have real users
+
+The `/data` volume holds the SQLite DB: **all** message ciphertext *and* the
+encrypted `key_backups` blobs. Losing it is unrecoverable, so back it up.
+
+- **Fly volume snapshots (baseline, automatic).** Fly snapshots every volume
+  daily and keeps them ~5 days by default. Extend retention and *practice a
+  restore* before you need one:
+  ```bash
+  fly volumes snapshots list <volume-id>
+  fly volumes update <volume-id> --snapshot-retention 30
+  # restore into a fresh volume:
+  fly volumes create kikkacord_data --snapshot-id <snap> --region iad
+  ```
+- **Continuous backup (recommended for launch).** Run
+  [Litestream](https://litestream.io) beside the server to stream the SQLite WAL
+  to object storage (S3/R2) for point-in-time recovery — it wraps the server
+  process and needs only a bucket + credentials.
+
+> A daily snapshot can lose up to 24h of messages; Litestream closes that gap.
+
 ---
 
 ## 2. Voice (TURN) — for calls across the internet
