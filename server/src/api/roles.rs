@@ -223,16 +223,34 @@ pub async fn assign_role(
         return Err((StatusCode::FORBIDDEN, "you can't manage roles".into()));
     }
     // Role must belong to this server, and target must be a member.
-    let role_ok: Option<(i64,)> =
-        sqlx::query_as("SELECT 1 FROM roles WHERE id = ? AND server_id = ?")
+    let role_row: Option<(i64, i64)> =
+        sqlx::query_as("SELECT position, permissions FROM roles WHERE id = ? AND server_id = ?")
             .bind(&role_id)
             .bind(&server_id)
             .fetch_optional(&state.db)
             .await
             .ok()
             .flatten();
-    if role_ok.is_none() || !is_member(&state, &server_id, &user_id).await {
+    let Some((role_position, role_permissions)) = role_row else {
         return Err((StatusCode::NOT_FOUND, "role or member not found".into()));
+    };
+    if !is_member(&state, &server_id, &user_id).await {
+        return Err((StatusCode::NOT_FOUND, "role or member not found".into()));
+    }
+    // Anti-escalation: you can't hand out a role ranked at or above your own top role,
+    // nor one carrying permissions you don't hold yourself. The owner is exempt —
+    // member_top_position → i64::MAX and member_permissions → ALL, so both guards pass.
+    if role_position >= member_top_position(&state, &server_id, &auth.0).await {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't assign a role ranked at or above your own".into(),
+        ));
+    }
+    if role_permissions & !member_permissions(&state, &server_id, &auth.0).await & perm::ALL != 0 {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't grant permissions you don't have".into(),
+        ));
     }
     sqlx::query("INSERT OR IGNORE INTO member_roles (server_id, user_id, role_id) VALUES (?,?,?)")
         .bind(&server_id)

@@ -504,6 +504,13 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
       case "MessageUpdate": {
         const msg = event.d;
         setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
+        // Edited E2E messages arrive as ciphertext — decrypt for the viewer (mirrors MessageCreate).
+        if (isEncrypted(msg.content) || isSignalCiphertext(msg.content) || isGroupCiphertext(msg.content)) {
+          void decryptMessages(msg.channel_id, [msg]).then((dec) => {
+            const dm = dec[0];
+            if (dm) setMessages((prev) => prev.map((m) => (m.id === dm.id ? dm : m)));
+          });
+        }
         break;
       }
 
@@ -1166,10 +1173,37 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
 
   // ── Message actions (edit / delete / pin) — UI updates arrive via gateway echo.
   async function handleEditMessage(messageId: string, content: string) {
-    const cid = selectedChannelRef.current?.id;
+    const ch = selectedChannelRef.current;
+    const cid = ch?.id;
     if (!cid) return;
     try {
-      await api.editMessage(token, cid, messageId, content);
+      let wire = content;
+      // E2E: encrypt the edit on-device too — editing must NOT leak plaintext to the
+      // server (mirrors handleSend; without this an edited E2E message went out in clear).
+      if (content && e2eChannelsRef.current.has(cid)) {
+        if (ch?.channel_type === "group_dm") {
+          await distributeMySenderKey(cid);
+          const g = await groupEncrypt(cid, content);
+          if (g) wire = g;
+        } else {
+          const peerId = dmPeerId(cid);
+          const sig = peerId ? await encryptFor(token, peerId, content) : null;
+          if (!sig) {
+            toast("Can't edit encrypted yet — your friend needs to open Ohiyo once to set up encryption.");
+            return;
+          }
+          wire = sig;
+        }
+      }
+      await api.editMessage(token, cid, messageId, wire);
+      // Forward secrecy: cache the new plaintext under the message id so our own view
+      // (and later history reloads) shows it — we can't re-decrypt our own ciphertext.
+      if (isSignalCiphertext(wire) || isGroupCiphertext(wire)) {
+        cachePlaintext(messageId, content);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, content, _encrypted: true } : m))
+        );
+      }
     } catch (err) {
       toast(`Couldn't edit: ${err instanceof Error ? err.message : err}`, "error");
     }
