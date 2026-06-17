@@ -16,7 +16,7 @@ const SUGGESTIONS = ["My Hangout", "Study Group", "Game Night"];
 const VALUE_BULLETS: { icon: string; title: string; body: string }[] = [
   { icon: "🔒", title: "Yours alone", body: "End-to-end encrypted — not even our servers can read it." },
   { icon: "🎙️", title: "Crystal voice", body: "Studio-grade audio. Hop into a call in one tap." },
-  { icon: "🖥️", title: "Share your screen", body: "Up to 4K, 60fps — free, no catch." },
+  { icon: "🖥️", title: "Share your screen", body: "Up to 4K — or buttery 1080p60. Free, no catch." },
 ];
 
 /**

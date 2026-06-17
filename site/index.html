@@ -53,8 +53,9 @@
   <h1 class="reveal"><span class="serif-i grad">Signal-level</span> privacy. <span class="serif-i">Discord-level</span> everything.</h1>
   <p class="sub reveal">The warm, free place for your people — servers, voice, video, 4K screen-share — on a server that <b style="color:var(--cream)">literally can't read your messages</b>. Open source. Yours to host.</p>
   <div class="cta-row reveal">
-    <a class="btn solid" href="https://github.com/New1Direction/ohiyo/releases" target="_blank" rel="noopener">Get Ohiyo — free →</a>
-    <a class="btn ghost" href="#host">Self-host in minutes</a>
+    <a class="btn solid" href="https://app.ohiyo.gg" rel="noopener">Open in your browser →</a>
+    <a class="btn ghost" href="https://github.com/New1Direction/ohiyo/releases" target="_blank" rel="noopener">Download the app</a>
+    <a class="btn ghost" href="#host">Self-host</a>
   </div>
   <div class="trust reveal">
     <span><b>✓</b> End-to-end encrypted</span>
@@ -91,7 +92,7 @@
     <div class="tile hero-tile t-2x2">
       <span class="ic">🔒</span>
       <h3>End-to-end encrypted — DMs, groups &amp; calls</h3>
-      <p>Built on the <b>Signal Protocol</b> (no hand-rolled crypto): X3DH + Double Ratchet for 1:1, sender keys + epoch rekey for groups. A removed member can't read a single future message. The server only ever relays <b>ciphertext</b>.</p>
+      <p>Built on the <b>Signal Protocol</b>: X3DH + Double Ratchet for 1:1, sender keys + epoch rekey for groups. A removed member can't read a single future message. The server only ever relays <b>ciphertext</b>.</p>
       <span class="tag">integration-tested</span>
     </div>
     <div class="tile t-3">
@@ -133,12 +134,12 @@
     <div>
       <span class="eyebrow reveal">Under the hood</span>
       <h2 class="reveal">A cozy room with a <span class="serif-i grad">steel door.</span></h2>
-      <p class="lede reveal">Warm inside, sealed shut. We didn't invent the crypto — we used the real, audited thing, and built the server to be blind by design.</p>
+      <p class="lede reveal">Warm inside, sealed shut. We didn't hand-roll the hard parts — 1:1 messaging rides the Signal Protocol's Double Ratchet, and the server is blind by design.</p>
       <p class="sec-note reveal">The server moves <b>sealed envelopes</b> between devices, enforces membership, and stores nothing it can read — proven by a Rust integration suite that shows a removed member loses access and a pinned identity can't be silently swapped.</p>
     </div>
     <div class="sec-flow reveal">
       <div class="node"><span class="k">Handshake</span><b>X3DH</b><p>Async key agreement — message someone offline, forward-secret from the first byte.</p></div>
-      <div class="node"><span class="k">1:1 sessions</span><b>Double Ratchet</b><p>Per-message keys with forward secrecy &amp; post-compromise recovery, via audited libsignal.</p></div>
+      <div class="node"><span class="k">1:1 sessions</span><b>Double Ratchet</b><p>Per-message keys with forward secrecy &amp; post-compromise recovery, via a community libsignal port.</p></div>
       <div class="node"><span class="k">Groups</span><b>Sender keys + epochs</b><p>Every membership change rekeys; a removed member reads zero future messages.</p></div>
       <div class="node"><span class="k">Trust</span><b>Safety numbers</b><p>Out-of-band verification across a contact's devices; a swapped key raises a loud banner.</p></div>
     </div>
@@ -184,8 +185,8 @@
   <h2 class="reveal">oh, hi. <span class="wave">👋</span></h2>
   <p class="lede reveal" style="margin:0 auto 2rem">The warmth and reach of Discord, the privacy of Signal, and a server that can't betray you because it can't read you. Kikka kept you a seat.</p>
   <div class="cta-row reveal" style="justify-content:center">
-    <a class="btn solid" href="https://github.com/New1Direction/ohiyo/releases" target="_blank" rel="noopener">Get Ohiyo — free →</a>
-    <a class="btn ghost" href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">Star on GitHub ★</a>
+    <a class="btn solid" href="https://app.ohiyo.gg" rel="noopener">Open in your browser →</a>
+    <a class="btn ghost" href="https://github.com/New1Direction/ohiyo/releases" target="_blank" rel="noopener">Download the app</a>
   </div>
 </div></section>
 
