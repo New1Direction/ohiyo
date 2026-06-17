@@ -223,6 +223,12 @@ export type InvitePreview = {
 
 export type ImportHistoryWindow = "All" | "Last90Days";
 
+export type DiscrawlImportCapability = {
+  enabled: boolean;
+  mode: "local_discrawl_archive" | string;
+  message: string;
+};
+
 export type DiscrawlImportRequest = {
   db_path: string;
   media_root?: string | null;
@@ -342,6 +348,8 @@ export const api = {
 
   // Discord import — local/admin Discrawl archive path, gated server-side by
   // OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT=1.
+  getDiscrawlImportCapability: (token: string) =>
+    request<DiscrawlImportCapability>("/imports/discord/capability", {}, token),
   previewDiscrawlImport: (token: string, body: DiscrawlImportRequest) =>
     request<DiscrawlPreview>(
       "/imports/discord/preview",

@@ -35,6 +35,28 @@ pub struct DiscrawlImportResponse {
     pub report: ImportReport,
 }
 
+#[derive(Debug, Serialize)]
+pub struct DiscrawlImportCapability {
+    pub enabled: bool,
+    pub mode: &'static str,
+    pub message: &'static str,
+}
+
+pub async fn discrawl_import_capability(
+    _auth: AuthUser,
+) -> Result<Json<DiscrawlImportCapability>, (StatusCode, String)> {
+    let enabled = local_discrawl_import_enabled();
+    Ok(Json(DiscrawlImportCapability {
+        enabled,
+        mode: "local_discrawl_archive",
+        message: if enabled {
+            "This home can import a local Discrawl SQLite archive."
+        } else {
+            "Local Discrawl archive import is disabled on this home. Set OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT=1 on the server to enable it."
+        },
+    }))
+}
+
 pub async fn preview_discrawl_import(
     _auth: AuthUser,
     State(_state): State<AppState>,
@@ -81,13 +103,21 @@ fn read_opts(body: &DiscrawlArchiveBody) -> DiscrawlReadOptions {
     }
 }
 
+fn local_discrawl_import_enabled() -> bool {
+    matches!(
+        std::env::var("OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT"),
+        Ok(v) if v == "1" || v.eq_ignore_ascii_case("true")
+    )
+}
+
 fn require_local_discrawl_import_enabled() -> Result<(), (StatusCode, String)> {
-    match std::env::var("OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT") {
-        Ok(v) if v == "1" || v.eq_ignore_ascii_case("true") => Ok(()),
-        _ => Err((
+    if local_discrawl_import_enabled() {
+        Ok(())
+    } else {
+        Err((
             StatusCode::FORBIDDEN,
             "local Discrawl archive import is disabled on this server".into(),
-        )),
+        ))
     }
 }
 

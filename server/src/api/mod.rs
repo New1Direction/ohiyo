@@ -75,6 +75,10 @@ pub fn router() -> Router<AppState> {
         .route("/instances/{id}", get(instances::get_instance))
         // Discord import (local/admin Discrawl archive path; env-gated)
         .route(
+            "/imports/discord/capability",
+            get(discord_import::discrawl_import_capability),
+        )
+        .route(
             "/imports/discord/preview",
             post(discord_import::preview_discrawl_import),
         )
