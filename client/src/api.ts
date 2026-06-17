@@ -204,6 +204,44 @@ export type InvitePreview = {
   already_member: boolean;
 };
 
+export type ImportHistoryWindow = "All" | "Last90Days";
+
+export type DiscrawlImportRequest = {
+  db_path: string;
+  media_root?: string | null;
+  guild_id?: string | null;
+  history?: ImportHistoryWindow | null;
+};
+
+export type DiscrawlPreview = {
+  guild_id: string;
+  guild_name: string;
+  categories: number;
+  channels: number;
+  voice_channels: number;
+  threads: number;
+  authors: number;
+  messages: number;
+  attachments: number;
+  downloaded_attachments: number;
+};
+
+export type ImportReport = {
+  categories: number;
+  channels: number;
+  authors: number;
+  messages: number;
+  reactions: number;
+  attachments: number;
+  roles_needing_review: string[];
+  parked: string[];
+};
+
+export type DiscrawlImportResponse = {
+  server: ServerWithChannels;
+  report: ImportReport;
+};
+
 /** A provisioned Instant-Server instance (control-plane view). */
 export interface HostedInstance {
   id: string;
@@ -284,6 +322,21 @@ export const api = {
   listInstances: (token: string) => request<HostedInstance[]>("/instances", {}, token),
   getInstance: (id: string, token: string) =>
     request<HostedInstance>(`/instances/${id}`, {}, token),
+
+  // Discord import — local/admin Discrawl archive path, gated server-side by
+  // OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT=1.
+  previewDiscrawlImport: (token: string, body: DiscrawlImportRequest) =>
+    request<DiscrawlPreview>(
+      "/imports/discord/preview",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+  runDiscrawlImport: (token: string, body: DiscrawlImportRequest) =>
+    request<DiscrawlImportResponse>(
+      "/imports/discord/run",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
 
   // Dead-man's switch (account-level inactivity wipe).
   getDeadman: (token: string) =>

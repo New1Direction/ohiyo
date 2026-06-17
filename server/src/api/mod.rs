@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod channels;
+pub mod discord_import;
 pub mod embeds;
 pub mod emoji;
 pub mod error;
@@ -72,6 +73,15 @@ pub fn router() -> Router<AppState> {
             get(instances::list_instances).post(instances::create_instance),
         )
         .route("/instances/{id}", get(instances::get_instance))
+        // Discord import (local/admin Discrawl archive path; env-gated)
+        .route(
+            "/imports/discord/preview",
+            post(discord_import::preview_discrawl_import),
+        )
+        .route(
+            "/imports/discord/run",
+            post(discord_import::run_discrawl_import),
+        )
         // Servers
         .route("/servers", get(servers::list_servers))
         .route("/servers", post(servers::create_server))

@@ -14,6 +14,7 @@ import { BootSplash } from "./components/BootSplash";
 import { Onboarding } from "./components/Onboarding";
 import { NoServersYet } from "./components/NoServersYet";
 import { CreateServerModal } from "./components/CreateServerModal";
+import { DiscordImportModal } from "./components/DiscordImportModal";
 import { InviteAccept } from "./components/InviteAccept";
 import { InviteModal } from "./components/InviteModal";
 import { FindPeopleModal } from "./components/FindPeopleModal";
@@ -107,6 +108,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [settingsTab, setSettingsTab] = useState<Tab>("appearance");
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showCreateServer, setShowCreateServer] = useState(false);
+  const [showDiscordImport, setShowDiscordImport] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showFindPeople, setShowFindPeople] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -1493,6 +1495,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         <NoServersYet
           onCreate={() => setShowCreateServer(true)}
           onFindPeople={() => setShowFindPeople(true)}
+          onImportDiscord={() => setShowDiscordImport(true)}
         />
       ) : (
       <ChatPane
@@ -1594,6 +1597,18 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         <CreateServerModal
           onCreate={createServerAndEnter}
           onClose={() => setShowCreateServer(false)}
+        />
+      )}
+
+      {/* Local/admin Discord import from a Discrawl SQLite archive. */}
+      {showDiscordImport && (
+        <DiscordImportModal
+          token={token}
+          onImported={(server) => {
+            enterServer(server);
+            toast(`Imported ${server.name} from Discord.`, "success");
+          }}
+          onClose={() => setShowDiscordImport(false)}
         />
       )}
 

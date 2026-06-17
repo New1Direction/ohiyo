@@ -5,6 +5,7 @@
 //! the source Discord snowflake.
 
 pub mod attachments;
+pub mod discrawl;
 pub mod mapper;
 pub mod model;
 pub mod report;
