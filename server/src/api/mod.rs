@@ -79,6 +79,11 @@ pub fn router() -> Router<AppState> {
             get(discord_import::discrawl_import_capability),
         )
         .route(
+            "/imports/discord/archive",
+            post(discord_import::upload_discrawl_archive)
+                .layer(DefaultBodyLimit::max(2 * 1024 * 1024 * 1024)),
+        )
+        .route(
             "/imports/discord/preview",
             post(discord_import::preview_discrawl_import),
         )

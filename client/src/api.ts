@@ -229,6 +229,12 @@ export type DiscrawlImportCapability = {
   message: string;
 };
 
+export type DiscrawlArchiveUploadResponse = {
+  db_path: string;
+  filename: string;
+  size_bytes: number;
+};
+
 export type DiscrawlImportRequest = {
   db_path: string;
   media_root?: string | null;
@@ -350,6 +356,20 @@ export const api = {
   // OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT=1.
   getDiscrawlImportCapability: (token: string) =>
     request<DiscrawlImportCapability>("/imports/discord/capability", {}, token),
+  uploadDiscrawlArchive: async (token: string, file: File) => {
+    const form = new FormData();
+    form.append("archive", file);
+    const res = await fetch(`${getApiBase()}/imports/discord/archive`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+    return res.json() as Promise<DiscrawlArchiveUploadResponse>;
+  },
   previewDiscrawlImport: (token: string, body: DiscrawlImportRequest) =>
     request<DiscrawlPreview>(
       "/imports/discord/preview",

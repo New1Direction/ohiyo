@@ -33,7 +33,8 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   const [history, setHistory] = useState<"All" | "Last90Days">("All");
   const [preview, setPreview] = useState<DiscrawlPreview | null>(null);
   const [result, setResult] = useState<DiscrawlImportResponse | null>(null);
-  const [busy, setBusy] = useState<"preview" | "import" | null>(null);
+  const [uploadedArchive, setUploadedArchive] = useState<{ filename: string; size_bytes: number } | null>(null);
+  const [busy, setBusy] = useState<"upload" | "preview" | "import" | null>(null);
   const [importStage, setImportStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +76,22 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
     setPreview(null);
     setResult(null);
     setError(null);
+  }
+
+  async function uploadArchive(file: File | undefined) {
+    if (!file) return;
+    setBusy("upload");
+    resetRunState();
+    try {
+      const uploaded = await api.uploadDiscrawlArchive(token, file);
+      setDbPath(uploaded.db_path);
+      setUploadedArchive({ filename: uploaded.filename, size_bytes: uploaded.size_bytes });
+    } catch (err) {
+      setUploadedArchive(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function previewArchive() {
@@ -147,7 +164,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
               <div>
                 <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>1. Choose your archive</div>
                 <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                  Paste the Discrawl SQLite path on this Ohiyo server. Add media root only if downloaded attachments live outside the DB folder.
+                  Pick your Discrawl SQLite file and Ohiyo uploads it securely. No server paths, no guessing.
                 </p>
               </div>
               <span className="rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: "color-mix(in oklch, var(--green) 14%, transparent)", color: "var(--green)" }}>
@@ -155,15 +172,39 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
               </span>
             </div>
 
-            <label className="mt-4 flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              Discrawl DB path
+            <label
+              className="kc-interactive mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-6 text-center"
+              style={{ borderColor: uploadedArchive ? "var(--accent)" : "var(--bg-input)", background: "color-mix(in oklch, var(--bg-base) 54%, transparent)", color: "var(--text-primary)" }}
+            >
               <input
-                value={dbPath}
-                onChange={(e) => { setDbPath(e.target.value); resetRunState(); }}
-                placeholder="/data/discrawl/discrawl.db"
-                className="kc-field px-3.5 py-3 text-sm outline-none"
+                type="file"
+                accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3,application/x-sqlite3"
+                className="sr-only"
+                disabled={busy !== null}
+                onChange={(e) => void uploadArchive(e.currentTarget.files?.[0])}
               />
+              <span className="text-base font-bold">
+                {busy === "upload" ? "Uploading archive…" : uploadedArchive ? uploadedArchive.filename : "Choose Discrawl SQLite DB"}
+              </span>
+              <span className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                {uploadedArchive
+                  ? `${formatBytes(uploadedArchive.size_bytes)} uploaded — ready to preview`
+                  : "Supports .db, .sqlite, and .sqlite3 files"}
+              </span>
             </label>
+
+            <details className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
+              <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>Advanced: use a path already on the server</summary>
+              <label className="mt-2 flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                Discrawl DB path
+                <input
+                  value={dbPath}
+                  onChange={(e) => { setDbPath(e.target.value); setUploadedArchive(null); resetRunState(); }}
+                  placeholder="/data/discrawl/discrawl.db"
+                  className="kc-field px-3.5 py-3 text-sm outline-none"
+                />
+              </label>
+            </details>
 
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -362,6 +403,18 @@ function ReportNotes({ report }: { report: ImportReport }) {
       {report.parked.length > 0 && <div className="mt-1"><strong>Parked:</strong> {report.parked.slice(0, 3).join("; ")}{report.parked.length > 3 ? "…" : ""}</div>}
     </div>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
 }
 
 function Stat({ label, value, compact = false }: { label: string; value: number | string; compact?: boolean }) {

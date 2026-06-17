@@ -29,9 +29,11 @@ server/.env
 *.db-shm
 *.sqlite
 
-# ── User uploads (runtime data, not source) ───────────────────────────────────
+# ── User uploads / import staging (runtime data, not source) ──────────────────
 server/uploads/
 client/uploads/
+server/import-uploads/
+import-uploads/
 
 # ── Release artifacts (ship via GitHub Releases, not in git history) ──────────
 *.dmg
