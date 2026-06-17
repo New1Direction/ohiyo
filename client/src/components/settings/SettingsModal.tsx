@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { PublicUser, ServerEmoji, ServerWithChannels } from "../../api";
-import { API_BASE, FILE_BASE, api } from "../../api";
+import { api, getApiBase, getFileBase } from "../../api";
 import type { Theme, ThemeVar } from "../../themes";
 import {
   BUILTIN_THEMES,
@@ -706,7 +706,7 @@ function AccountTab({ currentUser, token, onToast }: { currentUser: PublicUser |
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch(`${API_BASE}/upload`, {
+      const res = await fetch(`${getApiBase()}/upload`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -715,7 +715,7 @@ function AccountTab({ currentUser, token, onToast }: { currentUser: PublicUser |
       const fileId = data[0]?.id;
       if (!fileId) throw new Error("Upload failed");
       await api.setAvatar(token, fileId);
-      setAvatarUrl(`${FILE_BASE}/files/${fileId}`);
+      setAvatarUrl(`${getFileBase()}/files/${fileId}`);
       onToast("Avatar updated! GIFs are supported.", "success");
     } catch (err) {
       onToast(`Avatar upload failed: ${err instanceof Error ? err.message : err}`, "error");
@@ -789,7 +789,7 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`${API_BASE}/upload`, {
+      const res = await fetch(`${getApiBase()}/upload`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -877,7 +877,7 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
             <div className="flex flex-col gap-2">
               {emojis.map((e) => (
                 <div key={e.id} className="flex items-center gap-3 rounded-lg px-4 py-3" style={{ background: "var(--bg-sidebar)" }}>
-                  <img src={`${FILE_BASE}${e.url}`} alt={`:${e.name}:`} className="h-8 w-8 rounded object-contain" style={{ imageRendering: "pixelated" }} />
+                  <img src={`${getFileBase()}${e.url}`} alt={`:${e.name}:`} className="h-8 w-8 rounded object-contain" style={{ imageRendering: "pixelated" }} />
                   <div className="flex-1">
                     <span className="font-mono text-sm" style={{ color: "var(--text-primary)" }}>:{e.name}:</span>
                   </div>
@@ -911,7 +911,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
   const [base, setBase] = useState<Partial<ProfileCardData>>({});
 
   useEffect(() => {
-    fetch(`${API_BASE}/users/@me/profile`, {
+    fetch(`${getApiBase()}/users/@me/profile`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
@@ -939,7 +939,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
 
   async function save() {
     try {
-      await fetch(`${API_BASE}/users/@me/profile`, {
+      await fetch(`${getApiBase()}/users/@me/profile`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ bio, pronouns, banner_color: bannerColor, custom_status: status }),
@@ -956,7 +956,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch(`${API_BASE}/upload`, {
+      const res = await fetch(`${getApiBase()}/upload`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -965,7 +965,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
       const fileId = data[0]?.id;
       if (!fileId) throw new Error("Upload failed");
       await api.setBanner(token, fileId);
-      setBannerUrl(`${FILE_BASE}/files/${fileId}`); // local preview reflects it immediately
+      setBannerUrl(`${getFileBase()}/files/${fileId}`); // local preview reflects it immediately
       onToast("Banner image updated!", "success");
     } catch (err) {
       onToast(`Banner upload failed: ${err instanceof Error ? err.message : err}`, "error");
@@ -1120,7 +1120,7 @@ function SocialTab({ token, onToast }: { token: string; onToast: (t: string, typ
   const [values, setValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    fetch(`${API_BASE}/users/@me/profile`, {
+    fetch(`${getApiBase()}/users/@me/profile`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
@@ -1134,7 +1134,7 @@ function SocialTab({ token, onToast }: { token: string; onToast: (t: string, typ
 
   async function save() {
     try {
-      await fetch(`${API_BASE}/users/@me/profile`, {
+      await fetch(`${getApiBase()}/users/@me/profile`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(values),

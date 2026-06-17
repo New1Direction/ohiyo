@@ -1,6 +1,6 @@
 import "./index.css";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from "react";
-import { api } from "./api";
+import { api, setServerOrigin } from "./api";
 import { Gateway } from "./gateway";
 import { AuthScreen } from "./components/AuthScreen";
 import { ServerSidebar } from "./components/ServerSidebar";
@@ -57,6 +57,15 @@ import { PluginManager } from "./plugins/registry";
 import { applyActiveAppearance, setAccent } from "./lib/appearance";
 import { pullAppearance, pushAppearance } from "./lib/appearanceSync";
 import { useToast } from "./hooks/useToast";
+import {
+  loadActiveHomeId,
+  loadHomes,
+  saveActiveHomeId,
+  saveHomes,
+  setHomeToken,
+  upsertHome,
+  type OhiyoHome,
+} from "./lib/homes";
 import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
 import type { GatewayEvent, ConnectionStatus, Activity, WatchSession } from "./gateway";
@@ -66,29 +75,94 @@ import type { GatewayEvent, ConnectionStatus, Activity, WatchSession } from "./g
 applyActiveAppearance();
 
 export default function App() {
-  const [token, setToken] = useState<string | null>(
-    () => localStorage.getItem("token")
+  const initialHomesRef = useRef<OhiyoHome[] | null>(null);
+  if (!initialHomesRef.current) initialHomesRef.current = loadHomes();
+  const [homes, setHomes] = useState<OhiyoHome[]>(() => initialHomesRef.current ?? loadHomes());
+  const [activeHomeId, setActiveHomeIdState] = useState(() =>
+    loadActiveHomeId(initialHomesRef.current ?? loadHomes())
   );
+  const activeHome = homes.find((h) => h.id === activeHomeId) ?? homes[0];
+  const token = activeHome?.token ?? null;
 
-  // Persist the token so sessions survive a reload (single source of truth).
-  function handleAuth(newToken: string) {
-    localStorage.setItem("token", newToken);
-    setToken(newToken);
+  useEffect(() => {
+    if (activeHome) setServerOrigin(activeHome.url);
+  }, [activeHome]);
+
+  function persistHomes(next: OhiyoHome[]) {
+    setHomes(next);
+    saveHomes(next);
   }
 
-  if (!token) return <AuthScreen onAuth={handleAuth} />;
+  function setActiveHomeId(id: string) {
+    setActiveHomeIdState(id);
+    saveActiveHomeId(id);
+    const home = homes.find((h) => h.id === id);
+    if (home) setServerOrigin(home.url);
+  }
+
+  function addHomeFromPrompt() {
+    const raw = window.prompt("Ohiyo server URL", "https://your-server.example.com");
+    if (!raw) return;
+    try {
+      const next = upsertHome(homes, { url: raw });
+      persistHomes(next);
+      setActiveHomeId(next[0].id);
+    } catch (err) {
+      window.alert(`That doesn't look like a server URL: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  // Persist the token to the active home so sessions survive reloads per server.
+  function handleAuth(newToken: string) {
+    if (!activeHome) return;
+    persistHomes(setHomeToken(homes, activeHome.id, newToken));
+  }
+
+  function handleLogout() {
+    if (!activeHome) return;
+    persistHomes(setHomeToken(homes, activeHome.id, null));
+  }
+
+  if (!activeHome) return null;
+  if (!token) {
+    return (
+      <AuthScreen
+        home={activeHome}
+        homes={homes}
+        onAuth={handleAuth}
+        onSwitchHome={setActiveHomeId}
+        onAddHome={addHomeFromPrompt}
+      />
+    );
+  }
   return (
     <MainApp
+      key={activeHome.id}
       token={token}
-      onLogout={() => {
-        localStorage.removeItem("token");
-        setToken(null);
-      }}
+      homes={homes}
+      activeHomeId={activeHome.id}
+      onSwitchHome={setActiveHomeId}
+      onAddHome={addHomeFromPrompt}
+      onLogout={handleLogout}
     />
   );
 }
 
-function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
+function MainApp({
+  token,
+  homes,
+  activeHomeId,
+  onSwitchHome,
+  onAddHome,
+  onLogout,
+}: {
+  token: string;
+  homes: OhiyoHome[];
+  activeHomeId: string;
+  onSwitchHome: (id: string) => void;
+  onAddHome: () => void;
+  onLogout: () => void;
+}) {
   const { toasts, push: toast } = useToast();
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
   // Whether this server runs the LiveKit SFU — fetched at runtime from /livekit/config,
@@ -1451,6 +1525,10 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
             onOpenSettings={() => setShowSettings(true)}
             onOpenSaved={() => setShowSaved(true)}
             unreadServerIds={unreadServerIds}
+            homes={homes}
+            activeHomeId={activeHomeId}
+            onSwitchHome={onSwitchHome}
+            onAddHome={onAddHome}
           />
         </div>
 

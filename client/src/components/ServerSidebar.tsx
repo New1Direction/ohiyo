@@ -1,4 +1,5 @@
 import type { ServerWithChannels } from "../api";
+import type { OhiyoHome } from "../lib/homes";
 import { Icon } from "./Icon";
 
 type Props = {
@@ -9,6 +10,10 @@ type Props = {
   onOpenSettings: () => void;
   onOpenSaved?: () => void;
   unreadServerIds?: Set<string>;
+  homes: OhiyoHome[];
+  activeHomeId: string;
+  onSwitchHome: (id: string) => void;
+  onAddHome: () => void;
 };
 
 function ServerIcon({
@@ -70,12 +75,62 @@ function ServerIcon({
   );
 }
 
-export function ServerSidebar({ servers, selectedId, onSelect, onCreateServer, onOpenSettings, onOpenSaved, unreadServerIds }: Props) {
+export function ServerSidebar({
+  servers,
+  selectedId,
+  onSelect,
+  onCreateServer,
+  onOpenSettings,
+  onOpenSaved,
+  unreadServerIds,
+  homes,
+  activeHomeId,
+  onSwitchHome,
+  onAddHome,
+}: Props) {
   return (
     <div
       className="flex w-[72px] flex-shrink-0 flex-col items-center gap-2 py-3"
       style={{ background: "var(--bg-base)" }}
     >
+      {/* Runtime server homes (Instant Servers / self-hosts). */}
+      <div className="flex w-full flex-col items-center gap-1" aria-label="Ohiyo homes">
+        {homes.slice(0, 4).map((h) => {
+          const label = h.name.slice(0, 2).toUpperCase();
+          const selected = h.id === activeHomeId;
+          return (
+            <button
+              key={h.id}
+              type="button"
+              onClick={() => onSwitchHome(h.id)}
+              title={`${h.name} — ${h.url}`}
+              aria-label={`Switch to ${h.name}`}
+              className="kc-interactive flex h-8 w-8 items-center justify-center text-[10px] font-bold"
+              style={{
+                borderRadius: selected ? "30%" : "50%",
+                background: selected ? "var(--accent)" : "var(--bg-sidebar)",
+                color: selected ? "#fff" : "var(--text-secondary)",
+                border: "none",
+              }}
+            >
+              {label || "OH"}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={onAddHome}
+          title="Add an Ohiyo server"
+          aria-label="Add an Ohiyo server"
+          className="kc-interactive flex h-8 w-8 items-center justify-center text-sm font-bold"
+          style={{ borderRadius: "50%", background: "var(--bg-sidebar)", color: "var(--accent)", border: "none" }}
+        >
+          +
+        </button>
+      </div>
+
+      <div className="w-8 border-t my-1" style={{ borderColor: "var(--bg-hover)" }} />
+
       {/* DMs / Home button */}
       <button
         type="button"

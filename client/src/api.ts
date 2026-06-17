@@ -1,16 +1,31 @@
-// ── Centralized endpoint config ───────────────────────────────────────────────
-// Production overrides the origin via VITE_SERVER_URL; falls back to local dev.
-const SERVER_ORIGIN: string =
-  (import.meta.env.VITE_SERVER_URL as string | undefined) ?? "http://localhost:3000";
+import { DEFAULT_HOME_URL, normalizeHomeUrl } from "./lib/homes";
 
-export const API_BASE = `${SERVER_ORIGIN}/api/v1`;
-/** Base for serving uploaded files/avatars/emoji (`${FILE_BASE}/files/{id}`). */
-export const FILE_BASE = SERVER_ORIGIN;
+// ── Runtime endpoint config ──────────────────────────────────────────────────
+// The packaged app has a default home baked in, but the active home can switch at
+// runtime (Instant Servers / self-hosts). All request helpers read this mutable origin.
+let serverOrigin = DEFAULT_HOME_URL;
 
-/** WebSocket gateway URL, derived from the server origin (ws/wss by protocol). */
+export function setServerOrigin(origin: string): string {
+  serverOrigin = normalizeHomeUrl(origin);
+  return serverOrigin;
+}
+
+export function getServerOrigin(): string {
+  return serverOrigin;
+}
+
+export function getApiBase(): string {
+  return `${serverOrigin}/api/v1`;
+}
+
+/** Base for serving uploaded files/avatars/emoji (`${getFileBase()}/files/{id}`). */
+export function getFileBase(): string {
+  return serverOrigin;
+}
+
 /** Gateway URL — uses a short-lived one-time ticket, not the long-lived JWT. */
 export function gatewayUrl(ticket: string): string {
-  const wsOrigin = SERVER_ORIGIN.replace(/^http/, "ws");
+  const wsOrigin = serverOrigin.replace(/^http/, "ws");
   return `${wsOrigin}/gateway?ticket=${encodeURIComponent(ticket)}`;
 }
 
@@ -270,7 +285,7 @@ async function request<T>(
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${getApiBase()}${path}`, {
     ...options,
     headers,
   });
@@ -311,8 +326,8 @@ export const api = {
   me: (token: string) => request<PublicUser>("/users/@me", {}, token),
 
   // Instant Servers (control plane) — provision/list/status of your own server instances.
-  // NOTE: pointing the running client AT a provisioned instance (runtime server switch)
-  // is deferred — SERVER_ORIGIN is a compile-time constant. These just drive the control plane.
+  // The client can now switch to a provisioned instance at runtime; these bindings
+  // talk to the currently active control-plane home.
   createInstance: (name: string, token: string) =>
     request<HostedInstance>(
       "/instances",

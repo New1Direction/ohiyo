@@ -6,7 +6,7 @@ import type { AttachmentMeta, Embed, Message, Channel, ReactionGroup, ServerEmoj
 import type { WatchSession } from "../gateway";
 import type { TrustState } from "../lib/identityTrust";
 import { WatchParty } from "./WatchParty";
-import { API_BASE, FILE_BASE, api } from "../api";
+import { api, getApiBase, getFileBase } from "../api";
 import type { PluginManager } from "../plugins/registry";
 import { UserProfileCard } from "./UserProfileCard";
 import { GroupMembersPopover } from "./GroupMembersPopover";
@@ -547,7 +547,7 @@ export function ChatPane({
             };
             xhr.onerror = () => reject(new Error("Network error"));
 
-            xhr.open("POST", `${API_BASE}/upload`);
+            xhr.open("POST", `${getApiBase()}/upload`);
             xhr.setRequestHeader("Authorization", `Bearer ${token}`);
             xhr.send(formData);
           });
@@ -1551,7 +1551,7 @@ function SpoilerSpan({ text }: { text: string }) {
 function CustomEmoji({ emoji }: { emoji: ServerEmoji }) {
   return (
     <img
-      src={`${FILE_BASE}${emoji.url}`}
+      src={`${getFileBase()}${emoji.url}`}
       alt={`:${emoji.name}:`}
       title={`:${emoji.name}:`}
       style={{ display: "inline", height: "1.4em", verticalAlign: "middle", borderRadius: 2 }}
@@ -1637,7 +1637,7 @@ function useOgPreview(url: string): OgData | null {
     // Skip only when we already have real data — a cached null means "retry later".
     if (ogCache.get(url) != null) return;
     const controller = new AbortController();
-    fetch(`${API_BASE}/og?url=${encodeURIComponent(url)}`, {
+    fetch(`${getApiBase()}/og?url=${encodeURIComponent(url)}`, {
       headers: ogAuthToken ? { Authorization: `Bearer ${ogAuthToken}` } : undefined,
       signal: controller.signal,
     })
@@ -1904,7 +1904,7 @@ function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
   return (
     <div className="mt-1 flex flex-wrap gap-2">
       {attachments.map((att) => {
-        const url = `${FILE_BASE}/files/${att.id}`;
+        const url = `${getFileBase()}/files/${att.id}`;
         if (att.content_type.startsWith("image/")) {
           const d = att.width && att.height ? fitImg(att.width, att.height, 400, 300) : null;
           return (

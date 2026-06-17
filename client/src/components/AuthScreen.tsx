@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import type { OhiyoHome } from "../lib/homes";
 import { BirdMark } from "./BirdMark";
 
 type Props = {
+  home: OhiyoHome;
+  homes: OhiyoHome[];
   onAuth: (token: string) => void;
+  onSwitchHome: (id: string) => void;
+  onAddHome: () => void;
 };
 
 type Mode = "login" | "register" | "link";
@@ -38,7 +43,7 @@ function EyeIcon({ off }: { off: boolean }) {
   );
 }
 
-export function AuthScreen({ onAuth }: Props) {
+export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Props) {
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState(() => localStorage.getItem(LAST_USERNAME_KEY) ?? "");
   const [password, setPassword] = useState("");
@@ -178,6 +183,30 @@ export function AuthScreen({ onAuth }: Props) {
                 ? "Free forever. Takes ten seconds."
                 : "Enter the code from a device you're already signed in on."}
           </p>
+          <div className="mt-4 flex w-full items-center gap-2">
+            <select
+              value={home.id}
+              onChange={(e) => onSwitchHome(e.target.value)}
+              className="kc-field flex-1 px-3 py-2 text-xs outline-none"
+              aria-label="Ohiyo server"
+              title={home.url}
+            >
+              {homes.map((h) => (
+                <option key={h.id} value={h.id}>{h.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={onAddHome}
+              className="kc-interactive px-3 py-2 text-xs font-semibold"
+              style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--accent)", border: "none" }}
+            >
+              + Server
+            </button>
+          </div>
+          <div className="mt-1 max-w-full truncate text-xs" title={home.url} style={{ color: "var(--text-muted)" }}>
+            {home.url}
+          </div>
         </div>
 
         {mode !== "link" && (
