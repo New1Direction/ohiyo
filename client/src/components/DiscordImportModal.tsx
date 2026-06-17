@@ -35,6 +35,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   const [result, setResult] = useState<DiscrawlImportResponse | null>(null);
   const [uploadedArchive, setUploadedArchive] = useState<{ filename: string; size_bytes: number } | null>(null);
   const [busy, setBusy] = useState<"upload" | "preview" | "import" | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [importStage, setImportStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,9 +85,23 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
     resetRunState();
     try {
       const uploaded = await api.uploadDiscrawlArchive(token, file);
+      const uploadedBody: DiscrawlImportRequest = {
+        db_path: uploaded.db_path,
+        media_root: mediaRoot.trim() || null,
+        guild_id: guildId.trim() || null,
+        history,
+      };
       setDbPath(uploaded.db_path);
       setUploadedArchive({ filename: uploaded.filename, size_bytes: uploaded.size_bytes });
+      setBusy("preview");
+      try {
+        setPreview(await api.previewDiscrawlImport(token, uploadedBody));
+      } catch (err) {
+        setPreview(null);
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } catch (err) {
+      setPreview(null);
       setUploadedArchive(null);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -173,59 +188,75 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
             </div>
 
             <label
-              className="kc-interactive mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-6 text-center"
-              style={{ borderColor: uploadedArchive ? "var(--accent)" : "var(--bg-input)", background: "color-mix(in oklch, var(--bg-base) 54%, transparent)", color: "var(--text-primary)" }}
+              className="kc-interactive mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-7 text-center"
+              onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                void uploadArchive(e.dataTransfer.files?.[0]);
+              }}
+              style={{
+                borderColor: isDragging || uploadedArchive ? "var(--accent)" : "var(--bg-input)",
+                background: isDragging ? "color-mix(in oklch, var(--accent) 14%, var(--bg-elevated))" : "color-mix(in oklch, var(--bg-base) 54%, transparent)",
+                color: "var(--text-primary)",
+              }}
             >
               <input
                 type="file"
                 accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3,application/x-sqlite3"
                 className="sr-only"
                 disabled={busy !== null}
-                onChange={(e) => void uploadArchive(e.currentTarget.files?.[0])}
+                onChange={(e) => {
+                  const file = e.currentTarget.files?.[0];
+                  e.currentTarget.value = "";
+                  void uploadArchive(file);
+                }}
               />
-              <span className="text-base font-bold">
-                {busy === "upload" ? "Uploading archive…" : uploadedArchive ? uploadedArchive.filename : "Choose Discrawl SQLite DB"}
+              <span className="text-3xl" aria-hidden>📦</span>
+              <span className="mt-2 text-base font-bold">
+                {busy === "upload" ? "Uploading archive…" : busy === "preview" && uploadedArchive ? "Previewing automatically…" : uploadedArchive ? uploadedArchive.filename : isDragging ? "Drop to upload and preview" : "Drop your Discrawl DB here"}
               </span>
               <span className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
                 {uploadedArchive
-                  ? `${formatBytes(uploadedArchive.size_bytes)} uploaded — ready to preview`
-                  : "Supports .db, .sqlite, and .sqlite3 files"}
+                  ? `${formatBytes(uploadedArchive.size_bytes)} uploaded${preview ? " — preview ready" : ""}`
+                  : "or click to choose a .db, .sqlite, or .sqlite3 file"}
               </span>
             </label>
 
             <details className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
-              <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>Advanced: use a path already on the server</summary>
-              <label className="mt-2 flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                Discrawl DB path
-                <input
-                  value={dbPath}
-                  onChange={(e) => { setDbPath(e.target.value); setUploadedArchive(null); resetRunState(); }}
-                  placeholder="/data/discrawl/discrawl.db"
-                  className="kc-field px-3.5 py-3 text-sm outline-none"
-                />
-              </label>
+              <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>Advanced options</summary>
+              <div className="mt-2 grid gap-3 md:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Server DB path
+                  <input
+                    value={dbPath}
+                    onChange={(e) => { setDbPath(e.target.value); setUploadedArchive(null); resetRunState(); }}
+                    placeholder="/data/discrawl/discrawl.db"
+                    className="kc-field px-3.5 py-3 text-sm outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Guild ID optional
+                  <input
+                    value={guildId}
+                    onChange={(e) => { setGuildId(e.target.value); resetRunState(); }}
+                    placeholder="auto-select first guild"
+                    className="kc-field px-3.5 py-3 text-sm outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm font-semibold md:col-span-2" style={{ color: "var(--text-primary)" }}>
+                  Media root optional
+                  <input
+                    value={mediaRoot}
+                    onChange={(e) => { setMediaRoot(e.target.value); resetRunState(); }}
+                    placeholder="/data/discrawl/media"
+                    className="kc-field px-3.5 py-3 text-sm outline-none"
+                  />
+                </label>
+              </div>
             </details>
-
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                Media root optional
-                <input
-                  value={mediaRoot}
-                  onChange={(e) => { setMediaRoot(e.target.value); resetRunState(); }}
-                  placeholder="/data/discrawl/media"
-                  className="kc-field px-3.5 py-3 text-sm outline-none"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                Guild ID optional
-                <input
-                  value={guildId}
-                  onChange={(e) => { setGuildId(e.target.value); resetRunState(); }}
-                  placeholder="auto-select first guild"
-                  className="kc-field px-3.5 py-3 text-sm outline-none"
-                />
-              </label>
-            </div>
 
             <label className="mt-3 flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
               History depth
