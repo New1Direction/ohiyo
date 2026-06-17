@@ -225,7 +225,14 @@ export type ImportHistoryWindow = "All" | "Last90Days";
 
 export type DiscrawlImportCapability = {
   enabled: boolean;
-  mode: "local_discrawl_archive" | string;
+  managed_enabled: boolean;
+  mode: "managed_discord_connect" | "local_discrawl_archive" | string;
+  message: string;
+};
+
+export type DiscordConnectInfo = {
+  managed_enabled: boolean;
+  invite_url: string | null;
   message: string;
 };
 
@@ -356,6 +363,14 @@ export const api = {
   // OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT=1.
   getDiscrawlImportCapability: (token: string) =>
     request<DiscrawlImportCapability>("/imports/discord/capability", {}, token),
+  getDiscordConnectInfo: (token: string) =>
+    request<DiscordConnectInfo>("/imports/discord/connect", {}, token),
+  runManagedDiscordImport: (token: string, guildId: string, history?: ImportHistoryWindow | null) =>
+    request<DiscrawlImportResponse>(
+      "/imports/discord/managed/run",
+      { method: "POST", body: JSON.stringify({ guild_id: guildId, history: history ?? null }) },
+      token
+    ),
   uploadDiscrawlArchive: async (token: string, file: File) => {
     const form = new FormData();
     form.append("archive", file);

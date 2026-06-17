@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   api,
+  type DiscordConnectInfo,
   type DiscrawlImportCapability,
   type DiscrawlImportRequest,
   type DiscrawlImportResponse,
@@ -26,7 +27,10 @@ const IMPORT_STAGES = [
 
 export function DiscordImportModal({ token, onImported, onClose }: Props) {
   const [capability, setCapability] = useState<DiscrawlImportCapability | null>(null);
+  const [connectInfo, setConnectInfo] = useState<DiscordConnectInfo | null>(null);
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
+  const [managedGuildId, setManagedGuildId] = useState("");
+  const [showArchiveFallback, setShowArchiveFallback] = useState(false);
   const [dbPath, setDbPath] = useState("");
   const [mediaRoot, setMediaRoot] = useState("");
   const [guildId, setGuildId] = useState("");
@@ -42,9 +46,11 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   useEffect(() => {
     let alive = true;
     api.getDiscrawlImportCapability(token)
-      .then((cap) => {
+      .then(async (cap) => {
+        const connect = await api.getDiscordConnectInfo(token).catch(() => null);
         if (!alive) return;
         setCapability(cap);
+        setConnectInfo(connect);
         setCapabilityError(null);
       })
       .catch((err) => {
@@ -123,6 +129,22 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
     }
   }
 
+  async function importManagedDiscord() {
+    setBusy("import");
+    setError(null);
+    setImportStage(0);
+    try {
+      const result = await api.runManagedDiscordImport(token, managedGuildId, history);
+      setImportStage(IMPORT_STAGES.length - 1);
+      setResult(result);
+      onImported(result.server);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function importArchive() {
     setBusy("import");
     setError(null);
@@ -141,9 +163,12 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
 
   const capabilityLoading = !capability && !capabilityError;
   const importEnabled = capability?.enabled ?? false;
+  const managedEnabled = capability?.managed_enabled ?? false;
   const canPreview = importEnabled && busy === null && dbPath.trim().length > 0 && result === null;
   const canImport = canPreview && preview !== null;
-  const step = result ? 3 : preview ? 2 : 1;
+  const canManagedImport = managedEnabled && busy === null && /^\d{5,}$/.test(managedGuildId.trim()) && result === null;
+  const showArchiveControls = importEnabled && (!managedEnabled || showArchiveFallback || uploadedArchive !== null || preview !== null);
+  const step = result ? 3 : preview || managedGuildId ? 2 : 1;
 
   return (
     <ModalShell onClose={onClose} labelledBy="discord-import-title" maxWidthClass="max-w-2xl">
@@ -156,8 +181,8 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
             Import a server in minutes
           </h2>
           <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>
-            A fast guided import for Discrawl archives. Ohiyo creates a fresh space, brings over structure and history,
-            then clearly marks archive channels as <strong>not E2E</strong> while native Ohiyo chats stay encrypted.
+            A fast guided clone for Discord servers. Ohiyo creates a fresh space, brings over structure and history,
+            then clearly marks imported archive channels as <strong>not E2E</strong> while native Ohiyo chats stay encrypted.
           </p>
         </div>
 
@@ -169,95 +194,55 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
           </div>
         )}
 
-        {(capabilityError || capability?.enabled === false) && (
+        {(capabilityError || (capability && !capability.enabled && !capability.managed_enabled)) && (
           <CapabilityNotice capability={capability} error={capabilityError} />
         )}
 
-        {importEnabled && !result && (
-          <div className="rounded-2xl border p-4" style={{ borderColor: "var(--bg-input)", background: "var(--bg-elevated)" }}>
+        {managedEnabled && !result && (
+          <div className="rounded-2xl border p-4" style={{ borderColor: "var(--accent)", background: "color-mix(in oklch, var(--accent) 8%, var(--bg-elevated))" }}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>1. Choose your archive</div>
+                <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>1. Connect Discord</div>
                 <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                  Pick your Discrawl SQLite file and Ohiyo uploads it securely. No server paths, no guessing.
+                  Add Ohiyo's read-only bot to your Discord server, paste the server ID, then Ohiyo clones it for you.
                 </p>
               </div>
-              <span className="rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: "color-mix(in oklch, var(--green) 14%, transparent)", color: "var(--green)" }}>
-                Ready
+              <span className="rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: "var(--accent)", color: "#fff" }}>
+                Recommended
               </span>
             </div>
-
-            <label
-              className="kc-interactive mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-7 text-center"
-              onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
-              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setIsDragging(false);
-                void uploadArchive(e.dataTransfer.files?.[0]);
-              }}
-              style={{
-                borderColor: isDragging || uploadedArchive ? "var(--accent)" : "var(--bg-input)",
-                background: isDragging ? "color-mix(in oklch, var(--accent) 14%, var(--bg-elevated))" : "color-mix(in oklch, var(--bg-base) 54%, transparent)",
-                color: "var(--text-primary)",
-              }}
-            >
-              <input
-                type="file"
-                accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3,application/x-sqlite3"
-                className="sr-only"
-                disabled={busy !== null}
-                onChange={(e) => {
-                  const file = e.currentTarget.files?.[0];
-                  e.currentTarget.value = "";
-                  void uploadArchive(file);
-                }}
-              />
-              <span className="text-3xl" aria-hidden>📦</span>
-              <span className="mt-2 text-base font-bold">
-                {busy === "upload" ? "Uploading archive…" : busy === "preview" && uploadedArchive ? "Previewing automatically…" : uploadedArchive ? uploadedArchive.filename : isDragging ? "Drop to upload and preview" : "Drop your Discrawl DB here"}
-              </span>
-              <span className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                {uploadedArchive
-                  ? `${formatBytes(uploadedArchive.size_bytes)} uploaded${preview ? " — preview ready" : ""}`
-                  : "or click to choose a .db, .sqlite, or .sqlite3 file"}
-              </span>
-            </label>
-
-            <details className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
-              <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>Advanced options</summary>
-              <div className="mt-2 grid gap-3 md:grid-cols-2">
-                <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                  Server DB path
-                  <input
-                    value={dbPath}
-                    onChange={(e) => { setDbPath(e.target.value); setUploadedArchive(null); resetRunState(); }}
-                    placeholder="/data/discrawl/discrawl.db"
-                    className="kc-field px-3.5 py-3 text-sm outline-none"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                  Guild ID optional
-                  <input
-                    value={guildId}
-                    onChange={(e) => { setGuildId(e.target.value); resetRunState(); }}
-                    placeholder="auto-select first guild"
-                    className="kc-field px-3.5 py-3 text-sm outline-none"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-sm font-semibold md:col-span-2" style={{ color: "var(--text-primary)" }}>
-                  Media root optional
-                  <input
-                    value={mediaRoot}
-                    onChange={(e) => { setMediaRoot(e.target.value); resetRunState(); }}
-                    placeholder="/data/discrawl/media"
-                    className="kc-field px-3.5 py-3 text-sm outline-none"
-                  />
-                </label>
+            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+              <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                Discord server ID
+                <input
+                  value={managedGuildId}
+                  onChange={(e) => { setManagedGuildId(e.target.value); resetRunState(); }}
+                  placeholder="123456789012345678"
+                  inputMode="numeric"
+                  className="kc-field px-3.5 py-3 text-sm outline-none"
+                />
+              </label>
+              <div className="flex items-end gap-2">
+                <a
+                  href={connectInfo?.invite_url ?? undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="kc-interactive px-4 py-3 text-sm font-semibold"
+                  style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)", pointerEvents: connectInfo?.invite_url ? "auto" : "none", opacity: connectInfo?.invite_url ? 1 : 0.55 }}
+                >
+                  Add bot
+                </a>
+                <button
+                  type="button"
+                  className="kc-interactive px-4 py-3 text-sm font-semibold"
+                  onClick={importManagedDiscord}
+                  disabled={!canManagedImport}
+                  style={{ borderRadius: "var(--radius-md)", background: "var(--accent)", color: "#fff" }}
+                >
+                  {busy === "import" ? IMPORT_STAGES[importStage] : "Clone server"}
+                </button>
               </div>
-            </details>
-
+            </div>
             <label className="mt-3 flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
               History depth
               <select
@@ -265,11 +250,106 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
                 onChange={(e) => { setHistory(e.target.value as "All" | "Last90Days"); resetRunState(); }}
                 className="kc-field px-3.5 py-3 text-sm outline-none"
               >
-                <option value="All">All history — best for moving in completely</option>
-                <option value="Last90Days">Last 90 days — fastest for huge servers</option>
+                <option value="All">All history — complete clone</option>
+                <option value="Last90Days">Last 90 days — fastest first clone</option>
               </select>
             </label>
+            <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
+              Tip: in Discord, enable Developer Mode, right-click your server icon, then Copy Server ID. The bot needs View Channels, Read Message History, Server Members Intent, and Message Content Intent.
+            </p>
           </div>
+        )}
+
+        {importEnabled && !result && (
+          <details open={!managedEnabled || showArchiveFallback} onToggle={(e) => setShowArchiveFallback(e.currentTarget.open)} className="rounded-2xl border p-4" style={{ borderColor: "var(--bg-input)", background: "var(--bg-elevated)" }}>
+            <summary className="cursor-pointer text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+              Already have a Discrawl archive? Import it instead
+            </summary>
+            <div className="mt-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Choose your archive</div>
+                  <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                    Drop a Discrawl SQLite file and Ohiyo uploads it securely.
+                  </p>
+                </div>
+                <span className="rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: "color-mix(in oklch, var(--green) 14%, transparent)", color: "var(--green)" }}>
+                  Fallback
+                </span>
+              </div>
+
+              <label
+                className="kc-interactive mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-7 text-center"
+                onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  void uploadArchive(e.dataTransfer.files?.[0]);
+                }}
+                style={{
+                  borderColor: isDragging || uploadedArchive ? "var(--accent)" : "var(--bg-input)",
+                  background: isDragging ? "color-mix(in oklch, var(--accent) 14%, var(--bg-elevated))" : "color-mix(in oklch, var(--bg-base) 54%, transparent)",
+                  color: "var(--text-primary)",
+                }}
+              >
+                <input
+                  type="file"
+                  accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3,application/x-sqlite3"
+                  className="sr-only"
+                  disabled={busy !== null}
+                  onChange={(e) => {
+                    const file = e.currentTarget.files?.[0];
+                    e.currentTarget.value = "";
+                    void uploadArchive(file);
+                  }}
+                />
+                <span className="text-3xl" aria-hidden>📦</span>
+                <span className="mt-2 text-base font-bold">
+                  {busy === "upload" ? "Uploading archive…" : busy === "preview" && uploadedArchive ? "Previewing automatically…" : uploadedArchive ? uploadedArchive.filename : isDragging ? "Drop to upload and preview" : "Drop your Discrawl DB here"}
+                </span>
+                <span className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                  {uploadedArchive
+                    ? `${formatBytes(uploadedArchive.size_bytes)} uploaded${preview ? " — preview ready" : ""}`
+                    : "or click to choose a .db, .sqlite, or .sqlite3 file"}
+                </span>
+              </label>
+
+              <details className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
+                <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>Advanced options</summary>
+                <div className="mt-2 grid gap-3 md:grid-cols-2">
+                  <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                    Server DB path
+                    <input
+                      value={dbPath}
+                      onChange={(e) => { setDbPath(e.target.value); setUploadedArchive(null); resetRunState(); }}
+                      placeholder="/data/discrawl/discrawl.db"
+                      className="kc-field px-3.5 py-3 text-sm outline-none"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                    Guild ID optional
+                    <input
+                      value={guildId}
+                      onChange={(e) => { setGuildId(e.target.value); resetRunState(); }}
+                      placeholder="auto-select first guild"
+                      className="kc-field px-3.5 py-3 text-sm outline-none"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm font-semibold md:col-span-2" style={{ color: "var(--text-primary)" }}>
+                    Media root optional
+                    <input
+                      value={mediaRoot}
+                      onChange={(e) => { setMediaRoot(e.target.value); resetRunState(); }}
+                      placeholder="/data/discrawl/media"
+                      className="kc-field px-3.5 py-3 text-sm outline-none"
+                    />
+                  </label>
+                </div>
+              </details>
+            </div>
+          </details>
         )}
 
         {preview && !result && (
@@ -288,18 +368,22 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
           ) : (
             <>
               <button type="button" className="kc-interactive px-4 py-2 text-sm font-semibold" style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-secondary)" }} onClick={onClose} disabled={busy !== null}>Cancel</button>
-              <button type="button" className="kc-interactive px-4 py-2 text-sm font-semibold" style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)" }} onClick={previewArchive} disabled={!canPreview}>
-                {busy === "preview" ? "Previewing…" : preview ? "Refresh preview" : "Preview archive"}
-              </button>
-              <button
-                type="button"
-                className="kc-interactive px-4 py-2 text-sm font-semibold"
-                onClick={importArchive}
-                disabled={!canImport}
-                style={{ borderRadius: "var(--radius-md)", background: "var(--accent)", color: "#fff" }}
-              >
-                {busy === "import" ? IMPORT_STAGES[importStage] : "Import now"}
-              </button>
+              {showArchiveControls && (
+                <>
+                  <button type="button" className="kc-interactive px-4 py-2 text-sm font-semibold" style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)" }} onClick={previewArchive} disabled={!canPreview}>
+                    {busy === "preview" ? "Previewing…" : preview ? "Refresh preview" : "Preview archive"}
+                  </button>
+                  <button
+                    type="button"
+                    className="kc-interactive px-4 py-2 text-sm font-semibold"
+                    onClick={importArchive}
+                    disabled={!canImport}
+                    style={{ borderRadius: "var(--radius-md)", background: "var(--accent)", color: "#fff" }}
+                  >
+                    {busy === "import" ? IMPORT_STAGES[importStage] : "Import archive"}
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -311,7 +395,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
 function Stepper({ step }: { step: number }) {
   return (
     <div className="grid gap-2 sm:grid-cols-3">
-      {["Choose archive", "Preview", "Open space"].map((label, idx) => {
+      {["Connect", "Preview", "Open space"].map((label, idx) => {
         const n = idx + 1;
         const active = step === n;
         const complete = step > n;
