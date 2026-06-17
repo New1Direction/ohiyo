@@ -7,7 +7,7 @@ import { ServerSidebar } from "./components/ServerSidebar";
 import { ChannelSidebar } from "./components/ChannelSidebar";
 import { ChatPane } from "./components/ChatPane";
 import { ToastStack } from "./components/ToastStack";
-import { SettingsModal } from "./components/settings/SettingsModal";
+import { SettingsModal, type Tab } from "./components/settings/SettingsModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { CallOverlay } from "./components/CallOverlay";
 import { BootSplash } from "./components/BootSplash";
@@ -104,6 +104,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [serverEmojis, setServerEmojis] = useState<ServerEmoji[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<Tab>("appearance");
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showCreateServer, setShowCreateServer] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
@@ -1473,6 +1474,7 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
         onToast={toast}
         isLoading={isLoadingMessages}
         onOpenNav={() => setMobileNavOpen(true)}
+        onSaveRecovery={() => { setSettingsTab("security"); setShowSettings(true); }}
         typingUsers={typing.typingIn(selectedChannel?.id ?? "")}
         onTyping={sendTyping}
         onEditMessage={handleEditMessage}
@@ -1671,7 +1673,8 @@ function MainApp({ token, onLogout }: { token: string; onLogout: () => void }) {
           pluginManager={pluginManagerRef.current}
           token={token}
           servers={servers}
-          onClose={() => setShowSettings(false)}
+          initialTab={settingsTab}
+          onClose={() => { setShowSettings(false); setSettingsTab("appearance"); }}
           onToast={toast}
         />
       )}

@@ -35,19 +35,21 @@ import { type Density, DENSITIES, FONT_SCALES } from "../../lib/density";
 import { pushAppearance } from "../../lib/appearanceSync";
 import { LinkedDevices } from "./LinkedDevices";
 
-type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
+export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
 
 type Props = {
   currentUser: PublicUser | null;
   pluginManager: PluginManager;
   token: string;
   servers: ServerWithChannels[];
+  /** Open straight to a given tab (e.g. the recovery-code nudge deep-links to "security"). */
+  initialTab?: Tab;
   onClose: () => void;
   onToast: (text: string, type?: "info" | "success" | "error") => void;
 };
 
-export function SettingsModal({ currentUser, pluginManager, token, servers, onClose, onToast }: Props) {
-  const [tab, setTab] = useState<Tab>("appearance");
+export function SettingsModal({ currentUser, pluginManager, token, servers, initialTab, onClose, onToast }: Props) {
+  const [tab, setTab] = useState<Tab>(initialTab ?? "appearance");
 
   function handleKey(e: React.KeyboardEvent) {
     if (e.key === "Escape") onClose();

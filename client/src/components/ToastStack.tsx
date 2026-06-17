@@ -24,7 +24,8 @@ export function ToastStack({ toasts }: Props) {
       aria-atomic="false"
       style={{
         position: "fixed",
-        bottom: 24,
+        // Sit above the composer (~64px) so success toasts never cover the Send button.
+        bottom: 96,
         right: 24,
         zIndex: 9999,
         display: "flex",

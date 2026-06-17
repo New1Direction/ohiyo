@@ -31,8 +31,8 @@ function notifyAppearanceChanged(): void {
  *  default Daybreak theme so "no override" and "Persimmon" line up visually. */
 export const ACCENT_PRESETS: { name: string; hex: string }[] = [
   { name: "Persimmon", hex: "#f2683c" },
-  { name: "Blurple", hex: "#5865f2" },
-  { name: "Grape", hex: "#7c6dfa" },
+  { name: "Indigo", hex: "#6366f1" },
+  { name: "Grape", hex: "#8a7bff" },
   { name: "Sky", hex: "#3da5f2" },
   { name: "Teal", hex: "#1f9e9e" },
   { name: "Emerald", hex: "#1f9e6b" },

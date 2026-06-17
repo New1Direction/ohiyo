@@ -27,7 +27,7 @@ try {
   pageA.on("pageerror", (e) => console.error("  A ERR:", e.message));
 
   await register(pageA, A, "Actor");
-  await pageA.waitForSelector("text=/Welcome in,/", { timeout: 12000 });
+  await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Action HQ");
   await pageA.click('button:has-text("Let\'s go")');
   await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });

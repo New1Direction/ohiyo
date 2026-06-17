@@ -18,6 +18,7 @@ import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
 import { Icon } from "./Icon";
+import { MessageActionSheet } from "./MessageActionSheet";
 
 // Composer drafts persisted per channel so a half-written message survives a reload,
 // not just a channel switch. Cleared on send.
@@ -93,6 +94,7 @@ type Props = {
   onDeleteMessage?: (messageId: string) => void;
   onPinMessage?: (messageId: string, pinned: boolean) => void;
   onForward?: (msg: Message) => void;
+  onSaveRecovery?: () => void;
   onOpenSearch?: () => void;
   onOpenMembers?: () => void;
   /** Members offered in the @-mention autocomplete (current server). */
@@ -191,6 +193,7 @@ export function ChatPane({
   onDeleteMessage,
   onPinMessage,
   onForward,
+  onSaveRecovery,
   onOpenSearch,
   onOpenMembers,
   mentionables = [],
@@ -252,6 +255,8 @@ export function ChatPane({
   }, [onRequestSafetyNumber]);
   // Disappearing-message duration picker (open on demand from the header clock).
   const [disappearOpen, setDisappearOpen] = useState(false);
+  // Touch: the message a ⋯ tap opened the action sheet for (hover toolbar is unreachable on touch).
+  const [actionSheetMsg, setActionSheetMsg] = useState<Message | null>(null);
   const profileAnchorRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<List>(null);
   const listOuterRef = useRef<HTMLDivElement>(null);
@@ -672,8 +677,8 @@ export function ChatPane({
         <span>{channel.name !== "dm" ? channel.name : "Direct Message"}</span>
         {channel.topic && (
           <>
-            <span style={{ color: "var(--bg-hover)" }}>│</span>
-            <span className="truncate text-sm font-normal" style={{ color: "var(--text-muted)" }}>
+            <span className="kc-ch-topic" style={{ color: "var(--bg-hover)" }}>│</span>
+            <span className="kc-ch-topic truncate text-sm font-normal" style={{ color: "var(--text-muted)" }}>
               {channel.topic}
             </span>
           </>
@@ -731,9 +736,10 @@ export function ChatPane({
             onClick={() => setWatchInput((v) => (v === null ? "" : null))}
             aria-label="Watch party"
             title="Start a watch party"
-            className="kc-icon-btn flex-shrink-0 text-base"
+            aria-pressed={watchInput !== null}
+            className={`kc-icon-btn kc-hide-narrow flex-shrink-0${watchInput !== null ? " active" : ""}`}
           >
-            📺
+            <Icon name="tv" />
           </button>
         )}
         {onToggleE2e && (
@@ -743,10 +749,10 @@ export function ChatPane({
             aria-label={e2eEnabled ? "Turn off end-to-end encryption" : "Turn on end-to-end encryption"}
             aria-pressed={e2eEnabled}
             title={e2eEnabled ? "End-to-end encrypted — click to turn off" : "Turn on end-to-end encryption"}
-            className="kc-icon-btn flex-shrink-0 text-base"
+            className={`kc-icon-btn flex-shrink-0${e2eEnabled ? " active" : ""}`}
             style={e2eEnabled ? { color: "var(--accent)" } : undefined}
           >
-            {e2eEnabled ? "🔒" : "🔓"}
+            <Icon name={e2eEnabled ? "lock" : "lockOpen"} />
           </button>
         )}
         {onSetDisappearing && (
@@ -761,10 +767,10 @@ export function ChatPane({
                   ? `Disappearing messages: ${formatDuration(channel.disappearing_seconds)}`
                   : "Disappearing messages"
               }
-              className="kc-icon-btn flex-shrink-0 text-base"
+              className={`kc-icon-btn flex-shrink-0${channel?.disappearing_seconds ? " active" : ""}`}
               style={channel?.disappearing_seconds ? { color: "var(--accent)" } : undefined}
             >
-              ⏱️
+              <Icon name="clock" />
             </button>
             {disappearOpen && (
               <>
@@ -777,7 +783,7 @@ export function ChatPane({
                   onClick={() => setDisappearOpen(false)}
                 />
                 <div
-                  className="kc-float absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg py-1"
+                  className="kc-pop absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg py-1"
                   style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}
                   role="listbox"
                   aria-label="Disappearing message duration"
@@ -836,10 +842,7 @@ export function ChatPane({
       )}
 
       {channel?.disappearing_seconds ? (
-        <div
-          className="mx-3 mt-2 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs"
-          style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }}
-        >
+        <div className="kc-disappear-banner mx-3 mt-2 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs">
           ⏱️{" "}
           <span>
             <strong style={{ color: "var(--text-primary)" }}>Disappearing messages on.</strong> New messages here vanish{" "}
@@ -1028,6 +1031,7 @@ export function ChatPane({
             channelName={channel?.name && channel.name !== "dm" ? channel.name : undefined}
             isDM={channel?.channel_type === "dm" || channel?.channel_type === "group_dm"}
             userId={currentUserId}
+            onSaveRecovery={onSaveRecovery}
           />
         ) : (
           <AutoSizedList
@@ -1058,7 +1062,7 @@ export function ChatPane({
                       <div className="msg-meta flex items-baseline gap-2">
                         <button
                           className="text-sm font-semibold"
-                          style={{ color: g.isMe ? "var(--green)" : "var(--text-primary)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                          style={{ color: "var(--text-primary)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
                           onClick={(e) => {
                             profileAnchorRef.current = e.currentTarget as HTMLElement;
                             setProfileUserId(g.author.id);
@@ -1066,7 +1070,7 @@ export function ChatPane({
                         >
                           {g.author.display_name}
                         </button>
-                        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
                           {formatTime(g.msgs[0].created_at)}
                         </span>
                       </div>
@@ -1074,7 +1078,7 @@ export function ChatPane({
                         <div key={msg.id} data-message-id={msg.id} className="kc-msg">
                           {mi > 0 && (
                             <span className="kc-msg-time">
-                              {new Date(msg.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}
+                              {new Date(msg.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           )}
                           {msg.pinned && (
@@ -1215,6 +1219,17 @@ export function ChatPane({
                               )}
                             </div>
                           ))}
+                          {/* Touch: explicit ⋯ trigger → action sheet (hover toolbar is unreachable on touch) */}
+                          {editingId !== msg.id && confirmDeleteId !== msg.id && !msg.id.startsWith("temp-") && (
+                            <button
+                              type="button"
+                              className="kc-msg-more"
+                              aria-label="Message actions"
+                              onClick={(e) => { e.stopPropagation(); setActionSheetMsg(msg); }}
+                            >
+                              <Icon name="more" size={18} />
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1316,7 +1331,7 @@ export function ChatPane({
       <form
         onSubmit={handleSend}
         className="mx-4 mb-4 flex items-center gap-2 rounded-lg px-4 py-2"
-        style={{ background: "var(--bg-input)" }}
+        style={{ background: "var(--bg-input)", marginBottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
         <button
           type="button"
@@ -1372,6 +1387,20 @@ export function ChatPane({
           <Icon name="send" />
         </button>
       </form>
+
+      {actionSheetMsg && (
+        <MessageActionSheet
+          msg={actionSheetMsg}
+          isMine={actionSheetMsg.author.id === currentUserId}
+          onReply={() => { setReplyTarget(actionSheetMsg); setActionSheetMsg(null); }}
+          onPin={onPinMessage ? () => { onPinMessage(actionSheetMsg.id, !actionSheetMsg.pinned); setActionSheetMsg(null); } : undefined}
+          onForward={onForward ? () => { onForward(actionSheetMsg); setActionSheetMsg(null); } : undefined}
+          onSave={() => { handleSave(actionSheetMsg.id); setActionSheetMsg(null); }}
+          onEdit={onEditMessage && !actionSheetMsg.poll ? () => { setEditingId(actionSheetMsg.id); setEditText(actionSheetMsg.content); setActionSheetMsg(null); } : undefined}
+          onDelete={onDeleteMessage ? () => { setConfirmDeleteId(actionSheetMsg.id); setActionSheetMsg(null); } : undefined}
+          onClose={() => setActionSheetMsg(null)}
+        />
+      )}
 
       {/* Emoji picker portal — escapes the virtualized list overflow */}
       {emojiPickerFor && pickerPos && createPortal(

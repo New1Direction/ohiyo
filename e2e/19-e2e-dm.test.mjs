@@ -14,7 +14,7 @@ try {
   const pageA = await ctxA.newPage();
   pageA.on("pageerror", (e) => console.error("  A ERR:", e.message));
   await register(pageA, A, "Ann");
-  await pageA.waitForSelector("text=/Welcome in,/", { timeout: 12000 });
+  await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Ann HQ");
   await pageA.click('button:has-text("Let\'s go")');
   await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
@@ -24,7 +24,7 @@ try {
   const pageB = await ctxB.newPage();
   pageB.on("pageerror", (e) => console.error("  B ERR:", e.message));
   await register(pageB, B, "Bea");
-  await pageB.waitForSelector("text=/Welcome in,/", { timeout: 12000 });
+  await pageB.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageB.fill("#kc-space-name", "Bea HQ");
   await pageB.click('button:has-text("Let\'s go")');
   await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });

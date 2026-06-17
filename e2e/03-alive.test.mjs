@@ -38,7 +38,7 @@ try {
 
   // A: register + create server, grab invite link
   await register(pageA, A, "Ada");
-  await pageA.waitForSelector("text=/Welcome in,/", { timeout: 12000 });
+  await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Vibe HQ");
   await pageA.click('button:has-text("Let\'s go")');
   await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });

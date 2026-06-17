@@ -15,7 +15,8 @@ type Props = {
 export function EventsModal({ token, serverId, currentUserId, refreshKey, onClose }: Props) {
   const [events, setEvents] = useState<EventInfo[]>([]);
   const [title, setTitle] = useState("");
-  const [when, setWhen] = useState("");
+  // Seed the next round hour so the input never shows the empty "yyyy-mm-dd" mask.
+  const [when, setWhen] = useState(() => nextRoundHourLocal());
   const [desc, setDesc] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -35,7 +36,7 @@ export function EventsModal({ token, serverId, currentUserId, refreshKey, onClos
     try {
       await api.createEvent(token, serverId, title.trim(), ts, desc.trim() || null);
       setTitle("");
-      setWhen("");
+      setWhen(nextRoundHourLocal());
       setDesc("");
       await refresh();
     } finally {
@@ -74,6 +75,9 @@ export function EventsModal({ token, serverId, currentUserId, refreshKey, onClos
           maxLength={120}
           className="kc-field w-full px-3.5 py-2.5 text-sm outline-none"
         />
+        <span className="text-xs" style={{ color: "var(--text-secondary)", marginBottom: "calc(-1 * var(--space-1))" }}>
+          When?
+        </span>
         <div className="flex gap-2">
           <input
             type="datetime-local"
@@ -91,6 +95,11 @@ export function EventsModal({ token, serverId, currentUserId, refreshKey, onClos
             Add event
           </button>
         </div>
+        {title.trim() && !when && (
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            Add a time to schedule it.
+          </p>
+        )}
         <input
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
@@ -158,4 +167,12 @@ export function EventsModal({ token, serverId, currentUserId, refreshKey, onClos
 function fmtWhen(unix: number): string {
   const d = new Date(unix * 1000);
   return d.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/** Next round hour from now, formatted for a datetime-local input (YYYY-MM-DDTHH:mm). */
+function nextRoundHourLocal(): string {
+  const d = new Date();
+  d.setHours(d.getHours() + 1, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
