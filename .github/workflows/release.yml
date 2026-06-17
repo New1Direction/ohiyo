@@ -24,8 +24,11 @@ jobs:
             target: x86_64-apple-darwin
           - platform: ubuntu-22.04
             target: ""
-          - platform: windows-latest
-            target: ""
+          # Windows is temporarily disabled: crates/goodnight (the key vault) uses
+          # POSIX-only libc (mmap/mlock/getuid/RLIMIT_MEMLOCK) that doesn't compile on
+          # Windows. Re-enable once it's cfg-gated with a Windows VirtualLock fallback.
+          # - platform: windows-latest
+          #   target: ""
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -59,17 +62,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Bake the production backend URL into the bundle (https://your-app.fly.dev).
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
-          # macOS code-signing + notarization. Leave unset → unsigned build (first launch
-          # trips Gatekeeper). Obtain a Developer ID Application cert; see DEPLOY.md §4.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Tauri auto-updater signing. Leave unset → no updater artifacts emitted.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # macOS code-signing + notarization. UNCOMMENT these (and set the secrets — see
+          # DEPLOY.md §4) to ship signed + notarized builds. They MUST stay commented out
+          # while unset: passing them empty makes tauri-action run `security import` with an
+          # empty cert and the macOS build fails. Commented = unsigned build (Gatekeeper
+          # warning on first launch) that still produces working installers.
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Tauri auto-updater signing. Uncomment + set secrets to emit updater artifacts.
+          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: client
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
