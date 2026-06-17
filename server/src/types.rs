@@ -33,6 +33,10 @@ pub struct Channel {
     pub topic: Option<String>,
     pub created_at: i64,
     pub category_id: Option<String>,
+    /// True when this channel was imported from Discord and is stored as plaintext
+    /// archive content rather than an Ohiyo-native E2E space.
+    #[serde(default)]
+    pub imported: bool,
     /// Disappearing-message TTL in seconds; None = off.
     #[serde(default)]
     pub disappearing_seconds: Option<i64>,

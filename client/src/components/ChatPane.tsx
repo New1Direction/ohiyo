@@ -675,6 +675,15 @@ export function ChatPane({
           {channel.channel_type === "dm" ? "👤" : "#"}
         </span>
         <span>{channel.name !== "dm" ? channel.name : "Direct Message"}</span>
+        {channel.imported && (
+          <span
+            className="rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide"
+            style={{ background: "color-mix(in oklch, var(--gold, #f59e0b) 16%, transparent)", color: "var(--gold, #f59e0b)" }}
+            title="Imported from Discord — not end-to-end encrypted"
+          >
+            Imported · not E2E
+          </span>
+        )}
         {channel.topic && (
           <>
             <span className="kc-ch-topic" style={{ color: "var(--bg-hover)" }}>│</span>

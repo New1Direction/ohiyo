@@ -139,6 +139,7 @@ export function ChannelSidebar({
       isSelected={selectedChannelId === ch.id}
       unreadCount={unread?.[ch.id] ?? 0}
       hasMention={mentionChannels?.has(ch.id) ?? false}
+      imported={Boolean(ch.imported)}
       onClick={() => onSelectChannel(ch)}
     />
   );
@@ -569,13 +570,14 @@ function ActivityComposer({ activity, onSet }: { activity: Activity | null; onSe
 }
 
 function ChannelRow({
-  icon, name, isSelected, unreadCount = 0, hasMention = false, onClick,
+  icon, name, isSelected, unreadCount = 0, hasMention = false, imported = false, onClick,
 }: {
   icon: React.ReactNode;
   name: string;
   isSelected: boolean;
   unreadCount?: number;
   hasMention?: boolean;
+  imported?: boolean;
   onClick: () => void;
 }) {
   const hasUnread = unreadCount > 0 && !isSelected;
@@ -596,6 +598,16 @@ function ChannelRow({
     >
       {icon}
       <span className="truncate flex-1">{name}</span>
+      {imported && (
+        <span
+          className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+          style={{ background: "color-mix(in oklch, var(--gold, #f59e0b) 18%, transparent)", color: "var(--gold, #f59e0b)" }}
+          title="Imported from Discord — not end-to-end encrypted"
+          aria-label="Imported from Discord, not end-to-end encrypted"
+        >
+          Not E2E
+        </span>
+      )}
       {showMention ? (
         <span
           className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"

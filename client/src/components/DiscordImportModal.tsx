@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, type DiscrawlImportRequest, type DiscrawlPreview, type ServerWithChannels } from "../api";
+import { api, type DiscrawlImportRequest, type DiscrawlImportResponse, type DiscrawlPreview, type ServerWithChannels } from "../api";
 import { ModalShell } from "./ModalShell";
 
 type Props = {
@@ -14,6 +14,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   const [guildId, setGuildId] = useState("");
   const [history, setHistory] = useState<"All" | "Last90Days">("All");
   const [preview, setPreview] = useState<DiscrawlPreview | null>(null);
+  const [result, setResult] = useState<DiscrawlImportResponse | null>(null);
   const [busy, setBusy] = useState<"preview" | "import" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +30,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   async function previewArchive() {
     setBusy("preview");
     setError(null);
+    setResult(null);
     try {
       setPreview(await api.previewDiscrawlImport(token, body()));
     } catch (err) {
@@ -44,8 +46,8 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
     setError(null);
     try {
       const result = await api.runDiscrawlImport(token, body());
+      setResult(result);
       onImported(result.server);
-      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -53,7 +55,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
     }
   }
 
-  const disabled = busy !== null || !dbPath.trim();
+  const disabled = busy !== null || !dbPath.trim() || result !== null;
 
   return (
     <ModalShell onClose={onClose} labelledBy="discord-import-title" maxWidthClass="max-w-xl">
@@ -125,22 +127,55 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
           </div>
         )}
 
+        {result && (
+          <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: "var(--accent)", background: "color-mix(in oklch, var(--accent) 10%, var(--bg-elevated))", color: "var(--text-primary)" }}>
+            <div className="font-bold">Import complete: {result.server.name}</div>
+            <div className="mt-2 grid grid-cols-2 gap-2" style={{ color: "var(--text-muted)" }}>
+              <span>{result.report.channels} channels</span>
+              <span>{result.report.messages} messages</span>
+              <span>{result.report.authors} ghost authors</span>
+              <span>{result.report.attachments} attachments</span>
+              <span>{result.report.reactions} reactions</span>
+              <span>{result.report.roles_needing_review.length} roles need review</span>
+            </div>
+            <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
+              Imported channels are now labeled <strong>not E2E</strong> in the sidebar and chat header.
+            </p>
+            {result.report.roles_needing_review.length > 0 && (
+              <div className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
+                Review roles: {result.report.roles_needing_review.join(", ")}
+              </div>
+            )}
+            {result.report.parked.length > 0 && (
+              <div className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
+                Parked: {result.report.parked.slice(0, 3).join("; ")}{result.report.parked.length > 3 ? "…" : ""}
+              </div>
+            )}
+          </div>
+        )}
+
         {error && <div className="text-sm" style={{ color: "var(--danger, #ef4444)" }}>{error}</div>}
 
         <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className="kc-interactive px-4 py-2 text-sm font-semibold" style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-secondary)" }} onClick={onClose} disabled={busy !== null}>Cancel</button>
-          <button type="button" className="kc-interactive px-4 py-2 text-sm font-semibold" style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)" }} onClick={previewArchive} disabled={disabled}>
-            {busy === "preview" ? "Previewing…" : "Preview"}
-          </button>
-          <button
-            type="button"
-            className="kc-interactive px-4 py-2 text-sm font-semibold"
-            onClick={importArchive}
-            disabled={disabled || !preview}
-            style={{ borderRadius: "var(--radius-md)", background: "var(--accent)", color: "#fff" }}
-          >
-            {busy === "import" ? "Importing…" : "Import"}
-          </button>
+          {result ? (
+            <button type="button" className="kc-interactive px-4 py-2 text-sm font-semibold" style={{ borderRadius: "var(--radius-md)", background: "var(--accent)", color: "#fff" }} onClick={onClose}>Open imported space</button>
+          ) : (
+            <>
+              <button type="button" className="kc-interactive px-4 py-2 text-sm font-semibold" style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-secondary)" }} onClick={onClose} disabled={busy !== null}>Cancel</button>
+              <button type="button" className="kc-interactive px-4 py-2 text-sm font-semibold" style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)" }} onClick={previewArchive} disabled={disabled}>
+                {busy === "preview" ? "Previewing…" : "Preview"}
+              </button>
+              <button
+                type="button"
+                className="kc-interactive px-4 py-2 text-sm font-semibold"
+                onClick={importArchive}
+                disabled={disabled || !preview}
+                style={{ borderRadius: "var(--radius-md)", background: "var(--accent)", color: "#fff" }}
+              >
+                {busy === "import" ? "Importing…" : "Import"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </ModalShell>

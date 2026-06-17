@@ -60,6 +60,8 @@ export type Channel = {
   epoch?: number;
   /** Group-DM owner (creator); only they may remove other members. */
   owner_id?: string | null;
+  /** Imported Discord archive channel; stored as plaintext and visibly marked not E2E. */
+  imported?: boolean;
 };
 
 export type Category = {

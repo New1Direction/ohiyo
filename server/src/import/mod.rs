@@ -355,6 +355,14 @@ mod tests {
         .unwrap();
         assert_eq!(msg_count, 1);
 
+        let imported_channel: crate::types::Channel =
+            sqlx::query_as("SELECT * FROM channels WHERE server_id = ?")
+                .bind(&server_id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert!(imported_channel.imported);
+
         let status: String =
             sqlx::query_scalar("SELECT status FROM discord_imports WHERE server_id = ?")
                 .bind(&server_id)
