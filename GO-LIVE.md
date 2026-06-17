@@ -31,6 +31,28 @@ The site is static and self-contained in [`site/`](site/) (`index.html` + `style
 
 ✅ `https://ohiyo.gg` is live. (To preview locally first: `cd site && python3 -m http.server`.)
 
+## 2b. Browser sign-up client (`app.ohiyo.gg`) → Cloudflare Pages **[you]**
+
+Lets anyone sign up in a browser — no download. It's the same React app the desktop build
+wraps (verified: the e2e suite drives it in a plain browser), pointed at the live backend.
+The production build is verified (`ohiyo.fly.dev` baked in, CSP allows it); this is a second
+Cloudflare Pages project + DNS.
+
+1. Cloudflare → **Workers & Pages → Create → Pages → Connect to Git** → `New1Direction/ohiyo`.
+2. Build settings:
+   - **Root directory** = `client`
+   - **Framework preset** = `Vite` (or None)
+   - **Build command** = `npm ci && npm run build`
+   - **Build output directory** = `dist` (i.e. `client/dist`)
+3. **Environment variables** → `VITE_SERVER_URL = https://ohiyo.fly.dev` (baked into the bundle at build).
+4. Deploy → confirm the `*.pages.dev` URL loads the auth screen.
+5. Pages → **Custom domains → `app.ohiyo.gg`** (Cloudflare wires the DNS).
+6. *(Recommended, optional)* Lock CORS to the web origin: `fly secrets set CORS_ALLOWED_ORIGINS=https://app.ohiyo.gg`
+   on the backend. Until set, the server allows any origin, so the web client already works without it.
+
+✅ `https://app.ohiyo.gg` → browser sign-up against `ohiyo.fly.dev`. Invite links use the current
+origin, so invites from the web app point at `app.ohiyo.gg` (correct). Desktop app unaffected.
+
 ## 3. (When ready) Live Instant Servers **[you]**
 
 The control plane is built and tested ([`server/src/provision/`](server/src/provision/)); it
