@@ -83,6 +83,10 @@ pub fn router() -> Router<AppState> {
             get(discord_import::discord_connect_info),
         )
         .route(
+            "/imports/discord/guilds",
+            get(discord_import::list_discord_guilds),
+        )
+        .route(
             "/imports/discord/managed/run",
             post(discord_import::run_managed_discord_import),
         )

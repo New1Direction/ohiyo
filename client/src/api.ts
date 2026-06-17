@@ -236,6 +236,12 @@ export type DiscordConnectInfo = {
   message: string;
 };
 
+export type DiscordGuildInfo = {
+  id: string;
+  name: string;
+  icon_url: string | null;
+};
+
 export type DiscrawlArchiveUploadResponse = {
   db_path: string;
   filename: string;
@@ -365,6 +371,8 @@ export const api = {
     request<DiscrawlImportCapability>("/imports/discord/capability", {}, token),
   getDiscordConnectInfo: (token: string) =>
     request<DiscordConnectInfo>("/imports/discord/connect", {}, token),
+  listDiscordImportGuilds: (token: string) =>
+    request<DiscordGuildInfo[]>("/imports/discord/guilds", {}, token),
   runManagedDiscordImport: (token: string, guildId: string, history?: ImportHistoryWindow | null) =>
     request<DiscrawlImportResponse>(
       "/imports/discord/managed/run",

@@ -65,6 +65,13 @@ pub struct DiscordConnectInfo {
     pub message: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct DiscordGuildInfo {
+    pub id: String,
+    pub name: String,
+    pub icon_url: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ManagedDiscordImportBody {
     pub guild_id: String,
@@ -114,6 +121,14 @@ pub async fn discord_connect_info(
             "Managed Discord clone is not configured on this home yet.".to_owned()
         },
     }))
+}
+
+pub async fn list_discord_guilds(
+    _auth: AuthUser,
+) -> Result<Json<Vec<DiscordGuildInfo>>, (StatusCode, String)> {
+    require_managed_discord_import_enabled()?;
+    let guilds = fetch_bot_guilds().await?;
+    Ok(Json(guilds))
 }
 
 pub async fn upload_discrawl_archive(
@@ -279,6 +294,52 @@ fn read_opts(body: &DiscrawlArchiveBody) -> DiscrawlReadOptions {
         guild_id: body.guild_id.clone(),
         media_root: body.media_root.as_ref().map(PathBuf::from),
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct DiscordApiGuild {
+    id: String,
+    name: String,
+    icon: Option<String>,
+}
+
+async fn fetch_bot_guilds() -> Result<Vec<DiscordGuildInfo>, (StatusCode, String)> {
+    let token = std::env::var("DISCORD_BOT_TOKEN").map_err(|_| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Discord bot token is not configured on this Ohiyo home".to_owned(),
+        )
+    })?;
+    let response = reqwest::Client::new()
+        .get("https://discord.com/api/v10/users/@me/guilds?limit=200")
+        .header("Authorization", format!("Bot {token}"))
+        .send()
+        .await
+        .map_err(crate::api::error::internal)?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        tracing::warn!(%status, body = %text, "Discord guild list request failed");
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            "Could not ask Discord which servers the Ohiyo bot can see".into(),
+        ));
+    }
+    let guilds: Vec<DiscordApiGuild> =
+        response.json().await.map_err(crate::api::error::internal)?;
+    Ok(guilds
+        .into_iter()
+        .map(|guild| DiscordGuildInfo {
+            icon_url: guild.icon.as_ref().map(|icon| {
+                format!(
+                    "https://cdn.discordapp.com/icons/{}/{}.png?size=64",
+                    guild.id, icon
+                )
+            }),
+            id: guild.id,
+            name: guild.name,
+        })
+        .collect())
 }
 
 struct ManagedDiscrawlArchive {

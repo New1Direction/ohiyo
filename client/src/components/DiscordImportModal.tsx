@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   api,
   type DiscordConnectInfo,
+  type DiscordGuildInfo,
   type DiscrawlImportCapability,
   type DiscrawlImportRequest,
   type DiscrawlImportResponse,
@@ -30,6 +31,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   const [connectInfo, setConnectInfo] = useState<DiscordConnectInfo | null>(null);
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
   const [managedGuildId, setManagedGuildId] = useState("");
+  const [availableGuilds, setAvailableGuilds] = useState<DiscordGuildInfo[]>([]);
   const [showArchiveFallback, setShowArchiveFallback] = useState(false);
   const [dbPath, setDbPath] = useState("");
   const [mediaRoot, setMediaRoot] = useState("");
@@ -38,7 +40,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   const [preview, setPreview] = useState<DiscrawlPreview | null>(null);
   const [result, setResult] = useState<DiscrawlImportResponse | null>(null);
   const [uploadedArchive, setUploadedArchive] = useState<{ filename: string; size_bytes: number } | null>(null);
-  const [busy, setBusy] = useState<"upload" | "preview" | "import" | null>(null);
+  const [busy, setBusy] = useState<"guilds" | "upload" | "preview" | "import" | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [importStage, setImportStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +131,21 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
     }
   }
 
+  async function refreshDiscordGuilds() {
+    setBusy("guilds");
+    setError(null);
+    try {
+      const guilds = await api.listDiscordImportGuilds(token);
+      setAvailableGuilds(guilds);
+      if (guilds.length === 1) setManagedGuildId(guilds[0].id);
+    } catch (err) {
+      setAvailableGuilds([]);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function importManagedDiscord() {
     setBusy("import");
     setError(null);
@@ -211,8 +228,76 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
                 Recommended
               </span>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
-              <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <a
+                href={connectInfo?.invite_url ?? undefined}
+                target="_blank"
+                rel="noreferrer"
+                className="kc-interactive px-4 py-3 text-sm font-semibold"
+                style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)", pointerEvents: connectInfo?.invite_url ? "auto" : "none", opacity: connectInfo?.invite_url ? 1 : 0.55 }}
+              >
+                1. Add bot
+              </a>
+              <button
+                type="button"
+                className="kc-interactive px-4 py-3 text-sm font-semibold"
+                onClick={refreshDiscordGuilds}
+                disabled={busy !== null}
+                style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)" }}
+              >
+                {busy === "guilds" ? "Finding servers…" : "2. I added it — find servers"}
+              </button>
+              <button
+                type="button"
+                className="kc-interactive px-4 py-3 text-sm font-semibold"
+                onClick={importManagedDiscord}
+                disabled={!canManagedImport}
+                style={{ borderRadius: "var(--radius-md)", background: "var(--accent)", color: "#fff" }}
+              >
+                {busy === "import" ? IMPORT_STAGES[importStage] : "3. Clone server"}
+              </button>
+            </div>
+
+            {availableGuilds.length > 0 ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {availableGuilds.map((guild) => {
+                  const selected = managedGuildId === guild.id;
+                  return (
+                    <button
+                      key={guild.id}
+                      type="button"
+                      onClick={() => { setManagedGuildId(guild.id); resetRunState(); }}
+                      className="kc-interactive flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm"
+                      style={{
+                        borderColor: selected ? "var(--accent)" : "var(--bg-input)",
+                        background: selected ? "color-mix(in oklch, var(--accent) 12%, var(--bg-elevated))" : "var(--bg-elevated)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      <span
+                        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                        style={{ background: "var(--accent)", color: "#fff", backgroundImage: guild.icon_url ? `url(${guild.icon_url})` : undefined, backgroundSize: "cover", backgroundPosition: "center" }}
+                      >
+                        {!guild.icon_url && guild.name[0]?.toUpperCase()}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold">{guild.name}</span>
+                        <span className="block truncate text-xs" style={{ color: "var(--text-muted)" }}>{guild.id}</span>
+                      </span>
+                      {selected && <span aria-hidden>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
+                After authorizing the bot, click <strong>I added it — find servers</strong>. Your server will appear here so you do not need to paste an ID.
+              </p>
+            )}
+
+            <details className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
+              <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>Can't find it? Paste server ID manually</summary>
+              <label className="mt-2 flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                 Discord server ID
                 <input
                   value={managedGuildId}
@@ -222,27 +307,8 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
                   className="kc-field px-3.5 py-3 text-sm outline-none"
                 />
               </label>
-              <div className="flex items-end gap-2">
-                <a
-                  href={connectInfo?.invite_url ?? undefined}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="kc-interactive px-4 py-3 text-sm font-semibold"
-                  style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)", pointerEvents: connectInfo?.invite_url ? "auto" : "none", opacity: connectInfo?.invite_url ? 1 : 0.55 }}
-                >
-                  Add bot
-                </a>
-                <button
-                  type="button"
-                  className="kc-interactive px-4 py-3 text-sm font-semibold"
-                  onClick={importManagedDiscord}
-                  disabled={!canManagedImport}
-                  style={{ borderRadius: "var(--radius-md)", background: "var(--accent)", color: "#fff" }}
-                >
-                  {busy === "import" ? IMPORT_STAGES[importStage] : "Clone server"}
-                </button>
-              </div>
-            </div>
+            </details>
+
             <label className="mt-3 flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
               History depth
               <select
@@ -402,15 +468,18 @@ function DiscordCloneChecklist() {
           If Discord says you cannot add it, you need <strong>Manage Server</strong> permission. Ask the server owner/admin to do this step.
         </li>
         <li>
-          Copy your server ID: Discord <strong>User Settings</strong> → <strong>Advanced</strong> → turn on <strong>Developer Mode</strong>. Then right-click the server icon → <strong>Copy Server ID</strong>.
+          Come back to Ohiyo and click <strong>I added it — find servers</strong>. Pick your server from the list.
         </li>
         <li>
-          Paste that ID here and click <strong>Clone server</strong>. Keep Ohiyo open while it imports.
+          Click <strong>Clone server</strong>. Keep Ohiyo open while it imports.
         </li>
       </ol>
       <details className="mt-3">
         <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>If cloning says the bot cannot read messages</summary>
         <div className="mt-2 space-y-2">
+          <p>
+            If your server does not show up, wait a few seconds and click <strong>I added it — find servers</strong> again. If it still does not show, use <strong>Can't find it? Paste server ID manually</strong>: Discord <strong>User Settings</strong> → <strong>Advanced</strong> → turn on <strong>Developer Mode</strong>, then right-click the server icon → <strong>Copy Server ID</strong>.
+          </p>
           <p>
             In your Discord server, check <strong>Server Settings</strong> → <strong>Roles</strong> → the Ohiyo bot role. It should have <strong>View Channels</strong> and <strong>Read Message History</strong>. Private channels must allow the bot role too.
           </p>
