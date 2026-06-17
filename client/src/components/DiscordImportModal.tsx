@@ -254,9 +254,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
                 <option value="Last90Days">Last 90 days — fastest first clone</option>
               </select>
             </label>
-            <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
-              Tip: in Discord, enable Developer Mode, right-click your server icon, then Copy Server ID. The bot needs View Channels, Read Message History, Server Members Intent, and Message Content Intent.
-            </p>
+            <DiscordCloneChecklist />
           </div>
         )}
 
@@ -389,6 +387,39 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+function DiscordCloneChecklist() {
+  return (
+    <div className="mt-4 rounded-2xl border p-3 text-xs" style={{ borderColor: "var(--bg-input)", background: "color-mix(in oklch, var(--bg-base) 58%, transparent)", color: "var(--text-muted)" }}>
+      <div className="font-bold" style={{ color: "var(--text-primary)" }}>What to do in Discord</div>
+      <ol className="mt-2 list-decimal space-y-2 pl-5">
+        <li>
+          Click <strong>Add bot</strong>. Discord opens. Choose the server you want to clone, then click <strong>Continue</strong> → <strong>Authorize</strong>.
+        </li>
+        <li>
+          If Discord says you cannot add it, you need <strong>Manage Server</strong> permission. Ask the server owner/admin to do this step.
+        </li>
+        <li>
+          Copy your server ID: Discord <strong>User Settings</strong> → <strong>Advanced</strong> → turn on <strong>Developer Mode</strong>. Then right-click the server icon → <strong>Copy Server ID</strong>.
+        </li>
+        <li>
+          Paste that ID here and click <strong>Clone server</strong>. Keep Ohiyo open while it imports.
+        </li>
+      </ol>
+      <details className="mt-3">
+        <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>If cloning says the bot cannot read messages</summary>
+        <div className="mt-2 space-y-2">
+          <p>
+            In your Discord server, check <strong>Server Settings</strong> → <strong>Roles</strong> → the Ohiyo bot role. It should have <strong>View Channels</strong> and <strong>Read Message History</strong>. Private channels must allow the bot role too.
+          </p>
+          <p>
+            If you self-hosted your own Ohiyo bot, also open <strong>Discord Developer Portal</strong> → your app → <strong>Bot</strong> → <strong>Privileged Gateway Intents</strong>, then turn on <strong>Server Members Intent</strong> and <strong>Message Content Intent</strong>. The hosted Ohiyo bot should already have these enabled.
+          </p>
+        </div>
+      </details>
+    </div>
   );
 }
 
