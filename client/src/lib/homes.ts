@@ -11,14 +11,15 @@ export type OhiyoHome = {
 const HOMES_KEY = "kc:homes:v1";
 const ACTIVE_KEY = "kc:active-home:v1";
 const LEGACY_TOKEN_KEY = "token";
+const FALLBACK_HOME_URL = "http://localhost:3000";
+const ENV_HOME_URL = (import.meta as unknown as { env?: { VITE_SERVER_URL?: string } }).env
+  ?.VITE_SERVER_URL;
 
-export const DEFAULT_HOME_URL = normalizeHomeUrl(
-  (import.meta.env.VITE_SERVER_URL as string | undefined) ?? "http://localhost:3000"
-);
+export const DEFAULT_HOME_URL = normalizeHomeUrl(ENV_HOME_URL || FALLBACK_HOME_URL);
 
 export function normalizeHomeUrl(raw: string): string {
   let value = raw.trim();
-  if (!value) return DEFAULT_HOME_URL;
+  if (!value) return FALLBACK_HOME_URL;
   if (!/^https?:\/\//i.test(value)) value = `https://${value}`;
   const url = new URL(value);
   url.pathname = "";

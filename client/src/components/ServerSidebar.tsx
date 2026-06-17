@@ -95,7 +95,7 @@ export function ServerSidebar({
     >
       {/* Runtime server homes (Instant Servers / self-hosts). */}
       <div className="flex w-full flex-col items-center gap-1" aria-label="Ohiyo homes">
-        {homes.slice(0, 4).map((h) => {
+        {homes.map((h) => {
           const label = h.name.slice(0, 2).toUpperCase();
           const selected = h.id === activeHomeId;
           return (
