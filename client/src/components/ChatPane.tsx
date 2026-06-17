@@ -860,6 +860,22 @@ export function ChatPane({
         </div>
       ) : null}
 
+      {channel?.imported ? (
+        <div
+          className="mx-3 mt-2 flex items-start gap-2 rounded-md px-3 py-2 text-xs"
+          style={{
+            background: "color-mix(in oklch, var(--gold, #f59e0b) 11%, var(--bg-elevated))",
+            border: "1px solid color-mix(in oklch, var(--gold, #f59e0b) 36%, var(--bg-input))",
+            color: "var(--text-secondary)",
+          }}
+        >
+          <span aria-hidden="true">📦</span>
+          <span>
+            <strong style={{ color: "var(--text-primary)" }}>Imported Discord archive.</strong> This history is preserved as plaintext archive content and marked not E2E. Native Ohiyo DMs and group chats can still be encrypted.
+          </span>
+        </div>
+      ) : null}
+
       {e2eEnabled && (
         <>
           {(e2eTrust === "changed_verified" || e2eTrust === "changed_unverified") && (

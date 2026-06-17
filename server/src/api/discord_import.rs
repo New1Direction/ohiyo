@@ -186,6 +186,7 @@ pub async fn run_discrawl_import(
         .await
         .map_err(crate::api::error::internal)?;
     let server = crate::api::servers::fetch_full(&server_id, &state).await?;
+    cleanup_uploaded_archive_if_staged(&body.db_path).await;
     broadcast_to_server(
         &state,
         &server.server.id,
@@ -212,6 +213,26 @@ fn max_discrawl_db_upload_bytes() -> i64 {
 
 async fn cleanup_tmp(path: &Path) {
     tokio::fs::remove_file(path).await.ok();
+}
+
+async fn cleanup_uploaded_archive_if_staged(path: &str) {
+    let archive = Path::new(path);
+    let Ok(upload_dir) = tokio::fs::canonicalize(IMPORT_UPLOAD_DIR).await else {
+        return;
+    };
+    let Ok(archive_path) = tokio::fs::canonicalize(archive).await else {
+        return;
+    };
+    if !archive_path.starts_with(&upload_dir) {
+        return;
+    }
+    if let Err(err) = tokio::fs::remove_file(&archive_path).await {
+        tracing::warn!(
+            error = %err,
+            path = %archive_path.display(),
+            "failed to delete staged Discrawl archive after import"
+        );
+    }
 }
 
 fn safe_filename(name: &str) -> String {
