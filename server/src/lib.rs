@@ -11,6 +11,7 @@ pub mod api;
 pub mod auth;
 pub mod db;
 pub mod gateway;
+pub mod import;
 pub mod instance_router;
 pub mod provision;
 pub mod ratelimit;
