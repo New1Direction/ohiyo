@@ -18,6 +18,14 @@ COPY src ./src
 COPY migrations ./migrations
 RUN touch src/main.rs && cargo build --release
 
+# ── Discrawl stage ────────────────────────────────────────────────────────────
+# Managed Discord clone uses discrawl to mirror a Discord server into SQLite, then
+# the Ohiyo importer maps that SQLite archive into a new Ohiyo space.
+FROM golang:1.26-bookworm AS discrawl-builder
+WORKDIR /discrawl
+RUN git clone --depth 1 https://github.com/steipete/discrawl.git . \
+    && go build -o /usr/local/bin/discrawl ./cmd/discrawl
+
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 # reqwest uses rustls (no OpenSSL) and sqlx bundles SQLite, so the runtime image
 # only needs CA certificates. WORKDIR is the volume mount point: both the SQLite
@@ -36,11 +44,13 @@ RUN dpkg -i /tmp/litestream.deb && rm /tmp/litestream.deb
 
 WORKDIR /data
 COPY --from=builder /build/target/release/server /usr/local/bin/ohiyo-server
+COPY --from=discrawl-builder /usr/local/bin/discrawl /usr/local/bin/discrawl
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV BIND_ADDR=0.0.0.0:3000 \
     DATABASE_URL=sqlite:/data/ohiyo.db \
+    OHIYO_DISCRAWL_BIN=/usr/local/bin/discrawl \
     RUST_LOG=server=info,tower_http=warn
 
 EXPOSE 3000
