@@ -120,6 +120,20 @@ h2 { font-family: var(--disp); font-weight: 600; font-size: clamp(2rem, 4.4vw, 3
 .trust span { display: inline-flex; align-items: center; gap: .4rem; }
 .trust b { color: var(--emerald); }
 
+/* ── download ───────────────────────────────────────────────────────────── */
+.download-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 2rem; }
+.download-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1rem; border: 1px solid var(--line); border-radius: var(--r); padding: 1.1rem 1.2rem; background: linear-gradient(160deg, rgba(255,255,255,.045), rgba(255,255,255,.012)); color: var(--cream); text-decoration: none; transition: transform .25s var(--ease), border-color .25s, background .25s; }
+.download-card:hover { transform: translateY(-3px); border-color: rgba(255, 122, 77, .46); }
+.download-card.recommended { border-color: rgba(255,122,77,.5); box-shadow: 0 0 0 1px rgba(255,122,77,.14), var(--shadow); }
+.download-card .dl-ic { width: 42px; height: 42px; border-radius: 999px; display: grid; place-items: center; background: rgba(255,255,255,.06); font-size: 1.35rem; }
+.download-card b { display: block; font-size: 1rem; }
+.download-card small { display: block; color: var(--muted); font-size: .82rem; line-height: 1.35; margin-top: .12rem; }
+.download-card strong { color: var(--coral); font-size: .86rem; white-space: nowrap; }
+.download-card.web strong { color: var(--emerald); }
+.download-note { color: var(--muted); font-size: .9rem; margin-top: 1rem; }
+.download-note b { color: var(--warm); }
+@media (max-width: 780px) { .download-grid { grid-template-columns: 1fr; } .download-card { grid-template-columns: auto 1fr; } .download-card strong { grid-column: 2; } }
+
 /* ── instant servers (headline feature) ─────────────────────────────────── */
 .feature-lead { display: grid; grid-template-columns: 1fr; gap: 1rem; }
 .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; margin-top: 2.2rem; }
