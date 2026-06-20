@@ -8,7 +8,7 @@ type Props = {
   onClose: () => void;
 };
 
-const SUGGESTIONS = ["My Hangout", "Study Group", "Game Night", "The Roost"];
+const SUGGESTIONS = ["Study Group", "Game Night", "Book Club", "Project Crew"];
 
 /** Branded "create a space" modal — replaces the old window.prompt. */
 export function CreateServerModal({ onCreate, onClose }: Props) {
@@ -113,7 +113,7 @@ export function CreateServerModal({ onCreate, onClose }: Props) {
           <input
             ref={inputRef}
             className="kc-field px-3.5 py-3 text-sm outline-none"
-            placeholder="e.g. The Roost"
+            placeholder="e.g. Study Group"
             value={name}
             maxLength={64}
             onChange={(e) => { setName(e.target.value); if (error) setError(""); }}

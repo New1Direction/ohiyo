@@ -11,7 +11,7 @@ type Props = {
   onPickAccent?: (hex: string) => void;
 };
 
-const SUGGESTIONS = ["The Roost", "Study Room", "Game Night"];
+const SUGGESTIONS = ["Study Group", "Game Night", "Book Club"];
 
 const VALUE_BULLETS: { title: string; body: string }[] = [
   { title: "Private messages", body: "Encrypted chats for your space." },
@@ -136,7 +136,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
                 id="kc-space-name"
                 ref={inputRef}
                 className="kc-field flex-1 px-3.5 py-3 text-sm outline-none"
-                placeholder="The Roost"
+                placeholder="Study Group"
                 value={name}
                 maxLength={64}
                 onChange={(e) => { setName(e.target.value); if (error) setError(""); }}
