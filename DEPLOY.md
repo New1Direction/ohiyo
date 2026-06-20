@@ -170,10 +170,15 @@ paths private on the server/deployment only.
 
 ## 5. Code signing & auto-update (the "later" path)
 
-Installers build with **ad-hoc macOS signing** when Apple Developer ID secrets are
-missing. That keeps downloaded `.dmg` files structurally valid and avoids the worst
-"app is damaged" failure, but users may still see a one-time Gatekeeper
-"unidentified developer" warning. For public launch, use official signing:
+Installers can build with **ad-hoc macOS signing** for private QA when Apple
+Developer ID secrets are missing. That keeps downloaded `.dmg` files structurally
+valid and avoids the worst "app is damaged" failure, but normal users will still
+see Apple's scary "could not verify Ohiyo is free of malware" Gatekeeper warning.
+
+Public `v*` tag releases now refuse to build macOS assets unless Developer ID
+signing + notarization secrets are present. Use the ad-hoc fallback only through
+manual `workflow_dispatch` for private QA. For customer downloads, use official
+signing:
 
 ### macOS notarization
 1. Join the Apple Developer Program ($99/yr), create a **Developer ID
@@ -185,9 +190,11 @@ missing. That keeps downloaded `.dmg` files structurally valid and avoids the wo
    - `APPLE_ID` — Apple ID email
    - `APPLE_PASSWORD` — app-specific password
    - `APPLE_TEAM_ID` — Apple Developer Team ID
-3. Push a `v*` tag or run the Release workflow manually. CI switches from ad-hoc
-   signing to Developer ID signing + notarization automatically when all six
-   secrets are present.
+3. Push a `v*` tag or run the Release workflow manually. CI switches to Developer
+   ID signing + notarization automatically when all six secrets are present.
+4. Before publishing the GitHub Release or re-enabling Mac download buttons on the
+   website, download the `.dmg` on a clean Mac and confirm it opens without the
+   "Apple could not verify" warning.
 
 ### Windows signing
 Obtain a code-signing certificate (OV/EV) and set the `tauri.conf.json`

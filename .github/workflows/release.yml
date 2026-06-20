@@ -60,6 +60,12 @@ jobs:
         working-directory: client
         run: npm ci
 
+      - name: Require Apple notarization for public macOS tag releases
+        if: matrix.platform == 'macos-latest' && github.event_name == 'push' && env.HAS_APPLE_SIGNING != 'true'
+        run: |
+          echo "::error::Refusing to build a public macOS release without Developer ID signing + notarization. Set APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID, then re-run the release. Use workflow_dispatch only for private ad-hoc QA builds."
+          exit 1
+
       - name: Enable macOS Developer ID signing
         if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING == 'true'
         working-directory: client
@@ -88,8 +94,8 @@ jobs:
           prerelease: false
           args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
-      - name: Build desktop installers (macOS ad-hoc fallback)
-        if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING != 'true'
+      - name: Build desktop installers (macOS ad-hoc fallback for private QA only)
+        if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING != 'true' && github.event_name == 'workflow_dispatch'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
