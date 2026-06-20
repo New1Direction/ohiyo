@@ -37,6 +37,16 @@ import { LinkedDevices } from "./LinkedDevices";
 
 export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
 
+const SETTINGS_TABS: Array<{ id: Tab; label: string; description: string }> = [
+  { id: "account", label: "Account", description: "Login and basics" },
+  { id: "profile", label: "Profile", description: "How people see you" },
+  { id: "social", label: "Social links", description: "Your places online" },
+  { id: "security", label: "Privacy & security", description: "Keys and safety" },
+  { id: "appearance", label: "Appearance", description: "Colors and comfort" },
+  { id: "plugins", label: "Plugins", description: "Extra powers" },
+  { id: "emoji", label: "Custom emoji", description: "Server reactions" },
+];
+
 type Props = {
   currentUser: PublicUser | null;
   pluginManager: PluginManager;
@@ -70,45 +80,61 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, init
         style={{ background: "var(--bg-channel)" }}
       >
         {/* Settings sidebar */}
-        <div
-          className="flex w-60 flex-shrink-0 flex-col overflow-y-auto py-16 pl-8 pr-4"
-          style={{ background: "var(--bg-sidebar)" }}
-        >
-          <div className="mb-4 text-xs font-bold uppercase" style={{ color: "var(--text-muted)" }}>
-            User Settings
+        <aside className="kc-settings-sidebar" aria-label="Settings sections">
+          <div className="kc-settings-sidebar__brand">
+            <div className="kc-settings-sidebar__mark" aria-hidden="true">OH</div>
+            <div>
+              <div className="kc-settings-sidebar__eyebrow">Settings</div>
+              <div className="kc-settings-sidebar__title">Make Ohiyo yours</div>
+            </div>
           </div>
-          {(["account", "profile", "social", "security", "appearance", "plugins", "emoji"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className="mb-0.5 rounded px-3 py-1.5 text-left text-sm font-medium capitalize"
-              style={{
-                background: tab === t ? "var(--bg-hover)" : "transparent",
-                color: tab === t ? "var(--text-primary)" : "var(--text-secondary)",
-              }}
-            >
-              {t === "social"
-                ? "Social Links"
-                : t === "plugins"
-                  ? "Plugins"
-                  : t === "emoji"
-                    ? "Custom Emoji"
-                    : t === "security"
-                      ? "Privacy & Security"
-                      : t}
-            </button>
-          ))}
 
-          <div className="mt-4 border-t pt-4" style={{ borderColor: "var(--bg-hover)" }}>
-            <button
-              onClick={onClose}
-              className="rounded px-3 py-1.5 text-left text-sm"
-              style={{ color: "var(--danger)", width: "100%" }}
-            >
-              ✕  Close Settings
+          <nav className="kc-settings-nav" aria-label="Settings">
+            <div className="kc-settings-nav__label">Personal</div>
+            {SETTINGS_TABS.slice(0, 4).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={`kc-settings-nav__item${tab === item.id ? " kc-settings-nav__item--active" : ""}`}
+                aria-current={tab === item.id ? "page" : undefined}
+              >
+                <span className="kc-settings-nav__dot" aria-hidden="true" />
+                <span className="kc-settings-nav__text">
+                  <span>{item.label}</span>
+                  <small>{item.description}</small>
+                </span>
+              </button>
+            ))}
+
+            <div className="kc-settings-nav__label kc-settings-nav__label--spaced">Make it comfy</div>
+            {SETTINGS_TABS.slice(4).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={`kc-settings-nav__item${tab === item.id ? " kc-settings-nav__item--active" : ""}`}
+                aria-current={tab === item.id ? "page" : undefined}
+              >
+                <span className="kc-settings-nav__dot" aria-hidden="true" />
+                <span className="kc-settings-nav__text">
+                  <span>{item.label}</span>
+                  <small>{item.description}</small>
+                </span>
+              </button>
+            ))}
+          </nav>
+
+          <div className="kc-settings-sidebar__footer">
+            <div className="kc-settings-sidebar__hint">
+              <span aria-hidden="true" />
+              Changes save as you go.
+            </div>
+            <button type="button" onClick={onClose} className="kc-settings-close kc-interactive">
+              Back to Ohiyo
             </button>
           </div>
-        </div>
+        </aside>
 
         {/* Settings content */}
         <div className="kc-settings-content flex-1 overflow-y-auto px-10 py-14">
