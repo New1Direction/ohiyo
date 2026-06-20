@@ -1723,6 +1723,10 @@ function MainApp({
       <ChatPane
         channel={selectedChannel}
         messages={messages}
+        dmTabs={dms}
+        dmUsers={dmUsers}
+        onSelectDmTab={handleSelectChannel}
+        onNewDm={() => setShowFindPeople(true)}
         currentUserId={currentUser?.id ?? ""}
         token={token}
         pluginManager={pluginManagerRef.current}

@@ -120,6 +120,10 @@ export type ChatActivityNotice = {
 type Props = {
   channel: Channel | null;
   messages: Message[];
+  dmTabs?: Channel[];
+  dmUsers?: Record<string, PublicUser>;
+  onSelectDmTab?: (channel: Channel) => void;
+  onNewDm?: () => void;
   currentUserId: string;
   token: string;
   pluginManager: PluginManager;
@@ -210,6 +214,12 @@ function ReceiptLine({
   );
 }
 
+function dmTabLabel(channel: Channel, user?: PublicUser): string {
+  if (user) return user.display_name || user.username;
+  if (channel.channel_type === "group_dm") return channel.name || "Group";
+  return channel.name !== "dm" ? channel.name : "DM";
+}
+
 function MenuIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -232,6 +242,10 @@ type UploadedFile = {
 export function ChatPane({
   channel,
   messages,
+  dmTabs = [],
+  dmUsers = {},
+  onSelectDmTab,
+  onNewDm,
   currentUserId,
   token,
   pluginManager,
@@ -818,6 +832,10 @@ export function ChatPane({
   const memberSummary = peopleHere.length > 0
     ? `${peopleHere.length} ${peopleHere.length === 1 ? "person" : "people"}${onlineHereCount ? ` · ${onlineHereCount} online` : ""}`
     : "People";
+  const isDirectChat = channel.channel_type === "dm" || channel.channel_type === "group_dm";
+  const visibleDmTabs = isDirectChat
+    ? [channel, ...dmTabs.filter((dm) => dm.id !== channel.id)].slice(0, 6)
+    : [];
 
   return (
     <div className="flex flex-1 flex-col" style={{ background: "var(--bg-channel)" }} {...getRootProps()}>
@@ -837,6 +855,50 @@ export function ChatPane({
           <div className="font-semibold" style={{ color: "var(--accent)" }}>
             Drop it anywhere — files of any size are welcome
           </div>
+        </div>
+      )}
+
+      {visibleDmTabs.length > 0 && (
+        <div className="kc-dm-tabs" role="tablist" aria-label="Open direct messages">
+          {visibleDmTabs.map((dm) => {
+            const label = dmTabLabel(dm, dmUsers[dm.id]);
+            const active = dm.id === channel.id;
+            const other = dmUsers[dm.id];
+            return (
+              <button
+                key={dm.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => onSelectDmTab?.(dm)}
+                className="kc-dm-tab kc-interactive"
+                title={label}
+              >
+                <span
+                  className="kc-dm-tab__avatar"
+                  style={{
+                    background: avatarBg(other?.id ?? dm.id),
+                    backgroundImage: other?.avatar_url ? `url(${assetUrl(other.avatar_url)})` : undefined,
+                  }}
+                  aria-hidden="true"
+                >
+                  {!other?.avatar_url && label[0]?.toUpperCase()}
+                </span>
+                <span className="kc-dm-tab__label">{label}</span>
+              </button>
+            );
+          })}
+          {onNewDm && (
+            <button
+              type="button"
+              className="kc-dm-tab kc-dm-tab--new kc-interactive"
+              onClick={onNewDm}
+              aria-label="Start a new DM"
+              title="Start a new DM"
+            >
+              +
+            </button>
+          )}
         </div>
       )}
 

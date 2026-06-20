@@ -779,6 +779,88 @@ button:disabled,
   .ohiyo-cursor-spotlight { display: none; }
 }
 
+/* Tabbed Messenger — subtle desktop-chat DM tabs */
+.kc-dm-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.85rem 0.35rem;
+  overflow-x: auto;
+  border-bottom: 1px solid color-mix(in oklch, var(--text-primary) 5%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--bg-base) 36%, transparent), transparent),
+    color-mix(in oklch, var(--bg-channel) 92%, var(--bg-base));
+  scrollbar-width: none;
+}
+.kc-dm-tabs::-webkit-scrollbar { display: none; }
+.kc-dm-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 11rem;
+  min-height: 2rem;
+  padding: 0.28rem 0.72rem 0.28rem 0.35rem;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 7%, transparent);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: color-mix(in oklch, var(--bg-input) 64%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 4%, transparent);
+  cursor: pointer;
+}
+.kc-dm-tab:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in oklch, var(--accent) 18%, var(--text-primary) 8%);
+  background: color-mix(in oklch, var(--bg-input) 78%, var(--accent) 5%);
+}
+.kc-dm-tab[aria-selected="true"] {
+  color: var(--text-primary);
+  border-color: color-mix(in oklch, var(--accent) 44%, transparent);
+  background: linear-gradient(135deg, color-mix(in oklch, var(--accent) 20%, var(--bg-input)), color-mix(in oklch, var(--bg-input) 82%, var(--accent)));
+  box-shadow: 0 10px 28px -22px color-mix(in oklch, var(--accent) 72%, black), inset 0 1px 0 color-mix(in oklch, white 7%, transparent);
+}
+.kc-dm-tab:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--accent) 74%, white);
+  outline-offset: 2px;
+}
+.kc-dm-tab__avatar {
+  display: grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  background-size: cover !important;
+  background-position: center !important;
+  box-shadow: 0 0 0 1px color-mix(in oklch, white 16%, transparent);
+}
+.kc-dm-tab__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.kc-dm-tab--new {
+  width: 2rem;
+  justify-content: center;
+  padding: 0;
+  color: var(--accent);
+  font-size: 1.05rem;
+  font-weight: 800;
+  background: color-mix(in oklch, var(--accent) 9%, transparent);
+  border-color: color-mix(in oklch, var(--accent) 16%, transparent);
+}
+@media (max-width: 720px) {
+  .kc-dm-tabs { padding-left: 3.1rem; }
+  .kc-dm-tab { max-width: 8.5rem; }
+}
+
 /* Sidebar spacing polish */
 .kc-sidebar-header {
   min-height: 4.85rem;
