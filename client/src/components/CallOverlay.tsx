@@ -406,7 +406,11 @@ function ControlBtn({
 }: {
   d: string; label: string; onClick: () => void; active?: boolean; danger?: boolean; compact?: boolean;
 }) {
-  const bg = danger ? "var(--danger)" : active ? "var(--accent)" : "color-mix(in oklch, var(--text-primary) 7%, var(--bg-input))";
+  const bg = danger
+    ? "color-mix(in oklch, var(--danger) 86%, #8b3e28)"
+    : active
+      ? "linear-gradient(145deg, color-mix(in oklch, var(--accent) 82%, white), var(--accent-hover))"
+      : "color-mix(in oklch, var(--text-primary) 6%, var(--bg-input))";
   const color = danger || active ? "#fff" : "var(--text-secondary)";
   const short = label.replace("Turn ", "").replace(" off", "").replace(" on", "").replace("Call ", "");
   return (
@@ -428,7 +432,7 @@ function ControlBtn({
         <StrokeIcon d={d} size={compact ? 18 : 20} />
       </button>
       {!compact && (
-        <span style={{ color: danger ? "var(--danger)" : "var(--text-muted)", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>
+        <span style={{ color: danger ? "var(--danger)" : active ? "var(--accent)" : "var(--text-muted)", fontSize: 11, fontWeight: 800, lineHeight: 1 }}>
           {danger ? "Leave" : short}
         </span>
       )}
@@ -462,16 +466,67 @@ function AvatarOrb({ name, avatarUrl, size = 112 }: { name: string; avatarUrl: s
 
 function LivePill() {
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 6,
-      padding: "4px 12px", borderRadius: "var(--radius-full)",
-      background: "color-mix(in oklch, var(--green) 18%, transparent)",
-      color: "var(--green)", fontSize: "var(--text-xs)", fontWeight: 800,
-      letterSpacing: "0.04em",
-    }}>
+    <span className="kc-call-live-pill">
       <span className="kc-pulse" style={{ width: 8, height: 8, background: "var(--green)" }} />
       LIVE
     </span>
+  );
+}
+
+function VoiceParticipantRow({
+  stream, name, avatarUrl, muted, isSelf, volume, outputDeviceId, onVolumeChange,
+}: {
+  stream: MediaStream | null;
+  name: string;
+  avatarUrl: string | null;
+  muted: boolean;
+  isSelf: boolean;
+  volume: number;
+  outputDeviceId: string;
+  onVolumeChange?: (volume: number) => void;
+}) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const shouldPlayRemoteAudio = !!stream && !isSelf;
+
+  useEffect(() => {
+    const audioEl = audioRef.current;
+    if (!audioEl) return;
+    audioEl.srcObject = shouldPlayRemoteAudio ? stream : null;
+    audioEl.volume = clampVolume(volume);
+    setMediaOutput(audioEl, outputDeviceId);
+    if (shouldPlayRemoteAudio) void audioEl.play().catch(() => {});
+    return () => { audioEl.srcObject = null; };
+  }, [stream, shouldPlayRemoteAudio, volume, outputDeviceId]);
+
+  return (
+    <div className={`kc-call-voice-row${muted ? " kc-call-voice-row--muted" : ""}${isSelf ? " kc-call-voice-row--self" : ""}`}>
+      {shouldPlayRemoteAudio && <audio ref={audioRef} autoPlay style={{ display: "none" }} />}
+      <AvatarOrb name={name} avatarUrl={avatarUrl} size={58} />
+      <div className="kc-call-voice-row__body">
+        <div className="kc-call-voice-row__name">{name}{isSelf ? " (you)" : ""}</div>
+        <div className="kc-call-voice-row__status">
+          <span className="kc-call-voice-row__mic" aria-hidden="true">
+            <StrokeIcon d={muted ? Icon.micOff : Icon.mic} size={13} />
+          </span>
+          {muted ? "Muted" : isSelf ? "Mic is on" : "Listening"}
+        </div>
+      </div>
+      {!isSelf && onVolumeChange && (
+        <label className="kc-call-voice-row__volume">
+          <span className="kc-call-voice-row__volume-label">Volume</span>
+          <input
+            aria-label={`${name} volume`}
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value={Math.round(clampVolume(volume) * 100)}
+            onChange={(e) => onVolumeChange(Number(e.target.value) / 100)}
+          />
+          <span>{Math.round(clampVolume(volume) * 100)}%</span>
+        </label>
+      )}
+    </div>
   );
 }
 
@@ -565,16 +620,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
   const sortedMediaPeople = [...people].sort((a, b) => Number(b.screen) - Number(a.screen) || Number(b.video) - Number(a.video));
 
   const controls = (compact = false) => (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center",
-      gap: compact ? 8 : "var(--space-3)", flexShrink: 0,
-      padding: compact ? 0 : "12px 16px", width: compact ? "auto" : "fit-content", alignSelf: "center",
-      borderRadius: 999,
-      background: compact ? "transparent" : "color-mix(in oklch, var(--bg-base) 48%, transparent)",
-      border: compact ? "none" : "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)",
-      backdropFilter: compact ? "none" : "blur(18px)",
-      boxShadow: compact ? "none" : "0 18px 48px -38px #000",
-    }}>
+    <div className={compact ? "kc-call-controls kc-call-controls--compact" : "kc-call-controls"}>
       <ControlBtn compact={compact} d={self.muted ? Icon.micOff : Icon.mic} label={self.muted ? "Unmute" : "Mute"}
         onClick={webrtc.toggleAudio} active={false} danger={self.muted} />
       <ControlBtn compact={compact} d={self.video ? Icon.video : Icon.videoOff} label={self.video ? "Turn camera off" : "Turn camera on"}
@@ -585,6 +631,20 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       {!compact && <ControlBtn d={Icon.speaker} label="Call audio" onClick={() => setShowAudioSheet(true)} active={audioOutputId !== ""} />}
       <ControlBtn compact={compact} d={Icon.hangup} label="Leave call" onClick={webrtc.hangUp} danger />
     </div>
+  );
+
+  const renderVoiceRow = (person: (typeof people)[number]) => (
+    <VoiceParticipantRow
+      key={person.id}
+      stream={person.stream}
+      name={person.name}
+      avatarUrl={person.avatarUrl}
+      muted={person.muted}
+      isSelf={person.isSelf}
+      volume={person.isSelf ? 1 : volumeByUser[person.id] ?? 1}
+      outputDeviceId={audioOutputId}
+      onVolumeChange={person.isSelf ? undefined : (volume) => setParticipantVolume(person.id, volume)}
+    />
   );
 
   const renderPersonTile = (person: (typeof people)[number]) => (
@@ -709,37 +769,24 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
           )}
 
           {mode === "voice" && (
-            <div style={{
-              flex: 1, minHeight: 0, display: "grid", gap: 16,
-              gridTemplateColumns: total >= 4 ? "minmax(0, 1fr) min(320px, 28vw)" : "minmax(0, 920px)",
-              justifyContent: "center", alignItems: "center", overflow: "hidden",
-            }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, maxWidth: 920, width: "100%" }}>
-                {people.map(renderPersonTile)}
+            <div className="kc-voice-stage">
+              <div className="kc-voice-stack-card kc-fade-up">
+                <div className="kc-voice-stack-card__head">
+                  <div>
+                    <div className="kc-call-kicker">Voice room</div>
+                    <div className="kc-voice-stack-card__title">People in {channelName}</div>
+                  </div>
+                  <div className="kc-voice-stack-card__count">{total} here</div>
+                </div>
+                <div className="kc-voice-stack">
+                  {people.map(renderVoiceRow)}
+                </div>
               </div>
-              {total >= 4 && (
-                <aside style={{ alignSelf: "stretch", minHeight: 0, overflow: "auto", borderRadius: 28, padding: 14, background: "color-mix(in oklch, var(--bg-channel) 88%, var(--bg-base))", border: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)" }}>
-                  <div style={{ fontFamily: "var(--font-display)", fontWeight: 850, letterSpacing: "-0.04em", marginBottom: 10 }}>People here</div>
-                  {people.map((p) => (
-                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 8px", borderRadius: 16, background: p.isSelf ? "color-mix(in oklch, var(--accent) 10%, transparent)" : "transparent" }}>
-                      <AvatarOrb name={p.name} avatarUrl={p.avatarUrl} size={36} />
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ color: "var(--text-primary)", fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}{p.isSelf ? " (you)" : ""}</div>
-                        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{p.muted ? "Muted" : "Mic on"}</div>
-                      </div>
-                    </div>
-                  ))}
-                </aside>
-              )}
             </div>
           )}
 
           {mode === "media" && (
-            <div style={{
-              flex: 1, display: "grid", gap: "var(--space-3)", minHeight: 0,
-              gridTemplateColumns: total <= 1 ? "minmax(280px, min(720px, 100%))" : total <= 4 ? "repeat(2, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))",
-              alignContent: "center", justifyContent: "center", overflow: "hidden",
-            }}>
+            <div className={`kc-media-stage kc-media-stage--${Math.min(total, 6)}`}>
               {sortedMediaPeople.map(renderPersonTile)}
             </div>
           )}

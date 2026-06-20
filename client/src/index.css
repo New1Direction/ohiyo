@@ -318,6 +318,219 @@ button:disabled,
   border-top-color: var(--accent); animation: kc-spin 720ms linear infinite;
 }
 
+/* ─── Call overlay polish ───────────────────────────────────────────────────── */
+.kc-call-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  color: var(--green);
+  background: color-mix(in oklch, var(--green) 16%, transparent);
+  border: 1px solid color-mix(in oklch, var(--green) 18%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 850;
+  letter-spacing: 0.06em;
+}
+.kc-call-kicker {
+  color: color-mix(in oklch, var(--accent) 84%, white);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.kc-call-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  width: fit-content;
+  max-width: 100%;
+  align-self: center;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 8%, transparent);
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--bg-base) 50%, transparent);
+  box-shadow: 0 18px 52px -40px #000, inset 0 1px 0 color-mix(in oklch, white 4%, transparent);
+  backdrop-filter: blur(18px) saturate(1.1);
+}
+.kc-call-controls--compact {
+  width: auto;
+  padding: 0;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.kc-voice-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: clamp(12px, 3.4vh, 34px);
+}
+.kc-voice-stack-card {
+  width: min(720px, 100%);
+  max-height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  padding: clamp(16px, 2.2vw, 24px);
+  border: 1px solid color-mix(in oklch, var(--text-primary) 9%, transparent);
+  border-radius: 32px;
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in oklch, var(--accent) 12%, transparent), transparent 20rem),
+    linear-gradient(180deg, color-mix(in oklch, var(--bg-channel) 92%, white 2%), color-mix(in oklch, var(--bg-base) 80%, var(--bg-channel)));
+  box-shadow: 0 30px 92px -62px #000, inset 0 1px 0 color-mix(in oklch, white 5%, transparent);
+  overflow: hidden;
+}
+.kc-voice-stack-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+.kc-voice-stack-card__title {
+  margin-top: 5px;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 2.2vw, 1.75rem);
+  font-weight: 850;
+  letter-spacing: -0.045em;
+}
+.kc-voice-stack-card__count {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, transparent);
+  border-radius: var(--radius-full);
+  color: color-mix(in oklch, var(--accent) 84%, white);
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.kc-voice-stack {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  padding-right: 2px;
+}
+.kc-call-voice-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 84px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 8%, transparent);
+  border-radius: 24px;
+  background: color-mix(in oklch, var(--text-primary) 4%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 4%, transparent);
+}
+.kc-call-voice-row--self {
+  border-color: color-mix(in oklch, var(--accent) 24%, transparent);
+  background: color-mix(in oklch, var(--accent) 9%, transparent);
+}
+.kc-call-voice-row--muted {
+  opacity: 0.78;
+}
+.kc-call-voice-row__body { min-width: 0; }
+.kc-call-voice-row__name {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 820;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kc-call-voice-row__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 720;
+}
+.kc-call-voice-row__mic {
+  display: inline-flex;
+  color: var(--green);
+}
+.kc-call-voice-row--muted .kc-call-voice-row__mic { color: var(--danger); }
+.kc-call-voice-row__volume {
+  display: grid;
+  grid-template-columns: auto minmax(72px, 110px) 34px;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+.kc-call-voice-row__volume input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.kc-media-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: var(--space-3);
+  align-content: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.kc-media-stage--1 { grid-template-columns: minmax(280px, min(780px, 100%)); }
+.kc-media-stage--2,
+.kc-media-stage--3,
+.kc-media-stage--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kc-media-stage--5,
+.kc-media-stage--6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 760px) {
+  .kc-call-controls {
+    width: 100%;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 10px;
+    border-radius: 26px;
+  }
+  .kc-call-controls > div { min-width: 0 !important; }
+  .kc-voice-stage { padding: 8px 0; }
+  .kc-voice-stack-card {
+    border-radius: 24px;
+    padding: 14px;
+  }
+  .kc-call-voice-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 76px;
+    border-radius: 20px;
+  }
+  .kc-call-voice-row__volume {
+    grid-column: 1 / -1;
+    grid-template-columns: auto minmax(0, 1fr) 34px;
+  }
+  .kc-media-stage,
+  .kc-media-stage--2,
+  .kc-media-stage--3,
+  .kc-media-stage--4,
+  .kc-media-stage--5,
+  .kc-media-stage--6 {
+    grid-template-columns: 1fr;
+    align-content: start;
+    overflow: auto;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════
    Overlays · modals · onboarding · skeletons
    ═══════════════════════════════════════════════════════════ */
