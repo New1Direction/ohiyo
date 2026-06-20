@@ -59,8 +59,12 @@ async function waitForPeerConnection(page) {
   await page.waitForFunction(() => {
     const call = window.__kkCall?.() ?? [];
     return Array.isArray(call) && call.some((p) =>
-      ["connected", "connecting", "completed"].includes(p.conn) ||
-      ["connected", "completed"].includes(p.ice)
+      (["connected", "connecting", "completed"].includes(p.conn) ||
+      ["connected", "completed"].includes(p.ice)) &&
+      p.localTracks?.includes("audio") &&
+      p.sendTracks?.includes("audio") &&
+      p.recvTracks?.includes("audio") &&
+      p.remoteStreamTracks?.some((s) => s.tracks?.includes("audio"))
     );
   }, { timeout: 20000 });
 }

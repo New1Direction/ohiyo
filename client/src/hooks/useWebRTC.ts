@@ -93,6 +93,12 @@ export function useWebRTC(cb: WebRTCCallbacks) {
           conn: e.pc.connectionState,
           ice: e.pc.iceConnectionState,
           recvTracks: e.pc.getReceivers().filter((r) => r.track && r.track.readyState === "live").map((r) => r.track.kind),
+          sendTracks: e.pc.getSenders().map((s) => s.track).filter((track): track is MediaStreamTrack => !!track && track.readyState === "live").map((track) => track.kind),
+          remoteStreamTracks: [...remoteStreams.entries()].map(([peerId, stream]) => ({
+            peerId,
+            tracks: stream.getTracks().filter((track) => track.readyState === "live").map((track) => track.kind),
+          })),
+          localTracks: localStreamRef.current?.getTracks().filter((track) => track.readyState === "live").map((track) => track.kind) ?? [],
           opusFmtp: sdp.match(/^a=fmtp:\d+ .*stereo=1.*$/im)?.[0] ?? null,
           videoCodecs: [...sdp.matchAll(/^a=rtpmap:\d+ (AV1|VP9|VP8|H264)\/90000/gim)].map((m) => m[1]),
         };
@@ -292,28 +298,55 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   }, [closePeer]);
 
   // ── Local media acquisition ───────────────────────────────────────────────
-  async function acquireLocalMedia(wantVideo: boolean): Promise<MediaStream> {
-    let stream: MediaStream;
+  const acquireMicStream = useCallback(async (): Promise<MediaStream> => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("This browser cannot access a microphone. Try Chrome, Edge, or the Ohiyo desktop app.");
+    }
+
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_AUDIO });
+    } catch (musicErr) {
+      console.warn("[webrtc] music-grade mic capture failed; retrying plain audio", musicErr);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (plainErr) {
+        console.warn("[webrtc] plain mic capture failed", plainErr);
+      }
+    }
+
+    if (!stream?.getAudioTracks().length) {
+      throw new Error("Ohiyo could not hear your microphone. Check browser mic permission, then join again.");
+    }
+    for (const track of stream.getAudioTracks()) track.enabled = true;
+    return stream;
+  }, []);
+
+  const acquireLocalMedia = useCallback(async (wantVideo: boolean): Promise<MediaStream> => {
+    const stream = await acquireMicStream();
+
     if (wantVideo) {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_AUDIO, video: true });
-        hasRealCameraRef.current = true;
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_AUDIO }).catch(() => new MediaStream());
+        const cam = await navigator.mediaDevices.getUserMedia({ video: true });
+        const videoTrack = cam.getVideoTracks()[0] ?? null;
+        if (videoTrack) stream.addTrack(videoTrack);
+        hasRealCameraRef.current = !!videoTrack;
+      } catch (err) {
+        console.warn("[webrtc] camera capture failed; joining voice-only", err);
         stream.addTrack(blankVideoTrack());
         hasRealCameraRef.current = false;
       }
     } else {
       // Voice-only should feel like voice-only: ask for microphone, not camera.
-      stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_AUDIO }).catch(() => new MediaStream());
       stream.addTrack(blankVideoTrack());
       hasRealCameraRef.current = false;
     }
+
     const videoTrack = stream.getVideoTracks()[0] ?? null;
     cameraTrackRef.current = videoTrack;
     if (videoTrack) videoTrack.enabled = wantVideo && hasRealCameraRef.current;
     return stream;
-  }
+  }, [acquireMicStream]);
 
   // ── Public actions ────────────────────────────────────────────────────────
   const joinVoice = useCallback(async (cid: string, opts?: { video?: boolean }) => {
@@ -348,7 +381,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
       setCallState("idle");
       throw err;
     }
-  }, []);
+  }, [acquireLocalMedia]);
 
   const hangUp = useCallback(() => {
     const cid = channelRef.current;

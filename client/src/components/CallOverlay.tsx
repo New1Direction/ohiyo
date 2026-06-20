@@ -66,6 +66,69 @@ function setMediaOutput(el: SinkMediaElement, outputDeviceId: string) {
   });
 }
 
+function useAudioLevel(stream: MediaStream | null, active: boolean) {
+  const [level, setLevel] = useState(0);
+
+  useEffect(() => {
+    const audioTracks = stream?.getAudioTracks().filter((track) => track.readyState === "live") ?? [];
+    if (!active || audioTracks.length === 0) {
+      setLevel(0);
+      return;
+    }
+
+    const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const ctx = new AudioContextCtor();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.72;
+    const source = ctx.createMediaStreamSource(new MediaStream(audioTracks));
+    const data = new Uint8Array(analyser.fftSize);
+    let frame = 0;
+    source.connect(analyser);
+    void ctx.resume().catch(() => {});
+
+    const tick = () => {
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (const value of data) {
+        const normalized = (value - 128) / 128;
+        sum += normalized * normalized;
+      }
+      setLevel(Math.sqrt(sum / data.length));
+      frame = window.requestAnimationFrame(tick);
+    };
+    tick();
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      source.disconnect();
+      analyser.disconnect();
+      void ctx.close().catch(() => {});
+    };
+  }, [stream, active]);
+
+  return { level, speaking: active && level > 0.035 };
+}
+
+function RemoteAudioSink({ stream, volume, outputDeviceId }: { stream: MediaStream | null; volume: number; outputDeviceId: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    const audioEl = audioRef.current;
+    if (!audioEl) return;
+    const audioTracks = stream?.getAudioTracks().filter((track) => track.readyState === "live") ?? [];
+    audioEl.srcObject = audioTracks.length ? new MediaStream(audioTracks) : null;
+    audioEl.volume = clampVolume(volume);
+    setMediaOutput(audioEl, outputDeviceId);
+    if (audioTracks.length) void audioEl.play().catch((err) => console.warn("[call] remote audio playback blocked", err));
+    return () => { audioEl.srcObject = null; };
+  }, [stream, volume, outputDeviceId]);
+
+  return <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />;
+}
+
 function StrokeIcon({ d, size = 20 }: { d: string; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -77,7 +140,7 @@ function StrokeIcon({ d, size = 20 }: { d: string; size?: number }) {
 
 // ── A single participant tile ──────────────────────────────────────────────────
 function VideoTile({
-  stream, name, avatarUrl, muted, video, screen, isSelf, quality, volume, outputDeviceId, onVolumeChange,
+  stream, name, avatarUrl, muted, video, screen, isSelf, quality, volume, onVolumeChange,
 }: {
   stream: MediaStream | null;
   name: string;
@@ -92,40 +155,27 @@ function VideoTile({
   onVolumeChange?: (volume: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const showVideo = (video || screen) && !!stream;
-  // Voice-only calls render the avatar instead of a <video>, but the remote mic still
-  // needs a media element attached or the browser has nothing to play.
-  const needsAudioOnlyPlayback = !!stream && !showVideo && !isSelf;
+  const { level, speaking } = useAudioLevel(stream, !!stream && !muted);
 
   useEffect(() => {
     const videoEl = videoRef.current;
     if (videoEl) {
       videoEl.srcObject = showVideo ? stream : null;
-      videoEl.volume = isSelf ? 0 : clampVolume(volume);
-      if (!isSelf) setMediaOutput(videoEl, outputDeviceId);
-    }
-
-    const audioEl = audioRef.current;
-    if (audioEl) {
-      audioEl.srcObject = needsAudioOnlyPlayback ? stream : null;
-      audioEl.volume = clampVolume(volume);
-      setMediaOutput(audioEl, outputDeviceId);
-      if (needsAudioOnlyPlayback) void audioEl.play().catch(() => {});
+      videoEl.volume = 0;
     }
 
     return () => {
       if (videoEl) videoEl.srcObject = null;
-      if (audioEl) audioEl.srcObject = null;
     };
-  }, [stream, showVideo, needsAudioOnlyPlayback, isSelf, volume, outputDeviceId]);
+  }, [stream, showVideo]);
 
   const initial = name.charAt(0).toUpperCase();
 
   return (
     <div
-      className={`kc-call-tile kc-card${screen ? " kc-call-tile--screen" : showVideo ? " kc-call-tile--media" : " kc-call-tile--voice"}`}
-      style={{ 
+      className={`kc-call-tile kc-card${screen ? " kc-call-tile--screen" : showVideo ? " kc-call-tile--media" : " kc-call-tile--voice"}${speaking ? " kc-call-tile--speaking" : ""}`}
+      style={{
         position: "relative",
         overflow: "hidden",
         aspectRatio: showVideo ? "16 / 10" : undefined,
@@ -137,12 +187,14 @@ function VideoTile({
           : "radial-gradient(260px 180px at 50% 44%, color-mix(in oklch, var(--accent) 16%, transparent), transparent 72%), color-mix(in oklch, var(--bg-input) 88%, var(--bg-channel))",
         borderRadius: "var(--radius-lg)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "var(--shadow-md)",
+        boxShadow: speaking
+          ? `0 0 0 ${Math.max(3, Math.min(10, level * 90))}px color-mix(in oklch, var(--green) 30%, transparent), var(--shadow-md)`
+          : "var(--shadow-md)",
       }}
     >
       {showVideo ? (
         <video
-          ref={videoRef} autoPlay playsInline muted={isSelf}
+          ref={videoRef} autoPlay playsInline muted
           style={{
             width: "100%", height: "100%", objectFit: "contain",
             transform: isSelf && !screen ? "scaleX(-1)" : "none",
@@ -150,20 +202,18 @@ function VideoTile({
           }}
         />
       ) : (
-        <>
-          {needsAudioOnlyPlayback && <audio ref={audioRef} autoPlay style={{ display: "none" }} />}
-          <div style={{
-            width: 88, height: 88, borderRadius: "var(--radius-full)",
-            background: "var(--accent)", color: "#fff",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            overflow: "hidden",
-            fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "2rem",
-          }}>
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-            ) : initial}
-          </div>
-        </>
+        <div style={{
+          width: 88, height: 88, borderRadius: "var(--radius-full)",
+          background: "var(--accent)", color: "#fff",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          overflow: "hidden",
+          fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "2rem",
+          boxShadow: speaking ? `0 0 0 ${Math.max(6, Math.min(18, level * 150))}px color-mix(in oklch, var(--green) 24%, transparent)` : "none",
+        }}>
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+          ) : initial}
+        </div>
       )}
 
       {!isSelf && onVolumeChange && (
@@ -204,10 +254,10 @@ function VideoTile({
         background: "rgba(0,0,0,0.55)", color: "#fff",
         fontSize: "var(--text-sm)", fontWeight: 600, backdropFilter: "blur(6px)",
       }}>
-        <span style={{ color: muted ? "var(--danger)" : "#7CF2B0" }}>
+        <span style={{ color: muted ? "var(--danger)" : speaking ? "var(--green)" : "#7CF2B0" }}>
           <StrokeIcon d={muted ? Icon.micOff : Icon.mic} size={14} />
         </span>
-        {name}{isSelf && " (you)"}{muted && " · muted"}{screen && " · sharing"}
+        {name}{isSelf && " (you)"}{muted ? " · muted" : speaking ? " · speaking" : ""}{screen && " · sharing"}
         {quality && <ConnectionBadge level={quality} size={13} />}
       </div>
     </div>
@@ -474,7 +524,7 @@ function LivePill() {
 }
 
 function VoiceParticipantRow({
-  stream, name, avatarUrl, muted, isSelf, volume, outputDeviceId, onVolumeChange,
+  stream, name, avatarUrl, muted, isSelf, volume, onVolumeChange,
 }: {
   stream: MediaStream | null;
   name: string;
@@ -482,25 +532,19 @@ function VoiceParticipantRow({
   muted: boolean;
   isSelf: boolean;
   volume: number;
-  outputDeviceId: string;
   onVolumeChange?: (volume: number) => void;
 }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const shouldPlayRemoteAudio = !!stream && !isSelf;
-
-  useEffect(() => {
-    const audioEl = audioRef.current;
-    if (!audioEl) return;
-    audioEl.srcObject = shouldPlayRemoteAudio ? stream : null;
-    audioEl.volume = clampVolume(volume);
-    setMediaOutput(audioEl, outputDeviceId);
-    if (shouldPlayRemoteAudio) void audioEl.play().catch(() => {});
-    return () => { audioEl.srcObject = null; };
-  }, [stream, shouldPlayRemoteAudio, volume, outputDeviceId]);
+  const { level, speaking } = useAudioLevel(stream, !!stream && !muted);
 
   return (
-    <div className={`kc-call-voice-row${muted ? " kc-call-voice-row--muted" : ""}${isSelf ? " kc-call-voice-row--self" : ""}`}>
-      {shouldPlayRemoteAudio && <audio ref={audioRef} autoPlay style={{ display: "none" }} />}
+    <div
+      className={`kc-call-voice-row${muted ? " kc-call-voice-row--muted" : ""}${isSelf ? " kc-call-voice-row--self" : ""}${speaking ? " kc-call-voice-row--speaking" : ""}`}
+      style={{
+        boxShadow: speaking
+          ? `0 0 0 ${Math.max(2, Math.min(7, level * 90))}px color-mix(in oklch, var(--green) 25%, transparent), var(--shadow-sm)`
+          : undefined,
+      }}
+    >
       <AvatarOrb name={name} avatarUrl={avatarUrl} size={58} />
       <div className="kc-call-voice-row__body">
         <div className="kc-call-voice-row__name">{name}{isSelf ? " (you)" : ""}</div>
@@ -508,7 +552,7 @@ function VoiceParticipantRow({
           <span className="kc-call-voice-row__mic" aria-hidden="true">
             <StrokeIcon d={muted ? Icon.micOff : Icon.mic} size={13} />
           </span>
-          {muted ? "Muted" : isSelf ? "Mic is on" : "Listening"}
+          {muted ? "Muted" : speaking ? "Speaking" : isSelf ? "Mic is on" : "Listening"}
         </div>
       </div>
       {!isSelf && onVolumeChange && (
@@ -643,7 +687,6 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       muted={person.muted}
       isSelf={person.isSelf}
       volume={person.isSelf ? 1 : volumeByUser[person.id] ?? 1}
-      outputDeviceId={audioOutputId}
       onVolumeChange={person.isSelf ? undefined : (volume) => setParticipantVolume(person.id, volume)}
     />
   );
@@ -684,6 +727,14 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
         transition: "all var(--dur-base) var(--ease-out)",
       }}
     >
+      {people.filter((person) => !person.isSelf).map((person) => (
+        <RemoteAudioSink
+          key={`audio-${person.id}`}
+          stream={person.stream}
+          volume={volumeByUser[person.id] ?? 1}
+          outputDeviceId={audioOutputId}
+        />
+      ))}
       {minimized ? (
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

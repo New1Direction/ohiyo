@@ -47,6 +47,7 @@ export const MUSIC_AUDIO: MediaTrackConstraints = {
   echoCancellation: false,
   noiseSuppression: false,
   autoGainControl: false,
-  channelCount: 2,
-  sampleRate: 48000,
+  // Prefer music-grade capture, but do not reject ordinary mono laptop/headset mics.
+  channelCount: { ideal: 2 },
+  sampleRate: { ideal: 48000 },
 };
