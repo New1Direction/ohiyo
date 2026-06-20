@@ -187,13 +187,20 @@ pub async fn start_managed_discord_import_job(
             job.stage = "connecting".to_owned();
             job.message = "Connecting to Discord and reading your server…".to_owned();
         });
-        let result = run_managed_discord_import_inner(owner_id.clone(), state, guild_id, history, |stage, message| {
-            update_import_job(&owner_id, &job_id, |job| {
-                job.state = ManagedDiscordImportJobState::Running;
-                job.stage = stage.to_owned();
-                job.message = message.to_owned();
-            });
-        }).await;
+        let result = run_managed_discord_import_inner(
+            owner_id.clone(),
+            state,
+            guild_id,
+            history,
+            |stage, message| {
+                update_import_job(&owner_id, &job_id, |job| {
+                    job.state = ManagedDiscordImportJobState::Running;
+                    job.stage = stage.to_owned();
+                    job.message = message.to_owned();
+                });
+            },
+        )
+        .await;
         match result {
             Ok(response) => update_import_job(&owner_id, &job_id, |job| {
                 job.state = ManagedDiscordImportJobState::Succeeded;
@@ -339,7 +346,10 @@ async fn run_managed_discord_import_inner(
     .await
     .map_err(crate::api::error::internal)?;
     let opts = ImportOptions { history };
-    progress("importing", "Creating channels, messages, authors, and attachments in Ohiyo…");
+    progress(
+        "importing",
+        "Creating channels, messages, authors, and attachments in Ohiyo…",
+    );
     let (server_id, report) = import::run_import(&state.db, &owner_id, &guild, opts)
         .await
         .map_err(crate::api::error::internal)?;
@@ -420,9 +430,16 @@ fn upsert_import_job(owner_id: &str, job: ManagedDiscordImportJob) {
         .insert(job.id.clone(), job);
 }
 
-fn update_import_job(owner_id: &str, job_id: &str, update: impl FnOnce(&mut ManagedDiscordImportJob)) {
+fn update_import_job(
+    owner_id: &str,
+    job_id: &str,
+    update: impl FnOnce(&mut ManagedDiscordImportJob),
+) {
     let mut jobs = import_jobs().lock().expect("import job store poisoned");
-    let Some(job) = jobs.get_mut(owner_id).and_then(|owner_jobs| owner_jobs.get_mut(job_id)) else {
+    let Some(job) = jobs
+        .get_mut(owner_id)
+        .and_then(|owner_jobs| owner_jobs.get_mut(job_id))
+    else {
         return;
     };
     update(job);
@@ -431,7 +448,9 @@ fn update_import_job(owner_id: &str, job_id: &str, update: impl FnOnce(&mut Mana
 
 fn get_import_job(owner_id: &str, job_id: &str) -> Option<ManagedDiscordImportJob> {
     let jobs = import_jobs().lock().expect("import job store poisoned");
-    jobs.get(owner_id).and_then(|owner_jobs| owner_jobs.get(job_id)).cloned()
+    jobs.get(owner_id)
+        .and_then(|owner_jobs| owner_jobs.get(job_id))
+        .cloned()
 }
 
 #[derive(Debug, Deserialize)]
@@ -531,7 +550,10 @@ async fn run_discrawl_job(
         sync_args.push("--since");
         sync_args.push(&since);
     }
-    progress("syncing_discord", "Copying channels, messages, and attachments from Discord…");
+    progress(
+        "syncing_discord",
+        "Copying channels, messages, and attachments from Discord…",
+    );
     run_discrawl_command(&job_dir, &sync_args, &config_home, &data_home, &cache_home).await?;
 
     Ok(ManagedDiscrawlArchive {

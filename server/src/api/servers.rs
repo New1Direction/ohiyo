@@ -134,24 +134,31 @@ pub async fn set_server_icon(
     State(state): State<AppState>,
     Json(body): Json<SetServerIconBody>,
 ) -> Result<Json<ServerWithChannels>, (StatusCode, String)> {
-    if !crate::api::roles::has_perm(&state, &id, &auth.0, crate::api::roles::perm::MANAGE_SERVER).await {
-        return Err((StatusCode::FORBIDDEN, "you don't have permission for that".into()));
+    if !crate::api::roles::has_perm(&state, &id, &auth.0, crate::api::roles::perm::MANAGE_SERVER)
+        .await
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you don't have permission for that".into(),
+        ));
     }
 
-    let file: Option<(String,)> = sqlx::query_as(
-        "SELECT content_type FROM files WHERE id = ? AND uploader_id = ?",
-    )
-    .bind(&body.file_id)
-    .bind(&auth.0)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(crate::api::error::internal)?;
+    let file: Option<(String,)> =
+        sqlx::query_as("SELECT content_type FROM files WHERE id = ? AND uploader_id = ?")
+            .bind(&body.file_id)
+            .bind(&auth.0)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
 
     let Some((content_type,)) = file else {
         return Err((StatusCode::NOT_FOUND, "File not found".into()));
     };
     if !content_type.starts_with("image/") {
-        return Err((StatusCode::BAD_REQUEST, "Server logo must be an image".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Server logo must be an image".into(),
+        ));
     }
 
     let icon_url = format!("{}/files/{}", crate::public_base_url(), body.file_id);

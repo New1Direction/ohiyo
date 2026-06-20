@@ -45,8 +45,14 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me/saved", get(saved::list_saved))
         .route("/users/search", get(users::search_users))
         .route("/users/@me/friends", get(users::list_friends))
-        .route("/users/{user_id}/friendship", get(users::get_friendship).delete(users::delete_friendship))
-        .route("/users/{user_id}/friend-request", post(users::send_friend_request))
+        .route(
+            "/users/{user_id}/friendship",
+            get(users::get_friendship).delete(users::delete_friendship),
+        )
+        .route(
+            "/users/{user_id}/friend-request",
+            post(users::send_friend_request),
+        )
         .route(
             "/users/{user_id}/friend-request/accept",
             post(users::accept_friend_request),

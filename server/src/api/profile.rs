@@ -85,7 +85,11 @@ pub async fn set_banner(
     Ok(StatusCode::NO_CONTENT)
 }
 
-use crate::{auth::AuthUser, types::{PublicUser, User}, AppState};
+use crate::{
+    auth::AuthUser,
+    types::{PublicUser, User},
+    AppState,
+};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProfileSong {

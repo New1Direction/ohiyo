@@ -158,7 +158,14 @@ pub async fn list_friends(
         rows.into_iter()
             .map(|r| {
                 let direction = if r.status == "pending" {
-                    Some(if r.addressee_id == auth.0 { "incoming" } else { "outgoing" }.to_owned())
+                    Some(
+                        if r.addressee_id == auth.0 {
+                            "incoming"
+                        } else {
+                            "outgoing"
+                        }
+                        .to_owned(),
+                    )
                 } else {
                     None
                 };
@@ -187,10 +194,14 @@ pub async fn get_friendship(
     Path(user_id): Path<String>,
 ) -> Result<Json<FriendRelation>, (StatusCode, String)> {
     if user_id == auth.0 {
-        return Ok(Json(FriendRelation { status: "self".to_owned() }));
+        return Ok(Json(FriendRelation {
+            status: "self".to_owned(),
+        }));
     }
     let row = fetch_friendship_pair(&state, &auth.0, &user_id).await?;
-    Ok(Json(FriendRelation { status: relation_status(&auth.0, row) }))
+    Ok(Json(FriendRelation {
+        status: relation_status(&auth.0, row),
+    }))
 }
 
 /// POST /users/{user_id}/friend-request — request friendship; auto-accepts an incoming request.
@@ -215,7 +226,9 @@ pub async fn send_friend_request(
     let now = now_unix();
     if let Some(row) = fetch_friendship_pair(&state, &auth.0, &user_id).await? {
         if row.status == "accepted" {
-            return Ok(Json(FriendRelation { status: "friends".to_owned() }));
+            return Ok(Json(FriendRelation {
+                status: "friends".to_owned(),
+            }));
         }
         if row.addressee_id == auth.0 {
             sqlx::query("UPDATE friendships SET status = 'accepted', updated_at = ? WHERE requester_id = ? AND addressee_id = ?")
@@ -225,9 +238,13 @@ pub async fn send_friend_request(
                 .execute(&state.db)
                 .await
                 .map_err(crate::api::error::internal)?;
-            return Ok(Json(FriendRelation { status: "friends".to_owned() }));
+            return Ok(Json(FriendRelation {
+                status: "friends".to_owned(),
+            }));
         }
-        return Ok(Json(FriendRelation { status: "pending_outgoing".to_owned() }));
+        return Ok(Json(FriendRelation {
+            status: "pending_outgoing".to_owned(),
+        }));
     }
 
     sqlx::query(
@@ -243,7 +260,9 @@ pub async fn send_friend_request(
     .await
     .map_err(crate::api::error::internal)?;
 
-    Ok(Json(FriendRelation { status: "pending_outgoing".to_owned() }))
+    Ok(Json(FriendRelation {
+        status: "pending_outgoing".to_owned(),
+    }))
 }
 
 /// POST /users/{user_id}/friend-request/accept — accept an incoming request.
@@ -267,12 +286,16 @@ pub async fn accept_friend_request(
     if res.rows_affected() == 0 {
         let row = fetch_friendship_pair(&state, &auth.0, &user_id).await?;
         if matches!(row.as_ref().map(|r| r.status.as_str()), Some("accepted")) {
-            return Ok(Json(FriendRelation { status: "friends".to_owned() }));
+            return Ok(Json(FriendRelation {
+                status: "friends".to_owned(),
+            }));
         }
         return Err((StatusCode::NOT_FOUND, "No incoming friend request".into()));
     }
 
-    Ok(Json(FriendRelation { status: "friends".to_owned() }))
+    Ok(Json(FriendRelation {
+        status: "friends".to_owned(),
+    }))
 }
 
 /// DELETE /users/{user_id}/friendship — cancel, decline, or remove a friend.
