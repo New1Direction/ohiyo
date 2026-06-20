@@ -143,6 +143,23 @@ function AppearanceTab({
   const [fontScale, setFontScaleVal] = useState<number>(loadFontScale);
 
   const allThemes = [...BUILTIN_THEMES, ...customThemes];
+  const activePreset = ACCENT_PRESETS.find((p) => accent.toLowerCase() === p.hex.toLowerCase());
+  const isCustomAccent = accentOverride && !activePreset;
+  const editorGroupName = (group: string) => (group === "Accents" ? "Highlights" : group);
+  const editorColorName = (label: string) => ({
+    Base: "App background",
+    Sidebar: "Sidebar",
+    Channel: "Chat background",
+    Input: "Message boxes",
+    Hover: "Hover shade",
+    Primary: "Main text",
+    Secondary: "Soft text",
+    Muted: "Quiet text",
+    Accent: "Main highlight",
+    "Accent hover": "Highlight hover",
+    Success: "Success",
+    Danger: "Warning",
+  } satisfies Record<string, string>)[label] ?? label;
 
   function select(theme: Theme) {
     applyTheme(theme);
@@ -247,8 +264,8 @@ function AppearanceTab({
           <div className="kc-kicker">Your space</div>
           <h2>Make Ohiyo comfy for you.</h2>
           <p>
-            Pick a color, spacing, and text size that feel easy on your eyes. Nothing scary —
-            change it anytime and Ohiyo updates right away.
+            Start with quick tweaks, or pick a whole theme below. Two or three clicks is enough —
+            Ohiyo updates right away and you can change it anytime.
           </p>
         </div>
         <div className="kc-appearance-hero__preview" aria-hidden="true">
@@ -258,242 +275,261 @@ function AppearanceTab({
         </div>
       </section>
 
-      {/* Accent color — recolors the whole app, layered over any theme. Free here;
-          Discord charges for it. */}
-      <section className="kc-settings-card kc-settings-card--compact">
-        <div className="kc-settings-card__head">
+      <section className="kc-settings-stage kc-settings-stage--primary" aria-labelledby="quick-tweaks-title">
+        <div className="kc-section-head">
           <div>
-            <div className="kc-settings-card__title">Favorite color</div>
-            <p>This is the little color that shows up on buttons, links, and selected things.</p>
+            <span className="kc-step-pill">Step 1</span>
+            <h3 id="quick-tweaks-title">Quick tweaks</h3>
+            <p>Start here. Pick a favorite color, choose comfy spacing, and set text size — then you can be done.</p>
           </div>
-          {accentOverride && <span className="kc-settings-chip">Custom</span>}
         </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          {ACCENT_PRESETS.map((p) => {
-            const isActive = accent.toLowerCase() === p.hex.toLowerCase();
-            return (
-              <button
-                key={p.hex}
-                type="button"
-                title={p.name}
-                aria-label={`Accent ${p.name}`}
-                aria-pressed={isActive}
-                onClick={() => chooseAccent(p.hex)}
-                className="kc-accent-swatch"
+
+        <div className="kc-quick-tweaks">
+          {/* Accent color — recolors the whole app, layered over any theme. */}
+          <section className="kc-settings-card kc-settings-card--compact">
+            <div className="kc-settings-card__head">
+              <div>
+                <div className="kc-settings-card__title">Favorite color</div>
+                <p>This is the little color that shows up on buttons, links, and selected things.</p>
+              </div>
+              {accentOverride && <span className="kc-settings-chip">Custom</span>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              {ACCENT_PRESETS.map((p) => {
+                const isActive = accent.toLowerCase() === p.hex.toLowerCase();
+                return (
+                  <button
+                    key={p.hex}
+                    type="button"
+                    title={`${p.name}${isActive ? " selected" : ""}`}
+                    aria-label={`${isActive ? "Selected accent" : "Choose accent"}: ${p.name}`}
+                    aria-pressed={isActive}
+                    onClick={() => chooseAccent(p.hex)}
+                    className="kc-accent-swatch"
+                    style={{
+                      background: p.hex,
+                      boxShadow: isActive ? `0 0 0 2px var(--bg-channel), 0 0 0 4px ${p.hex}` : undefined,
+                    }}
+                  >
+                    {isActive && (
+                      <span aria-hidden="true" style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>
+                        ✓
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Custom color — native picker behind a rainbow swatch */}
+              <label
+                className="kc-accent-swatch kc-accent-custom"
+                title="Custom color"
                 style={{
-                  background: p.hex,
-                  boxShadow: isActive ? `0 0 0 2px var(--bg-channel), 0 0 0 4px ${p.hex}` : undefined,
+                  background:
+                    "conic-gradient(from 180deg, #f2683c, #e0992f, #1f9e6b, #1f9e9e, #3da5f2, #7c6dfa, #eb6f92, #f2683c)",
+                  boxShadow: isCustomAccent ? "0 0 0 2px var(--bg-channel), 0 0 0 4px var(--text-primary)" : undefined,
                 }}
               >
-                {isActive && (
-                  <span aria-hidden="true" style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>
-                    ✓
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                <input
+                  type="color"
+                  value={accent}
+                  onChange={(e) => chooseAccent(e.target.value)}
+                  aria-label={isCustomAccent ? `Selected custom accent ${accent}` : "Pick a custom accent color"}
+                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+                />
+                <span
+                  aria-hidden="true"
+                  style={{ color: "#fff", fontSize: isCustomAccent ? 12 : 14, fontWeight: 700, textShadow: "0 1px 2px rgba(0,0,0,.45)" }}
+                >
+                  {isCustomAccent ? "✓" : "+"}
+                </span>
+              </label>
 
-          {/* Custom color — native picker behind a rainbow swatch */}
-          <label
-            className="kc-accent-swatch kc-accent-custom"
-            title="Custom color"
-            style={{
-              background:
-                "conic-gradient(from 180deg, #f2683c, #e0992f, #1f9e6b, #1f9e9e, #3da5f2, #7c6dfa, #eb6f92, #f2683c)",
-            }}
-          >
-            <input
-              type="color"
-              value={accent}
-              onChange={(e) => chooseAccent(e.target.value)}
-              aria-label="Pick a custom accent color"
-              style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
-            />
-            <span
-              aria-hidden="true"
-              style={{ color: "#fff", fontSize: 14, fontWeight: 700, textShadow: "0 1px 2px rgba(0,0,0,.45)" }}
-            >
-              +
-            </span>
-          </label>
+              {accentOverride && (
+                <button
+                  type="button"
+                  onClick={resetAccent}
+                  className="kc-interactive ml-1 rounded px-2 py-1 text-xs"
+                  style={{ color: "var(--text-secondary)", background: "transparent", border: "1px solid var(--bg-hover)" }}
+                >
+                  Reset to theme
+                </button>
+              )}
+            </div>
+          </section>
 
-          {accentOverride && (
-            <button
-              type="button"
-              onClick={resetAccent}
-              className="kc-interactive ml-1 rounded px-2 py-1 text-xs"
-              style={{ color: "var(--text-secondary)", background: "transparent", border: "1px solid var(--bg-hover)" }}
-            >
-              Reset to theme
-            </button>
-          )}
+          <div className="kc-preference-grid">
+            {/* Message density — how tightly messages pack. Synced cross-device like accent. */}
+            <section className="kc-settings-card kc-settings-card--compact">
+              <div className="kc-settings-card__head">
+                <div>
+                  <div className="kc-settings-card__title">Chat spacing</div>
+                  <p>Make messages tighter, cozy, or extra roomy.</p>
+                </div>
+              </div>
+              <div className="kc-seg" role="group" aria-label="Message density">
+                {DENSITIES.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className="kc-seg__btn"
+                    aria-pressed={density === d}
+                    onClick={() => chooseDensity(d)}
+                  >
+                    {d[0].toUpperCase() + d.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* Font size — scales the chat text; the message list re-measures on change. */}
+            <section className="kc-settings-card kc-settings-card--compact">
+              <div className="kc-settings-card__head">
+                <div>
+                  <div className="kc-settings-card__title">Text size</div>
+                  <p>Make chat easier to read without changing everything else.</p>
+                </div>
+              </div>
+              <div className="kc-seg" role="group" aria-label="Font size">
+                {FONT_SCALES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="kc-seg__btn"
+                    aria-pressed={fontScale === s}
+                    onClick={() => chooseFontScale(s)}
+                  >
+                    {Math.round(s * 100)}%
+                  </button>
+                ))}
+              </div>
+            </section>
+          </div>
         </div>
       </section>
 
-      <div className="kc-preference-grid">
-        {/* Message density — how tightly messages pack. Synced cross-device like accent. */}
-        <section className="kc-settings-card kc-settings-card--compact">
-          <div className="kc-settings-card__head">
-            <div>
-              <div className="kc-settings-card__title">Chat spacing</div>
-              <p>Make messages tighter, cozy, or extra roomy.</p>
-            </div>
+      <section className="kc-settings-stage kc-theme-section" aria-labelledby="choose-theme-title">
+        <div className="kc-section-head kc-section-head--inline">
+          <div>
+            <span className="kc-step-pill">Step 2</span>
+            <h3 id="choose-theme-title">Choose a theme</h3>
+            <p>Prefer one-and-done? Pick a whole look here. Quick tweaks above still stay easy to change.</p>
           </div>
-        <div className="kc-seg" role="group" aria-label="Message density">
-          {DENSITIES.map((d) => (
-            <button
-              key={d}
-              type="button"
-              className="kc-seg__btn"
-              aria-pressed={density === d}
-              onClick={() => chooseDensity(d)}
-            >
-              {d[0].toUpperCase() + d.slice(1)}
-            </button>
-          ))}
-        </div>
-        </section>
-
-        {/* Font size — scales the chat text; the message list re-measures on change. */}
-        <section className="kc-settings-card kc-settings-card--compact">
-          <div className="kc-settings-card__head">
-            <div>
-              <div className="kc-settings-card__title">Text size</div>
-              <p>Make chat easier to read without changing everything else.</p>
-            </div>
+          <div className="kc-settings-chip kc-settings-chip--soft">
+            Using {currentTheme.name}
           </div>
-        <div className="kc-seg" role="group" aria-label="Font size">
-          {FONT_SCALES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="kc-seg__btn"
-              aria-pressed={fontScale === s}
-              onClick={() => chooseFontScale(s)}
-            >
-              {Math.round(s * 100)}%
-            </button>
-          ))}
         </div>
-        </section>
-      </div>
 
-      <section className="kc-settings-card kc-theme-section">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="text-sm font-semibold">Pick a cozy look</div>
-          <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-            Start with one of these looks. You can switch back anytime.
-          </p>
-        </div>
-        <div
-          className="rounded-full px-3 py-1 text-xs font-semibold"
-          style={{ background: "color-mix(in oklch, var(--accent) 12%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in oklch, var(--accent) 24%, transparent)" }}
-        >
-          You’re using {currentTheme.name}
-        </div>
-      </div>
-      <div className="kc-theme-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {allThemes.map((theme) => {
-          const isSelected = currentTheme.id === theme.id;
-          const isCustom = !BUILTIN_THEMES.find((b) => b.id === theme.id);
-          const isRecommended = theme.id === "chrome-blue";
-          return (
-            <div
-              key={theme.id}
-              role="button"
-              tabIndex={0}
-              aria-label={`Use ${theme.name} theme`}
-              onClick={() => select(theme)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(theme); }
-              }}
-              className="kc-theme-card kc-interactive relative cursor-pointer overflow-hidden rounded-2xl"
-              style={{
-                border: `1.5px solid ${isSelected ? theme.vars["--accent"] : "color-mix(in oklch, var(--text-primary) 10%, transparent)"}`,
-                background: theme.vars["--bg-channel"],
-                boxShadow: isSelected ? `0 0 0 1px ${theme.vars["--accent"]}, 0 18px 42px -34px ${theme.vars["--accent"]}` : undefined,
-              }}
-            >
-              <div className="p-3" style={{ background: `linear-gradient(135deg, ${theme.vars["--bg-sidebar"]}, ${theme.vars["--bg-base"]})` }}>
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
-                    {["--accent", "--green", "--danger"].map((v) => (
+        <div className="kc-theme-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {allThemes.map((theme) => {
+            const isSelected = currentTheme.id === theme.id;
+            const isCustom = !BUILTIN_THEMES.find((b) => b.id === theme.id);
+            const isRecommended = theme.id === "chrome-blue";
+            return (
+              <div key={theme.id} className="kc-theme-card-wrap">
+                <button
+                  type="button"
+                  aria-pressed={isSelected}
+                  aria-label={`${isSelected ? "Selected theme" : "Use theme"}: ${theme.name}`}
+                  onClick={() => select(theme)}
+                  className="kc-theme-card kc-interactive relative cursor-pointer overflow-hidden rounded-2xl"
+                  style={{
+                    border: `1.5px solid ${isSelected ? theme.vars["--accent"] : "color-mix(in oklch, var(--text-primary) 10%, transparent)"}`,
+                    background: theme.vars["--bg-channel"],
+                    boxShadow: isSelected ? `0 0 0 1px ${theme.vars["--accent"]}, 0 18px 42px -34px ${theme.vars["--accent"]}` : undefined,
+                  }}
+                >
+                  {isSelected && <span className="kc-theme-card__selected">✓ Selected</span>}
+                  <div className="p-3" style={{ background: `linear-gradient(135deg, ${theme.vars["--bg-sidebar"]}, ${theme.vars["--bg-base"]})` }}>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5" aria-hidden="true">
+                        {["--accent", "--green", "--danger"].map((v) => (
+                          <span
+                            key={v}
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ background: theme.vars[v as keyof typeof theme.vars] }}
+                          />
+                        ))}
+                      </div>
+                      {isRecommended && (
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                          style={{ background: theme.vars["--accent"], color: "white" }}
+                        >
+                          Recommended
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-2 rounded-xl p-3" style={{ background: theme.vars["--bg-channel"] }} aria-hidden="true">
+                      <div className="h-2 w-20 rounded-full" style={{ background: theme.vars["--text-muted"], opacity: 0.45 }} />
+                      <div className="flex items-center gap-2">
+                        <span className="h-7 w-7 rounded-full" style={{ background: theme.vars["--accent"] }} />
+                        <span className="h-8 flex-1 rounded-full" style={{ background: theme.vars["--bg-input"], border: `1px solid ${theme.vars["--bg-hover"]}` }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 px-3 py-2.5" style={{ background: theme.vars["--bg-channel"] }}>
+                    <div className="min-w-0 text-left">
+                      <div className="truncate text-sm font-bold" style={{ color: theme.vars["--text-primary"] }}>
+                        {theme.name}
+                      </div>
+                      <div className="text-[11px]" style={{ color: theme.vars["--text-muted"] }}>
+                        {isSelected ? "Using this now" : isCustom ? "Made by you" : "Tap to try"}
+                      </div>
+                    </div>
+                    {isSelected && (
                       <span
-                        key={v}
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ background: theme.vars[v as keyof typeof theme.vars] }}
-                      />
-                    ))}
+                        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                        style={{ background: theme.vars["--accent"], color: "white" }}
+                        aria-hidden="true"
+                      >
+                        ✓
+                      </span>
+                    )}
                   </div>
-                  {isRecommended && (
-                    <span
-                      className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-                      style={{ background: theme.vars["--accent"], color: "white" }}
-                    >
-                      Recommended
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-2 rounded-xl p-3" style={{ background: theme.vars["--bg-channel"] }}>
-                  <div className="h-2 w-20 rounded-full" style={{ background: theme.vars["--text-muted"], opacity: 0.45 }} />
-                  <div className="flex items-center gap-2">
-                    <span className="h-7 w-7 rounded-full" style={{ background: theme.vars["--accent"] }} />
-                    <span className="h-8 flex-1 rounded-full" style={{ background: theme.vars["--bg-input"], border: `1px solid ${theme.vars["--bg-hover"]}` }} />
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-3 px-3 py-2.5" style={{ background: theme.vars["--bg-channel"] }}>
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-bold" style={{ color: theme.vars["--text-primary"] }}>
-                    {theme.name}
-                  </div>
-                  <div className="text-[11px]" style={{ color: theme.vars["--text-muted"] }}>
-                    {isSelected ? "On right now" : isCustom ? "Made by you" : "Tap to try"}
-                  </div>
-                </div>
-                {isSelected ? (
-                  <span
-                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                    style={{ background: theme.vars["--accent"], color: "white" }}
-                  >
-                    ✓
-                  </span>
-                ) : isCustom ? (
+                </button>
+                {isCustom && !isSelected && (
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); handleDeleteCustom(theme.id); }}
-                    className="kc-interactive rounded-full px-2 py-1 text-xs font-semibold"
-                    style={{ color: theme.vars["--danger"], background: "transparent", border: `1px solid ${theme.vars["--bg-hover"]}` }}
+                    onClick={() => handleDeleteCustom(theme.id)}
+                    className="kc-theme-card__remove kc-interactive rounded-full px-2 py-1 text-xs font-semibold"
                   >
                     Remove
                   </button>
-                ) : null}
+                )}
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
       </section>
 
       {/* Build your own theme — visual editor (no JSON required) */}
-      <section className="kc-settings-card kc-theme-builder">
+      <section className="kc-settings-stage kc-theme-builder" aria-labelledby="theme-builder-title">
         {!editing ? (
-          <button
-            type="button"
-            onClick={openEditor}
-            className="kc-theme-builder__button kc-interactive rounded-full px-4 py-2 text-sm font-semibold"
-          >
-            Make your own look
-          </button>
+          <div className="kc-theme-builder__closed">
+            <div>
+              <span className="kc-step-pill kc-step-pill--muted">Step 3 · Optional</span>
+              <h3 id="theme-builder-title">Make your own look</h3>
+              <p>Want more control? Make your own look. This is for people who like to tinker.</p>
+            </div>
+            <button
+              type="button"
+              onClick={openEditor}
+              className="kc-theme-builder__button kc-interactive rounded-full px-4 py-2 text-sm font-semibold"
+            >
+              Open builder
+            </button>
+          </div>
         ) : (
           <div className="kc-theme-editor rounded-2xl p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-semibold">Make your own look</div>
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                You’ll see changes right away ✨
-              </span>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <span className="kc-step-pill kc-step-pill--muted">Step 3 · Optional</span>
+                <div className="text-sm font-semibold">Make your own look</div>
+                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                  This is for people who like to tinker. You’ll see changes right away ✨
+                </p>
+              </div>
             </div>
             <input
               value={draftName}
@@ -509,7 +545,7 @@ function AppearanceTab({
                   className="mb-1.5 text-xs font-semibold uppercase"
                   style={{ color: "var(--text-muted)", letterSpacing: "0.04em" }}
                 >
-                  {grp.group}
+                  {editorGroupName(grp.group)}
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {grp.vars.map((v) => (
@@ -522,10 +558,10 @@ function AppearanceTab({
                         type="color"
                         value={isValidHex(draftVars[v.key]) ? draftVars[v.key] : "#000000"}
                         onChange={(e) => editVar(v.key, e.target.value)}
-                        aria-label={`${grp.group} ${v.label} color`}
+                        aria-label={`${editorGroupName(grp.group)} ${editorColorName(v.label)} color`}
                         className="kc-color-input"
                       />
-                      {v.label}
+                      {editorColorName(v.label)}
                     </label>
                   ))}
                 </div>
@@ -556,6 +592,7 @@ function AppearanceTab({
       {/* Export / Import (advanced) */}
       <details className="kc-advanced-theme rounded-2xl p-4">
         <summary className="cursor-pointer text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
+          <span className="kc-step-pill kc-step-pill--muted">Step 4 · Optional</span>
           Share or import a look
         </summary>
         <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
