@@ -65,7 +65,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [participants, setParticipants] = useState<Map<string, VoiceParticipant>>(new Map());
-  const [self, setSelf] = useState({ muted: false, video: false, screen: false });
+  const [self, setSelf] = useState({ muted: false, video: false, screen: false, listenOnly: false });
 
   const pcsRef = useRef<Map<string, PeerEntry>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -115,7 +115,12 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     pcsRef.current.set(peerId, entry);
 
     const ls = localStreamRef.current;
-    if (ls) for (const track of ls.getTracks()) pc.addTrack(track, ls);
+    if (ls) {
+      for (const track of ls.getTracks()) pc.addTrack(track, ls);
+      // Listen-only callers have no microphone track, but still need an audio
+      // m-line in their offer so existing peers can answer with voice audio.
+      if (ls.getAudioTracks().length === 0) pc.addTransceiver("audio", { direction: "recvonly" });
+    }
 
     // If someone joins while we are already screen sharing, the new peer is born
     // after the original replaceTrack() calls. Wire that peer to the active screen
@@ -298,10 +303,8 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   }, [closePeer]);
 
   // ── Local media acquisition ───────────────────────────────────────────────
-  const acquireMicStream = useCallback(async (): Promise<MediaStream> => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      throw new Error("This browser cannot access a microphone. Try Chrome, Edge, or the Ohiyo desktop app.");
-    }
+  const acquireMicStream = useCallback(async (): Promise<MediaStream | null> => {
+    if (!navigator.mediaDevices?.getUserMedia) return null;
 
     let stream: MediaStream | null = null;
     try {
@@ -311,19 +314,18 @@ export function useWebRTC(cb: WebRTCCallbacks) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       } catch (plainErr) {
-        console.warn("[webrtc] plain mic capture failed", plainErr);
+        console.warn("[webrtc] plain mic capture failed; joining listen-only", plainErr);
       }
     }
 
-    if (!stream?.getAudioTracks().length) {
-      throw new Error("Ohiyo could not hear your microphone. Check browser mic permission, then join again.");
-    }
+    if (!stream?.getAudioTracks().length) return null;
     for (const track of stream.getAudioTracks()) track.enabled = true;
     return stream;
   }, []);
 
-  const acquireLocalMedia = useCallback(async (wantVideo: boolean): Promise<MediaStream> => {
-    const stream = await acquireMicStream();
+  const acquireLocalMedia = useCallback(async (wantVideo: boolean): Promise<{ stream: MediaStream; hasMic: boolean }> => {
+    const micStream = await acquireMicStream();
+    const stream = new MediaStream(micStream?.getAudioTracks() ?? []);
 
     if (wantVideo) {
       try {
@@ -345,7 +347,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     const videoTrack = stream.getVideoTracks()[0] ?? null;
     cameraTrackRef.current = videoTrack;
     if (videoTrack) videoTrack.enabled = wantVideo && hasRealCameraRef.current;
-    return stream;
+    return { stream, hasMic: stream.getAudioTracks().length > 0 };
   }, [acquireMicStream]);
 
   // ── Public actions ────────────────────────────────────────────────────────
@@ -363,14 +365,15 @@ export function useWebRTC(cb: WebRTCCallbacks) {
         return FALLBACK_ICE;
       });
       const wantVideo = opts?.video ?? false;
-      const stream = await acquireLocalMedia(wantVideo);
+      const { stream, hasMic } = await acquireLocalMedia(wantVideo);
       localStreamRef.current = stream;
       setLocalStream(stream);
       channelRef.current = cid;
       setChannelId(cid);
       const startVideo = wantVideo && hasRealCameraRef.current;
-      setSelf({ muted: false, video: startVideo, screen: false });
-      cbRef.current.sendJoin(cid, false, startVideo);
+      const listenOnly = !hasMic;
+      setSelf({ muted: listenOnly, video: startVideo, screen: false, listenOnly });
+      cbRef.current.sendJoin(cid, listenOnly, startVideo);
       setCallState("connected");
     } catch (err) {
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -397,7 +400,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     setLocalStream(null);
     setRemoteStreams(new Map());
     setParticipants(new Map());
-    setSelf({ muted: false, video: false, screen: false });
+    setSelf({ muted: false, video: false, screen: false, listenOnly: false });
     setChannelId(null);
     setCallState("idle");
   }, [closePeer]);
@@ -407,16 +410,48 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     if (cid) cbRef.current.sendMeta(cid, next.muted, next.video, next.screen);
   }, []);
 
-  const toggleAudio = useCallback(() => {
+  const toggleAudio = useCallback(async () => {
+    const current = selfRef.current;
+    let track = localStreamRef.current?.getAudioTracks()[0] ?? null;
+
+    // If the user joined listen-only, clicking Unmute should try to acquire a mic
+    // without forcing them to leave/rejoin. If permission still fails, stay listen-only.
+    if (current.muted && !track) {
+      const micStream = await acquireMicStream();
+      track = micStream?.getAudioTracks()[0] ?? null;
+      if (!track) {
+        const next = { ...current, muted: true, listenOnly: true };
+        setSelf(next);
+        pushMeta(next);
+        return;
+      }
+
+      const stream = localStreamRef.current ?? new MediaStream();
+      stream.addTrack(track);
+      localStreamRef.current = stream;
+      setLocalStream(new MediaStream(stream.getTracks()));
+
+      for (const [peerId, { pc }] of pcsRef.current) {
+        const transceiver = pc.getTransceivers().find((t) => t.receiver.track?.kind === "audio" || t.sender.track?.kind === "audio");
+        if (transceiver) {
+          transceiver.direction = "sendrecv";
+          await transceiver.sender.replaceTrack(track).catch(() => {});
+        } else {
+          pc.addTrack(track, stream);
+        }
+        await renegotiate(peerId);
+      }
+    }
+
     setSelf((prev) => {
       const muted = !prev.muted;
-      const track = localStreamRef.current?.getAudioTracks()[0];
-      if (track) track.enabled = !muted;
-      const next = { ...prev, muted };
+      const latestTrack = localStreamRef.current?.getAudioTracks()[0];
+      if (latestTrack) latestTrack.enabled = !muted;
+      const next = { ...prev, muted, listenOnly: muted && !latestTrack };
       pushMeta(next);
       return next;
     });
-  }, [pushMeta]);
+  }, [acquireMicStream, pushMeta, renegotiate]);
 
   const toggleVideo = useCallback(async () => {
     const cur = selfRef.current;

@@ -524,13 +524,14 @@ function LivePill() {
 }
 
 function VoiceParticipantRow({
-  stream, name, avatarUrl, muted, isSelf, volume, onVolumeChange,
+  stream, name, avatarUrl, muted, isSelf, listenOnly, volume, onVolumeChange,
 }: {
   stream: MediaStream | null;
   name: string;
   avatarUrl: string | null;
   muted: boolean;
   isSelf: boolean;
+  listenOnly?: boolean;
   volume: number;
   onVolumeChange?: (volume: number) => void;
 }) {
@@ -552,7 +553,7 @@ function VoiceParticipantRow({
           <span className="kc-call-voice-row__mic" aria-hidden="true">
             <StrokeIcon d={muted ? Icon.micOff : Icon.mic} size={13} />
           </span>
-          {muted ? "Muted" : speaking ? "Speaking" : isSelf ? "Mic is on" : "Listening"}
+          {listenOnly ? "Listening only" : muted ? "Muted" : speaking ? "Speaking" : isSelf ? "Mic is on" : "Listening"}
         </div>
       </div>
       {!isSelf && onVolumeChange && (
@@ -575,7 +576,7 @@ function VoiceParticipantRow({
 }
 
 function ScreenShareParticipantChip({
-  stream, name, avatarUrl, muted, screen, isSelf, quality,
+  stream, name, avatarUrl, muted, screen, isSelf, listenOnly, quality,
 }: {
   stream: MediaStream | null;
   name: string;
@@ -583,10 +584,11 @@ function ScreenShareParticipantChip({
   muted: boolean;
   screen: boolean;
   isSelf: boolean;
+  listenOnly?: boolean;
   quality?: QualityLevel;
 }) {
   const { speaking } = useAudioLevel(stream, !!stream && !muted);
-  const status = screen ? "Sharing" : muted ? "Muted" : speaking ? "Speaking" : isSelf ? "You" : "Here";
+  const status = screen ? "Sharing" : listenOnly ? "Listening" : muted ? "Muted" : speaking ? "Speaking" : isSelf ? "You" : "Here";
 
   return (
     <div className={`kc-screen-chip${speaking ? " kc-screen-chip--speaking" : ""}${muted ? " kc-screen-chip--muted" : ""}`}>
@@ -670,6 +672,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       muted: self.muted,
       video: self.video,
       screen: self.screen,
+      listenOnly: self.listenOnly,
       stream: localStream,
       isSelf: true,
       quality: undefined as QualityLevel | undefined,
@@ -681,6 +684,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       muted: p.muted,
       video: p.video,
       screen: p.screen,
+      listenOnly: false,
       stream: remoteStreams.get(p.user_id) ?? null,
       isSelf: false,
       quality: quality[p.user_id]?.level ?? "unknown" as QualityLevel,
@@ -697,8 +701,8 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
 
   const controls = (compact = false) => (
     <div className={`${compact ? "kc-call-controls kc-call-controls--compact" : "kc-call-controls"}${hasScreenShare && !compact ? " kc-call-controls--screen" : ""}`}>
-      <ControlBtn compact={compact} d={self.muted ? Icon.micOff : Icon.mic} label={self.muted ? "Unmute" : "Mute"}
-        onClick={webrtc.toggleAudio} active={false} danger={self.muted} />
+      <ControlBtn compact={compact} d={self.muted ? Icon.micOff : Icon.mic} label={self.listenOnly ? "Try microphone" : self.muted ? "Unmute" : "Mute"}
+        onClick={() => { void webrtc.toggleAudio(); }} active={false} danger={self.muted && !self.listenOnly} />
       <ControlBtn compact={compact} d={self.video ? Icon.video : Icon.videoOff} label={self.video ? "Turn camera off" : "Turn camera on"}
         onClick={webrtc.toggleVideo} active={self.video} />
       <ControlBtn compact={compact} d={Icon.screen} label={self.screen ? "Stop sharing" : "Share screen"}
@@ -717,6 +721,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       avatarUrl={person.avatarUrl}
       muted={person.muted}
       isSelf={person.isSelf}
+      listenOnly={person.listenOnly}
       volume={person.isSelf ? 1 : volumeByUser[person.id] ?? 1}
       onVolumeChange={person.isSelf ? undefined : (volume) => setParticipantVolume(person.id, volume)}
     />
@@ -885,6 +890,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
                       muted={person.muted}
                       screen={person.screen}
                       isSelf={person.isSelf}
+                      listenOnly={person.listenOnly}
                       quality={person.quality}
                     />
                   ))}

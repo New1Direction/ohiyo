@@ -41,7 +41,7 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [participants, setParticipants] = useState<Map<string, VoiceParticipant>>(new Map());
-  const [self, setSelf] = useState({ muted: false, video: false, screen: false });
+  const [self, setSelf] = useState({ muted: false, video: false, screen: false, listenOnly: false });
 
   const roomRef = useRef<Room | null>(null);
   const channelRef = useRef<string | null>(null);
@@ -155,6 +155,7 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       muted: !room.localParticipant.isMicrophoneEnabled,
       video: room.localParticipant.isCameraEnabled,
       screen: room.localParticipant.isScreenShareEnabled,
+      listenOnly: false,
     });
   }, []);
 
@@ -171,7 +172,7 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
     setLocalStream(null);
     setRemoteStreams(new Map());
     setParticipants(new Map());
-    setSelf({ muted: false, video: false, screen: false });
+    setSelf({ muted: false, video: false, screen: false, listenOnly: false });
   }, []);
 
   const joinVoice = useCallback(
@@ -256,10 +257,10 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
     );
   }, []);
 
-  const toggleAudio = useCallback(() => {
+  const toggleAudio = useCallback(async () => {
     const room = roomRef.current;
     if (!room) return;
-    void room.localParticipant
+    await room.localParticipant
       .setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled)
       .then(() => {
         refreshLocal();
