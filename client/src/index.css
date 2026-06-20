@@ -1530,7 +1530,7 @@ button:disabled,
     var(--bg-channel);
 }
 .kc-theme-builder::before {
-  content: "Want something custom?";
+  content: "Want it to feel even more yours?";
   color: var(--text-secondary);
   font-size: .9rem;
   font-weight: 650;
@@ -1557,7 +1557,7 @@ button:disabled,
 }
 .kc-advanced-theme summary::-webkit-details-marker { display: none; }
 .kc-advanced-theme summary::after {
-  content: "Advanced";
+  content: "Optional";
   margin-left: 10px;
   padding: 3px 7px;
   border-radius: 999px;

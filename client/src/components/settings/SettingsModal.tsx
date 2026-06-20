@@ -244,17 +244,17 @@ function AppearanceTab({
     <div className="kc-appearance">
       <section className="kc-appearance-hero">
         <div>
-          <div className="kc-kicker">Appearance</div>
-          <h2>Make Ohiyo feel like yours.</h2>
+          <div className="kc-kicker">Your space</div>
+          <h2>Make Ohiyo comfy for you.</h2>
           <p>
-            Tune color, density, and type with calm defaults. Chrome Blue stays the premium base;
-            your choices layer on top instantly.
+            Pick a color, spacing, and text size that feel easy on your eyes. Nothing scary —
+            change it anytime and Ohiyo updates right away.
           </p>
         </div>
         <div className="kc-appearance-hero__preview" aria-hidden="true">
           <span className="kc-preview-dot" />
           <span className="kc-preview-line" />
-          <span className="kc-preview-pill">Live preview</span>
+          <span className="kc-preview-pill">Updates instantly</span>
         </div>
       </section>
 
@@ -263,8 +263,8 @@ function AppearanceTab({
       <section className="kc-settings-card kc-settings-card--compact">
         <div className="kc-settings-card__head">
           <div>
-            <div className="kc-settings-card__title">Accent color</div>
-            <p>The color that runs through buttons, links, highlights, and focus rings.</p>
+            <div className="kc-settings-card__title">Favorite color</div>
+            <p>This is the little color that shows up on buttons, links, and selected things.</p>
           </div>
           {accentOverride && <span className="kc-settings-chip">Custom</span>}
         </div>
@@ -336,8 +336,8 @@ function AppearanceTab({
         <section className="kc-settings-card kc-settings-card--compact">
           <div className="kc-settings-card__head">
             <div>
-              <div className="kc-settings-card__title">Message density</div>
-              <p>Choose how much breathing room messages get in chat.</p>
+              <div className="kc-settings-card__title">Chat spacing</div>
+              <p>Make messages tighter, cozy, or extra roomy.</p>
             </div>
           </div>
         <div className="kc-seg" role="group" aria-label="Message density">
@@ -359,8 +359,8 @@ function AppearanceTab({
         <section className="kc-settings-card kc-settings-card--compact">
           <div className="kc-settings-card__head">
             <div>
-              <div className="kc-settings-card__title">Font size</div>
-              <p>Scale chat text without changing the rest of the interface.</p>
+              <div className="kc-settings-card__title">Text size</div>
+              <p>Make chat easier to read without changing everything else.</p>
             </div>
           </div>
         <div className="kc-seg" role="group" aria-label="Font size">
@@ -382,16 +382,16 @@ function AppearanceTab({
       <section className="kc-settings-card kc-theme-section">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold">Choose a look</div>
+          <div className="text-sm font-semibold">Pick a cozy look</div>
           <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-            Pick the mood Ohiyo opens with. You can change this anytime.
+            Start with one of these looks. You can switch back anytime.
           </p>
         </div>
         <div
           className="rounded-full px-3 py-1 text-xs font-semibold"
           style={{ background: "color-mix(in oklch, var(--accent) 12%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in oklch, var(--accent) 24%, transparent)" }}
         >
-          Using {currentTheme.name}
+          You’re using {currentTheme.name}
         </div>
       </div>
       <div className="kc-theme-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -450,7 +450,7 @@ function AppearanceTab({
                     {theme.name}
                   </div>
                   <div className="text-[11px]" style={{ color: theme.vars["--text-muted"] }}>
-                    {isSelected ? "Active now" : isCustom ? "Your custom look" : "Tap to preview"}
+                    {isSelected ? "On right now" : isCustom ? "Made by you" : "Tap to try"}
                   </div>
                 </div>
                 {isSelected ? (
@@ -485,20 +485,20 @@ function AppearanceTab({
             onClick={openEditor}
             className="kc-theme-builder__button kc-interactive rounded-full px-4 py-2 text-sm font-semibold"
           >
-            Create your own theme
+            Make your own look
           </button>
         ) : (
           <div className="kc-theme-editor rounded-2xl p-4">
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-semibold">Create your own theme</div>
+              <div className="text-sm font-semibold">Make your own look</div>
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                Changes preview live ✨
+                You’ll see changes right away ✨
               </span>
             </div>
             <input
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
-              placeholder="Theme name"
+              placeholder="Name this look"
               aria-label="Theme name"
               className="mb-4 w-full rounded px-3 py-2 text-sm outline-none"
               style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
@@ -556,10 +556,10 @@ function AppearanceTab({
       {/* Export / Import (advanced) */}
       <details className="kc-advanced-theme rounded-2xl p-4">
         <summary className="cursor-pointer text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
-          Advanced theme sharing
+          Share or import a look
         </summary>
         <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
-          Only use this if someone sent you a theme file, or if you want to copy your current look to another device.
+          For when a friend sends you a look, or you want to copy yours to another device.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
@@ -568,11 +568,11 @@ function AppearanceTab({
             className="kc-interactive rounded-full px-3 py-1.5 text-sm font-semibold"
             style={{ background: "var(--bg-input)", color: "var(--text-primary)", border: "1px solid var(--bg-hover)" }}
           >
-            Copy my current look
+            Copy this look
           </button>
         </div>
         <textarea
-          placeholder="Paste a theme file here…"
+          placeholder="Paste a look here…"
           value={importText}
           onChange={(e) => setImportText(e.target.value)}
           rows={4}
@@ -586,7 +586,7 @@ function AppearanceTab({
           className="rounded-full px-3 py-1.5 text-sm font-semibold"
           style={{ background: importText.trim() ? "var(--accent)" : "var(--bg-hover)", color: "white", opacity: importText.trim() ? 1 : 0.65 }}
         >
-          Add theme
+          Add this look
         </button>
       </details>
     </div>
