@@ -416,9 +416,9 @@ export function ChannelSidebar({
 
             {/* Voice channels */}
             {voiceChannels.length > 0 && (
-              <div>
+              <div className="kc-voice-section">
                 <div
-                  className="px-4 py-1 text-xs font-bold uppercase"
+                  className="kc-voice-section-title px-4 py-1 text-xs font-bold uppercase"
                   style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}
                 >
                   Voice Channels
@@ -437,7 +437,7 @@ export function ChannelSidebar({
 
             <div className="kc-sidebar-hint mx-3 mt-5">
               <div className="kc-sidebar-hint-title">Ready when you are</div>
-              <p>Start in #general, join voice, or invite someone in.</p>
+              <p>Send a message, hop into voice, or invite a friend.</p>
             </div>
           </>
         ) : (
@@ -756,11 +756,13 @@ function VoiceChannelRow({
   participantCount: number;
   onJoin: () => void;
 }) {
+  const displayName = /^general(?:\s+voice)?$/i.test(name.trim()) ? "Voice" : name;
+
   return (
     <button
       type="button"
       onClick={onJoin}
-      className="kc-interactive mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-1.5 px-2 py-1 text-sm"
+      className="kc-voice-row kc-interactive mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-2 px-2.5 py-1.5 text-sm"
       style={{
         borderRadius: "var(--radius-md)", border: "none",
         background: active ? "color-mix(in oklch, var(--green) 12%, transparent)" : "transparent",
@@ -771,7 +773,7 @@ function VoiceChannelRow({
       title={active ? "You're in this call" : "Join voice"}
     >
       <SpeakerIcon />
-      <span className="truncate flex-1 text-left">{name}</span>
+      <span className="truncate flex-1 text-left">{displayName}</span>
       {active ? (
         <span
           className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold"
@@ -781,7 +783,7 @@ function VoiceChannelRow({
           {participantCount}
         </span>
       ) : (
-        <span className="text-xs font-semibold" style={{ color: "var(--accent)" }}>Join</span>
+        <span className="kc-voice-join text-xs font-semibold" style={{ color: "var(--accent)" }}>Join</span>
       )}
     </button>
   );

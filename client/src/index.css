@@ -808,6 +808,37 @@ button:disabled,
 .kc-sidebar-invite:hover {
   background: color-mix(in oklch, var(--accent) 20%, transparent) !important;
 }
+.kc-voice-section {
+  margin-top: 0.85rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid color-mix(in oklch, var(--text-primary) 5%, transparent);
+}
+.kc-voice-section-title {
+  padding-bottom: 0.4rem !important;
+  color: color-mix(in oklch, var(--text-muted) 86%, var(--text-secondary)) !important;
+}
+.kc-voice-row {
+  min-height: 2.15rem;
+  margin-top: 0.1rem;
+}
+.kc-voice-row:hover {
+  background: color-mix(in oklch, var(--text-primary) 5%, transparent) !important;
+  color: var(--text-secondary) !important;
+}
+.kc-voice-row svg,
+.kc-voice-row [aria-hidden="true"] {
+  opacity: 0.78;
+}
+.kc-voice-join {
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--accent) 15%, transparent);
+}
+.kc-voice-row:hover .kc-voice-join {
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
+  border-color: color-mix(in oklch, var(--accent) 28%, transparent);
+}
 .kc-sidebar-hint {
   border-radius: var(--radius-lg);
   border: 1px solid color-mix(in oklch, var(--text-primary) 6%, transparent);
