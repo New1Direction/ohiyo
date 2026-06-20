@@ -341,17 +341,21 @@ button:disabled,
   position: fixed; inset: 0; z-index: 60;
   display: grid; place-items: center;
   padding: var(--space-4);
-  background: color-mix(in oklch, var(--text-primary) 36%, transparent);
-  backdrop-filter: blur(10px) saturate(1.1);
-  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--accent) 10%, transparent), transparent 28rem),
+    color-mix(in oklch, var(--bg-base) 76%, black 12%);
+  backdrop-filter: blur(12px) saturate(0.92);
+  -webkit-backdrop-filter: blur(12px) saturate(0.92);
   animation: kc-backdrop-in var(--dur-base) var(--ease-out) both;
 }
 .kc-modal {
   width: 100%;
-  background: var(--bg-channel);
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in oklch, var(--accent) 9%, transparent), transparent 18rem),
+    linear-gradient(180deg, color-mix(in oklch, var(--bg-channel) 78%, black), color-mix(in oklch, var(--bg-base) 86%, var(--bg-channel)));
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
-  border: 1px solid color-mix(in oklch, var(--text-primary) 7%, transparent);
+  box-shadow: 0 34px 96px -54px #000, 0 12px 34px -24px rgba(0,0,0,.72), inset 0 1px 0 color-mix(in oklch, white 5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--text-primary) 9%, transparent);
   animation: kc-scale-in var(--dur-slow) var(--ease-spring) both;
 }
 .kc-float { animation: kc-float 4s var(--ease-out) infinite; }
