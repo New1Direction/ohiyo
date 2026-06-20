@@ -509,79 +509,84 @@ function AppearanceTab({
           <div className="kc-theme-builder__closed">
             <div>
               <span className="kc-step-pill kc-step-pill--muted">Step 3 · Optional</span>
-              <h3 id="theme-builder-title">Make your own look</h3>
-              <p>Want more control? Make your own look. This is for people who like to tinker.</p>
+              <h3 id="theme-builder-title">Fine-tune your own look</h3>
+              <p>Only open this if you want exact colors. Most people can stop after picking a favorite above.</p>
             </div>
             <button
               type="button"
               onClick={openEditor}
               className="kc-theme-builder__button kc-interactive rounded-full px-4 py-2 text-sm font-semibold"
             >
-              Open builder
+              Customize colors
             </button>
           </div>
         ) : (
           <div className="kc-theme-editor rounded-2xl p-4">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="kc-theme-editor__head">
               <div>
                 <span className="kc-step-pill kc-step-pill--muted">Step 3 · Optional</span>
-                <div className="text-sm font-semibold">Make your own look</div>
-                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                  This is for people who like to tinker. You’ll see changes right away ✨
+                <div className="kc-theme-editor__title">Fine-tune your own look</div>
+                <p className="kc-theme-editor__copy">
+                  Pick a color, watch Ohiyo update instantly, then save it as your own look.
                 </p>
               </div>
-            </div>
-            <input
-              value={draftName}
-              onChange={(e) => setDraftName(e.target.value)}
-              placeholder="Name this look"
-              aria-label="Theme name"
-              className="mb-4 w-full rounded px-3 py-2 text-sm outline-none"
-              style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
-            />
-            {THEME_VAR_GROUPS.map((grp) => (
-              <div key={grp.group} className="mb-3">
-                <div
-                  className="mb-1.5 text-xs font-semibold uppercase"
-                  style={{ color: "var(--text-muted)", letterSpacing: "0.04em" }}
-                >
-                  {editorGroupName(grp.group)}
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-2">
-                  {grp.vars.map((v) => (
-                    <label
-                      key={v.key}
-                      className="flex items-center gap-2 text-xs"
-                      style={{ color: "var(--text-secondary)" }}
-                    >
-                      <input
-                        type="color"
-                        value={isValidHex(draftVars[v.key]) ? draftVars[v.key] : "#000000"}
-                        onChange={(e) => editVar(v.key, e.target.value)}
-                        aria-label={`${editorGroupName(grp.group)} ${editorColorName(v.label)} color`}
-                        className="kc-color-input"
-                      />
-                      {editorColorName(v.label)}
-                    </label>
-                  ))}
+              <div className="kc-theme-editor__preview" aria-hidden="true">
+                <div className="kc-theme-editor__preview-dots"><span /><span /><span /></div>
+                <div className="kc-theme-editor__preview-line" />
+                <div className="kc-theme-editor__preview-message">
+                  <span style={{ background: draftVars["--accent"] }} />
+                  <div>
+                    <b style={{ color: draftVars["--text-primary"] }}>Preview</b>
+                    <small style={{ color: draftVars["--text-muted"] }}>This is how your colors feel.</small>
+                  </div>
                 </div>
               </div>
-            ))}
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={saveEditor}
-                className="rounded px-3 py-1.5 text-sm font-semibold"
-                style={{ background: "var(--accent)", color: "#fff" }}
-              >
-                Save theme
+            </div>
+
+            <label className="kc-theme-name-field">
+              <span>Name your look</span>
+              <input
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                placeholder="e.g. Night Study"
+                aria-label="Theme name"
+              />
+            </label>
+
+            <div className="kc-theme-editor__groups">
+              {THEME_VAR_GROUPS.map((grp) => (
+                <div key={grp.group} className="kc-theme-color-group">
+                  <div className="kc-theme-color-group__title">{editorGroupName(grp.group)}</div>
+                  <div className="kc-theme-color-grid">
+                    {grp.vars.map((v) => (
+                      <label key={v.key} className="kc-theme-color-card">
+                        <span
+                          className="kc-theme-color-card__swatch"
+                          style={{ background: isValidHex(draftVars[v.key]) ? draftVars[v.key] : "#000000" }}
+                          aria-hidden="true"
+                        />
+                        <span className="kc-theme-color-card__text">
+                          <span>{editorColorName(v.label)}</span>
+                          <code>{isValidHex(draftVars[v.key]) ? draftVars[v.key].toUpperCase() : "#000000"}</code>
+                        </span>
+                        <input
+                          type="color"
+                          value={isValidHex(draftVars[v.key]) ? draftVars[v.key] : "#000000"}
+                          onChange={(e) => editVar(v.key, e.target.value)}
+                          aria-label={`${editorGroupName(grp.group)} ${editorColorName(v.label)} color`}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="kc-theme-editor__actions">
+              <button type="button" onClick={saveEditor} className="kc-cta px-4 py-2 text-sm">
+                Save this look
               </button>
-              <button
-                type="button"
-                onClick={cancelEditor}
-                className="kc-interactive rounded px-3 py-1.5 text-sm"
-                style={{ color: "var(--text-secondary)", border: "1px solid var(--bg-hover)", background: "transparent" }}
-              >
+              <button type="button" onClick={cancelEditor} className="kc-interactive rounded-full px-4 py-2 text-sm font-semibold">
                 Cancel
               </button>
             </div>
