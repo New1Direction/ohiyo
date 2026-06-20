@@ -489,6 +489,30 @@ button:disabled,
   align-content: center;
   justify-content: center;
   overflow: hidden;
+  padding-top: 4px;
+}
+.kc-call-tile {
+  border: 1px solid color-mix(in oklch, var(--text-primary) 9%, transparent) !important;
+  border-radius: 30px !important;
+  box-shadow: 0 20px 64px -50px #000, inset 0 1px 0 color-mix(in oklch, white 4%, transparent) !important;
+}
+.kc-call-tile--media,
+.kc-call-tile--screen {
+  background: color-mix(in oklch, var(--bg-base) 86%, black) !important;
+}
+.kc-call-tile--screen {
+  border-color: color-mix(in oklch, var(--accent) 24%, var(--text-primary) 8%) !important;
+  box-shadow: 0 28px 88px -58px color-mix(in oklch, var(--accent) 36%, black), inset 0 1px 0 color-mix(in oklch, white 5%, transparent) !important;
+}
+.kc-media-stage--screen-active {
+  align-content: stretch;
+}
+.kc-media-stage--screen-active .kc-call-tile--screen:first-child {
+  grid-column: 1 / -1;
+  min-height: min(58vh, 620px) !important;
+}
+.kc-media-stage--screen-active .kc-call-tile:not(.kc-call-tile--screen) {
+  min-height: 180px !important;
 }
 .kc-media-stage--1 { grid-template-columns: minmax(280px, min(780px, 100%)); }
 .kc-media-stage--2,
@@ -528,6 +552,9 @@ button:disabled,
     grid-template-columns: 1fr;
     align-content: start;
     overflow: auto;
+  }
+  .kc-media-stage--screen-active .kc-call-tile--screen:first-child {
+    min-height: min(52vh, 520px) !important;
   }
 }
 

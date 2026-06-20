@@ -124,8 +124,8 @@ function VideoTile({
 
   return (
     <div
-      className="kc-card"
-      style={{
+      className={`kc-call-tile kc-card${screen ? " kc-call-tile--screen" : showVideo ? " kc-call-tile--media" : " kc-call-tile--voice"}`}
+      style={{ 
         position: "relative",
         overflow: "hidden",
         aspectRatio: showVideo ? "16 / 10" : undefined,
@@ -618,6 +618,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
   const mode: "solo" | "voice" | "media" = hasMedia ? "media" : total === 1 ? "solo" : "voice";
   const modeLabel = mode === "media" ? "Video room" : mode === "voice" ? "Voice room" : "Solo voice";
   const sortedMediaPeople = [...people].sort((a, b) => Number(b.screen) - Number(a.screen) || Number(b.video) - Number(a.video));
+  const hasScreenShare = sortedMediaPeople.some((p) => p.screen);
 
   const controls = (compact = false) => (
     <div className={compact ? "kc-call-controls kc-call-controls--compact" : "kc-call-controls"}>
@@ -786,7 +787,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
           )}
 
           {mode === "media" && (
-            <div className={`kc-media-stage kc-media-stage--${Math.min(total, 6)}`}>
+            <div className={`kc-media-stage kc-media-stage--${Math.min(total, 6)}${hasScreenShare ? " kc-media-stage--screen-active" : ""}`}>
               {sortedMediaPeople.map(renderPersonTile)}
             </div>
           )}
