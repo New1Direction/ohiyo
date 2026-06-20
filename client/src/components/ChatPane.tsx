@@ -925,17 +925,6 @@ export function ChatPane({
             <Icon name="search" />
           </button>
         )}
-        {onOpenMembers && (
-          <button
-            type="button"
-            onClick={onOpenMembers}
-            aria-label="Members"
-            title="Members"
-            className="kc-icon-btn flex-shrink-0 text-base"
-          >
-            <Icon name="members" />
-          </button>
-        )}
         {channel?.channel_type === "group_dm" && (
           <div className="kc-grpmem-anchor">
             <button
