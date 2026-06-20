@@ -111,7 +111,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, init
         </div>
 
         {/* Settings content */}
-        <div className="flex-1 overflow-y-auto px-10 py-16">
+        <div className="kc-settings-content flex-1 overflow-y-auto px-10 py-14">
           {tab === "appearance" && <AppearanceTab onToast={onToast} token={token} />}
           {tab === "plugins" && <PluginsTab pluginManager={pluginManager} onToast={onToast} />}
           {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} onCurrentUserUpdate={onCurrentUserUpdate} />}
@@ -241,20 +241,33 @@ function AppearanceTab({
   }
 
   return (
-    <div>
-      <h2 className="mb-1 text-xl font-bold">Appearance</h2>
-      <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
-        Make it yours — pick an accent, choose a theme, or build your own.
-      </p>
+    <div className="kc-appearance">
+      <section className="kc-appearance-hero">
+        <div>
+          <div className="kc-kicker">Appearance</div>
+          <h2>Make Ohiyo feel like yours.</h2>
+          <p>
+            Tune color, density, and type with calm defaults. Chrome Blue stays the premium base;
+            your choices layer on top instantly.
+          </p>
+        </div>
+        <div className="kc-appearance-hero__preview" aria-hidden="true">
+          <span className="kc-preview-dot" />
+          <span className="kc-preview-line" />
+          <span className="kc-preview-pill">Live preview</span>
+        </div>
+      </section>
 
       {/* Accent color — recolors the whole app, layered over any theme. Free here;
           Discord charges for it. */}
-      <div className="mb-8">
-        <div className="mb-1 text-sm font-semibold">Accent color</div>
-        <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-          The color that runs through everything — buttons, links, highlights, focus rings.
-          Works on top of any theme.
-        </p>
+      <section className="kc-settings-card kc-settings-card--compact">
+        <div className="kc-settings-card__head">
+          <div>
+            <div className="kc-settings-card__title">Accent color</div>
+            <p>The color that runs through buttons, links, highlights, and focus rings.</p>
+          </div>
+          {accentOverride && <span className="kc-settings-chip">Custom</span>}
+        </div>
         <div className="flex flex-wrap items-center gap-2.5">
           {ACCENT_PRESETS.map((p) => {
             const isActive = accent.toLowerCase() === p.hex.toLowerCase();
@@ -316,14 +329,17 @@ function AppearanceTab({
             </button>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* Message density — how tightly messages pack. Synced cross-device like accent. */}
-      <div className="mb-8">
-        <div className="mb-1 text-sm font-semibold">Message density</div>
-        <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-          How tightly messages pack together in chat.
-        </p>
+      <div className="kc-preference-grid">
+        {/* Message density — how tightly messages pack. Synced cross-device like accent. */}
+        <section className="kc-settings-card kc-settings-card--compact">
+          <div className="kc-settings-card__head">
+            <div>
+              <div className="kc-settings-card__title">Message density</div>
+              <p>Choose how much breathing room messages get in chat.</p>
+            </div>
+          </div>
         <div className="kc-seg" role="group" aria-label="Message density">
           {DENSITIES.map((d) => (
             <button
@@ -337,14 +353,16 @@ function AppearanceTab({
             </button>
           ))}
         </div>
-      </div>
+        </section>
 
-      {/* Font size — scales the chat text; the message list re-measures on change. */}
-      <div className="mb-8">
-        <div className="mb-1 text-sm font-semibold">Font size</div>
-        <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-          Scale the chat text to taste.
-        </p>
+        {/* Font size — scales the chat text; the message list re-measures on change. */}
+        <section className="kc-settings-card kc-settings-card--compact">
+          <div className="kc-settings-card__head">
+            <div>
+              <div className="kc-settings-card__title">Font size</div>
+              <p>Scale chat text without changing the rest of the interface.</p>
+            </div>
+          </div>
         <div className="kc-seg" role="group" aria-label="Font size">
           {FONT_SCALES.map((s) => (
             <button
@@ -358,9 +376,11 @@ function AppearanceTab({
             </button>
           ))}
         </div>
+        </section>
       </div>
 
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+      <section className="kc-settings-card kc-theme-section">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">Choose a look</div>
           <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
@@ -374,7 +394,7 @@ function AppearanceTab({
           Using {currentTheme.name}
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-3 mb-8 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="kc-theme-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {allThemes.map((theme) => {
           const isSelected = currentTheme.id === theme.id;
           const isCustom = !BUILTIN_THEMES.find((b) => b.id === theme.id);
@@ -389,7 +409,7 @@ function AppearanceTab({
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(theme); }
               }}
-              className="kc-interactive relative cursor-pointer overflow-hidden rounded-2xl"
+              className="kc-theme-card kc-interactive relative cursor-pointer overflow-hidden rounded-2xl"
               style={{
                 border: `1.5px solid ${isSelected ? theme.vars["--accent"] : "color-mix(in oklch, var(--text-primary) 10%, transparent)"}`,
                 background: theme.vars["--bg-channel"],
@@ -455,20 +475,20 @@ function AppearanceTab({
           );
         })}
       </div>
+      </section>
 
       {/* Build your own theme — visual editor (no JSON required) */}
-      <div className="mb-6">
+      <section className="kc-settings-card kc-theme-builder">
         {!editing ? (
           <button
             type="button"
             onClick={openEditor}
-            className="kc-interactive rounded-lg px-4 py-2 text-sm font-semibold"
-            style={{ background: "var(--bg-sidebar)", color: "var(--text-primary)", border: "1px solid var(--bg-hover)" }}
+            className="kc-theme-builder__button kc-interactive rounded-full px-4 py-2 text-sm font-semibold"
           >
-            🎨 Create your own theme
+            Create your own theme
           </button>
         ) : (
-          <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)" }}>
+          <div className="kc-theme-editor rounded-2xl p-4">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-sm font-semibold">Create your own theme</div>
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -531,10 +551,10 @@ function AppearanceTab({
             </div>
           </div>
         )}
-      </div>
+      </section>
 
       {/* Export / Import (advanced) */}
-      <details className="rounded-2xl p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
+      <details className="kc-advanced-theme rounded-2xl p-4">
         <summary className="cursor-pointer text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
           Advanced theme sharing
         </summary>
