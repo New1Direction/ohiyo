@@ -1,16 +1,31 @@
-// ── Centralized endpoint config ───────────────────────────────────────────────
-// Production overrides the origin via VITE_SERVER_URL; falls back to local dev.
-const SERVER_ORIGIN: string =
-  (import.meta.env.VITE_SERVER_URL as string | undefined) ?? "http://localhost:3000";
+import { DEFAULT_HOME_URL, normalizeHomeUrl } from "./lib/homes";
 
-export const API_BASE = `${SERVER_ORIGIN}/api/v1`;
-/** Base for serving uploaded files/avatars/emoji (`${FILE_BASE}/files/{id}`). */
-export const FILE_BASE = SERVER_ORIGIN;
+// ── Runtime endpoint config ──────────────────────────────────────────────────
+// The packaged app has a default home baked in, but the active home can switch at
+// runtime (Instant Servers / self-hosts). All request helpers read this mutable origin.
+let serverOrigin = DEFAULT_HOME_URL;
 
-/** WebSocket gateway URL, derived from the server origin (ws/wss by protocol). */
+export function setServerOrigin(origin: string): string {
+  serverOrigin = normalizeHomeUrl(origin);
+  return serverOrigin;
+}
+
+export function getServerOrigin(): string {
+  return serverOrigin;
+}
+
+export function getApiBase(): string {
+  return `${serverOrigin}/api/v1`;
+}
+
+/** Base for serving uploaded files/avatars/emoji (`${getFileBase()}/files/{id}`). */
+export function getFileBase(): string {
+  return serverOrigin;
+}
+
 /** Gateway URL — uses a short-lived one-time ticket, not the long-lived JWT. */
 export function gatewayUrl(ticket: string): string {
-  const wsOrigin = SERVER_ORIGIN.replace(/^http/, "ws");
+  const wsOrigin = serverOrigin.replace(/^http/, "ws");
   return `${wsOrigin}/gateway?ticket=${encodeURIComponent(ticket)}`;
 }
 
@@ -45,6 +60,8 @@ export type Channel = {
   epoch?: number;
   /** Group-DM owner (creator); only they may remove other members. */
   owner_id?: string | null;
+  /** Imported Discord archive channel; stored as plaintext and visibly marked not E2E. */
+  imported?: boolean;
 };
 
 export type Category = {
@@ -142,6 +159,34 @@ export type ServerEmoji = {
   created_at: number;
 };
 
+export type FriendshipStatus = "self" | "none" | "pending_outgoing" | "pending_incoming" | "friends";
+
+export type FriendItem = {
+  user: PublicUser;
+  status: "pending" | "accepted";
+  direction: "incoming" | "outgoing" | null;
+  updated_at: number;
+};
+
+export type ProfileTheme = {
+  vibe?: "sunset" | "ocean" | "forest" | "grape" | "mono" | "custom";
+  accent?: string;
+  pattern?: "none" | "stars" | "hearts" | "bubbles";
+  glow?: boolean;
+  emoji?: string | null;
+  showStatus?: boolean;
+  showBio?: boolean;
+  showActive?: boolean;
+  showSongs?: boolean;
+  showSocials?: boolean;
+};
+
+export type ProfileSong = {
+  title: string;
+  artist?: string | null;
+  url?: string | null;
+};
+
 export type UserProfile = {
   id: string;
   username: string;
@@ -152,6 +197,8 @@ export type UserProfile = {
   banner_url: string | null;
   custom_status: string | null;
   avatar_url: string | null;
+  profile_theme: ProfileTheme | null;
+  top_songs: ProfileSong[];
   last_active_at: number | null;
   social_spotify: string | null;
   social_github: string | null;
@@ -204,6 +251,80 @@ export type InvitePreview = {
   already_member: boolean;
 };
 
+export type ImportHistoryWindow = "All" | "Last90Days";
+
+export type DiscrawlImportCapability = {
+  enabled: boolean;
+  managed_enabled: boolean;
+  mode: "managed_discord_connect" | "local_discrawl_archive" | string;
+  message: string;
+};
+
+export type DiscordConnectInfo = {
+  managed_enabled: boolean;
+  invite_url: string | null;
+  message: string;
+};
+
+export type DiscordGuildInfo = {
+  id: string;
+  name: string;
+  icon_url: string | null;
+};
+
+export type DiscrawlArchiveUploadResponse = {
+  db_path: string;
+  filename: string;
+  size_bytes: number;
+};
+
+export type DiscrawlImportRequest = {
+  db_path: string;
+  media_root?: string | null;
+  guild_id?: string | null;
+  history?: ImportHistoryWindow | null;
+};
+
+export type DiscrawlPreview = {
+  guild_id: string;
+  guild_name: string;
+  categories: number;
+  channels: number;
+  voice_channels: number;
+  threads: number;
+  authors: number;
+  messages: number;
+  attachments: number;
+  downloaded_attachments: number;
+};
+
+export type ImportReport = {
+  categories: number;
+  channels: number;
+  authors: number;
+  messages: number;
+  reactions: number;
+  attachments: number;
+  roles_needing_review: string[];
+  parked: string[];
+};
+
+export type DiscrawlImportResponse = {
+  server: ServerWithChannels;
+  report: ImportReport;
+};
+
+export type ManagedDiscordImportJob = {
+  id: string;
+  state: "queued" | "running" | "succeeded" | "failed";
+  stage: string;
+  message: string;
+  result: DiscrawlImportResponse | null;
+  error: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
 /** A provisioned Instant-Server instance (control-plane view). */
 export interface HostedInstance {
   id: string;
@@ -232,7 +353,7 @@ async function request<T>(
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${getApiBase()}${path}`, {
     ...options,
     headers,
   });
@@ -273,8 +394,8 @@ export const api = {
   me: (token: string) => request<PublicUser>("/users/@me", {}, token),
 
   // Instant Servers (control plane) — provision/list/status of your own server instances.
-  // NOTE: pointing the running client AT a provisioned instance (runtime server switch)
-  // is deferred — SERVER_ORIGIN is a compile-time constant. These just drive the control plane.
+  // The client can now switch to a provisioned instance at runtime; these bindings
+  // talk to the currently active control-plane home.
   createInstance: (name: string, token: string) =>
     request<HostedInstance>(
       "/instances",
@@ -284,6 +405,55 @@ export const api = {
   listInstances: (token: string) => request<HostedInstance[]>("/instances", {}, token),
   getInstance: (id: string, token: string) =>
     request<HostedInstance>(`/instances/${id}`, {}, token),
+
+  // Discord import — local/admin Discrawl archive path, gated server-side by
+  // OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT=1.
+  getDiscrawlImportCapability: (token: string) =>
+    request<DiscrawlImportCapability>("/imports/discord/capability", {}, token),
+  getDiscordConnectInfo: (token: string) =>
+    request<DiscordConnectInfo>("/imports/discord/connect", {}, token),
+  listDiscordImportGuilds: (token: string) =>
+    request<DiscordGuildInfo[]>("/imports/discord/guilds", {}, token),
+  runManagedDiscordImport: (token: string, guildId: string, history?: ImportHistoryWindow | null) =>
+    request<DiscrawlImportResponse>(
+      "/imports/discord/managed/run",
+      { method: "POST", body: JSON.stringify({ guild_id: guildId, history: history ?? null }) },
+      token
+    ),
+  startManagedDiscordImportJob: (token: string, guildId: string, history?: ImportHistoryWindow | null) =>
+    request<{ job: ManagedDiscordImportJob }>(
+      "/imports/discord/managed/jobs",
+      { method: "POST", body: JSON.stringify({ guild_id: guildId, history: history ?? null }) },
+      token
+    ),
+  getManagedDiscordImportJob: (token: string, jobId: string) =>
+    request<ManagedDiscordImportJob>(`/imports/discord/managed/jobs/${jobId}`, {}, token),
+  uploadDiscrawlArchive: async (token: string, file: File) => {
+    const form = new FormData();
+    form.append("archive", file);
+    const res = await fetch(`${getApiBase()}/imports/discord/archive`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+    return res.json() as Promise<DiscrawlArchiveUploadResponse>;
+  },
+  previewDiscrawlImport: (token: string, body: DiscrawlImportRequest) =>
+    request<DiscrawlPreview>(
+      "/imports/discord/preview",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+  runDiscrawlImport: (token: string, body: DiscrawlImportRequest) =>
+    request<DiscrawlImportResponse>(
+      "/imports/discord/run",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
 
   // Dead-man's switch (account-level inactivity wipe).
   getDeadman: (token: string) =>
@@ -321,6 +491,12 @@ export const api = {
   joinServer: (token: string, serverId: string) =>
     request<ServerWithChannels>(`/servers/${serverId}/join`, {
       method: "POST",
+    }, token),
+
+  setServerIcon: (token: string, serverId: string, fileId: string) =>
+    request<ServerWithChannels>(`/servers/${serverId}/icon`, {
+      method: "POST",
+      body: JSON.stringify({ file_id: fileId }),
     }, token),
 
   kickMember: (token: string, serverId: string, userId: string) =>
@@ -482,6 +658,16 @@ export const api = {
   getPublicProfile: (token: string, userId: string) =>
     request<UserProfile>(`/users/${userId}/profile`, {}, token),
 
+  listFriends: (token: string) => request<FriendItem[]>("/users/@me/friends", {}, token),
+  getFriendship: (token: string, userId: string) =>
+    request<{ status: FriendshipStatus }>(`/users/${userId}/friendship`, {}, token),
+  sendFriendRequest: (token: string, userId: string) =>
+    request<{ status: FriendshipStatus }>(`/users/${userId}/friend-request`, { method: "POST" }, token),
+  acceptFriendRequest: (token: string, userId: string) =>
+    request<{ status: FriendshipStatus }>(`/users/${userId}/friend-request/accept`, { method: "POST" }, token),
+  deleteFriendship: (token: string, userId: string) =>
+    request<void>(`/users/${userId}/friendship`, { method: "DELETE" }, token),
+
   getMyProfile: (token: string) =>
     request<UserProfile>("/users/@me/profile", {}, token),
 
@@ -490,9 +676,10 @@ export const api = {
     patch: Partial<{
       display_name: string;
       bio: string;
-      pronouns: string;
       banner_color: string;
       custom_status: string;
+      profile_theme?: ProfileTheme;
+      top_songs?: ProfileSong[];
     }>
   ) =>
     request<UserProfile>("/users/@me/profile", {
@@ -513,7 +700,7 @@ export const api = {
     request<void>(`/servers/${serverId}/emojis/${emojiId}`, { method: "DELETE" }, token),
 
   setAvatar: (token: string, fileId: string) =>
-    request<void>("/users/@me/avatar", {
+    request<PublicUser>("/users/@me/avatar", {
       method: "POST",
       body: JSON.stringify({ file_id: fileId }),
     }, token),

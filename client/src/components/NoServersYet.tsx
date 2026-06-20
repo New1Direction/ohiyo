@@ -8,9 +8,11 @@ import { BirdMark } from "./BirdMark";
 export function NoServersYet({
   onCreate,
   onFindPeople,
+  onImportDiscord,
 }: {
   onCreate: () => void;
   onFindPeople: () => void;
+  onImportDiscord?: () => void;
 }) {
   return (
     <div
@@ -51,6 +53,16 @@ export function NoServersYet({
         >
           Find people to DM
         </button>
+        {onImportDiscord && (
+          <button
+            type="button"
+            onClick={onImportDiscord}
+            className="kc-interactive rounded-full px-5 py-2.5 text-sm font-semibold"
+            style={{ color: "var(--text-secondary)", border: "1px solid var(--bg-input)", background: "var(--bg-input)", cursor: "pointer" }}
+          >
+            Import Discord
+          </button>
+        )}
       </div>
     </div>
   );

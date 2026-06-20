@@ -1,4 +1,5 @@
 import type { ServerWithChannels } from "../api";
+import type { OhiyoHome } from "../lib/homes";
 import { Icon } from "./Icon";
 
 type Props = {
@@ -9,6 +10,10 @@ type Props = {
   onOpenSettings: () => void;
   onOpenSaved?: () => void;
   unreadServerIds?: Set<string>;
+  homes: OhiyoHome[];
+  activeHomeId: string;
+  onSwitchHome: (id: string) => void;
+  onAddHome: () => void;
 };
 
 function ServerIcon({
@@ -40,10 +45,10 @@ function ServerIcon({
       <div
         className="absolute left-0 top-1/2 -translate-y-1/2 rounded-r-full transition-all duration-150"
         style={{
-          background: "var(--text-primary)",
+          background: isSelected ? "var(--accent)" : "var(--text-primary)",
           width: 4,
           height: isSelected ? 36 : hasUnread ? 20 : 8,
-          opacity: isSelected || hasUnread ? 1 : 0.55,
+          opacity: isSelected || hasUnread ? 1 : 0.42,
         }}
       />
       {hasUnread && !isSelected && (
@@ -51,7 +56,7 @@ function ServerIcon({
           className="absolute"
           style={{
             right: 4, top: 4, width: 12, height: 12, borderRadius: "var(--radius-full)",
-            background: "var(--accent)", border: "2.5px solid var(--bg-base)",
+            background: "var(--accent)", border: "2.5px solid var(--bg-base)", boxShadow: "0 0 12px color-mix(in oklch, var(--accent) 62%, transparent)",
           }}
         />
       )}
@@ -70,17 +75,73 @@ function ServerIcon({
   );
 }
 
-export function ServerSidebar({ servers, selectedId, onSelect, onCreateServer, onOpenSettings, onOpenSaved, unreadServerIds }: Props) {
+export function ServerSidebar({
+  servers,
+  selectedId,
+  onSelect,
+  onCreateServer,
+  onOpenSaved,
+  unreadServerIds,
+  homes,
+  activeHomeId,
+  onSwitchHome,
+  onAddHome,
+}: Props) {
   return (
     <div
       className="flex w-[72px] flex-shrink-0 flex-col items-center gap-2 py-3"
       style={{ background: "var(--bg-base)" }}
     >
+      {/* Runtime server homes (Instant Servers / self-hosts). */}
+      <div className="flex w-full flex-col items-center gap-1" aria-label="Ohiyo homes">
+        {homes.map((h) => {
+          const label = h.name.slice(0, 2).toUpperCase();
+          const selected = h.id === activeHomeId;
+          return (
+            <button
+              key={h.id}
+              type="button"
+              onClick={() => onSwitchHome(h.id)}
+              title={`${h.name} — ${h.url}`}
+              aria-label={`Switch to ${h.name}`}
+              className="kc-interactive flex h-8 w-8 items-center justify-center text-[10px] font-bold"
+              style={{
+                borderRadius: selected ? "30%" : "50%",
+                background: selected ? "linear-gradient(135deg, var(--text-primary), var(--text-muted))" : "var(--bg-sidebar)",
+                color: selected ? "var(--bg-base)" : "var(--text-secondary)",
+                border: "none",
+                boxShadow: selected ? "0 0 0 2px color-mix(in oklch, var(--accent) 24%, transparent)" : undefined,
+              }}
+            >
+              {label || "OH"}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={onAddHome}
+          title="Add an Ohiyo server"
+          aria-label="Add an Ohiyo server"
+          className="kc-interactive flex h-8 w-8 items-center justify-center text-sm font-bold"
+          style={{ borderRadius: "50%", background: "var(--bg-sidebar)", color: "var(--accent)", border: "none" }}
+        >
+          +
+        </button>
+      </div>
+
+      <div className="w-8 border-t my-1" style={{ borderColor: "var(--bg-hover)" }} />
+
       {/* DMs / Home button */}
       <button
         type="button"
         className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full text-xl transition-all duration-150 hover:rounded-[30%]"
-        style={{ background: selectedId === null ? "var(--accent)" : "var(--bg-sidebar)", borderRadius: selectedId === null ? "30%" : "50%", border: "none" }}
+        style={{
+          background: selectedId === null ? "linear-gradient(135deg, var(--text-primary), var(--text-muted))" : "var(--bg-sidebar)",
+          color: selectedId === null ? "var(--bg-base)" : "var(--text-primary)",
+          borderRadius: selectedId === null ? "30%" : "50%",
+          border: "none",
+          boxShadow: selectedId === null ? "0 0 0 2px color-mix(in oklch, var(--accent) 24%, transparent)" : undefined,
+        }}
         onClick={() => onSelect("")}
         title="Direct Messages"
         aria-label="Direct Messages"
@@ -128,17 +189,6 @@ export function ServerSidebar({ servers, selectedId, onSelect, onCreateServer, o
         </button>
       )}
 
-      {/* Settings */}
-      <button
-        type="button"
-        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-lg transition-opacity hover:opacity-100"
-        style={{ color: "var(--text-muted)", opacity: 0.6, background: "none", border: "none" }}
-        onClick={onOpenSettings}
-        title="Settings (Ctrl+,)"
-        aria-label="Settings"
-      >
-        <Icon name="settings" size={18} />
-      </button>
     </div>
   );
 }

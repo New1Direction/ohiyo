@@ -106,7 +106,7 @@ try {
   await pageA.waitForSelector(`text=@${B}`, { timeout: 6000 });
   log("A: search found B ✓");
   await shot(pageA, "14-find-people");
-  await pageA.click(`button:has-text("@${B}")`);
+  await pageA.click(`button[aria-label="Message @${B}"]`);
   // DM opens → composer visible, find-people modal closed
   await pageA.waitForSelector('input[placeholder*="Say something"]', { state: "visible", timeout: 8000 });
   await pageA.waitForSelector('input[aria-label="Search people"]', { state: "detached", timeout: 5000 });

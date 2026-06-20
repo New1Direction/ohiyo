@@ -18,7 +18,7 @@ try {
   await page.click('button:has-text("Let\'s go")');
   await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
 
-  await page.setInputFiles('input[type="file"]', FIXTURE);
+  await page.setInputFiles('input[aria-label="Attach files"]', FIXTURE);
   await page.waitForTimeout(2200); // upload completes
   await page.locator('input[placeholder*="Say something"]').press("Enter");
 

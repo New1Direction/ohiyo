@@ -13,6 +13,7 @@ type Props = {
   onPin?: () => void;
   onForward?: () => void;
   onSave: () => void;
+  onHide?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
   onClose: () => void;
@@ -25,6 +26,7 @@ export function MessageActionSheet({
   onPin,
   onForward,
   onSave,
+  onHide,
   onEdit,
   onDelete,
   onClose,
@@ -38,6 +40,7 @@ export function MessageActionSheet({
         {onPin && <Row icon="pin" label={msg.pinned ? "Unpin" : "Pin"} onClick={onPin} />}
         {onForward && <Row icon="forward" label="Forward" onClick={onForward} />}
         <Row icon="bookmark" label="Save" onClick={onSave} />
+        {onHide && <Row icon="trash" label="Hide for me" onClick={onHide} />}
         {isMine && onEdit && <Row icon="edit" label="Edit" onClick={onEdit} />}
         {isMine && onDelete && <Row icon="trash" label="Delete" onClick={onDelete} danger />}
       </div>

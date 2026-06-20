@@ -19,9 +19,16 @@ export function EventsModal({ token, serverId, currentUserId, refreshKey, onClos
   const [when, setWhen] = useState(() => nextRoundHourLocal());
   const [desc, setDesc] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
-    setEvents(await api.listEvents(token, serverId).catch(() => []));
+    try {
+      setError(null);
+      setEvents(await api.listEvents(token, serverId));
+    } catch {
+      setEvents([]);
+      setError("Events could not load. Check your connection and try again.");
+    }
   }
   useEffect(() => {
     void refresh();
@@ -33,24 +40,37 @@ export function EventsModal({ token, serverId, currentUserId, refreshKey, onClos
     const ts = when ? Math.floor(new Date(when).getTime() / 1000) : 0;
     if (!title.trim() || !ts || busy) return;
     setBusy(true);
+    setError(null);
     try {
       await api.createEvent(token, serverId, title.trim(), ts, desc.trim() || null);
       setTitle("");
       setWhen(nextRoundHourLocal());
       setDesc("");
       await refresh();
+    } catch {
+      setError("Could not create that event. Try again.");
     } finally {
       setBusy(false);
     }
   }
 
   async function rsvp(id: string) {
-    await api.rsvpEvent(token, serverId, id).catch(() => {});
-    await refresh();
+    try {
+      setError(null);
+      await api.rsvpEvent(token, serverId, id);
+      await refresh();
+    } catch {
+      setError("Could not update your RSVP. Try again.");
+    }
   }
   async function remove(id: string) {
-    await api.deleteEvent(token, serverId, id).catch(() => {});
-    await refresh();
+    try {
+      setError(null);
+      await api.deleteEvent(token, serverId, id);
+      await refresh();
+    } catch {
+      setError("Could not cancel that event. Try again.");
+    }
   }
 
   return (
@@ -109,6 +129,12 @@ export function EventsModal({ token, serverId, currentUserId, refreshKey, onClos
           className="kc-field w-full px-3 py-2 text-sm outline-none"
         />
       </form>
+
+      {error && (
+        <div role="alert" className="mt-3 rounded-xl px-3 py-2 text-sm" style={{ background: "color-mix(in oklch, var(--danger) 12%, var(--bg-elevated))", color: "var(--danger)" }}>
+          {error}
+        </div>
+      )}
 
       {/* List */}
       <div className="mt-5 flex flex-col gap-2" style={{ maxHeight: 340, overflowY: "auto" }}>

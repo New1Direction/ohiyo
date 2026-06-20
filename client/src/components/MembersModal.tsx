@@ -12,6 +12,7 @@ type Props = {
   activities: Map<string, Activity>;
   voiceMembers: Map<string, string>;
   onJoinVoice: (channelId: string) => void;
+  onOpenDm?: (user: PublicUser) => void | Promise<void>;
   canKick: boolean;
   canBan: boolean;
   canManageRoles: boolean;
@@ -42,9 +43,10 @@ export function ActivityLine({ activity }: { activity: Activity }) {
 
 /** Server member list. Moderation actions appear per your permissions. */
 export function MembersModal({
-  members, ownerId, currentUserId, onlineUsers, idleUsers, activities, voiceMembers, onJoinVoice, canKick, canBan, canManageRoles, onManageRoles, onKick, onBan, onClose,
+  members, ownerId, currentUserId, onlineUsers, idleUsers, activities, voiceMembers, onJoinVoice, onOpenDm, canKick, canBan, canManageRoles, onManageRoles, onKick, onBan, onClose,
 }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [dmBusyId, setDmBusyId] = useState<string | null>(null);
   const canModerate = canKick || canBan;
   const sorted = [...members].sort((a, b) => {
     if (a.id === ownerId) return -1;
@@ -117,6 +119,27 @@ export function MembersModal({
                 <div className="truncate text-xs" style={{ color: "var(--text-muted)" }}>@{m.username}</div>
               )}
             </div>
+
+            {onOpenDm && m.id !== currentUserId && (
+              <button
+                type="button"
+                disabled={dmBusyId === m.id}
+                onClick={async () => {
+                  setDmBusyId(m.id);
+                  try {
+                    await onOpenDm(m);
+                    onClose();
+                  } catch {
+                    setDmBusyId(null);
+                  }
+                }}
+                className="kc-interactive flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold"
+                style={{ background: "var(--bg-input)", color: "var(--accent)", border: "none", cursor: dmBusyId === m.id ? "default" : "pointer" }}
+                title={`Message ${m.display_name}`}
+              >
+                {dmBusyId === m.id ? "Opening…" : "Message"}
+              </button>
+            )}
 
             {voiceMembers.has(m.id) && m.id !== currentUserId && (
               <button

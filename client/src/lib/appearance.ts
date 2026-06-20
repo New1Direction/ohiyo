@@ -28,8 +28,11 @@ function notifyAppearanceChanged(): void {
 }
 
 /** Curated accent presets — one tap to recolor everything. The first matches the
- *  default Daybreak theme so "no override" and "Persimmon" line up visually. */
+ *  default Chrome Blue theme so "no override" and "Steel" line up visually. */
 export const ACCENT_PRESETS: { name: string; hex: string }[] = [
+  { name: "Steel", hex: "#62b0dc" },
+  { name: "Sage", hex: "#76a783" },
+  { name: "Silver", hex: "#c8d0d5" },
   { name: "Persimmon", hex: "#f2683c" },
   { name: "Indigo", hex: "#6366f1" },
   { name: "Grape", hex: "#8a7bff" },

@@ -64,6 +64,11 @@ pub struct CreateServerBody {
     pub name: String,
 }
 
+#[derive(Deserialize)]
+pub struct SetServerIconBody {
+    pub file_id: String,
+}
+
 pub async fn create_server(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -119,6 +124,46 @@ pub async fn create_server(
         &GatewayEvent::ServerCreate(full.clone()),
     )
     .await;
+    Ok(Json(full))
+}
+
+/// POST /servers/{id}/icon — set a real server logo shown in the rail/invites.
+pub async fn set_server_icon(
+    auth: AuthUser,
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    Json(body): Json<SetServerIconBody>,
+) -> Result<Json<ServerWithChannels>, (StatusCode, String)> {
+    if !crate::api::roles::has_perm(&state, &id, &auth.0, crate::api::roles::perm::MANAGE_SERVER).await {
+        return Err((StatusCode::FORBIDDEN, "you don't have permission for that".into()));
+    }
+
+    let file: Option<(String,)> = sqlx::query_as(
+        "SELECT content_type FROM files WHERE id = ? AND uploader_id = ?",
+    )
+    .bind(&body.file_id)
+    .bind(&auth.0)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+
+    let Some((content_type,)) = file else {
+        return Err((StatusCode::NOT_FOUND, "File not found".into()));
+    };
+    if !content_type.starts_with("image/") {
+        return Err((StatusCode::BAD_REQUEST, "Server logo must be an image".into()));
+    }
+
+    let icon_url = format!("{}/files/{}", crate::public_base_url(), body.file_id);
+    sqlx::query("UPDATE servers SET icon_url = ? WHERE id = ?")
+        .bind(&icon_url)
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+
+    let full = fetch_full(&id, &state).await?;
+    broadcast_to_server(&state, &id, &GatewayEvent::ServerCreate(full.clone())).await;
     Ok(Json(full))
 }
 

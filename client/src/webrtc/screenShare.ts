@@ -1,5 +1,7 @@
 // Screen-share quality presets + display capture (incl. optional system audio).
-// Free 1080p60 / 4K with system audio — all gated behind Nitro on Discord.
+// Screen share is a flagship Ohiyo feature: default to crisp/native detail, while
+// still offering 1080p60 for motion. Free 1080p60 / 4K with system audio — all
+// gated behind Nitro on Discord.
 
 export type ScreenSharePresetId = "smooth" | "balanced" | "sharp";
 
@@ -25,7 +27,7 @@ export const SCREEN_SHARE_PRESETS: readonly ScreenSharePreset[] = [
       frameRate: { ideal: 60, max: 60 },
     },
     contentHint: "motion",
-    maxBitrate: 8 * MBPS,
+    maxBitrate: 12 * MBPS,
   },
   {
     id: "balanced",
@@ -37,7 +39,7 @@ export const SCREEN_SHARE_PRESETS: readonly ScreenSharePreset[] = [
       frameRate: { ideal: 30, max: 30 },
     },
     contentHint: "detail",
-    maxBitrate: 4 * MBPS,
+    maxBitrate: 6 * MBPS,
   },
   {
     id: "sharp",
@@ -49,11 +51,11 @@ export const SCREEN_SHARE_PRESETS: readonly ScreenSharePreset[] = [
       frameRate: { ideal: 30, max: 30 },
     },
     contentHint: "text",
-    maxBitrate: 16 * MBPS,
+    maxBitrate: 24 * MBPS,
   },
 ] as const;
 
-export const DEFAULT_PRESET_ID: ScreenSharePresetId = "balanced";
+export const DEFAULT_PRESET_ID: ScreenSharePresetId = "sharp";
 
 export function getPreset(id: ScreenSharePresetId): ScreenSharePreset {
   return SCREEN_SHARE_PRESETS.find((x) => x.id === id) ?? SCREEN_SHARE_PRESETS[1];
@@ -71,7 +73,12 @@ export async function captureDisplay(
   wantAudio: boolean,
 ): Promise<DisplayCaptureResult> {
   const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: preset.video,
+    video: {
+      ...preset.video,
+      // Advisory where supported; ignored elsewhere. We prefer full display/native
+      // capture because cropped/low-detail sharing is worse than Discord, not better.
+      displaySurface: "monitor",
+    } as MediaTrackConstraints,
     audio: wantAudio
       ? ({
           echoCancellation: false,
@@ -91,10 +98,16 @@ export async function captureDisplay(
 
 /** Apply a screen-share bitrate ceiling to a video sender. */
 export async function applySenderBitrate(sender: RTCRtpSender, maxBitrate: number): Promise<void> {
-  const p = sender.getParameters();
+  const p = sender.getParameters() as RTCRtpSendParameters & {
+    degradationPreference?: "maintain-framerate" | "maintain-resolution" | "balanced";
+    encodings?: Array<RTCRtpEncodingParameters & { priority?: "very-low" | "low" | "medium" | "high"; networkPriority?: "very-low" | "low" | "medium" | "high" }>;
+  };
   if (!p.encodings?.length) p.encodings = [{}];
+  p.degradationPreference = "maintain-resolution";
   p.encodings[0].maxBitrate = maxBitrate;
   p.encodings[0].scaleResolutionDownBy = 1;
+  p.encodings[0].priority = "high";
+  p.encodings[0].networkPriority = "high";
   await sender.setParameters(p).catch(() => {});
 }
 

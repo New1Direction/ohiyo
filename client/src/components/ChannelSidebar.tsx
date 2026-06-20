@@ -21,10 +21,12 @@ type Props = {
   myActivity?: Activity | null;
   onSetActivity?: (activity: Activity | null) => void;
   canManageChannels?: boolean;
+  canManageServer?: boolean;
   onOpenCategories?: () => void;
   onSelectChannel: (channel: Channel) => void;
   onJoinVoice: (channel: Channel) => void;
   onCreateChannel: (name: string) => void;
+  onSetServerIcon?: (serverId: string, file: File) => void | Promise<void>;
   onInvite?: () => void;
   onFindPeople?: () => void;
   onOpenEvents?: () => void;
@@ -84,10 +86,12 @@ export function ChannelSidebar({
   myActivity,
   onSetActivity,
   canManageChannels,
+  canManageServer,
   onOpenCategories,
   onSelectChannel,
   onJoinVoice,
   onCreateChannel,
+  onSetServerIcon,
   onInvite,
   onFindPeople,
   onOpenEvents,
@@ -97,9 +101,17 @@ export function ChannelSidebar({
   const [showNewChannel, setShowNewChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
   const [editingStatus, setEditingStatus] = useState(false);
+  const serverIconInputRef = useRef<HTMLInputElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try {
       return new Set(JSON.parse(localStorage.getItem("kc:collapsed-cats") ?? "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  const [pinnedDmIds, setPinnedDmIds] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem("kc:pinned-dms") ?? "[]"));
     } catch {
       return new Set();
     }
@@ -110,6 +122,15 @@ export function ChannelSidebar({
       if (next.has(id)) next.delete(id);
       else next.add(id);
       localStorage.setItem("kc:collapsed-cats", JSON.stringify([...next]));
+      return next;
+    });
+  }
+  function togglePinDm(id: string) {
+    setPinnedDmIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      localStorage.setItem("kc:pinned-dms", JSON.stringify([...next]));
       return next;
     });
   }
@@ -139,31 +160,146 @@ export function ChannelSidebar({
       isSelected={selectedChannelId === ch.id}
       unreadCount={unread?.[ch.id] ?? 0}
       hasMention={mentionChannels?.has(ch.id) ?? false}
+      imported={Boolean(ch.imported)}
       onClick={() => onSelectChannel(ch)}
     />
   );
 
+  const renderDmRow = (dm: Channel) => {
+    const other = dmUsers[dm.id];
+    const label = other?.display_name ?? other?.username ?? (dm.channel_type === "group_dm" ? dm.name || "Group DM" : "Direct Message");
+    const online = other ? onlineUsers.has(other.id) : false;
+    const isSel = selectedChannelId === dm.id;
+    const unreadCount = unread?.[dm.id] ?? 0;
+    const hasUnread = unreadCount > 0 && !isSel;
+    const showMention = (mentionChannels?.has(dm.id) ?? false) && !isSel;
+    const pinned = pinnedDmIds.has(dm.id);
+    return (
+      <div
+        key={dm.id}
+        className="group mx-2 flex w-[calc(100%-1rem)] items-center gap-1 rounded-md"
+        style={{
+          background: isSel ? "color-mix(in oklch, var(--text-primary) 8%, transparent)" : "transparent",
+          boxShadow: isSel ? "inset 3px 0 0 var(--accent)" : undefined,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => onSelectChannel(dm)}
+          className="kc-interactive flex min-w-0 flex-1 items-center gap-2 px-2 py-1 text-left"
+          style={{
+            border: "none",
+            borderRadius: "var(--radius-md)",
+            background: "transparent",
+            color: isSel || hasUnread || showMention ? "var(--text-primary)" : "var(--text-secondary)",
+            fontWeight: isSel || hasUnread || showMention ? 650 : 400,
+          }}
+        >
+          <div className="relative flex-shrink-0">
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold"
+              style={{
+                background: "linear-gradient(135deg, var(--text-primary), var(--text-muted))", color: "var(--bg-base)",
+                boxShadow: isSel ? "0 0 0 2px color-mix(in oklch, var(--accent) 22%, transparent)" : undefined,
+                backgroundImage: other?.avatar_url ? `url(${other.avatar_url})` : undefined,
+                backgroundSize: "cover", backgroundPosition: "center",
+              }}
+            >
+              {!other?.avatar_url && label[0]?.toUpperCase()}
+            </div>
+            {online && (
+              <OnlineDot
+                color={other && idleUsers?.has(other.id) ? "var(--gold)" : "var(--green)"}
+              />
+            )}
+          </div>
+          <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
+          {showMention ? (
+            <span
+              className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
+              style={{ background: "var(--danger)", color: "#fff", minWidth: 18, textAlign: "center" }}
+              aria-label="You were mentioned"
+            >
+              @
+            </span>
+          ) : hasUnread ? (
+            <span
+              className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
+              style={{ background: "var(--accent)", color: "var(--bg-base)", minWidth: 18, textAlign: "center", boxShadow: "0 0 10px color-mix(in oklch, var(--accent) 42%, transparent)" }}
+              aria-label={`${unreadCount} unread`}
+            >
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          ) : null}
+        </button>
+        <button
+          type="button"
+          onClick={() => togglePinDm(dm.id)}
+          className="kc-interactive mr-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-xs"
+          style={{
+            border: "none",
+            cursor: "pointer",
+            background: pinned ? "color-mix(in oklch, var(--text-primary) 10%, transparent)" : "transparent",
+            color: pinned ? "var(--text-primary)" : "var(--text-muted)",
+            boxShadow: pinned ? "inset 0 0 0 1px color-mix(in oklch, var(--accent) 22%, transparent)" : undefined,
+            opacity: pinned ? 1 : 0.72,
+          }}
+          aria-label={pinned ? `Unpin ${label}` : `Pin ${label}`}
+          title={pinned ? "Unpin DM" : "Pin DM"}
+        >
+          {pinned ? "📌" : "☆"}
+        </button>
+      </div>
+    );
+  };
+
   return (
-    <div className="flex w-60 flex-shrink-0 flex-col" style={{ background: "var(--bg-sidebar)" }}>
+    <div className="flex h-full min-h-0 w-60 flex-shrink-0 flex-col" style={{ background: "var(--bg-sidebar)" }}>
       {/* Header */}
       <div
-        className="flex h-12 items-center justify-between gap-2 px-4 shadow-sm"
+        className="kc-sidebar-header px-3 py-3 shadow-sm"
         style={{ borderBottom: "1px solid var(--bg-base)" }}
       >
-        <span
-          className="truncate"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-lg)" }}
-        >
-          {server ? server.name : "Direct Messages"}
-        </span>
-        <div className="flex flex-shrink-0 items-center gap-1">
+        <div className="kc-space-title-row">
+          {server?.icon_url && <img src={server.icon_url} alt="" className="h-8 w-8 flex-shrink-0 rounded-xl object-cover" />}
+          <div className="min-w-0 flex-1">
+            <div className="truncate" style={{ fontFamily: "var(--font-display)", fontWeight: 750, fontSize: "var(--text-lg)", color: "var(--text-primary)" }}>{server ? server.name : "Direct Messages"}</div>
+            <div className="truncate text-[11px] font-semibold" style={{ color: "var(--text-muted)", letterSpacing: "0.02em" }}>{server ? "Private space" : "Your conversations"}</div>
+          </div>
+        </div>
+        <div className="mt-2 flex min-w-0 items-center gap-1.5">
+          {server && canManageServer && onSetServerIcon && (
+            <>
+              <button
+                type="button"
+                onClick={() => serverIconInputRef.current?.click()}
+                title="Change server logo"
+                aria-label="Change server logo"
+                className="kc-sidebar-action kc-interactive flex h-7 w-7 items-center justify-center rounded-full text-sm"
+                style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "pointer" }}
+              >
+                <Icon name="edit" size={14} />
+              </button>
+              <input
+                ref={serverIconInputRef}
+                type="file"
+                accept="image/*,.gif"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) void onSetServerIcon(server.id, file);
+                }}
+              />
+            </>
+          )}
           {server && onOpenEvents && (
             <button
               onClick={onOpenEvents}
               title="Events"
               aria-label="Events"
-              className="kc-interactive text-base"
-              style={{ background: "none", border: "none", cursor: "pointer" }}
+              className="kc-sidebar-action kc-interactive flex h-7 w-7 items-center justify-center rounded-full text-base"
+              style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "pointer" }}
             >
               <Icon name="calendar" size={16} />
             </button>
@@ -173,11 +309,11 @@ export function ChannelSidebar({
               onClick={onInvite}
               title="Invite people"
               aria-label="Invite people"
-              className="kc-interactive flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
+              className="kc-sidebar-invite kc-interactive flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold"
               style={{ background: "color-mix(in oklch, var(--accent) 14%, transparent)", color: "var(--accent)" }}
             >
               <InvitePersonIcon />
-              <span>Invite</span>
+              <span className="truncate">Invite</span>
             </button>
           )}
         </div>
@@ -280,9 +416,9 @@ export function ChannelSidebar({
 
             {/* Voice channels */}
             {voiceChannels.length > 0 && (
-              <div>
+              <div className="kc-voice-section">
                 <div
-                  className="px-4 py-1 text-xs font-bold uppercase"
+                  className="kc-voice-section-title px-4 py-1 text-xs font-bold uppercase"
                   style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}
                 >
                   Voice Channels
@@ -298,6 +434,11 @@ export function ChannelSidebar({
                 ))}
               </div>
             )}
+
+            <div className="kc-sidebar-hint mx-3 mt-5">
+              <div className="kc-sidebar-hint-title">Ready when you are</div>
+              <p>Send a message, hop into voice, or invite a friend.</p>
+            </div>
           </>
         ) : (
           // DMs
@@ -336,66 +477,28 @@ export function ChannelSidebar({
                 )}
               </div>
             ) : (
-              dms.map((dm) => {
-                const other = dmUsers[dm.id];
-                const label = other?.display_name ?? other?.username ?? "Direct Message";
-                const online = other ? onlineUsers.has(other.id) : false;
-                const isSel = selectedChannelId === dm.id;
-                const unreadCount = unread?.[dm.id] ?? 0;
-                const hasUnread = unreadCount > 0 && !isSel;
-                const showMention = (mentionChannels?.has(dm.id) ?? false) && !isSel;
-                return (
-                  <button
-                    key={dm.id}
-                    type="button"
-                    onClick={() => onSelectChannel(dm)}
-                    className="kc-interactive mx-2 flex w-[calc(100%-1rem)] items-center gap-2 px-2 py-1 text-left"
-                    style={{
-                      border: "none",
-                      borderRadius: "var(--radius-md)",
-                      background: isSel ? "var(--bg-hover)" : "transparent",
-                      color: isSel || hasUnread || showMention ? "var(--text-primary)" : "var(--text-secondary)",
-                      fontWeight: hasUnread || showMention ? 600 : 400,
-                    }}
-                  >
-                    <div className="relative flex-shrink-0">
-                      <div
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold"
-                        style={{
-                          background: "var(--accent)", color: "#fff",
-                          backgroundImage: other?.avatar_url ? `url(${other.avatar_url})` : undefined,
-                          backgroundSize: "cover", backgroundPosition: "center",
-                        }}
-                      >
-                        {!other?.avatar_url && label[0]?.toUpperCase()}
-                      </div>
-                      {online && (
-                        <OnlineDot
-                          color={other && idleUsers?.has(other.id) ? "var(--gold)" : "var(--green)"}
-                        />
-                      )}
+              <>
+                {dms.some((dm) => pinnedDmIds.has(dm.id)) && (
+                  <div className="mb-2">
+                    <div
+                      className="px-4 pb-1 pt-2 text-[10px] font-bold uppercase"
+                      style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}
+                    >
+                      Pinned
                     </div>
-                    <span className="flex-1 truncate text-sm">{label}</span>
-                    {showMention ? (
-                      <span
-                        className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
-                        style={{ background: "var(--danger)", color: "#fff", minWidth: 18, textAlign: "center" }}
-                        aria-label="You were mentioned"
-                      >
-                        @
-                      </span>
-                    ) : hasUnread ? (
-                      <span
-                        className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
-                        style={{ background: "var(--accent)", color: "#fff", minWidth: 18, textAlign: "center" }}
-                        aria-label={`${unreadCount} unread`}
-                      >
-                        {unreadCount > 99 ? "99+" : unreadCount}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })
+                    {dms.filter((dm) => pinnedDmIds.has(dm.id)).map(renderDmRow)}
+                  </div>
+                )}
+                {dms.some((dm) => !pinnedDmIds.has(dm.id)) && dms.some((dm) => pinnedDmIds.has(dm.id)) && (
+                  <div
+                    className="px-4 pb-1 pt-1 text-[10px] font-bold uppercase"
+                    style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}
+                  >
+                    Recent
+                  </div>
+                )}
+                {dms.filter((dm) => !pinnedDmIds.has(dm.id)).map(renderDmRow)}
+              </>
             )}
           </div>
         )}
@@ -404,14 +507,22 @@ export function ChannelSidebar({
       {/* User info bar */}
       {currentUser && (
         <div
-          className="flex items-center gap-2 px-2 py-2"
-          style={{ background: "var(--bg-base)", borderTop: "1px solid var(--bg-base)" }}
+          className="kc-user-panel flex items-center gap-2.5 px-2 py-3"
+          style={{ background: "var(--bg-base)", borderTop: "1px solid color-mix(in oklch, var(--text-primary) 6%, transparent)" }}
         >
-          <div className="relative flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => onSetStatus && setEditingStatus(true)}
+            className="kc-user-avatar-btn relative flex-shrink-0"
+            style={{ border: "none", background: "transparent", padding: 0, cursor: onSetStatus ? "pointer" : "default" }}
+            aria-label="Edit status"
+            title="Edit status"
+          >
             <div
-              className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold"
               style={{
-                background: "var(--accent)", color: "#fff",
+                background: "linear-gradient(135deg, var(--text-primary), var(--text-muted))", color: "var(--bg-base)",
+                boxShadow: "0 0 0 2px color-mix(in oklch, var(--accent) 22%, transparent)",
                 backgroundImage: currentUser.avatar_url ? `url(${currentUser.avatar_url})` : undefined,
                 backgroundSize: "cover", backgroundPosition: "center",
               }}
@@ -419,18 +530,24 @@ export function ChannelSidebar({
               {!currentUser.avatar_url && currentUser.display_name[0]?.toUpperCase()}
             </div>
             <OnlineDot color={selfOnline ? "var(--green)" : "#E8A23D"} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+          </button>
+          <div className="min-w-0 flex-1 leading-tight">
+            <button
+              type="button"
+              onClick={() => onSetStatus && setEditingStatus(true)}
+              className="kc-interactive block w-full truncate text-left text-sm font-semibold"
+              style={{ color: "var(--text-primary)", background: "none", border: "none", cursor: onSetStatus ? "pointer" : "default", padding: 0 }}
+              title="Edit status"
+            >
               {currentUser.display_name}
-            </div>
+            </button>
             {editingStatus ? (
               <input
                 // eslint-disable-next-line jsx-a11y/no-autofocus -- inline status editor opens on user action; focusing immediately is expected
                 autoFocus
                 defaultValue={myStatus ?? ""}
                 maxLength={80}
-                placeholder="What's the vibe? ✨"
+                placeholder="Set your vibe"
                 onFocus={() => { statusHandledRef.current = false; }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -446,14 +563,14 @@ export function ChannelSidebar({
                   if (!statusHandledRef.current) onSetStatus?.(e.target.value);
                   setEditingStatus(false);
                 }}
-                className="w-full bg-transparent text-xs outline-none"
+                className="kc-user-status-input w-full bg-transparent text-xs outline-none"
                 style={{ color: "var(--text-secondary)" }}
               />
             ) : (
               <button
                 type="button"
                 onClick={() => onSetStatus && setEditingStatus(true)}
-                className="kc-interactive w-full truncate text-left text-xs"
+                className="kc-interactive kc-user-status w-full truncate text-left text-xs"
                 style={{
                   color: myStatus ? "var(--text-secondary)" : "var(--text-muted)",
                   background: "none", border: "none",
@@ -461,13 +578,15 @@ export function ChannelSidebar({
                 }}
                 title="Set a custom status"
               >
-                {myStatus || (selfOnline ? "Set a status…" : STATUS_META[connStatus].label)}
+                {myStatus || (selfOnline ? "Set a status" : STATUS_META[connStatus].label)}
               </button>
             )}
             {onSetActivity && <ActivityComposer activity={myActivity ?? null} onSet={onSetActivity} />}
           </div>
-          <button type="button" onClick={onOpenSettings} aria-label="Settings" className="kc-interactive text-base px-1" style={{ color: "var(--text-muted)" }} title="Settings (Ctrl+,)"><Icon name="settings" size={16} /></button>
-          <button type="button" onClick={onLogout} aria-label="Log out" className="kc-interactive text-base px-1" style={{ color: "var(--text-muted)" }} title="Log out">⎋</button>
+          <div className="kc-user-actions flex flex-shrink-0 items-center gap-1">
+            <button type="button" onClick={onOpenSettings} aria-label="Settings" className="kc-sidebar-action kc-interactive flex h-8 w-8 items-center justify-center rounded-full text-base" style={{ color: "var(--text-muted)", background: "transparent", border: "none" }} title="Settings (Ctrl+,)"><Icon name="settings" size={16} /></button>
+            <button type="button" onClick={onLogout} aria-label="Log out" className="kc-sidebar-action kc-interactive flex h-8 w-8 items-center justify-center rounded-full text-base" style={{ color: "var(--text-muted)", background: "transparent", border: "none" }} title="Log out">⎋</button>
+          </div>
         </div>
       )}
     </div>
@@ -525,7 +644,7 @@ function ActivityComposer({ activity, onSet }: { activity: Activity | null; onSe
         className="kc-interactive mt-0.5 text-left text-xs"
         style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
       >
-        + Set activity
+        + Activity
       </button>
     );
   }
@@ -569,13 +688,14 @@ function ActivityComposer({ activity, onSet }: { activity: Activity | null; onSe
 }
 
 function ChannelRow({
-  icon, name, isSelected, unreadCount = 0, hasMention = false, onClick,
+  icon, name, isSelected, unreadCount = 0, hasMention = false, imported = false, onClick,
 }: {
   icon: React.ReactNode;
   name: string;
   isSelected: boolean;
   unreadCount?: number;
   hasMention?: boolean;
+  imported?: boolean;
   onClick: () => void;
 }) {
   const hasUnread = unreadCount > 0 && !isSelected;
@@ -589,13 +709,24 @@ function ChannelRow({
       style={{
         border: "none",
         borderRadius: "var(--radius-md)",
-        background: isSelected ? "var(--bg-hover)" : "transparent",
+        background: isSelected ? "color-mix(in oklch, var(--text-primary) 8%, transparent)" : "transparent",
         color: isSelected || hasUnread || showMention ? "var(--text-primary)" : "var(--text-muted)",
-        fontWeight: isSelected || hasUnread || showMention ? 600 : 400,
+        fontWeight: isSelected || hasUnread || showMention ? 650 : 400,
+        boxShadow: isSelected ? "inset 3px 0 0 var(--accent)" : undefined,
       }}
     >
       {icon}
       <span className="truncate flex-1">{name}</span>
+      {imported && (
+        <span
+          className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+          style={{ background: "color-mix(in oklch, var(--gold, #f59e0b) 18%, transparent)", color: "var(--gold, #f59e0b)" }}
+          title="Imported from Discord — not end-to-end encrypted"
+          aria-label="Imported from Discord, not end-to-end encrypted"
+        >
+          Not E2E
+        </span>
+      )}
       {showMention ? (
         <span
           className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
@@ -607,7 +738,7 @@ function ChannelRow({
       ) : hasUnread ? (
         <span
           className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
-          style={{ background: "var(--accent)", color: "#fff", minWidth: 18, textAlign: "center" }}
+          style={{ background: "var(--accent)", color: "var(--bg-base)", minWidth: 18, textAlign: "center", boxShadow: "0 0 10px color-mix(in oklch, var(--accent) 42%, transparent)" }}
           aria-label={`${unreadCount} unread`}
         >
           {unreadCount > 99 ? "99+" : unreadCount}
@@ -625,31 +756,34 @@ function VoiceChannelRow({
   participantCount: number;
   onJoin: () => void;
 }) {
+  const displayName = /^general(?:\s+voice)?$/i.test(name.trim()) ? "Voice" : name;
+
   return (
     <button
       type="button"
       onClick={onJoin}
-      className="kc-interactive mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-1.5 px-2 py-1 text-sm"
+      className="kc-voice-row kc-interactive mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-2 px-2.5 py-1.5 text-sm"
       style={{
         borderRadius: "var(--radius-md)", border: "none",
-        background: active ? "color-mix(in oklch, var(--green) 16%, transparent)" : "transparent",
-        color: active ? "var(--green)" : "var(--text-muted)",
-        fontWeight: active ? 600 : 400,
+        background: active ? "color-mix(in oklch, var(--green) 12%, transparent)" : "transparent",
+        color: active ? "var(--text-primary)" : "var(--text-muted)",
+        fontWeight: active ? 650 : 400,
+        boxShadow: active ? "inset 3px 0 0 var(--green)" : undefined,
       }}
       title={active ? "You're in this call" : "Join voice"}
     >
       <SpeakerIcon />
-      <span className="truncate flex-1 text-left">{name}</span>
+      <span className="truncate flex-1 text-left">{displayName}</span>
       {active ? (
         <span
           className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold"
-          style={{ background: "var(--green)", color: "#fff" }}
+          style={{ background: "linear-gradient(135deg, var(--text-primary), var(--text-muted))", color: "var(--bg-base)", boxShadow: "0 0 0 1px color-mix(in oklch, var(--green) 32%, transparent)" }}
         >
           <span className="kc-pulse" style={{ width: 6, height: 6, background: "#fff" }} />
           {participantCount}
         </span>
       ) : (
-        <span className="text-xs font-semibold" style={{ color: "var(--accent)" }}>Join</span>
+        <span className="kc-voice-join text-xs font-semibold" style={{ color: "var(--accent)" }}>Join</span>
       )}
     </button>
   );

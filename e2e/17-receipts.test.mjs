@@ -33,8 +33,8 @@ try {
   await pageA.click('button[aria-label="Find people"]');
   await pageA.waitForSelector('input[aria-label="Search people"]', { timeout: 6000 });
   await pageA.fill('input[aria-label="Search people"]', B);
-  await pageA.waitForSelector(`button:has-text("@${B}")`, { timeout: 6000 });
-  await pageA.click(`button:has-text("@${B}")`);
+  await pageA.waitForSelector(`button[aria-label="Message @${B}"]`, { timeout: 6000 });
+  await pageA.click(`button[aria-label="Message @${B}"]`);
   await pageA.waitForSelector('input[placeholder="Say something…"]', { timeout: 8000 });
   log("A opened DM with B");
 

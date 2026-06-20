@@ -18,6 +18,14 @@ COPY src ./src
 COPY migrations ./migrations
 RUN touch src/main.rs && cargo build --release
 
+# ── Discrawl stage ────────────────────────────────────────────────────────────
+# Managed Discord clone uses discrawl to mirror a Discord server into SQLite, then
+# the Ohiyo importer maps that SQLite archive into a new Ohiyo space.
+FROM golang:1.26-bookworm AS discrawl-builder
+WORKDIR /discrawl
+RUN git clone --depth 1 https://github.com/steipete/discrawl.git . \
+    && go build -o /usr/local/bin/discrawl ./cmd/discrawl
+
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 # reqwest uses rustls (no OpenSSL) and sqlx bundles SQLite, so the runtime image
 # only needs CA certificates. WORKDIR is the volume mount point: both the SQLite
@@ -29,18 +37,22 @@ RUN apt-get update \
 
 # Litestream — continuous SQLite replication for point-in-time backups. Installed
 # unconditionally but a complete no-op unless LITESTREAM_REPLICA_URL is set (the
-# entrypoint passes straight through to the server otherwise). amd64 = Fly's runtime.
+# entrypoint passes straight through to the server otherwise). TARGETARCH lets
+# Apple Silicon local builds use arm64 while Fly's runtime continues using amd64.
+ARG TARGETARCH
 ARG LITESTREAM_VERSION=0.3.13
-ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-v${LITESTREAM_VERSION}-linux-amd64.deb /tmp/litestream.deb
+ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-v${LITESTREAM_VERSION}-linux-${TARGETARCH}.deb /tmp/litestream.deb
 RUN dpkg -i /tmp/litestream.deb && rm /tmp/litestream.deb
 
 WORKDIR /data
 COPY --from=builder /build/target/release/server /usr/local/bin/ohiyo-server
+COPY --from=discrawl-builder /usr/local/bin/discrawl /usr/local/bin/discrawl
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV BIND_ADDR=0.0.0.0:3000 \
     DATABASE_URL=sqlite:/data/ohiyo.db \
+    OHIYO_DISCRAWL_BIN=/usr/local/bin/discrawl \
     RUST_LOG=server=info,tower_http=warn
 
 EXPOSE 3000

@@ -1,4 +1,4 @@
-import { launchBrowser, register, log, uniq, PASS, ORIGIN } from "./harness.mjs";
+import { currentToken, launchBrowser, register, log, uniq, PASS, ORIGIN } from "./harness.mjs";
 
 // Multi-device E2E: B signs in on a SECOND device (fresh context = new Signal identity
 // + device id). A message A sends afterwards fans out to BOTH of B's devices, and both
@@ -47,8 +47,8 @@ try {
   await pageA.click('button[aria-label="Direct Messages"]');
   await pageA.click('button[aria-label="Find people"]');
   await pageA.fill('input[aria-label="Search people"]', B);
-  await pageA.waitForSelector(`button:has-text("@${B}")`, { timeout: 6000 });
-  await pageA.click(`button:has-text("@${B}")`);
+  await pageA.waitForSelector(`button[aria-label="Message @${B}"]`, { timeout: 6000 });
+  await pageA.click(`button[aria-label="Message @${B}"]`);
   await pageA.waitForSelector('input[placeholder="Say something…"]', { timeout: 8000 });
   await pageA.click('button[aria-label="Turn on end-to-end encryption"]');
   await pageA.waitForSelector("text=/Switched to end-to-end encrypted/", { timeout: 6000 });
@@ -75,7 +75,7 @@ try {
   log("B signed in on device 2");
 
   // Wait until A can see BOTH of B's device bundles (device 2 published its keys).
-  const tokenA = await pageA.evaluate(() => localStorage.getItem("token"));
+  const tokenA = await currentToken(pageA);
   let devices = 0;
   for (let i = 0; i < 16; i++) {
     const bundles = await (

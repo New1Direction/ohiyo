@@ -7,6 +7,7 @@ type Result = {
   label: string;
   sub: string;
   icon: string;
+  serverIconUrl?: string | null;
   channel: Channel;
 };
 
@@ -42,6 +43,7 @@ export function CommandPalette({ servers, dms, onSelectChannel, onClose }: Props
         label: ch.name,
         sub: s.name,
         icon: ch.channel_type === "voice" ? "🔊" : "#",
+        serverIconUrl: s.icon_url,
         channel: ch,
       }))
     ),
@@ -198,8 +200,20 @@ export function CommandPalette({ servers, dms, onSelectChannel, onClose }: Props
                   transition: "background 0.08s",
                 }}
               >
-                <span style={{ fontSize: 15, minWidth: 20, textAlign: "center", color: "var(--text-muted)" }}>
-                  {r.icon}
+                <span
+                  style={{
+                    width: 22,
+                    height: 22,
+                    flexShrink: 0,
+                    display: "grid",
+                    placeItems: "center",
+                    overflow: "hidden",
+                    borderRadius: r.serverIconUrl ? 6 : 0,
+                    fontSize: 15,
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  {r.serverIconUrl ? <img src={r.serverIconUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : r.icon}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div

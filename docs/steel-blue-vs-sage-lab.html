@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ohiyo Accent Trial — Steel Blue vs Sage Green</title>
+  <style>
+    :root {
+      --basalt-980: #10100f;
+      --basalt-940: #171716;
+      --basalt-860: #252421;
+      --basalt-760: #383632;
+      --stone-220: #d1cbc2;
+      --stone-160: #e4ded6;
+      --silver-050: #fbfcfc;
+      --silver-160: #e8edf0;
+      --silver-300: #c8d0d5;
+      --silver-520: #909ca4;
+      --silver-720: #58636b;
+      --brown-760: #4e382b;
+      --brown-620: #6b4d3a;
+      --steel-700: #2b5f83;
+      --steel-560: #3d82ad;
+      --steel-430: #62b0dc;
+      --steel-260: #b6d9ea;
+      --sage-760: #355d46;
+      --sage-620: #4e7b5d;
+      --sage-470: #76a783;
+      --sage-260: #c4dbc8;
+      --line: rgba(255,255,255,.12);
+      --shadow: 0 26px 88px rgba(8, 8, 7, .46), 0 8px 26px rgba(8, 8, 7, .30);
+      --silver-shadow: 0 18px 52px rgba(203, 211, 216, .20), 0 4px 16px rgba(203, 211, 216, .10);
+      --snap: cubic-bezier(.2, 0, 0, 1);
+      --tap: 70ms;
+      --fast: 140ms;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--stone-160);
+      background:
+        radial-gradient(circle at 18% 4%, rgba(98,176,220,.12), transparent 26rem),
+        radial-gradient(circle at 82% 4%, rgba(118,167,131,.12), transparent 26rem),
+        radial-gradient(circle at 50% 100%, rgba(78,56,43,.34), transparent 34rem),
+        linear-gradient(135deg, var(--basalt-980), #1d1c1a 44%, #151413);
+      padding: 28px;
+      user-select: none;
+    }
+    button, input { font: inherit; }
+    button { border: 0; cursor: pointer; touch-action: manipulation; user-select: none; transform: translateZ(0); }
+    button:focus-visible, input:focus-visible { outline: 0; box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 34%, transparent), 0 0 0 6px rgba(231,235,237,.10); }
+    header { max-width: 1200px; margin: 0 auto 22px; display: grid; gap: 12px; }
+    .eyebrow { color: var(--silver-160); font-size: 12px; font-weight: 950; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(36px, 6vw, 72px); line-height: .92; letter-spacing: -.07em; }
+    .lede { max-width: 850px; margin: 0; color: var(--stone-220); font-size: 17px; line-height: 1.62; }
+    .compare { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .theme { --accent: var(--steel-430); --accent-dark: var(--steel-700); --accent-mid: var(--steel-560); --accent-soft: rgba(98,176,220,.14); }
+    .theme.sage { --accent: var(--sage-470); --accent-dark: var(--sage-760); --accent-mid: var(--sage-620); --accent-soft: rgba(118,167,131,.14); }
+    .card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 30px;
+      background:
+        radial-gradient(circle at 78% 0%, color-mix(in oklch, var(--accent) 18%, transparent), transparent 16rem),
+        linear-gradient(135deg, rgba(255,255,255,.070), rgba(255,255,255,.024)),
+        linear-gradient(135deg, var(--basalt-760), var(--basalt-940));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      min-height: 740px;
+    }
+    .card::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 12% 0%, rgba(255,255,255,.09), transparent 15rem); }
+    .section { position: relative; z-index: 1; padding: 20px; }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .label { color: var(--accent); font-size: 12px; font-weight: 950; letter-spacing: .13em; text-transform: uppercase; }
+    .score { border-radius: 999px; min-height: 30px; padding: 0 11px; display: inline-flex; align-items: center; color: var(--silver-050); background: var(--accent-soft); border: 1px solid color-mix(in oklch, var(--accent) 32%, transparent); font-size: 12px; font-weight: 850; }
+    h2 { margin: 8px 0 6px; font-size: 34px; line-height: .96; letter-spacing: -.055em; }
+    p { margin: 0 0 16px; color: var(--stone-220); line-height: 1.52; font-size: 14px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .btn {
+      min-height: 44px;
+      padding: 0 16px;
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      font-weight: 900;
+      letter-spacing: -.01em;
+      transition: background-color var(--tap) var(--snap), color var(--tap) var(--snap), border-color var(--tap) var(--snap), transform 45ms linear, box-shadow var(--fast) var(--snap), filter var(--tap) linear;
+    }
+    .btn:active { transform: scale(.965) translateZ(0); }
+    .silver { color: #121211; background: linear-gradient(105deg, transparent, rgba(255,255,255,.82), transparent) -130% 0 / 78% 100% no-repeat, linear-gradient(135deg, var(--silver-050), var(--silver-160) 38%, var(--silver-520)); border: 1px solid rgba(255,255,255,.58); box-shadow: var(--silver-shadow), inset 0 1px 0 white, inset 0 -1px 0 rgba(0,0,0,.20); transition: background-position 520ms var(--snap), transform 45ms linear, box-shadow var(--fast) var(--snap), filter var(--tap) linear; }
+    .silver:hover { background-position: 180% 0, 0 0; filter: brightness(1.05); }
+    .accent { color: #071014; background: linear-gradient(135deg, var(--accent), color-mix(in oklch, var(--accent) 72%, white)); box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent) 30%, transparent), 0 0 34px color-mix(in oklch, var(--accent) 24%, transparent); }
+    .accent:hover { filter: brightness(1.06); }
+    .rock { color: var(--silver-160); background: linear-gradient(135deg, #3b3935, #1b1b19); border: 1px solid rgba(255,255,255,.13); box-shadow: inset 0 1px 0 rgba(255,255,255,.10); }
+    .rock:hover { background: linear-gradient(135deg, #494641, #22211f); color: #fff; }
+    .ghost { color: var(--silver-300); background: transparent; border: 1px solid rgba(255,255,255,.13); }
+    .ghost:hover { color: #fff; background: rgba(255,255,255,.07); }
+    .icon { width: 44px; height: 44px; padding: 0; }
+    .icon:active { transform: scale(.9) translateZ(0); }
+    .mock { margin-top: 18px; border-radius: 24px; background: linear-gradient(135deg, #111110, #24221f); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 30px 80px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10); padding: 14px; display: grid; grid-template-rows: auto 1fr auto; gap: 12px; min-height: 290px; }
+    .mock-top { display: flex; justify-content: space-between; align-items: center; color: var(--silver-160); }
+    .active-pill { height: 24px; padding: 0 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; color: var(--silver-050); background: var(--accent-soft); border: 1px solid color-mix(in oklch, var(--accent) 28%, transparent); font-size: 11px; font-weight: 850; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px color-mix(in oklch, var(--accent) 70%, transparent); }
+    .messages { display: grid; align-content: end; gap: 10px; }
+    .bubble { max-width: 86%; border-radius: 18px; padding: 10px 12px; font-size: 14px; line-height: 1.35; color: var(--silver-160); background: linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.032)); border: 1px solid rgba(255,255,255,.08); }
+    .bubble.me { justify-self: end; color: #071014; background: linear-gradient(135deg, var(--silver-050), color-mix(in oklch, var(--accent) 20%, var(--silver-300))); border-color: rgba(255,255,255,.32); box-shadow: inset 0 1px 0 white; }
+    .composer { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; border-radius: 18px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.08); padding: 8px; }
+    .composer input { min-width: 0; height: 36px; border: 0; outline: 0; color: var(--silver-160); background: transparent; }
+    .steps { margin-top: 16px; display: grid; gap: 9px; }
+    .step { width: 100%; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 11px; padding: 11px; border-radius: 18px; color: var(--silver-160); background: rgba(255,255,255,.052); border: 1px solid rgba(255,255,255,.10); text-align: left; transition: background-color var(--tap), border-color var(--tap), transform 45ms linear; }
+    .step:hover { background: var(--accent-soft); border-color: color-mix(in oklch, var(--accent) 28%, transparent); }
+    .step:active { transform: scale(.99); }
+    .num { width: 42px; height: 42px; border-radius: 15px; display: grid; place-items: center; color: #10100f; font-weight: 950; background: linear-gradient(135deg, var(--silver-050), color-mix(in oklch, var(--accent) 18%, var(--silver-300))); box-shadow: inset 0 1px 0 white; }
+    .step strong { display: block; }
+    .step span { display: block; margin-top: 2px; color: rgba(231,235,237,.56); font-size: 12px; }
+    .channels { margin-top: 16px; display: grid; gap: 8px; }
+    .channel { width: 100%; min-height: 42px; padding: 0 12px; border-radius: 15px; display: flex; align-items: center; gap: 10px; color: var(--silver-300); background: transparent; text-align: left; transition: background-color var(--tap), transform 45ms linear; }
+    .channel:hover { background: rgba(255,255,255,.06); }
+    .channel[aria-current="true"] { background: rgba(231,235,237,.10); color: var(--silver-050); box-shadow: inset 3px 0 0 var(--accent); }
+    .channel[aria-current="true"]::after { content: ""; margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px color-mix(in oklch, var(--accent) 70%, transparent); }
+    .verdict { max-width: 1200px; margin: 18px auto 0; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .mini { border-radius: 24px; padding: 16px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.11); }
+    .mini h3 { margin: 0 0 8px; }
+    .mini ul { margin: 0; padding-left: 18px; color: var(--stone-220); line-height: 1.6; }
+    .meter { max-width: 1200px; margin: 16px auto 0; padding: 14px 18px; border-radius: 20px; color: var(--stone-220); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.11); }
+    .meter strong { color: var(--silver-050); }
+    @media (max-width: 980px) { .compare, .verdict { grid-template-columns: 1fr; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: background-color var(--tap) linear, color var(--tap) linear, border-color var(--tap) linear, box-shadow var(--tap) linear !important; } button { transform: none !important; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Accent trial</div>
+    <h1>Steel blue vs sage green.</h1>
+    <p class="lede">Same silver-first Ohiyo UI, two accent choices. Steel blue leans chrome/tech. Sage green leans calm/cozy/natural.</p>
+  </header>
+
+  <main class="compare">
+    <section class="card theme steel" data-theme="steel">
+      <div class="section">
+        <div class="top"><div><div class="label">Steel blue</div><h2>Clean, modern, chrome.</h2></div><span class="score">Tech premium</span></div>
+        <p>Best if Ohiyo should feel sleek and fast. It makes silver feel colder, sharper, and more futuristic.</p>
+        <div class="row"><button class="btn silver">Primary silver</button><button class="btn accent">Blue active</button><button class="btn rock">Rock</button><button class="btn ghost">Ghost</button></div>
+        <div class="mock"><div class="mock-top"><strong># general</strong><span class="active-pill"><i class="dot"></i> active</span></div><div class="messages"><div class="bubble">Steel makes this feel more modern.</div><div class="bubble me">Chrome + blue feels clean.</div></div><div class="composer"><button class="btn rock icon">＋</button><input value="Steel blue active state…" /><button class="btn rock icon">😊</button><button class="btn silver icon">➤</button></div></div>
+        <div class="steps"><button class="step"><div class="num">1</div><div><strong>Add the bot</strong><span>Cool, clear, utility feel.</span></div><b>↗</b></button><button class="step"><div class="num">2</div><div><strong>Pick your server</strong><span>Active edge uses blue.</span></div><b>→</b></button></div>
+        <div class="channels"><button class="channel"># welcome</button><button class="channel" aria-current="true"># general</button><button class="channel"># clips</button></div>
+      </div>
+    </section>
+
+    <section class="card theme sage" data-theme="sage">
+      <div class="section">
+        <div class="top"><div><div class="label">Sage green</div><h2>Calm, cozy, grounded.</h2></div><span class="score">Natural premium</span></div>
+        <p>Best if Ohiyo should feel warm, safe, and less corporate. It pairs naturally with rock grey and brown.</p>
+        <div class="row"><button class="btn silver">Primary silver</button><button class="btn accent">Sage active</button><button class="btn rock">Rock</button><button class="btn ghost">Ghost</button></div>
+        <div class="mock"><div class="mock-top"><strong># general</strong><span class="active-pill"><i class="dot"></i> active</span></div><div class="messages"><div class="bubble">Sage makes this feel softer.</div><div class="bubble me">Still premium, more cozy.</div></div><div class="composer"><button class="btn rock icon">＋</button><input value="Sage green active state…" /><button class="btn rock icon">😊</button><button class="btn silver icon">➤</button></div></div>
+        <div class="steps"><button class="step"><div class="num">1</div><div><strong>Add the bot</strong><span>Feels friendly and safe.</span></div><b>↗</b></button><button class="step"><div class="num">2</div><div><strong>Pick your server</strong><span>Active edge uses sage.</span></div><b>→</b></button></div>
+        <div class="channels"><button class="channel"># welcome</button><button class="channel" aria-current="true"># general</button><button class="channel"># clips</button></div>
+      </div>
+    </section>
+  </main>
+
+  <section class="verdict">
+    <div class="mini"><h3>Steel blue wins if…</h3><ul><li>You want modern, chrome, techy.</li><li>Silver should feel sharper and cleaner.</li><li>Active states should pop without feeling warm.</li></ul></div>
+    <div class="mini"><h3>Sage green wins if…</h3><ul><li>You want cozy, trustworthy, grounded.</li><li>Brown/rock should feel more natural.</li><li>Active states should feel calm, not flashy.</li></ul></div>
+  </section>
+
+  <div class="meter">Last measured pointer→paint: <strong>waiting…</strong></div>
+
+  <script>
+    const meter = document.querySelector('.meter strong');
+    document.addEventListener('pointerdown', (event) => {
+      const button = event.target.closest('button');
+      if (!button || button.disabled) return;
+      const start = performance.now();
+      requestAnimationFrame(() => { meter.textContent = `${Math.round((performance.now() - start) * 10) / 10}ms`; });
+    }, { passive: true });
+  </script>
+</body>
+</html>

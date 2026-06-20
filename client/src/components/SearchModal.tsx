@@ -15,6 +15,7 @@ export function SearchModal({ token, serverId, channels, onJump, onClose }: Prop
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const nameOf = (cid: string) => channels.find((c) => c.id === cid)?.name ?? "channel";
 
   useEffect(() => {
@@ -22,15 +23,21 @@ export function SearchModal({ token, serverId, channels, onJump, onClose }: Prop
     if (!term) {
       setResults([]);
       setLoading(false);
+      setError(null);
       return;
     }
     let alive = true;
     setLoading(true);
+    setError(null);
     const id = setTimeout(() => {
       api
         .searchMessages(token, serverId, term)
         .then((r) => alive && setResults(r))
-        .catch(() => alive && setResults([]))
+        .catch(() => {
+          if (!alive) return;
+          setResults([]);
+          setError("Search could not load. Check your connection and try again.");
+        })
         .finally(() => alive && setLoading(false));
     }, 220);
     return () => {
@@ -63,6 +70,8 @@ export function SearchModal({ token, serverId, channels, onJump, onClose }: Prop
           <div className="flex flex-col gap-2">
             {[0, 1, 2].map((i) => <div key={i} className="kc-skeleton" style={{ height: 52 }} />)}
           </div>
+        ) : error ? (
+          <Hint text={error} />
         ) : !term ? (
           <Hint text="Type to search across every channel." />
         ) : results.length === 0 ? (

@@ -1,5 +1,5 @@
 // Runs every *.test.mjs in this directory sequentially against a running stack.
-// Prereqs: server on :3000 and vite on :5173 (see README). Exits non-zero on any failure.
+// Prereqs: server on :3000 and Vite on :1420 (see README). Exits non-zero on any failure.
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";

@@ -157,17 +157,44 @@ Installers land in `client/src-tauri/target/release/bundle/`:
 
 ---
 
-## 4. Code signing & auto-update (the "later" path)
+## 4. Discord import live proof
 
-Installers build **unsigned** today, so first-launch shows a one-time OS warning
-(macOS Gatekeeper / Windows SmartScreen). When you're ready for a public launch:
+Before showing Discord import to customers, follow the beginner checklist in
+[`docs/discord-import-live-smoke-test.md`](docs/discord-import-live-smoke-test.md).
+
+The customer-facing app flow must stay simple: **Add Ohiyo to Discord → Find my
+servers → Pick server → Clone selected server**. Keep all bot tokens and Discrawl
+paths private on the server/deployment only.
+
+---
+
+## 5. Code signing & auto-update (the "later" path)
+
+Installers can build with **ad-hoc macOS signing** for private QA when Apple
+Developer ID secrets are missing. That keeps downloaded `.dmg` files structurally
+valid and avoids the worst "app is damaged" failure, but normal users will still
+see Apple's scary "could not verify Ohiyo is free of malware" Gatekeeper warning.
+
+Public `v*` tag releases now refuse to build macOS assets unless Developer ID
+signing + notarization secrets are present. Use the ad-hoc fallback only through
+manual `workflow_dispatch` for private QA. For customer downloads, use official
+signing:
 
 ### macOS notarization
 1. Join the Apple Developer Program ($99/yr), create a **Developer ID
    Application** certificate.
-2. Set `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`,
-   `APPLE_PASSWORD` (app-specific), `APPLE_TEAM_ID` in the build env.
-3. `npm run tauri build` signs + notarizes automatically.
+2. Set all six GitHub Actions secrets:
+   - `APPLE_CERTIFICATE` — base64 `.p12` Developer ID Application certificate
+   - `APPLE_CERTIFICATE_PASSWORD` — password for that `.p12`
+   - `APPLE_SIGNING_IDENTITY` — exact Developer ID identity name
+   - `APPLE_ID` — Apple ID email
+   - `APPLE_PASSWORD` — app-specific password
+   - `APPLE_TEAM_ID` — Apple Developer Team ID
+3. Push a `v*` tag or run the Release workflow manually. CI switches to Developer
+   ID signing + notarization automatically when all six secrets are present.
+4. Before publishing the GitHub Release or re-enabling Mac download buttons on the
+   website, download the `.dmg` on a clean Mac and confirm it opens without the
+   "Apple could not verify" warning.
 
 ### Windows signing
 Obtain a code-signing certificate (OV/EV) and set the `tauri.conf.json`
@@ -195,12 +222,12 @@ Obtain a code-signing certificate (OV/EV) and set the `tauri.conf.json`
 
 ---
 
-## 5. CI/CD
+## 6. CI/CD
 
-`.github/workflows/release.yml` builds the macOS (Apple Silicon + Intel), Windows,
-and Linux installers on every `v*` tag (or via manual dispatch) and attaches them to
-a **draft** GitHub Release. It signs + notarizes when these repo secrets are present,
-and produces an unsigned build otherwise:
+`.github/workflows/release.yml` builds the macOS (Apple Silicon + Intel) and Linux
+installers on every `v*` tag (or via manual dispatch) and attaches them to a
+**draft** GitHub Release. macOS has two explicit CI paths: Developer ID signed +
+notarized when all Apple secrets are present, otherwise ad-hoc signed fallback:
 
 | Secret | Purpose |
 |--------|---------|
@@ -214,7 +241,7 @@ gate (a couple of crypto suites are timing-sensitive; stabilise on a runner firs
 
 ---
 
-## 6. Pre-launch hardening checklist
+## 7. Pre-launch hardening checklist
 
 These are tracked follow-ups, not blockers for a first test build:
 

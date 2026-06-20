@@ -10,19 +10,22 @@ pub async fn set_avatar(
     auth: AuthUser,
     State(state): State<AppState>,
     Json(body): Json<SetAvatarBody>,
-) -> Result<StatusCode, (StatusCode, String)> {
-    // Must be a real file AND uploaded by the caller — otherwise any user could point
+) -> Result<Json<PublicUser>, (StatusCode, String)> {
+    // Must be a real image AND uploaded by the caller — otherwise any user could point
     // their avatar/banner at someone else's uploaded file by guessing its id.
     let exists: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM files WHERE id = ? AND uploader_id = ?")
+        sqlx::query_as("SELECT content_type FROM files WHERE id = ? AND uploader_id = ?")
             .bind(&body.file_id)
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
             .map_err(crate::api::error::internal)?;
 
-    if exists.is_none() {
+    let Some((content_type,)) = exists else {
         return Err((StatusCode::NOT_FOUND, "File not found".into()));
+    };
+    if !content_type.starts_with("image/") {
+        return Err((StatusCode::BAD_REQUEST, "Avatar must be an image".into()));
     }
 
     // Absolute URL prefix for served files; guaranteed present by validate_config().
@@ -35,7 +38,13 @@ pub async fn set_avatar(
         .await
         .map_err(crate::api::error::internal)?;
 
-    Ok(StatusCode::NO_CONTENT)
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        .bind(&auth.0)
+        .fetch_one(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+
+    Ok(Json(PublicUser::from(user)))
 }
 
 #[derive(Deserialize)]
@@ -76,7 +85,14 @@ pub async fn set_banner(
     Ok(StatusCode::NO_CONTENT)
 }
 
-use crate::{auth::AuthUser, AppState};
+use crate::{auth::AuthUser, types::{PublicUser, User}, AppState};
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProfileSong {
+    pub title: String,
+    pub artist: Option<String>,
+    pub url: Option<String>,
+}
 
 #[derive(Deserialize)]
 pub struct UpdateProfileBody {
@@ -85,6 +101,10 @@ pub struct UpdateProfileBody {
     pub pronouns: Option<String>,
     pub banner_color: Option<String>,
     pub custom_status: Option<String>,
+    /// Profile card visual customization stored in users.theme_data as JSON.
+    pub profile_theme: Option<serde_json::Value>,
+    /// Top songs shown on the profile card. Server stores at most 3.
+    pub top_songs: Option<Vec<ProfileSong>>,
     pub social_spotify: Option<String>,
     pub social_github: Option<String>,
     pub social_twitter: Option<String>,
@@ -104,6 +124,8 @@ pub struct ProfileResponse {
     pub banner_url: Option<String>,
     pub custom_status: Option<String>,
     pub avatar_url: Option<String>,
+    pub profile_theme: Option<serde_json::Value>,
+    pub top_songs: Vec<ProfileSong>,
     /// Unix time of last activity (connect / message send) → "active Xm ago" / last seen.
     pub last_active_at: Option<i64>,
     pub social_spotify: Option<String>,
@@ -125,6 +147,8 @@ struct ProfileRow {
     banner_url: Option<String>,
     custom_status: Option<String>,
     avatar_url: Option<String>,
+    theme_data: Option<String>,
+    top_songs: Option<String>,
     last_active_at: Option<i64>,
     social_spotify: Option<String>,
     social_github: Option<String>,
@@ -146,6 +170,11 @@ impl From<ProfileRow> for ProfileResponse {
             banner_url: r.banner_url,
             custom_status: r.custom_status,
             avatar_url: r.avatar_url,
+            profile_theme: r.theme_data.and_then(|raw| serde_json::from_str(&raw).ok()),
+            top_songs: r
+                .top_songs
+                .and_then(|raw| serde_json::from_str::<Vec<ProfileSong>>(&raw).ok())
+                .unwrap_or_default(),
             last_active_at: r.last_active_at,
             social_spotify: r.social_spotify,
             social_github: r.social_github,
@@ -163,7 +192,7 @@ pub async fn get_profile(
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
     let row: ProfileRow = sqlx::query_as(
         "SELECT id, username, display_name, bio, pronouns, banner_color, banner_url, custom_status,
-                avatar_url, last_active_at, social_spotify, social_github, social_twitter, social_steam,
+                avatar_url, theme_data, top_songs, last_active_at, social_spotify, social_github, social_twitter, social_steam,
                 social_youtube, social_twitch
          FROM users WHERE id = ?",
     )
@@ -182,7 +211,7 @@ pub async fn get_user_profile(
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
     let row: ProfileRow = sqlx::query_as(
         "SELECT id, username, display_name, bio, pronouns, banner_color, banner_url, custom_status,
-                avatar_url, last_active_at, social_spotify, social_github, social_twitter, social_steam,
+                avatar_url, theme_data, top_songs, last_active_at, social_spotify, social_github, social_twitter, social_steam,
                 social_youtube, social_twitch
          FROM users WHERE id = ?",
     )
@@ -227,6 +256,47 @@ pub async fn update_profile(
     update_field!(pronouns);
     update_field!(banner_color);
     update_field!(custom_status);
+    if let Some(theme) = &body.profile_theme {
+        let raw = serde_json::to_string(theme).map_err(crate::api::error::internal)?;
+        sqlx::query("UPDATE users SET theme_data = ? WHERE id = ?")
+            .bind(raw)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
+    if let Some(songs) = &body.top_songs {
+        let clean: Vec<ProfileSong> = songs
+            .iter()
+            .filter_map(|s| {
+                let title = s.title.trim().chars().take(80).collect::<String>();
+                if title.is_empty() {
+                    return None;
+                }
+                let artist = s
+                    .artist
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(|v| v.chars().take(80).collect());
+                let url = s
+                    .url
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| v.starts_with("https://") || v.starts_with("http://"))
+                    .map(|v| v.chars().take(240).collect());
+                Some(ProfileSong { title, artist, url })
+            })
+            .take(3)
+            .collect();
+        let raw = serde_json::to_string(&clean).map_err(crate::api::error::internal)?;
+        sqlx::query("UPDATE users SET top_songs = ? WHERE id = ?")
+            .bind(raw)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
     update_field!(social_spotify);
     update_field!(social_github);
     update_field!(social_twitter);
@@ -236,7 +306,7 @@ pub async fn update_profile(
 
     let row: ProfileRow = sqlx::query_as(
         "SELECT id, username, display_name, bio, pronouns, banner_color, banner_url, custom_status,
-                avatar_url, last_active_at, social_spotify, social_github, social_twitter, social_steam,
+                avatar_url, theme_data, top_songs, last_active_at, social_spotify, social_github, social_twitter, social_steam,
                 social_youtube, social_twitch
          FROM users WHERE id = ?",
     )

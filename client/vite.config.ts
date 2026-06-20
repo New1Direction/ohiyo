@@ -41,6 +41,25 @@ function cspPlugin() {
 export default defineConfig(async () => ({
   plugins: [tailwindcss(), react(), cspPlugin()],
   clearScreen: false,
+  build: {
+    // LiveKit is isolated into its own lazy vendor chunk and lands just above Vite's
+    // default 500 kB warning. Keep the warning threshold tight for the app while
+    // acknowledging that this single SFU/media SDK chunk is intentional.
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("livekit-client")) return "vendor-livekit";
+          if (id.includes("@privacyresearch") || id.includes("libsignal")) return "vendor-crypto";
+          if (id.includes("react-window") || id.includes("react-virtualized-auto-sizer")) return "vendor-virtual-list";
+          if (id.includes("@tauri-apps")) return "vendor-tauri";
+          if (id.includes("react") || id.includes("react-dom") || id.includes("scheduler")) return "vendor-react";
+          return undefined;
+        },
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,

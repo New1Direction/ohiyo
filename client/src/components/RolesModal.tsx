@@ -18,17 +18,25 @@ export function RolesModal({ token, serverId, members, ownerId, onClose }: Props
   const [name, setName] = useState("");
   const [perms, setPerms] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
-    const rs = await api.listRoles(token, serverId).catch(() => []);
-    setRoles(rs);
-    const entries = await Promise.all(
+    try {
+      setError(null);
+      const rs = await api.listRoles(token, serverId);
+      setRoles(rs);
+      const entries = await Promise.all(
       members.map(
-        async (m) =>
-          [m.id, new Set(await api.getMemberRoles(token, serverId, m.id).catch(() => []))] as const
-      )
-    );
-    setAssigned(Object.fromEntries(entries));
+          async (m) =>
+            [m.id, new Set(await api.getMemberRoles(token, serverId, m.id).catch(() => []))] as const
+        )
+      );
+      setAssigned(Object.fromEntries(entries));
+    } catch {
+      setRoles([]);
+      setAssigned({});
+      setError("Roles could not load. Check your connection and try again.");
+    }
   }
 
   useEffect(() => {
@@ -40,25 +48,38 @@ export function RolesModal({ token, serverId, members, ownerId, onClose }: Props
     e.preventDefault();
     if (!name.trim() || busy) return;
     setBusy(true);
+    setError(null);
     try {
       await api.createRole(token, serverId, name.trim(), perms);
       setName("");
       setPerms(0);
       await refresh();
+    } catch {
+      setError("Could not create that role. Try again.");
     } finally {
       setBusy(false);
     }
   }
 
   async function del(roleId: string) {
-    await api.deleteRole(token, serverId, roleId).catch(() => {});
-    await refresh();
+    try {
+      setError(null);
+      await api.deleteRole(token, serverId, roleId);
+      await refresh();
+    } catch {
+      setError("Could not delete that role. Try again.");
+    }
   }
 
   async function toggleAssign(userId: string, roleId: string, has: boolean) {
-    if (has) await api.unassignRole(token, serverId, userId, roleId).catch(() => {});
-    else await api.assignRole(token, serverId, userId, roleId).catch(() => {});
-    await refresh();
+    try {
+      setError(null);
+      if (has) await api.unassignRole(token, serverId, userId, roleId);
+      else await api.assignRole(token, serverId, userId, roleId);
+      await refresh();
+    } catch {
+      setError("Could not update that member’s role. Try again.");
+    }
   }
 
   const assignable = members.filter((m) => m.id !== ownerId);
@@ -117,6 +138,12 @@ export function RolesModal({ token, serverId, members, ownerId, onClose }: Props
           Create role
         </button>
       </form>
+
+      {error && (
+        <div role="alert" className="mt-3 rounded-xl px-3 py-2 text-sm" style={{ background: "color-mix(in oklch, var(--danger) 12%, var(--bg-elevated))", color: "var(--danger)" }}>
+          {error}
+        </div>
+      )}
 
       {/* Existing roles + assignment */}
       <div className="mt-5" style={{ maxHeight: 320, overflowY: "auto" }}>

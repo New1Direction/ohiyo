@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod channels;
+pub mod discord_import;
 pub mod embeds;
 pub mod emoji;
 pub mod error;
@@ -43,6 +44,13 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me", get(users::me))
         .route("/users/@me/saved", get(saved::list_saved))
         .route("/users/search", get(users::search_users))
+        .route("/users/@me/friends", get(users::list_friends))
+        .route("/users/{user_id}/friendship", get(users::get_friendship).delete(users::delete_friendship))
+        .route("/users/{user_id}/friend-request", post(users::send_friend_request))
+        .route(
+            "/users/{user_id}/friend-request/accept",
+            post(users::accept_friend_request),
+        )
         .route("/users/@me/dms", get(users::list_dms))
         .route("/users/@me/dms", post(users::open_dm))
         .route("/users/@me/group-dms", post(users::open_group_dm))
@@ -72,11 +80,50 @@ pub fn router() -> Router<AppState> {
             get(instances::list_instances).post(instances::create_instance),
         )
         .route("/instances/{id}", get(instances::get_instance))
+        // Discord import (local/admin Discrawl archive path; env-gated)
+        .route(
+            "/imports/discord/capability",
+            get(discord_import::discrawl_import_capability),
+        )
+        .route(
+            "/imports/discord/connect",
+            get(discord_import::discord_connect_info),
+        )
+        .route(
+            "/imports/discord/guilds",
+            get(discord_import::list_discord_guilds),
+        )
+        .route(
+            "/imports/discord/managed/run",
+            post(discord_import::run_managed_discord_import),
+        )
+        .route(
+            "/imports/discord/managed/jobs",
+            post(discord_import::start_managed_discord_import_job),
+        )
+        .route(
+            "/imports/discord/managed/jobs/{job_id}",
+            get(discord_import::get_managed_discord_import_job),
+        )
+        .route(
+            "/imports/discord/archive",
+            post(discord_import::upload_discrawl_archive)
+                .layer(DefaultBodyLimit::max(2 * 1024 * 1024 * 1024)),
+        )
+        .route(
+            "/imports/discord/preview",
+            post(discord_import::preview_discrawl_import),
+        )
+        .route(
+            "/imports/discord/run",
+            post(discord_import::run_discrawl_import),
+        )
         // Servers
         .route("/servers", get(servers::list_servers))
         .route("/servers", post(servers::create_server))
         .route("/servers/{id}", get(servers::get_server))
         .route("/servers/{id}", delete(servers::delete_server))
+        .route("/servers/{id}/icon", post(servers::set_server_icon))
         .route("/servers/{id}/join", post(servers::join_server))
         .route("/servers/{id}/leave", post(servers::leave_server))
         .route(

@@ -15,21 +15,25 @@ type Props = {
 export function CategoriesModal({ token, serverId, categories, channels, onClose }: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || busy) return;
     setBusy(true);
+    setError(null);
     try {
       await api.createCategory(token, serverId, name.trim());
       setName("");
+    } catch {
+      setError("Could not create that category. Try again.");
     } finally {
       setBusy(false);
     }
   }
-  const del = (id: string) => api.deleteCategory(token, serverId, id).catch(() => {});
+  const del = (id: string) => api.deleteCategory(token, serverId, id).catch(() => setError("Could not delete that category. Try again."));
   const move = (channelId: string, categoryId: string) =>
-    api.moveChannel(token, serverId, channelId, categoryId || null).catch(() => {});
+    api.moveChannel(token, serverId, channelId, categoryId || null).catch(() => setError("Could not move that channel. Try again."));
 
   const sorted = [...categories].sort((a, b) => a.position - b.position);
   const textChannels = channels.filter((c) => c.channel_type === "text");
@@ -60,6 +64,12 @@ export function CategoriesModal({ token, serverId, categories, channels, onClose
         </button>
       </form>
 
+      {error && (
+        <div role="alert" className="mt-3 rounded-xl px-3 py-2 text-sm" style={{ background: "color-mix(in oklch, var(--danger) 12%, var(--bg-elevated))", color: "var(--danger)" }}>
+          {error}
+        </div>
+      )}
+
       {sorted.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {sorted.map((c) => (
@@ -86,7 +96,11 @@ export function CategoriesModal({ token, serverId, categories, channels, onClose
         Organize channels
       </h3>
       <div className="mt-2 flex flex-col gap-1.5" style={{ maxHeight: 280, overflowY: "auto" }}>
-        {textChannels.map((ch) => (
+        {textChannels.length === 0 ? (
+          <div className="rounded-2xl px-4 py-5 text-center text-sm" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
+            No text channels yet. Create one from the sidebar, then organize it here.
+          </div>
+        ) : textChannels.map((ch) => (
           <div
             key={ch.id}
             className="flex items-center gap-2 px-3 py-2"

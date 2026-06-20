@@ -26,14 +26,14 @@ export function BootSplash({ connStatus, onLogout }: Props) {
 
   return (
     <div
-      className="flex h-screen w-screen flex-col items-center justify-center text-center"
+      className="ohiyo-boot-splash flex h-screen w-screen flex-col items-center justify-center text-center"
       style={{
         background:
           "radial-gradient(circle at 50% 35%, color-mix(in oklch, var(--accent) 14%, var(--bg-base)) 0%, var(--bg-base) 60%)",
         padding: "var(--space-6)",
       }}
     >
-      <div className="kc-loader" style={{ color: "var(--accent)" }}>
+      <div className="ohiyo-boot-mark" style={{ color: "var(--accent)" }}>
         <BirdMark size={56} />
       </div>
       <div
@@ -43,11 +43,13 @@ export function BootSplash({ connStatus, onLogout }: Props) {
           fontSize: "var(--text-xl)", color: "var(--text-primary)",
         }}
       >
-        {stalled ? "Still reaching the nest…" : "Warming up your space"}
+        {stalled ? "Still connecting…" : "Opening Ohiyo"}
       </div>
       <div className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-        {stalled ? "Hang tight — your connection's being shy." : "One moment, this is quick."}
+        {stalled ? "This is taking longer than usual." : "Getting your space ready."}
       </div>
+
+      <div className="ohiyo-boot-progress" aria-hidden="true"><span /></div>
 
       {stalled && (
         <button
