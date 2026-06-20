@@ -216,7 +216,7 @@ function VideoTile({
         </div>
       )}
 
-      {!isSelf && onVolumeChange && (
+      {!isSelf && !screen && onVolumeChange && (
         <div
           style={{
             position: "absolute", right: "var(--space-2)", top: "var(--space-2)",
@@ -574,6 +574,35 @@ function VoiceParticipantRow({
   );
 }
 
+function ScreenShareParticipantChip({
+  stream, name, avatarUrl, muted, screen, isSelf, quality,
+}: {
+  stream: MediaStream | null;
+  name: string;
+  avatarUrl: string | null;
+  muted: boolean;
+  screen: boolean;
+  isSelf: boolean;
+  quality?: QualityLevel;
+}) {
+  const { speaking } = useAudioLevel(stream, !!stream && !muted);
+  const status = screen ? "Sharing" : muted ? "Muted" : speaking ? "Speaking" : isSelf ? "You" : "Here";
+
+  return (
+    <div className={`kc-screen-chip${speaking ? " kc-screen-chip--speaking" : ""}${muted ? " kc-screen-chip--muted" : ""}`}>
+      <AvatarOrb name={name} avatarUrl={avatarUrl} size={38} />
+      <div className="kc-screen-chip__body">
+        <div className="kc-screen-chip__name">{name}{isSelf ? " (you)" : ""}</div>
+        <div className="kc-screen-chip__status">
+          <span aria-hidden="true"><StrokeIcon d={muted ? Icon.micOff : Icon.mic} size={12} /></span>
+          {status}
+          {quality && <ConnectionBadge level={quality} size={12} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
   const { localStream, remoteStreams, participants, self, callState, quality } = webrtc;
   const [minimized, setMinimized] = useState(false);
@@ -663,9 +692,11 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
   const modeLabel = mode === "media" ? "Video room" : mode === "voice" ? "Voice room" : "Solo voice";
   const sortedMediaPeople = [...people].sort((a, b) => Number(b.screen) - Number(a.screen) || Number(b.video) - Number(a.video));
   const hasScreenShare = sortedMediaPeople.some((p) => p.screen);
+  const screenPerson = sortedMediaPeople.find((p) => p.screen) ?? sortedMediaPeople[0];
+  const supportPeople = screenPerson ? sortedMediaPeople.filter((p) => p.id !== screenPerson.id) : [];
 
   const controls = (compact = false) => (
-    <div className={compact ? "kc-call-controls kc-call-controls--compact" : "kc-call-controls"}>
+    <div className={`${compact ? "kc-call-controls kc-call-controls--compact" : "kc-call-controls"}${hasScreenShare && !compact ? " kc-call-controls--screen" : ""}`}>
       <ControlBtn compact={compact} d={self.muted ? Icon.micOff : Icon.mic} label={self.muted ? "Unmute" : "Mute"}
         onClick={webrtc.toggleAudio} active={false} danger={self.muted} />
       <ControlBtn compact={compact} d={self.video ? Icon.video : Icon.videoOff} label={self.video ? "Turn camera off" : "Turn camera on"}
@@ -710,6 +741,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
 
   const overlay = (
     <div
+      className={`kc-call-overlay${hasScreenShare ? " kc-call-overlay--screen" : ""}`}
       style={{
         position: "fixed", zIndex: 9000,
         ...(minimized
@@ -760,7 +792,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
         </div>
       ) : (
         <>
-          <div style={{
+          <div className="kc-call-header" style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
             gap: 14, marginBottom: "clamp(12px, 2vh, 22px)", flexShrink: 0,
           }}>
@@ -837,8 +869,32 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
             </div>
           )}
 
-          {mode === "media" && (
-            <div className={`kc-media-stage kc-media-stage--${Math.min(total, 6)}${hasScreenShare ? " kc-media-stage--screen-active" : ""}`}>
+          {mode === "media" && hasScreenShare && screenPerson && (
+            <div className="kc-screen-share-stage">
+              <div className="kc-screen-share-stage__screen">
+                {renderPersonTile(screenPerson)}
+              </div>
+              {supportPeople.length > 0 && (
+                <div className="kc-screen-share-rail" aria-label="People in this call">
+                  {supportPeople.map((person) => (
+                    <ScreenShareParticipantChip
+                      key={person.id}
+                      stream={person.stream}
+                      name={person.name}
+                      avatarUrl={person.avatarUrl}
+                      muted={person.muted}
+                      screen={person.screen}
+                      isSelf={person.isSelf}
+                      quality={person.quality}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {mode === "media" && !hasScreenShare && (
+            <div className={`kc-media-stage kc-media-stage--${Math.min(total, 6)}`}>
               {sortedMediaPeople.map(renderPersonTile)}
             </div>
           )}
