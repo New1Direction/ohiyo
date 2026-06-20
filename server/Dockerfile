@@ -37,9 +37,11 @@ RUN apt-get update \
 
 # Litestream — continuous SQLite replication for point-in-time backups. Installed
 # unconditionally but a complete no-op unless LITESTREAM_REPLICA_URL is set (the
-# entrypoint passes straight through to the server otherwise). amd64 = Fly's runtime.
+# entrypoint passes straight through to the server otherwise). TARGETARCH lets
+# Apple Silicon local builds use arm64 while Fly's runtime continues using amd64.
+ARG TARGETARCH
 ARG LITESTREAM_VERSION=0.3.13
-ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-v${LITESTREAM_VERSION}-linux-amd64.deb /tmp/litestream.deb
+ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-v${LITESTREAM_VERSION}-linux-${TARGETARCH}.deb /tmp/litestream.deb
 RUN dpkg -i /tmp/litestream.deb && rm /tmp/litestream.deb
 
 WORKDIR /data

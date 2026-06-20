@@ -1,4 +1,4 @@
-import { launchBrowser, register, shot, log, uniq } from "./harness.mjs";
+import { currentToken, launchBrowser, register, shot, log, uniq } from "./harness.mjs";
 
 // End-to-end encrypted DMs: A toggles encryption, sends a secret. B decrypts it.
 // CRITICAL: the server must store only ciphertext — verified via the REST API.
@@ -35,8 +35,8 @@ try {
   await pageA.click('button[aria-label="Find people"]');
   await pageA.waitForSelector('input[aria-label="Search people"]', { timeout: 6000 });
   await pageA.fill('input[aria-label="Search people"]', B);
-  await pageA.waitForSelector(`button:has-text("@${B}")`, { timeout: 6000 });
-  await pageA.click(`button:has-text("@${B}")`);
+  await pageA.waitForSelector(`button[aria-label="Message @${B}"]`, { timeout: 6000 });
+  await pageA.click(`button[aria-label="Message @${B}"]`);
   await pageA.waitForSelector('input[placeholder="Say something…"]', { timeout: 8000 });
   log("A opened DM with B");
 
@@ -88,7 +88,7 @@ try {
   log("A reloaded → own message + reply both still readable (forward-secrecy cache) ✓");
 
   // ── PROOF: the server stored only CIPHERTEXT (it cannot read the message) ──
-  const tokenA = await pageA.evaluate(() => localStorage.getItem("token"));
+  const tokenA = await currentToken(pageA);
   const dms = await (
     await fetch(`${API}/users/@me/dms`, { headers: { Authorization: `Bearer ${tokenA}` } })
   ).json();

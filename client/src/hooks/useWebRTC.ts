@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PublicUser } from "../api";
 import type { VoicePeer } from "../gateway";
-import { rtcConfig, applyVideoProfile, CAMERA_720P } from "../webrtc/video";
+import { rtcConfig, applyVideoProfile, CAMERA_720P, MUSIC_AUDIO } from "../webrtc/video";
 import { tuneOpusSdp, raiseAudioBitrate } from "../webrtc/sdp";
 import { applyVideoCodecPreference } from "../webrtc/codecs";
 import {
@@ -71,6 +71,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   const localStreamRef = useRef<MediaStream | null>(null);
   const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenShareBitrateRef = useRef<number | null>(null);
   const screenAudioSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const iceServersRef = useRef<RTCIceServer[]>(FALLBACK_ICE);
   const channelRef = useRef<string | null>(null);
@@ -109,6 +110,27 @@ export function useWebRTC(cb: WebRTCCallbacks) {
 
     const ls = localStreamRef.current;
     if (ls) for (const track of ls.getTracks()) pc.addTrack(track, ls);
+
+    // If someone joins while we are already screen sharing, the new peer is born
+    // after the original replaceTrack() calls. Wire that peer to the active screen
+    // immediately so they do not receive the stale camera/blank video track.
+    const activeScreenVideo = screenStreamRef.current?.getVideoTracks()[0] ?? null;
+    const activeScreenAudio = screenStreamRef.current?.getAudioTracks()[0] ?? null;
+    if (activeScreenVideo && activeScreenVideo.readyState === "live") {
+      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+      if (sender) {
+        void sender.replaceTrack(activeScreenVideo).then(() => {
+          const bitrate = screenShareBitrateRef.current;
+          if (bitrate) void applySenderBitrate(sender, bitrate);
+        }).catch(() => {});
+      }
+    }
+    if (activeScreenAudio && activeScreenAudio.readyState === "live") {
+      try {
+        const sender = pc.addTrack(activeScreenAudio, screenStreamRef.current!);
+        screenAudioSendersRef.current.set(peerId, sender);
+      } catch { /* ignore */ }
+    }
 
     pc.onicecandidate = (e) => {
       if (e.candidate) cbRef.current.sendSignal(peerId, "candidate", JSON.stringify(e.candidate.toJSON()));
@@ -272,11 +294,18 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   // ── Local media acquisition ───────────────────────────────────────────────
   async function acquireLocalMedia(wantVideo: boolean): Promise<MediaStream> {
     let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      hasRealCameraRef.current = true;
-    } catch {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => new MediaStream());
+    if (wantVideo) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_AUDIO, video: true });
+        hasRealCameraRef.current = true;
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_AUDIO }).catch(() => new MediaStream());
+        stream.addTrack(blankVideoTrack());
+        hasRealCameraRef.current = false;
+      }
+    } else {
+      // Voice-only should feel like voice-only: ask for microphone, not camera.
+      stream = await navigator.mediaDevices.getUserMedia({ audio: MUSIC_AUDIO }).catch(() => new MediaStream());
       stream.addTrack(blankVideoTrack());
       hasRealCameraRef.current = false;
     }
@@ -356,16 +385,43 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     });
   }, [pushMeta]);
 
-  const toggleVideo = useCallback(() => {
-    setSelf((prev) => {
-      if (!hasRealCameraRef.current) return prev;
-      const video = !prev.video;
-      const track = cameraTrackRef.current;
-      if (track && !prev.screen) track.enabled = video;
-      const next = { ...prev, video };
-      pushMeta(next);
-      return next;
-    });
+  const toggleVideo = useCallback(async () => {
+    const cur = selfRef.current;
+
+    // Voice-only joins intentionally ask for mic only. If the user later turns
+    // camera on, acquire the camera then and swap it onto the existing video
+    // senders — no dead button, no rejoin required.
+    if (!cur.video && !hasRealCameraRef.current) {
+      try {
+        const cam = await navigator.mediaDevices.getUserMedia({ video: true });
+        const track = cam.getVideoTracks()[0] ?? null;
+        if (!track) return;
+        cameraTrackRef.current?.stop();
+        cameraTrackRef.current = track;
+        hasRealCameraRef.current = true;
+        const audioTracks = localStreamRef.current?.getAudioTracks() ?? [];
+        const nextStream = new MediaStream([...audioTracks, track]);
+        localStreamRef.current = nextStream;
+        if (!cur.screen) {
+          for (const { pc } of pcsRef.current.values()) {
+            const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+            if (sender) void sender.replaceTrack(track).catch(() => {});
+          }
+          setLocalStream(nextStream);
+        }
+      } catch (err) {
+        console.warn("[webrtc] camera enable failed", err);
+        return;
+      }
+    }
+
+    const latest = selfRef.current;
+    const video = !latest.video;
+    const track = cameraTrackRef.current;
+    if (track && !latest.screen) track.enabled = video;
+    const next = { ...latest, video };
+    setSelf(next);
+    pushMeta(next);
   }, [pushMeta]);
 
   /** Start/stop screen share. Video swap is renegotiation-free (replaceTrack);
@@ -376,6 +432,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
       // ── Stop sharing ──
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
+      screenShareBitrateRef.current = null;
       const cam = cameraTrackRef.current;
       for (const { pc } of pcsRef.current.values()) {
         const sender = pc.getSenders().find((s) => s.track?.kind === "video");
@@ -407,6 +464,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     }
     const { stream: display, videoTrack: screenTrack, audioTrack } = captured;
     screenStreamRef.current = display;
+    screenShareBitrateRef.current = preset.maxBitrate;
 
     // Swap the screen video onto every sender (no renegotiation) + apply bitrate.
     for (const { pc } of pcsRef.current.values()) {

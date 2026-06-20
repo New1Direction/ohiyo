@@ -45,10 +45,10 @@ function ServerIcon({
       <div
         className="absolute left-0 top-1/2 -translate-y-1/2 rounded-r-full transition-all duration-150"
         style={{
-          background: "var(--text-primary)",
+          background: isSelected ? "var(--accent)" : "var(--text-primary)",
           width: 4,
           height: isSelected ? 36 : hasUnread ? 20 : 8,
-          opacity: isSelected || hasUnread ? 1 : 0.55,
+          opacity: isSelected || hasUnread ? 1 : 0.42,
         }}
       />
       {hasUnread && !isSelected && (
@@ -56,7 +56,7 @@ function ServerIcon({
           className="absolute"
           style={{
             right: 4, top: 4, width: 12, height: 12, borderRadius: "var(--radius-full)",
-            background: "var(--accent)", border: "2.5px solid var(--bg-base)",
+            background: "var(--accent)", border: "2.5px solid var(--bg-base)", boxShadow: "0 0 12px color-mix(in oklch, var(--accent) 62%, transparent)",
           }}
         />
       )}
@@ -80,7 +80,6 @@ export function ServerSidebar({
   selectedId,
   onSelect,
   onCreateServer,
-  onOpenSettings,
   onOpenSaved,
   unreadServerIds,
   homes,
@@ -108,9 +107,10 @@ export function ServerSidebar({
               className="kc-interactive flex h-8 w-8 items-center justify-center text-[10px] font-bold"
               style={{
                 borderRadius: selected ? "30%" : "50%",
-                background: selected ? "var(--accent)" : "var(--bg-sidebar)",
-                color: selected ? "#fff" : "var(--text-secondary)",
+                background: selected ? "linear-gradient(135deg, var(--text-primary), var(--text-muted))" : "var(--bg-sidebar)",
+                color: selected ? "var(--bg-base)" : "var(--text-secondary)",
                 border: "none",
+                boxShadow: selected ? "0 0 0 2px color-mix(in oklch, var(--accent) 24%, transparent)" : undefined,
               }}
             >
               {label || "OH"}
@@ -135,7 +135,13 @@ export function ServerSidebar({
       <button
         type="button"
         className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full text-xl transition-all duration-150 hover:rounded-[30%]"
-        style={{ background: selectedId === null ? "var(--accent)" : "var(--bg-sidebar)", borderRadius: selectedId === null ? "30%" : "50%", border: "none" }}
+        style={{
+          background: selectedId === null ? "linear-gradient(135deg, var(--text-primary), var(--text-muted))" : "var(--bg-sidebar)",
+          color: selectedId === null ? "var(--bg-base)" : "var(--text-primary)",
+          borderRadius: selectedId === null ? "30%" : "50%",
+          border: "none",
+          boxShadow: selectedId === null ? "0 0 0 2px color-mix(in oklch, var(--accent) 24%, transparent)" : undefined,
+        }}
         onClick={() => onSelect("")}
         title="Direct Messages"
         aria-label="Direct Messages"
@@ -183,17 +189,6 @@ export function ServerSidebar({
         </button>
       )}
 
-      {/* Settings */}
-      <button
-        type="button"
-        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-lg transition-opacity hover:opacity-100"
-        style={{ color: "var(--text-muted)", opacity: 0.6, background: "none", border: "none" }}
-        onClick={onOpenSettings}
-        title="Settings (Ctrl+,)"
-        aria-label="Settings"
-      >
-        <Icon name="settings" size={18} />
-      </button>
     </div>
   );
 }

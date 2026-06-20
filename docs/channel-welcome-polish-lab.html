@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ohiyo Channel Welcome Polish Lab</title>
+  <style>
+    :root {
+      --bg: #10100f;
+      --panel: #1f1e1c;
+      --panel-2: #171716;
+      --input: #2f2d2a;
+      --text: #f2f4f5;
+      --muted: #909ca4;
+      --soft: #c8d0d5;
+      --accent: #62b0dc;
+      --green: #76a783;
+      --line: rgba(242,244,245,.08);
+      --shadow: 0 22px 70px rgba(0,0,0,.34), 0 8px 18px rgba(0,0,0,.22);
+      --r-xl: 28px;
+      --r-lg: 18px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 52% 22%, color-mix(in oklch, var(--accent) 13%, transparent), transparent 36%),
+        var(--bg);
+      color: var(--text);
+      padding: 48px 24px;
+    }
+    header { max-width: 980px; margin: 0 auto 30px; }
+    h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -0.04em; }
+    .lead { margin: 0; color: var(--soft); max-width: 760px; line-height: 1.55; }
+    .grid { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+    .option {
+      border: 1px solid var(--line);
+      background: linear-gradient(145deg, rgba(255,255,255,.035), rgba(255,255,255,.015));
+      border-radius: var(--r-xl);
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }
+    .option > h2 { margin: 0 0 6px; font-size: 14px; color: var(--accent); text-transform: uppercase; letter-spacing: .08em; }
+    .note { margin: 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .mock {
+      min-height: 470px;
+      border-radius: 24px;
+      background: #1f1e1d;
+      border: 1px solid rgba(255,255,255,.06);
+      padding: 44px 34px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      position: relative;
+      overflow: hidden;
+    }
+    .mock::before {
+      content: "";
+      position: absolute;
+      width: 420px;
+      height: 420px;
+      border-radius: 50%;
+      background: radial-gradient(circle, color-mix(in oklch, var(--accent) 10%, transparent), transparent 64%);
+      top: 14%; left: 50%; transform: translateX(-50%);
+      pointer-events: none;
+    }
+    .mark { width: 66px; height: 66px; border-radius: 20px; display: grid; place-items: center; color: var(--accent); position: relative; z-index: 1; }
+    .mark svg { width: 58px; height: 58px; }
+    .title { position: relative; z-index: 1; text-align: center; }
+    .title h3 { margin: 0; font-size: 24px; letter-spacing: -0.03em; }
+    .title p { margin: 10px auto 0; max-width: 430px; color: var(--muted); line-height: 1.45; }
+    .card {
+      width: min(100%, 520px);
+      position: relative; z-index: 1;
+      border-radius: 22px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(15,15,14,.58);
+      padding: 22px;
+      box-shadow: 0 18px 45px rgba(0,0,0,.22);
+    }
+    .card.blue { border-color: color-mix(in oklch, var(--accent) 34%, rgba(255,255,255,.08)); background: color-mix(in oklch, var(--accent) 8%, rgba(15,15,14,.72)); }
+    .row { display: flex; align-items: flex-start; gap: 14px; }
+    .num, .icon {
+      flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+      display: grid; place-items: center; font-weight: 800; font-size: 13px;
+      background: color-mix(in oklch, var(--accent) 18%, var(--input)); color: var(--text);
+    }
+    .copy h4 { margin: 0; font-size: 18px; letter-spacing: -0.02em; }
+    .copy p { margin: 7px 0 0; color: var(--soft); line-height: 1.45; font-size: 14px; }
+    .copy b { color: var(--text); }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    button { border: 0; border-radius: 999px; padding: 11px 16px; font-weight: 750; color: var(--text); background: var(--accent); }
+    button.secondary { background: transparent; color: var(--accent); border: 1px solid color-mix(in oklch, var(--accent) 62%, transparent); }
+    button.ghost { background: transparent; color: var(--muted); }
+    .stack { display: grid; gap: 12px; width: min(100%, 520px); position: relative; z-index: 1; }
+    .mini {
+      padding: 16px 18px; border-radius: 18px; border: 1px solid rgba(255,255,255,.07);
+      background: rgba(255,255,255,.025); display: flex; gap: 12px; align-items: flex-start;
+    }
+    .mini h4 { margin: 0; font-size: 15px; }
+    .mini p { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.35; }
+    .check { color: var(--green); font-weight: 900; }
+    .compact { width: min(100%, 560px); display: grid; gap: 10px; position: relative; z-index: 1; }
+    .pillline { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+    .pill { padding: 7px 11px; border-radius: 999px; background: rgba(255,255,255,.045); color: var(--soft); font-size: 12px; border: 1px solid rgba(255,255,255,.06); }
+    .recovery-strip {
+      margin-top: 10px; padding: 13px 15px; border-radius: 16px;
+      border: 1px solid color-mix(in oklch, var(--accent) 28%, transparent);
+      background: color-mix(in oklch, var(--accent) 7%, rgba(255,255,255,.025));
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    }
+    .recovery-strip span { color: var(--soft); font-size: 13px; }
+    .recovery-strip button { padding: 9px 12px; white-space: nowrap; }
+    .recommended { outline: 2px solid color-mix(in oklch, var(--accent) 56%, transparent); }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Channel welcome polish — recommended directions</h1>
+    <p class="lead">Goal: make the first channel screen feel clean, useful, and premium. Reduce paragraph slop, make recovery code feel like a simple next step, and keep the center area calm.</p>
+  </header>
+  <main class="grid">
+    <section class="option recommended">
+      <h2>Option A — Recommended: One clean welcome card + recovery strip</h2>
+      <p class="note">Best balance. Keeps the welcome warm, then makes recovery code feel like a small setup task instead of a second big modal/card.</p>
+      <div class="mock">
+        <div class="mark">◒</div>
+        <div class="title"><h3>Welcome to #general</h3><p>This is the first channel in your space. Say hi, share a thought, or invite someone in.</p></div>
+        <div class="card">
+          <div class="row"><div class="icon">✓</div><div class="copy"><h4>Your space is ready</h4><p><b>Private messages are on.</b> No ads, no tracking, no paywall. Start with a message or invite a friend when you’re ready.</p><div class="actions"><button>Invite someone</button><button class="secondary">See what’s new →</button></div></div></div>
+          <div class="recovery-strip"><span><b>Save a recovery code.</b> It helps you get back in on a new device.</span><button>Save code</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="option">
+      <h2>Option B — Setup checklist</h2>
+      <p class="note">Most practical. Feels like onboarding progress. Good if you want users to know exactly what to do next.</p>
+      <div class="mock">
+        <div class="mark">◒</div>
+        <div class="title"><h3>Welcome to #general</h3><p>Three quick things to get comfortable.</p></div>
+        <div class="stack">
+          <div class="mini"><span class="check">✓</span><div><h4>Space created</h4><p>Your first channel is ready.</p></div></div>
+          <div class="mini"><span>2</span><div><h4>Save recovery code</h4><p>Protect access if you switch devices.</p><div class="actions"><button>Save recovery code</button><button class="ghost">Later</button></div></div></div>
+          <div class="mini"><span>3</span><div><h4>Invite someone</h4><p>Bring one friend in when you’re ready.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="option">
+      <h2>Option C — Minimal welcome only</h2>
+      <p class="note">Cleanest visually. Best if you want the chat itself to be the focus and avoid onboarding cards entirely.</p>
+      <div class="mock">
+        <div class="mark">◒</div>
+        <div class="title"><h3>Welcome to #general</h3><p>This is the start of your space.</p></div>
+        <div class="compact">
+          <div class="pillline"><span class="pill">Encrypted messages</span><span class="pill">Voice ready</span><span class="pill">Screen share ready</span></div>
+          <div class="actions" style="justify-content:center"><button>Send first message</button><button class="secondary">Invite someone</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="option">
+      <h2>Option D — Recovery-first calm card</h2>
+      <p class="note">If recovery code is business-critical, this makes it prominent without scare copy. It’s more serious than A.</p>
+      <div class="mock">
+        <div class="mark">◒</div>
+        <div class="title"><h3>One quick safety step</h3><p>Save a recovery code before you get settled. It only takes a moment.</p></div>
+        <div class="card blue">
+          <div class="row"><div class="icon">1</div><div class="copy"><h4>Keep access to your account</h4><p>Your recovery code helps you sign in on a new device if this one is lost.</p><div class="actions"><button>Save recovery code</button><button class="ghost">I’ll do it later</button></div></div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api,
   type DiscordConnectInfo,
@@ -8,6 +8,7 @@ import {
   type DiscrawlImportResponse,
   type DiscrawlPreview,
   type ImportReport,
+  type ManagedDiscordImportJob,
   type ServerWithChannels,
 } from "../api";
 import { ModalShell } from "./ModalShell";
@@ -19,7 +20,7 @@ type Props = {
 };
 
 const IMPORT_STAGES = [
-  "Reading Discrawl archive",
+  "Reading cloned archive",
   "Creating your Ohiyo space",
   "Importing channels and history",
   "Re-hosting downloaded attachments",
@@ -39,11 +40,19 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   const [history, setHistory] = useState<"All" | "Last90Days">("All");
   const [preview, setPreview] = useState<DiscrawlPreview | null>(null);
   const [result, setResult] = useState<DiscrawlImportResponse | null>(null);
+  const [managedJob, setManagedJob] = useState<ManagedDiscordImportJob | null>(null);
   const [uploadedArchive, setUploadedArchive] = useState<{ filename: string; size_bytes: number } | null>(null);
   const [busy, setBusy] = useState<"guilds" | "upload" | "preview" | "import" | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [importStage, setImportStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -84,6 +93,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   function resetRunState() {
     setPreview(null);
     setResult(null);
+    setManagedJob(null);
     setError(null);
   }
 
@@ -150,15 +160,29 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
     setBusy("import");
     setError(null);
     setImportStage(0);
+    setManagedJob(null);
     try {
-      const result = await api.runManagedDiscordImport(token, managedGuildId, history);
-      setImportStage(IMPORT_STAGES.length - 1);
-      setResult(result);
-      onImported(result.server);
+      const started = await api.startManagedDiscordImportJob(token, managedGuildId, history);
+      if (!mountedRef.current) return;
+      setManagedJob(started.job);
+      let job = started.job;
+      while (mountedRef.current && (job.state === "queued" || job.state === "running")) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        job = await api.getManagedDiscordImportJob(token, started.job.id);
+        if (!mountedRef.current) return;
+        setManagedJob(job);
+      }
+      if (job.state === "succeeded" && job.result) {
+        setImportStage(IMPORT_STAGES.length - 1);
+        setResult(job.result);
+        onImported(job.result.server);
+      } else if (job.state === "failed") {
+        setError(job.error ?? "Discord clone failed");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(null);
+      if (mountedRef.current) setBusy(null);
     }
   }
 
@@ -195,11 +219,11 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
             Discord → Ohiyo
           </div>
           <h2 id="discord-import-title" className="mt-1 text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-            Import a server in minutes
+            Move your Discord into Ohiyo
           </h2>
-          <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>
-            A fast guided clone for Discord servers. Ohiyo creates a fresh space, brings over structure and history,
-            then clearly marks imported archive channels as <strong>not E2E</strong> while native Ohiyo chats stay encrypted.
+          <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-muted)" }}>
+            Add the Ohiyo bot, pick your Discord server, and we’ll build a fresh Ohiyo space for you. No database files,
+            no secret settings, no scary setup.
           </p>
         </div>
 
@@ -207,7 +231,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
 
         {capabilityLoading && (
           <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: "var(--bg-input)", background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
-            Checking whether this home can import Discrawl archives…
+            Checking Discord move-in setup…
           </div>
         )}
 
@@ -216,87 +240,100 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
         )}
 
         {managedEnabled && !result && (
-          <div className="rounded-2xl border p-4" style={{ borderColor: "var(--accent)", background: "color-mix(in oklch, var(--accent) 8%, var(--bg-elevated))" }}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>1. Connect Discord</div>
-                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                  Add Ohiyo's read-only bot to your Discord server, paste the server ID, then Ohiyo clones it for you.
-                </p>
+          <div className="overflow-hidden rounded-3xl border" style={{ borderColor: "color-mix(in oklch, var(--accent) 28%, var(--bg-input))", background: "linear-gradient(145deg, color-mix(in oklch, var(--accent) 10%, var(--bg-elevated)), var(--bg-elevated))" }}>
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-base font-bold" style={{ color: "var(--text-primary)" }}>Clone with the Ohiyo bot</div>
+                  <p className="mt-1 text-sm leading-6" style={{ color: "var(--text-muted)" }}>
+                    The bot can only read enough to copy your server. You choose where to add it, then come back here and pick the server card.
+                  </p>
+                </div>
+                <span className="rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide" style={{ background: "var(--accent)", color: "#fff" }}>
+                  Easiest
+                </span>
               </div>
-              <span className="rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: "var(--accent)", color: "#fff" }}>
-                Recommended
-              </span>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <a
-                href={connectInfo?.invite_url ?? undefined}
-                target="_blank"
-                rel="noreferrer"
-                className="kc-interactive px-4 py-3 text-sm font-semibold"
-                style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)", pointerEvents: connectInfo?.invite_url ? "auto" : "none", opacity: connectInfo?.invite_url ? 1 : 0.55 }}
-              >
-                1. Add bot
-              </a>
-              <button
-                type="button"
-                className="kc-interactive px-4 py-3 text-sm font-semibold"
-                onClick={refreshDiscordGuilds}
-                disabled={busy !== null}
-                style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)" }}
-              >
-                {busy === "guilds" ? "Finding servers…" : "2. I added it — find servers"}
-              </button>
-              <button
-                type="button"
-                className="kc-interactive px-4 py-3 text-sm font-semibold"
-                onClick={importManagedDiscord}
-                disabled={!canManagedImport}
-                style={{ borderRadius: "var(--radius-md)", background: "var(--accent)", color: "#fff" }}
-              >
-                {busy === "import" ? IMPORT_STAGES[importStage] : "3. Clone server"}
-              </button>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                <a
+                  href={connectInfo?.invite_url ?? undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="kc-interactive rounded-2xl p-4 text-left text-sm font-semibold"
+                  style={{ background: "var(--bg-input)", color: "var(--text-primary)", border: "1px solid var(--bg-hover)", pointerEvents: connectInfo?.invite_url ? "auto" : "none", opacity: connectInfo?.invite_url ? 1 : 0.55, textDecoration: "none" }}
+                >
+                  <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold" style={{ background: "color-mix(in oklch, var(--accent) 16%, transparent)", color: "var(--accent)" }}>1</span>
+                  Add Ohiyo to Discord
+                  <span className="mt-1 block text-xs font-medium" style={{ color: "var(--text-muted)" }}>Discord opens in a new window.</span>
+                </a>
+                <button
+                  type="button"
+                  className="kc-interactive rounded-2xl p-4 text-left text-sm font-semibold"
+                  onClick={refreshDiscordGuilds}
+                  disabled={busy !== null}
+                  style={{ background: "var(--bg-input)", color: "var(--text-primary)", border: "1px solid var(--bg-hover)", cursor: "pointer" }}
+                >
+                  <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold" style={{ background: "color-mix(in oklch, var(--accent) 16%, transparent)", color: "var(--accent)" }}>2</span>
+                  {busy === "guilds" ? "Looking for servers…" : "Find my servers"}
+                  <span className="mt-1 block text-xs font-medium" style={{ color: "var(--text-muted)" }}>We’ll show the ones Ohiyo can see.</span>
+                </button>
+                <button
+                  type="button"
+                  className="kc-interactive rounded-2xl p-4 text-left text-sm font-semibold"
+                  onClick={importManagedDiscord}
+                  disabled={!canManagedImport}
+                  style={{ background: canManagedImport ? "var(--accent)" : "var(--bg-input)", color: canManagedImport ? "#fff" : "var(--text-muted)", border: "1px solid var(--bg-hover)", cursor: canManagedImport ? "pointer" : "not-allowed" }}
+                >
+                  <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold" style={{ background: canManagedImport ? "rgba(255,255,255,.18)" : "color-mix(in oklch, var(--text-primary) 6%, transparent)", color: canManagedImport ? "#fff" : "var(--text-muted)" }}>3</span>
+                  {busy === "import" ? (managedJob?.message ?? IMPORT_STAGES[importStage]) : "Clone selected server"}
+                  <span className="mt-1 block text-xs font-medium" style={{ color: canManagedImport ? "rgba(255,255,255,.78)" : "var(--text-muted)" }}>Creates your new Ohiyo space.</span>
+                </button>
+              </div>
             </div>
 
             {availableGuilds.length > 0 ? (
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {availableGuilds.map((guild) => {
-                  const selected = managedGuildId === guild.id;
-                  return (
-                    <button
-                      key={guild.id}
-                      type="button"
-                      onClick={() => { setManagedGuildId(guild.id); resetRunState(); }}
-                      className="kc-interactive flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm"
-                      style={{
-                        borderColor: selected ? "var(--accent)" : "var(--bg-input)",
-                        background: selected ? "color-mix(in oklch, var(--accent) 12%, var(--bg-elevated))" : "var(--bg-elevated)",
-                        color: "var(--text-primary)",
-                      }}
-                    >
-                      <span
-                        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                        style={{ background: "var(--accent)", color: "#fff", backgroundImage: guild.icon_url ? `url(${guild.icon_url})` : undefined, backgroundSize: "cover", backgroundPosition: "center" }}
+              <div className="border-t p-5" style={{ borderColor: "color-mix(in oklch, var(--text-primary) 8%, transparent)" }}>
+                <div className="mb-3 text-sm font-bold" style={{ color: "var(--text-primary)" }}>Pick the server to move</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {availableGuilds.map((guild) => {
+                    const selected = managedGuildId === guild.id;
+                    return (
+                      <button
+                        key={guild.id}
+                        type="button"
+                        onClick={() => { setManagedGuildId(guild.id); resetRunState(); }}
+                        className="kc-interactive flex items-center gap-3 rounded-2xl border p-3 text-left text-sm"
+                        style={{
+                          borderColor: selected ? "var(--accent)" : "var(--bg-input)",
+                          background: selected ? "color-mix(in oklch, var(--accent) 13%, var(--bg-elevated))" : "var(--bg-input)",
+                          color: "var(--text-primary)",
+                          boxShadow: selected ? "0 0 0 1px var(--accent), 0 16px 34px -28px var(--accent)" : undefined,
+                        }}
                       >
-                        {!guild.icon_url && guild.name[0]?.toUpperCase()}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-semibold">{guild.name}</span>
-                        <span className="block truncate text-xs" style={{ color: "var(--text-muted)" }}>{guild.id}</span>
-                      </span>
-                      {selected && <span aria-hidden>✓</span>}
-                    </button>
-                  );
-                })}
+                        <span
+                          className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-base font-bold"
+                          style={{ background: "var(--accent)", color: "#fff", backgroundImage: guild.icon_url ? `url(${guild.icon_url})` : undefined, backgroundSize: "cover", backgroundPosition: "center" }}
+                        >
+                          {!guild.icon_url && guild.name[0]?.toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-bold">{guild.name}</span>
+                          <span className="block truncate text-xs" style={{ color: "var(--text-muted)" }}>{selected ? "Ready to clone" : "Tap to choose"}</span>
+                        </span>
+                        {selected && <span className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold" style={{ background: "var(--accent)", color: "white" }} aria-hidden>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
-              <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                After authorizing the bot, click <strong>I added it — find servers</strong>. Your server will appear here so you do not need to paste an ID.
-              </p>
+              <div className="border-t px-5 py-4 text-sm" style={{ borderColor: "color-mix(in oklch, var(--text-primary) 8%, transparent)", color: "var(--text-muted)" }}>
+                After adding the bot in Discord, come back and click <strong>Find my servers</strong>. Your server will appear as a card here.
+              </div>
             )}
 
-            <details className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
-              <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>Can't find it? Paste server ID manually</summary>
+            <details className="mx-5 mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+              <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>Server not showing? Advanced help</summary>
               <label className="mt-2 flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                 Discord server ID
                 <input
@@ -309,32 +346,34 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
               </label>
             </details>
 
-            <label className="mt-3 flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              History depth
-              <select
-                value={history}
-                onChange={(e) => { setHistory(e.target.value as "All" | "Last90Days"); resetRunState(); }}
-                className="kc-field px-3.5 py-3 text-sm outline-none"
-              >
-                <option value="All">All history — complete clone</option>
-                <option value="Last90Days">Last 90 days — fastest first clone</option>
-              </select>
-            </label>
-            <DiscordCloneChecklist />
+            <div className="p-5 pt-4">
+              <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                How much history should we bring over?
+                <select
+                  value={history}
+                  onChange={(e) => { setHistory(e.target.value as "All" | "Last90Days"); resetRunState(); }}
+                  className="kc-field px-3.5 py-3 text-sm outline-none"
+                >
+                  <option value="All">Everything — best complete clone</option>
+                  <option value="Last90Days">Last 90 days — quickest first move</option>
+                </select>
+              </label>
+              <DiscordCloneChecklist />
+            </div>
           </div>
         )}
 
         {importEnabled && !result && (
           <details open={!managedEnabled || showArchiveFallback} onToggle={(e) => setShowArchiveFallback(e.currentTarget.open)} className="rounded-2xl border p-4" style={{ borderColor: "var(--bg-input)", background: "var(--bg-elevated)" }}>
             <summary className="cursor-pointer text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-              Already have a Discrawl archive? Import it instead
+              Already have an archive file? Advanced import
             </summary>
             <div className="mt-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Choose your archive</div>
                   <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                    Drop a Discrawl SQLite file and Ohiyo uploads it securely.
+                    Drop an Ohiyo-compatible Discord archive file and we’ll upload it securely.
                   </p>
                 </div>
                 <span className="rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: "color-mix(in oklch, var(--green) 14%, transparent)", color: "var(--green)" }}>
@@ -371,7 +410,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
                 />
                 <span className="text-3xl" aria-hidden>📦</span>
                 <span className="mt-2 text-base font-bold">
-                  {busy === "upload" ? "Uploading archive…" : busy === "preview" && uploadedArchive ? "Previewing automatically…" : uploadedArchive ? uploadedArchive.filename : isDragging ? "Drop to upload and preview" : "Drop your Discrawl DB here"}
+                  {busy === "upload" ? "Uploading archive…" : busy === "preview" && uploadedArchive ? "Previewing automatically…" : uploadedArchive ? uploadedArchive.filename : isDragging ? "Drop to upload and preview" : "Drop your archive file here"}
                 </span>
                 <span className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
                   {uploadedArchive
@@ -384,7 +423,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
                 <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>Advanced options</summary>
                 <div className="mt-2 grid gap-3 md:grid-cols-2">
                   <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                    Server DB path
+                    Archive path
                     <input
                       value={dbPath}
                       onChange={(e) => { setDbPath(e.target.value); setUploadedArchive(null); resetRunState(); }}
@@ -420,7 +459,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
           <PreviewCard preview={preview} history={history} />
         )}
 
-        {busy === "import" && <ImportProgress stage={importStage} />}
+        {busy === "import" && <ImportProgress stage={importStage} job={managedJob} />}
 
         {result && <ResultCard result={result} />}
 
@@ -458,33 +497,35 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
 
 function DiscordCloneChecklist() {
   return (
-    <div className="mt-4 rounded-2xl border p-3 text-xs" style={{ borderColor: "var(--bg-input)", background: "color-mix(in oklch, var(--bg-base) 58%, transparent)", color: "var(--text-muted)" }}>
-      <div className="font-bold" style={{ color: "var(--text-primary)" }}>What to do in Discord</div>
-      <ol className="mt-2 list-decimal space-y-2 pl-5">
-        <li>
-          Click <strong>Add bot</strong>. Discord opens. Choose the server you want to clone, then click <strong>Continue</strong> → <strong>Authorize</strong>.
-        </li>
-        <li>
-          If Discord says you cannot add it, you need <strong>Manage Server</strong> permission. Ask the server owner/admin to do this step.
-        </li>
-        <li>
-          Come back to Ohiyo and click <strong>I added it — find servers</strong>. Pick your server from the list.
-        </li>
-        <li>
-          Click <strong>Clone server</strong>. Keep Ohiyo open while it imports.
-        </li>
-      </ol>
-      <details className="mt-3">
-        <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>If cloning says the bot cannot read messages</summary>
-        <div className="mt-2 space-y-2">
+    <div className="mt-4 rounded-2xl border p-4 text-sm" style={{ borderColor: "var(--bg-input)", background: "color-mix(in oklch, var(--bg-base) 58%, transparent)", color: "var(--text-muted)" }}>
+      <div className="font-bold" style={{ color: "var(--text-primary)" }}>Tiny checklist</div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {[
+          ["Open Discord", "Choose the server you want to move."],
+          ["Approve Ohiyo", "Click Continue, then Authorize."],
+          ["Come back here", "Click Find my servers."],
+          ["Clone it", "Pick the card and keep Ohiyo open."],
+        ].map(([title, copy], idx) => (
+          <div key={title} className="flex gap-2 rounded-xl p-2" style={{ background: "color-mix(in oklch, var(--text-primary) 4%, transparent)" }}>
+            <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: "color-mix(in oklch, var(--accent) 16%, transparent)", color: "var(--accent)" }}>{idx + 1}</span>
+            <span>
+              <strong style={{ color: "var(--text-primary)" }}>{title}</strong>
+              <span className="block text-xs" style={{ color: "var(--text-muted)" }}>{copy}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <details className="mt-3 text-xs">
+        <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-secondary)" }}>If your server does not show up</summary>
+        <div className="mt-2 space-y-2 leading-5">
           <p>
-            If your server does not show up, wait a few seconds and click <strong>I added it — find servers</strong> again. If it still does not show, use <strong>Can't find it? Paste server ID manually</strong>: Discord <strong>User Settings</strong> → <strong>Advanced</strong> → turn on <strong>Developer Mode</strong>, then right-click the server icon → <strong>Copy Server ID</strong>.
+            Wait a few seconds and click <strong>Find my servers</strong> again. If Discord would not let you add Ohiyo, ask someone with <strong>Manage Server</strong> permission to do the add-bot step.
           </p>
           <p>
-            In your Discord server, check <strong>Server Settings</strong> → <strong>Roles</strong> → the Ohiyo bot role. It should have <strong>View Channels</strong> and <strong>Read Message History</strong>. Private channels must allow the bot role too.
+            Private channels only copy if the Ohiyo bot role can see them. In Discord, the bot role needs <strong>View Channels</strong> and <strong>Read Message History</strong>.
           </p>
           <p>
-            If you self-hosted your own Ohiyo bot, also open <strong>Discord Developer Portal</strong> → your app → <strong>Bot</strong> → <strong>Privileged Gateway Intents</strong>, then turn on <strong>Server Members Intent</strong> and <strong>Message Content Intent</strong>. The hosted Ohiyo bot should already have these enabled.
+            Self-hosting your own bot? Make sure <strong>Server Members Intent</strong> and <strong>Message Content Intent</strong> are enabled in the Discord Developer Portal.
           </p>
         </div>
       </details>
@@ -495,7 +536,7 @@ function DiscordCloneChecklist() {
 function Stepper({ step }: { step: number }) {
   return (
     <div className="grid gap-2 sm:grid-cols-3">
-      {["Connect", "Preview", "Open space"].map((label, idx) => {
+      {["Add bot", "Pick server", "Open space"].map((label, idx) => {
         const n = idx + 1;
         const active = step === n;
         const complete = step > n;
@@ -526,12 +567,12 @@ function Stepper({ step }: { step: number }) {
 function CapabilityNotice({ capability, error }: { capability: DiscrawlImportCapability | null; error: string | null }) {
   return (
     <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: "color-mix(in oklch, var(--gold, #f59e0b) 45%, var(--bg-input))", background: "color-mix(in oklch, var(--gold, #f59e0b) 10%, var(--bg-elevated))", color: "var(--text-primary)" }}>
-      <div className="font-bold">Import needs to be enabled on this home</div>
+      <div className="font-bold">Discord move-in is not ready here yet</div>
       <p className="mt-1" style={{ color: "var(--text-muted)" }}>
-        {error ?? capability?.message}
+        {error ?? capability?.message ?? "This Ohiyo home still needs its Discord bot connected by the person hosting it."}
       </p>
       <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
-        For now this is an admin/local import flow. The future one-click version will run Discrawl as a managed job after a Discord bot authorization.
+        If you are just using Ohiyo, you do not need to do anything technical. Ask the home owner to finish the Discord import setup, then come back and try again.
       </p>
     </div>
   );
@@ -569,14 +610,27 @@ function PreviewCard({ preview, history }: { preview: DiscrawlPreview; history: 
   );
 }
 
-function ImportProgress({ stage }: { stage: number }) {
+function ImportProgress({ stage, job }: { stage: number; job: ManagedDiscordImportJob | null }) {
+  const liveMessage = job?.message ?? IMPORT_STAGES[stage];
   return (
     <div className="rounded-2xl border p-4" style={{ borderColor: "var(--bg-input)", background: "var(--bg-elevated)" }}>
-      <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Importing fast…</div>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Cloning in the background…</div>
+          <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+            {liveMessage}
+          </p>
+        </div>
+        {job && (
+          <span className="rounded-full px-2 py-1 text-[11px] font-bold uppercase tracking-wide" style={{ background: "color-mix(in oklch, var(--accent) 12%, transparent)", color: "var(--accent)" }}>
+            {job.state}
+          </span>
+        )}
+      </div>
       <div className="mt-3 flex flex-col gap-2">
         {IMPORT_STAGES.map((label, idx) => {
-          const done = idx < stage;
-          const active = idx === stage;
+          const done = idx < stage || job?.state === "succeeded";
+          const active = idx === stage && job?.state !== "succeeded";
           return (
             <div key={label} className="flex items-center gap-2 text-sm" style={{ color: active ? "var(--text-primary)" : "var(--text-muted)", fontWeight: active ? 700 : 500 }}>
               <span className={active ? "kc-pulse" : ""} style={{ width: 9, height: 9, borderRadius: 999, background: done || active ? "var(--accent)" : "var(--bg-input)", display: "inline-block" }} />

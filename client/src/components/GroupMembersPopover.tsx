@@ -8,6 +8,7 @@ type Props = {
   token: string;
   /** Live participant list from the gateway (preferred); else we fetch on open. */
   seedMembers?: PublicUser[];
+  onOpenDm?: (user: PublicUser) => void | Promise<void>;
   onToast: (text: string, type?: "info" | "success" | "error") => void;
   onClose: () => void;
 };
@@ -31,11 +32,12 @@ function Avatar({ user, small }: { user: PublicUser; small?: boolean }) {
  * can add people or leave. Every add/remove bumps the server's rekey epoch, so the
  * client crypto rotates sender keys automatically — this UI just drives the endpoints.
  */
-export function GroupMembersPopover({ channel, currentUserId, token, seedMembers, onToast, onClose }: Props) {
+export function GroupMembersPopover({ channel, currentUserId, token, seedMembers, onOpenDm, onToast, onClose }: Props) {
   const [members, setMembers] = useState<PublicUser[]>(seedMembers ?? []);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PublicUser[]>([]);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const isOwner = !!channel.owner_id && channel.owner_id === currentUserId;
 
   // Prefer the live list from App; otherwise pull the authoritative one once.
@@ -48,7 +50,7 @@ export function GroupMembersPopover({ channel, currentUserId, token, seedMembers
     api
       .listRecipients(token, channel.id)
       .then((m) => alive && setMembers(m))
-      .catch(() => {});
+      .catch(() => alive && setError("Could not load group members. Try again."));
     return () => {
       alive = false;
     };
@@ -60,14 +62,19 @@ export function GroupMembersPopover({ channel, currentUserId, token, seedMembers
     const q = query.trim();
     if (q.length < 2) {
       setResults([]);
+      setError(null);
       return;
     }
     let alive = true;
     const t = setTimeout(() => {
       api
         .searchUsers(token, q)
-        .then((found) => alive && setResults(found.filter((u) => !memberIds.has(u.id))))
-        .catch(() => {});
+        .then((found) => {
+          if (!alive) return;
+          setError(null);
+          setResults(found.filter((u) => !memberIds.has(u.id)));
+        })
+        .catch(() => alive && setError("Could not search people. Try again."));
     }, 220);
     return () => {
       alive = false;
@@ -132,8 +139,12 @@ export function GroupMembersPopover({ channel, currentUserId, token, seedMembers
         </button>
       </header>
 
+      {error && <div className="kc-grpmem__empty" role="alert">{error}</div>}
+
       <ul className="kc-grpmem__list">
-        {ordered.map((m) => {
+        {ordered.length === 0 ? (
+          <li className="kc-grpmem__empty">No members loaded yet.</li>
+        ) : ordered.map((m) => {
           const isMe = m.id === currentUserId;
           const isGroupOwner = m.id === channel.owner_id;
           return (
@@ -144,6 +155,26 @@ export function GroupMembersPopover({ channel, currentUserId, token, seedMembers
                 {isMe && <span className="kc-grpmem__tag">you</span>}
                 {isGroupOwner && <span className="kc-grpmem__tag kc-grpmem__tag--owner">owner</span>}
               </span>
+              {onOpenDm && !isMe && (
+                <button
+                  type="button"
+                  className="kc-grpmem__message"
+                  aria-label={`Message ${label(m)}`}
+                  title="Message"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await onOpenDm(m);
+                      onClose();
+                    } catch {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  💬
+                </button>
+              )}
               {isOwner && !isMe && (
                 <button
                   type="button"
@@ -170,6 +201,9 @@ export function GroupMembersPopover({ channel, currentUserId, token, seedMembers
           aria-label="Add people to the group"
           disabled={busy}
         />
+        {query.trim().length >= 2 && !error && results.length === 0 && (
+          <div className="kc-grpmem__empty">No people found.</div>
+        )}
         {results.length > 0 && (
           <ul className="kc-grpmem__results">
             {results.slice(0, 6).map((u) => (

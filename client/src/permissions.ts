@@ -5,6 +5,7 @@ export const PERM = {
   KICK_MEMBERS: 1 << 2,
   BAN_MEMBERS: 1 << 3,
   MANAGE_ROLES: 1 << 4,
+  MANAGE_SERVER: 1 << 5,
 } as const;
 
 export type PermFlag = (typeof PERM)[keyof typeof PERM];
@@ -15,6 +16,7 @@ export const PERM_LABELS: { flag: PermFlag; label: string; hint: string }[] = [
   { flag: PERM.KICK_MEMBERS, label: "Kick members", hint: "Remove members (they can rejoin)" },
   { flag: PERM.BAN_MEMBERS, label: "Ban members", hint: "Remove & block from rejoining" },
   { flag: PERM.MANAGE_ROLES, label: "Manage roles", hint: "Create roles & assign them" },
+  { flag: PERM.MANAGE_SERVER, label: "Manage server", hint: "Rename and customize the server" },
 ];
 
 export const can = (perms: number, flag: number): boolean => (perms & flag) !== 0;

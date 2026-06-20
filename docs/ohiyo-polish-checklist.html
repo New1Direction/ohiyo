@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ohiyo Polish Checklist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500..700;1,9..144,500..700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --base:#10100f; --base2:#171716; --panel:#1f1f1d; --panel2:#252421; --line:#3b3935;
+  --text:#f2f4f5; --soft:#c8d0d5; --muted:#909ca4; --blue:#62b0dc; --blue2:#3d82ad;
+  --silver:#e1e7ec; --green:#76a783; --red:#d86647; --gold:#d8dee6;
+  --shadow:0 24px 70px -38px #000; --r:24px; --ui:"Inter",system-ui,sans-serif; --disp:"Fraunces",Georgia,serif;
+}
+*{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;background:radial-gradient(800px 380px at 85% -8%,rgba(98,176,220,.18),transparent 62%),radial-gradient(600px 300px at 0% 4%,rgba(225,231,236,.09),transparent 58%),var(--base);color:var(--text);font-family:var(--ui);line-height:1.55;-webkit-font-smoothing:antialiased}.wrap{width:min(1180px,calc(100vw - 32px));margin:0 auto;padding:40px 0 80px}.top{display:grid;grid-template-columns:1.2fr .8fr;gap:20px;align-items:end;margin-bottom:24px}.eyebrow{color:var(--blue);font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}.title{font-family:var(--disp);font-size:clamp(42px,7vw,78px);line-height:.95;letter-spacing:-.045em;margin:8px 0 14px}.title em{font-style:italic;color:transparent;background:linear-gradient(118deg,var(--silver),var(--blue) 52%,#9fb5c2);-webkit-background-clip:text;background-clip:text}.lede{color:var(--soft);max-width:70ch;margin:0;font-size:17px}.meta{border:1px solid var(--line);background:linear-gradient(160deg,rgba(255,255,255,.055),rgba(255,255,255,.014));border-radius:var(--r);padding:18px;box-shadow:var(--shadow)}.meta b{color:var(--silver)}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:24px 0}.stat{border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:18px;padding:16px}.stat strong{display:block;font-size:30px;line-height:1;color:var(--silver)}.stat span{display:block;margin-top:6px;color:var(--muted);font-size:13px}.nav{position:sticky;top:10px;z-index:5;display:flex;gap:8px;flex-wrap:wrap;margin:24px 0 24px;padding:10px;border:1px solid rgba(225,231,236,.1);border-radius:999px;background:rgba(16,16,15,.78);backdrop-filter:blur(14px)}.nav a{color:var(--soft);text-decoration:none;border:1px solid transparent;background:rgba(255,255,255,.035);padding:8px 12px;border-radius:999px;font-size:13px;font-weight:700}.nav a:hover{color:var(--text);border-color:rgba(98,176,220,.35)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.section{border:1px solid var(--line);border-radius:var(--r);background:linear-gradient(160deg,rgba(255,255,255,.052),rgba(255,255,255,.012));box-shadow:var(--shadow);overflow:hidden}.section.wide{grid-column:1/-1}.head{padding:18px 20px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.028);display:flex;align-items:center;justify-content:space-between;gap:16px}.head h2{margin:0;font-family:var(--disp);font-size:26px;letter-spacing:-.02em}.pill{font-size:12px;font-weight:800;color:var(--blue);border:1px solid rgba(98,176,220,.32);background:rgba(98,176,220,.09);border-radius:999px;padding:5px 9px;white-space:nowrap}.items{padding:12px}.item{display:grid;grid-template-columns:auto 1fr;gap:12px;padding:11px;border-radius:15px}.item:hover{background:rgba(255,255,255,.028)}.box{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:13px;font-weight:900;margin-top:1px;border:1px solid transparent}.done .box{background:rgba(118,167,131,.16);border-color:rgba(118,167,131,.35);color:var(--green)}.progress .box{background:rgba(98,176,220,.16);border-color:rgba(98,176,220,.38);color:var(--blue)}.todo .box{background:rgba(225,231,236,.1);border-color:rgba(225,231,236,.18);color:var(--silver)}.fix .box{background:rgba(216,102,71,.14);border-color:rgba(216,102,71,.35);color:var(--red)}.item b{display:block;color:var(--text);font-size:14px}.item p{margin:2px 0 0;color:var(--muted);font-size:13px}.tagrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.tag{color:var(--muted);border:1px solid rgba(225,231,236,.12);background:rgba(255,255,255,.026);border-radius:999px;padding:3px 7px;font-size:11px;font-weight:700}.priority{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;padding:16px}.prio{border:1px solid var(--line);border-radius:18px;padding:16px;background:rgba(255,255,255,.028)}.prio h3{margin:0 0 8px;font-size:15px}.prio ol{margin:0;padding-left:20px;color:var(--soft);font-size:14px}.prio li{margin:6px 0}.note{margin-top:24px;color:var(--muted);font-size:13px}@media(max-width:850px){.top,.grid,.priority{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.nav{border-radius:22px}.section.wide{grid-column:auto}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section class="top">
+    <div>
+      <div class="eyebrow">Ohiyo progress map</div>
+      <h1 class="title">Polish <em>checklist.</em></h1>
+      <p class="lede">A full snapshot of what we’ve already cleaned up, what is partially finished, and what still needs polish before Ohiyo feels customer-ready, simple, premium, responsive, and comfortable.</p>
+    </div>
+    <aside class="meta">
+      <p><b>Current direction:</b> Chrome Blue — basalt / ash shell, silver surfaces, steel-blue accent.</p>
+      <p><b>Product goal:</b> download Ohiyo → 3–4 calm steps → Discord/server space feels cloned, private, and ready.</p>
+      <p><b>Generated:</b> 2026-06-19</p>
+    </aside>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><strong>58+</strong><span>completed polish / feature items</span></div>
+    <div class="stat"><strong>9</strong><span>preview/design labs created</span></div>
+    <div class="stat"><strong>22/22</strong><span>e2e suites passed earlier</span></div>
+    <div class="stat"><strong>Chrome Blue</strong><span>selected as default direction</span></div>
+  </section>
+
+  <nav class="nav">
+    <a href="#done">Done</a><a href="#progress">In progress</a><a href="#fixes">Needs fixing</a><a href="#next">Next priority</a><a href="#later">Later wishlist</a>
+  </nav>
+
+  <section id="done" class="grid">
+    <article class="section">
+      <div class="head"><h2>Customer download + landing</h2><span class="pill">Done</span></div>
+      <div class="items">
+        <div class="item done"><span class="box">✓</span><div><b>Download flow simplified</b><p>Download buttons go to a direct chooser instead of dumping normal users into GitHub Releases.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Customer-safe copy</b><p>Changed “Download without the GitHub maze” to the simpler “Download Ohiyo.”</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Real download logos</b><p>Replaced emoji icons with local Apple, Linux, and Ohiyo SVG logo assets.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Silver logo treatment</b><p>Platform logos now use a silver/chrome look, not warm orange stickers.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Chrome Blue landing applied</b><p>Whole live landing page now uses basalt, silver, and steel-blue tokens.</p></div></div>
+      </div>
+    </article>
+
+    <article class="section">
+      <div class="head"><h2>Discord clone/import</h2><span class="pill">Mostly built</span></div>
+      <div class="items">
+        <div class="item done"><span class="box">✓</span><div><b>Managed Discord import flow</b><p>Primary flow: Add bot → I added it → pick server → Clone server.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Server picker endpoint</b><p>Users no longer need Developer Mode or manual server ID copy/paste in normal flow.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Bot connect/run endpoints</b><p>Added backend endpoints for connect and managed import run.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Baby-simple permissions checklist</b><p>Explains Add bot, Manage Server, permissions, and intents in user-facing terms.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Manual archive fallback preserved</b><p>DB/archive upload remains available as advanced/debug fallback, not primary customer path.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Imported content safety labels</b><p>Imported channels/messages show Not E2E warning labels and chat banner where needed.</p></div></div>
+      </div>
+    </article>
+
+    <article class="section">
+      <div class="head"><h2>Auth, boot, onboarding</h2><span class="pill">Polished pass</span></div>
+      <div class="items">
+        <div class="item done"><span class="box">✓</span><div><b>Auth server/home jargon removed</b><p>Normal users no longer see scary server URL, + Server, or Add home prompts in auth.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Semantic auth actions</b><p>Link/recovery actions read as safe green; start fresh reads as danger red; account creation is neutral.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Native autocomplete suppressed</b><p>Reduced ugly browser credential/contact overlays and styled autofill for dark UI.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Auth motion + facts</b><p>Added calm spawn animation, foliage depth, rotating cozy facts, and smoother mode transitions.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Boot splash cleaned</b><p>Replaced loader clutter with a stable boot mark, calmer copy, and slim progress treatment.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>First-space onboarding polished</b><p>Simpler copy, clean logo, suggestion chips, preview text, and subtle spotlight.</p></div></div>
+      </div>
+    </article>
+
+    <article class="section">
+      <div class="head"><h2>Sidebar + welcome</h2><span class="pill">Recently polished</span></div>
+      <div class="items">
+        <div class="item done"><span class="box">✓</span><div><b>Channel welcome checklist</b><p>Applied selected Option B setup checklist: Space created, Save recovery code, Invite someone.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Sidebar header decluttered</b><p>Server name and actions are split into calmer rows with better breathing room.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Bottom profile dock cleaned</b><p>Avatar/name/status/settings/logout are grouped as a cleaner account dock.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Duplicate settings removed</b><p>Removed extra settings icon from far-left rail; kept settings in the profile dock.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Sparse sidebar helper added</b><p>Empty/quiet sidebars now say “Ready when you are” and guide users to #general, voice, or invite.</p></div></div>
+      </div>
+    </article>
+
+    <article class="section">
+      <div class="head"><h2>Chat, voice, media</h2><span class="pill">MVP stronger</span></div>
+      <div class="items">
+        <div class="item done"><span class="box">✓</span><div><b>Chat avatars fixed</b><p>Message rows render uploaded avatar URLs instead of only initials.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Attachment previews</b><p>Pending image/video attachment cards show before sending.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Media row sizing improved</b><p>Virtualized image/video/audio/file estimates reduced clipping.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Voice-only call audio fixed</b><p>Remote voice-only streams attach to hidden audio elements so users can actually hear calls.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Composer emoji/GIF picker</b><p>Added emoji/GIF picker and verified Tenor CORS in local dev.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Per-user call volume + audio output</b><p>Remote call tiles now have individual volume sliders, and call controls include an audio output picker for supported browsers/devices.</p></div></div>
+      </div>
+    </article>
+
+    <article class="section">
+      <div class="head"><h2>Profiles, friends, DMs</h2><span class="pill">Feature pass</span></div>
+      <div class="items">
+        <div class="item done"><span class="box">✓</span><div><b>Real friend system</b><p>Friend request, accept, decline, status, list, and friendship endpoints added.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Profile cards upgraded</b><p>Profile card UI, DM affordances, server member message buttons, and safer async opening state.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Profile customization</b><p>Theme/profile fields save to backend; show/hide sections added.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Top 3 songs</b><p>Migration, API, settings UI, and profile-card rendering added.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Pinned DMs</b><p>Added pinned DM affordance in the channel sidebar.</p></div></div>
+      </div>
+    </article>
+
+    <article class="section wide">
+      <div class="head"><h2>Design labs created</h2><span class="pill">Preview library</span></div>
+      <div class="items">
+        <div class="item done"><span class="box">✓</span><div><b>Component and interaction labs</b><p>interaction-button, premium-component, library-inspired-button, rocky-metal, silver-first, steel-blue-vs-sage, channel-welcome, download-color, and full landing color labs.</p><div class="tagrow"><span class="tag">docs/*.html</span><span class="tag">non-destructive previews</span><span class="tag">Chrome Blue selected</span></div></div></div>
+      </div>
+    </article>
+  </section>
+
+  <section id="progress" class="grid" style="margin-top:18px">
+    <article class="section">
+      <div class="head"><h2>In progress</h2><span class="pill">Keep polishing</span></div>
+      <div class="items">
+        <div class="item progress"><span class="box">•</span><div><b>Chrome Blue pass across app surfaces</b><p>Landing, sidebars, auth/onboarding, composer, solo call, Appearance settings, and Discord import wizard have been polished; still need final pass on profile cards, invite/find people/members modals, and command palette.</p></div></div>
+        <div class="item progress"><span class="box">•</span><div><b>Sidebar live visual QA</b><p>Recent dock/header changes should be inspected in running app at multiple sizes with few chats/channels.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Chat composer Option D applied</b><p>Composer now uses a tool capsule for attach/poll/emoji, clean input middle, premium send button, and matching reply/attachment styling.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Font direction selected</b><p>Applied Sora for display/UI, Inter for body and messages, and Geist Mono for technical accents/status labels.</p></div></div>
+      </div>
+    </article>
+
+    <article class="section">
+      <div class="head"><h2>Needs fixing / proving</h2><span class="pill">Important</span></div>
+      <div class="items" id="fixes">
+        <div class="item fix"><span class="box">!</span><div><b>Managed Discord import not live-proven</b><p>Code, Docker, UI, async jobs, and beginner smoke-test guide are ready, but a real Discord bot token/client ID and tiny live server smoke test are still required.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Managed import async job/progress added</b><p>Large imports now start background jobs, expose pollable status, and show queued/preparing/syncing/importing/opening/done or failed progress in the wizard.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Docker discrawl bundle verified</b><p>Built the server image, fixed Litestream arch selection for Apple Silicon/local arm64 builds, confirmed /usr/local/bin/discrawl is executable, and smoke-started /healthz with required production env.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Screen-share late-join edge case fixed</b><p>If someone joins while you are already sharing, the new peer is wired to the active screen/audio tracks instead of stale camera/blank video.</p></div></div>
+        <div class="item progress"><span class="box">•</span><div><b>macOS signing CI-ready, secrets still needed</b><p>Release workflow now has explicit signed/notarized vs ad-hoc fallback paths; real Developer ID notarization will activate when Apple secrets are added.</p></div></div>
+        <div class="item done"><span class="box">✓</span><div><b>Vite chunk warning resolved</b><p>Production build now splits React, crypto, LiveKit, Tauri, and virtual-list code; large app chunk warning is gone.</p></div></div>
+      </div>
+    </article>
+  </section>
+
+  <section id="next" class="section wide" style="margin-top:18px">
+    <div class="head"><h2>Recommended next order</h2><span class="pill">One surface at a time</span></div>
+    <div class="priority">
+      <div class="prio"><h3>1. Visual QA + sidebar finish</h3><ol><li>Open app with few/no chats.</li><li>Check profile dock alignment.</li><li>Check sparse sidebar helper.</li><li>Polish rail/server icons if needed.</li></ol></div>
+      <div class="prio"><h3>2. Chat composer</h3><ol><li>Chrome Blue composer shell.</li><li>Emoji/GIF picker polish.</li><li>Attachment button/menu states.</li><li>Typing/empty/error state polish.</li></ol></div>
+      <div class="prio"><h3>3. Modals/settings/profile</h3><ol><li>Settings modal Chrome Blue pass.</li><li>Profile cards final polish.</li><li>Invite/members/find people modal consistency.</li><li>Command palette cleanup.</li></ol></div>
+    </div>
+  </section>
+
+  <section id="later" class="grid" style="margin-top:18px">
+    <article class="section">
+      <div class="head"><h2>Later feature wishlist</h2><span class="pill">After polish</span></div>
+      <div class="items">
+        <div class="item todo"><span class="box">□</span><div><b>Sticker packs</b><p>After emoji/GIF, add native sticker pack support.</p></div></div>
+        <div class="item todo"><span class="box">□</span><div><b>Emoji autocomplete + reaction tray upgrade</b><p>Make message reactions feel fast, expressive, and premium.</p></div></div>
+        <div class="item todo"><span class="box">□</span><div><b>Thread-lite / branch from messages</b><p>Small scoped conversations without Discord-style complexity.</p></div></div>
+
+      </div>
+    </article>
+
+    <article class="section">
+      <div class="head"><h2>Deployment checklist</h2><span class="pill">Before customers</span></div>
+      <div class="items">
+        <div class="item todo"><span class="box">□</span><div><b>Set managed import env privately</b><p>Configure secrets server-side only: enable flag, Discord client ID, bot token, discrawl path.</p></div></div>
+        <div class="item todo"><span class="box">□</span><div><b>Discord Developer Portal</b><p>Enable Server Members Intent and Message Content Intent for the bot.</p></div></div>
+        <div class="item todo"><span class="box">□</span><div><b>Internal clone smoke test</b><p>After Discord bot secrets are deployed, follow docs/discord-import-live-smoke-test.md with a tiny Discord server and inspect imported channels/messages.</p></div></div>
+        <div class="item todo"><span class="box">□</span><div><b>Add Apple signing secrets</b><p>Add Developer ID certificate/app-password/team secrets to GitHub Actions, then run one signed release to prove notarization.</p></div></div>
+      </div>
+    </article>
+  </section>
+
+  <p class="note">Source of truth: current repo state, recent completed validations, and the working product direction from this session. Keep updating this page as surfaces are finished.</p>
+</main>
+</body>
+</html>

@@ -59,6 +59,9 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
   const e2eeWorkerRef = useRef<Worker | null>(null);
   const myVoiceKeyRef = useRef<Map<string, Uint8Array>>(new Map());
   const peerVoiceKeysRef = useRef<Map<string, Map<string, Uint8Array>>>(new Map());
+  // LiveKit gives identity/name only. Preserve the richer Ohiyo PublicUser from
+  // gateway VoiceState so call tiles can show real profile pictures.
+  const voiceUsersRef = useRef<Map<string, PublicUser>>(new Map());
 
   // Our own key for a channel (minted once per call), also recorded in the collected set.
   const ensureMyVoiceKey = useCallback((cid: string): Uint8Array => {
@@ -109,13 +112,16 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
     [applyCanonicalKey]
   );
 
-  const toVP = (p: RemoteParticipant): VoiceParticipant => ({
-    user_id: p.identity,
-    user: { id: p.identity, username: p.identity, display_name: p.name || p.identity, avatar_url: null } as PublicUser,
-    muted: !p.isMicrophoneEnabled,
-    video: p.isCameraEnabled,
-    screen: p.isScreenShareEnabled,
-  });
+  const toVP = (p: RemoteParticipant): VoiceParticipant => {
+    const known = voiceUsersRef.current.get(p.identity);
+    return {
+      user_id: p.identity,
+      user: known ?? ({ id: p.identity, username: p.identity, display_name: p.name || p.identity, avatar_url: null } as PublicUser),
+      muted: !p.isMicrophoneEnabled,
+      video: p.isCameraEnabled,
+      screen: p.isScreenShareEnabled,
+    };
+  };
 
   // Rebuild remote participant + stream maps from the room's current state.
   const refresh = useCallback(() => {
@@ -261,13 +267,12 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       });
   }, [refreshLocal, pushMeta]);
 
-  const toggleVideo = useCallback(() => {
+  const toggleVideo = useCallback(async () => {
     const room = roomRef.current;
     if (!room) return;
-    void room.localParticipant.setCameraEnabled(!room.localParticipant.isCameraEnabled).then(() => {
-      refreshLocal();
-      pushMeta();
-    });
+    await room.localParticipant.setCameraEnabled(!room.localParticipant.isCameraEnabled);
+    refreshLocal();
+    pushMeta();
   }, [refreshLocal, pushMeta]);
 
   const toggleScreenShare = useCallback(
@@ -312,13 +317,17 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       video: boolean;
       screen: boolean;
     }) => {
-      if (!E2EE_ENABLED || !s.joined) return;
       if (s.channel_id !== channelRef.current) return;
+      if (s.joined) voiceUsersRef.current.set(s.user_id, s.user);
+      else voiceUsersRef.current.delete(s.user_id);
+      refresh();
+
+      if (!E2EE_ENABLED || !s.joined) return;
       if (s.user_id === cbRef.current.currentUserId) return;
       ensureMyVoiceKey(s.channel_id);
       void distributeMyVoiceKey(s.channel_id, [s.user_id]);
     },
-    [ensureMyVoiceKey, distributeMyVoiceKey]
+    [ensureMyVoiceKey, distributeMyVoiceKey, refresh]
   );
 
   // A peer announced THEIR OWN key. Authenticate the claimed source against the

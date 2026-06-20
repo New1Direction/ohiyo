@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ohiyo Silver-First Component Lab</title>
+  <style>
+    :root {
+      --basalt-980: #10100f;
+      --basalt-940: #171716;
+      --basalt-880: #22211f;
+      --basalt-780: #34322f;
+      --ash-650: #55514b;
+      --ash-520: #74706a;
+      --stone-240: #c7c0b6;
+      --stone-160: #e2dbd2;
+      --silver-050: #fbfcfc;
+      --silver-100: #f2f4f5;
+      --silver-180: #e3e8eb;
+      --silver-260: #cbd3d8;
+      --silver-420: #a7b1b8;
+      --silver-620: #727f88;
+      --silver-760: #4f5960;
+      --brown-760: #513829;
+      --brown-640: #6b4a36;
+      --brown-520: #8b654b;
+      --orange-620: #bf5a20;
+      --orange-520: #e1762d;
+      --orange-430: #ff944d;
+      --line: rgba(255,255,255,.12);
+      --shadow: 0 26px 88px rgba(8, 8, 7, .46), 0 8px 26px rgba(8, 8, 7, .30);
+      --silver-shadow: 0 18px 52px rgba(203, 211, 216, .22), 0 4px 16px rgba(203, 211, 216, .12);
+      --orange-glow: 0 0 0 1px rgba(255,148,77,.20), 0 0 32px rgba(225,118,45,.28);
+      --snap: cubic-bezier(.2, 0, 0, 1);
+      --tap: 70ms;
+      --fast: 140ms;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--stone-160);
+      background:
+        radial-gradient(circle at 14% 4%, rgba(203,211,216,.18), transparent 28rem),
+        radial-gradient(circle at 86% 8%, rgba(255,148,77,.10), transparent 18rem),
+        radial-gradient(circle at 50% 100%, rgba(81,56,41,.38), transparent 34rem),
+        linear-gradient(135deg, var(--basalt-980), #1d1c1a 44%, #151413);
+      padding: 28px;
+      user-select: none;
+    }
+    button, input { font: inherit; }
+    button { border: 0; cursor: pointer; touch-action: manipulation; user-select: none; transform: translateZ(0); }
+    button:focus-visible, input:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(203,211,216,.26), 0 0 0 6px rgba(255,148,77,.12); }
+    header { max-width: 1160px; margin: 0 auto 22px; display: grid; gap: 12px; }
+    .eyebrow { color: var(--silver-180); font-size: 12px; font-weight: 950; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(36px, 6vw, 74px); line-height: .92; letter-spacing: -.07em; }
+    .lede { max-width: 820px; margin: 0; color: var(--stone-240); font-size: 17px; line-height: 1.62; }
+    .rule { max-width: 1160px; margin: 0 auto 18px; display: grid; grid-template-columns: 7fr 2fr .8fr; gap: 10px; }
+    .rule div { border-radius: 18px; padding: 12px; min-height: 72px; display: grid; align-content: end; border: 1px solid var(--line); box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }
+    .rule strong { font-size: 13px; }
+    .rule span { font-size: 11px; opacity: .72; }
+    .grid { max-width: 1160px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 28px;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.070), rgba(255,255,255,.024)),
+        linear-gradient(135deg, var(--basalt-780), var(--basalt-940));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .card::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 80% 0%, rgba(242,244,245,.12), transparent 17rem); }
+    .section { padding: 20px; }
+    .section > * { position: relative; z-index: 1; }
+    .section h2 { margin: 0 0 6px; font-size: 24px; letter-spacing: -.035em; }
+    .section p { margin: 0 0 16px; color: var(--stone-240); line-height: 1.52; font-size: 14px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .btn {
+      min-height: 44px;
+      padding: 0 16px;
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      font-weight: 900;
+      letter-spacing: -.01em;
+      transition: background-color var(--tap) var(--snap), color var(--tap) var(--snap), border-color var(--tap) var(--snap), transform 45ms linear, box-shadow var(--fast) var(--snap), filter var(--tap) linear;
+    }
+    .btn:active { transform: scale(.965) translateZ(0); }
+    .silver {
+      color: #121211;
+      background:
+        linear-gradient(105deg, transparent, rgba(255,255,255,.82), transparent) -130% 0 / 78% 100% no-repeat,
+        linear-gradient(135deg, var(--silver-050), var(--silver-180) 38%, var(--silver-420) 74%, var(--silver-760));
+      border: 1px solid rgba(255,255,255,.58);
+      box-shadow: var(--silver-shadow), inset 0 1px 0 white, inset 0 -1px 0 rgba(0,0,0,.20);
+      transition: background-position 520ms var(--snap), transform 45ms linear, box-shadow var(--fast) var(--snap), filter var(--tap) linear;
+    }
+    .silver:hover { background-position: 180% 0, 0 0; filter: brightness(1.05); }
+    .rock { color: var(--silver-180); background: linear-gradient(135deg, #3b3935, #1b1b19); border: 1px solid rgba(255,255,255,.13); box-shadow: inset 0 1px 0 rgba(255,255,255,.10); }
+    .rock:hover { background: linear-gradient(135deg, #494641, #22211f); color: #fff; }
+    .brown { color: #f3e7da; background: linear-gradient(135deg, var(--brown-760), var(--brown-520)); border: 1px solid rgba(255,255,255,.10); }
+    .brown:hover { filter: brightness(1.07); }
+    .spark { color: white; background: linear-gradient(135deg, var(--orange-620), var(--orange-430)); box-shadow: var(--orange-glow); }
+    .spark:hover { filter: brightness(1.06); box-shadow: 0 0 0 1px rgba(255,148,77,.25), 0 0 42px rgba(225,118,45,.36); }
+    .ghost { color: var(--silver-260); background: transparent; border: 1px solid rgba(255,255,255,.13); }
+    .ghost:hover { color: #fff; background: rgba(255,255,255,.07); }
+    .icon { width: 44px; height: 44px; padding: 0; }
+    .icon:active { transform: scale(.9) translateZ(0); }
+    .hero { grid-column: 1 / -1; min-height: 360px; display: grid; grid-template-columns: 1fr 420px; gap: 18px; }
+    .hero-copy { padding: 28px; display: grid; align-content: center; gap: 16px; }
+    .hero-copy h2 { font-size: clamp(34px, 5vw, 62px); line-height: .92; margin: 0; letter-spacing: -.065em; }
+    .mock { position: relative; z-index: 1; margin: 18px; border-radius: 24px; background: linear-gradient(135deg, #111110, #24221f); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 30px 80px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10); padding: 14px; display: grid; grid-template-rows: auto 1fr auto; gap: 12px; }
+    .mock-top { display: flex; justify-content: space-between; align-items: center; color: var(--silver-180); }
+    .active-pill { height: 24px; padding: 0 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; color: var(--silver-100); background: rgba(231,235,237,.10); border: 1px solid rgba(231,235,237,.20); font-size: 11px; font-weight: 850; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--orange-430); box-shadow: 0 0 12px rgba(255,148,77,.62); }
+    .messages { display: grid; align-content: end; gap: 10px; }
+    .bubble { max-width: 86%; border-radius: 18px; padding: 10px 12px; font-size: 14px; line-height: 1.35; color: var(--silver-180); background: linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.032)); border: 1px solid rgba(255,255,255,.08); }
+    .bubble.me { justify-self: end; color: #151413; background: linear-gradient(135deg, var(--silver-050), var(--silver-420)); border-color: rgba(255,255,255,.32); box-shadow: inset 0 1px 0 white; }
+    .composer { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; border-radius: 18px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.08); padding: 8px; }
+    .composer input { min-width: 0; height: 36px; border: 0; outline: 0; color: var(--silver-180); background: transparent; }
+    .composer input::placeholder { color: rgba(231,235,237,.42); }
+    .profile { min-height: 320px; padding: 18px; display: grid; align-content: end; background: radial-gradient(circle at 78% 8%, rgba(231,235,237,.30), transparent 12rem), linear-gradient(145deg, #3b3935, var(--brown-760)); }
+    .avatar { width: 78px; height: 78px; border-radius: 26px; display: grid; place-items: center; font-size: 30px; color: #121211; background: linear-gradient(135deg, var(--silver-050), var(--silver-620)); border: 3px solid rgba(255,255,255,.40); box-shadow: 0 18px 44px rgba(0,0,0,.28), inset 0 1px 0 white; }
+    .profile h3 { margin: 13px 0 4px; font-size: 28px; letter-spacing: -.04em; }
+    .profile p { margin: 0 0 15px; color: rgba(255,255,255,.72); }
+    .wizard { display: grid; gap: 10px; }
+    .step { width: 100%; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 11px; padding: 11px; border-radius: 18px; color: var(--silver-180); background: rgba(255,255,255,.052); border: 1px solid rgba(255,255,255,.10); text-align: left; transition: background-color var(--tap) var(--snap), border-color var(--tap) var(--snap), transform 45ms linear; }
+    .step:hover { background: rgba(231,235,237,.095); border-color: rgba(231,235,237,.24); }
+    .step:active { transform: scale(.99); }
+    .num { width: 42px; height: 42px; border-radius: 15px; display: grid; place-items: center; color: #151413; font-weight: 950; background: linear-gradient(135deg, var(--silver-050), var(--silver-420)); box-shadow: inset 0 1px 0 white; }
+    .step strong { display: block; }
+    .step span { display: block; margin-top: 2px; color: rgba(231,235,237,.56); font-size: 12px; }
+    .sparkline { width: 42px; height: 3px; border-radius: 999px; background: var(--orange-430); box-shadow: 0 0 16px rgba(255,148,77,.68); }
+    .mini-grid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .tile { padding: 18px; min-height: 236px; }
+    .selected-row { display: grid; gap: 8px; }
+    .channel { width: 100%; min-height: 42px; padding: 0 12px; border-radius: 15px; display: flex; align-items: center; gap: 10px; color: var(--silver-260); background: transparent; text-align: left; transition: background-color var(--tap), transform 45ms linear; }
+    .channel:hover { background: rgba(255,255,255,.06); }
+    .channel[aria-current="true"] { background: rgba(231,235,237,.10); color: var(--silver-050); box-shadow: inset 3px 0 0 var(--silver-180); }
+    .channel[aria-current="true"]::after { content: ""; margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--orange-430); box-shadow: 0 0 12px rgba(255,148,77,.72); }
+    .metal-strip { height: 54px; border-radius: 18px; background: linear-gradient(105deg, var(--silver-760), var(--silver-050) 24%, var(--silver-420) 46%, var(--silver-180) 64%, var(--silver-760)); border: 1px solid rgba(255,255,255,.35); box-shadow: inset 0 1px 0 white, inset 0 -1px 0 rgba(0,0,0,.32); }
+    .meter { max-width: 1160px; margin: 16px auto 0; padding: 14px 18px; border-radius: 20px; color: var(--stone-240); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.11); }
+    .meter strong { color: var(--silver-100); }
+    @media (max-width: 950px) { .grid, .hero, .mini-grid { grid-template-columns: 1fr; } .rule { grid-template-columns: 1fr; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: background-color var(--tap) linear, color var(--tap) linear, border-color var(--tap) linear, box-shadow var(--tap) linear !important; } button { transform: none !important; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">70% rock · 20% silver · 8% brown · 2% orange spark</div>
+    <h1>Silver leads. Orange sparks.</h1>
+    <p class="lede">This version makes orange rare. The app feels calmer and more premium: basalt grey shell, chrome/silver active states, warm brown depth, and tiny orange highlights only where attention is needed.</p>
+  </header>
+
+  <section class="rule" aria-label="Palette ratio">
+    <div style="background:linear-gradient(135deg,#10100f,#34322f)"><strong>70% basalt / ash grey</strong><span>main app shell, panels, rows</span></div>
+    <div style="background:linear-gradient(135deg,#fbfcfc,#727f88);color:#10100f"><strong>20% silver / chrome</strong><span>active states, premium buttons</span></div>
+    <div style="background:linear-gradient(135deg,#6b4a36,#bf5a20)"><strong>2% orange spark</strong><span>alerts, dots, rare CTAs</span></div>
+  </section>
+
+  <main class="grid">
+    <section class="card hero">
+      <div class="hero-copy">
+        <h2>Premium without shouting.</h2>
+        <p>Use silver as the “active/premium” language. Orange should feel like a spark: notifications, small glows, and rare high-value actions.</p>
+        <div class="row">
+          <button class="btn silver">Primary silver</button>
+          <button class="btn rock">Rock secondary</button>
+          <button class="btn brown">Warm brown</button>
+          <button class="btn spark">Orange spark</button>
+          <button class="btn ghost">Ghost</button>
+        </div>
+      </div>
+      <div class="mock" aria-label="Silver first chat preview">
+        <div class="mock-top"><strong># general</strong><span class="active-pill"><i class="dot"></i> unread spark</span></div>
+        <div class="messages"><div class="bubble">Orange is quieter now.</div><div class="bubble me">Silver feels more expensive.</div></div>
+        <div class="composer"><button class="btn rock icon">＋</button><input value="Chrome send, orange only as spark…" /><button class="btn rock icon">😊</button><button class="btn silver icon">➤</button></div>
+      </div>
+    </section>
+
+    <section class="card profile">
+      <div class="avatar">🐦</div>
+      <h3>Silver profile card</h3>
+      <p>Brown depth, grey stone base, chrome avatar ring, tiny orange activity line.</p>
+      <div class="sparkline"></div>
+      <div style="height:14px"></div>
+      <div class="row"><button class="btn silver">Message</button><button class="btn rock">Add Friend</button><button class="btn ghost icon">⋯</button></div>
+    </section>
+
+    <section class="card section">
+      <h2>Import wizard</h2>
+      <p>Most steps are silver/grey; orange only marks urgency or the final spark.</p>
+      <div class="wizard">
+        <button class="step"><div class="num">1</div><div><strong>Add the bot</strong><span>Discord asks if Ohiyo can copy your server.</span></div><b>↗</b></button>
+        <button class="step"><div class="num">2</div><div><strong>Pick your server</strong><span>Choose the Discord server to clone.</span></div><b>→</b></button>
+        <button class="step"><div class="num">3</div><div><strong>Clone into Ohiyo</strong><span>Final confirmation gets the orange spark.</span></div><i class="dot"></i></button>
+      </div>
+    </section>
+
+    <section class="mini-grid">
+      <section class="card section tile">
+        <h2>Buttons</h2>
+        <p>Core set for the app.</p>
+        <div class="row"><button class="btn silver">Active / primary</button><button class="btn rock">Secondary</button><button class="btn brown">Warm</button><button class="btn spark">Rare CTA</button></div>
+      </section>
+      <section class="card section tile">
+        <h2>Selected channels</h2>
+        <p>Silver edge + tiny orange dot beats orange fill.</p>
+        <div class="selected-row"><button class="channel"># welcome</button><button class="channel" aria-current="true"># general</button><button class="channel"># clips</button></div>
+      </section>
+      <section class="card section tile">
+        <h2>Metal sample</h2>
+        <p>This is the shiny silver language.</p>
+        <div class="metal-strip"></div>
+        <div style="height:12px"></div>
+        <div class="row"><button class="btn silver icon">🎙</button><button class="btn silver icon">📹</button><button class="btn spark icon">☎</button></div>
+      </section>
+    </section>
+  </main>
+
+  <div class="meter">Last measured pointer→paint: <strong>waiting…</strong></div>
+
+  <script>
+    const meter = document.querySelector('.meter strong');
+    document.addEventListener('pointerdown', (event) => {
+      const button = event.target.closest('button');
+      if (!button || button.disabled) return;
+      const start = performance.now();
+      requestAnimationFrame(() => { meter.textContent = `${Math.round((performance.now() - start) * 10) / 10}ms`; });
+    }, { passive: true });
+  </script>
+</body>
+</html>

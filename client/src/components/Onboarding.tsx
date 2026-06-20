@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { BirdMark } from "./BirdMark";
 import { ACCENT_PRESETS, getActiveAccent } from "../lib/appearance";
 
@@ -11,12 +11,12 @@ type Props = {
   onPickAccent?: (hex: string) => void;
 };
 
-const SUGGESTIONS = ["My Hangout", "Study Group", "Game Night"];
+const SUGGESTIONS = ["The Roost", "Study Room", "Game Night"];
 
-const VALUE_BULLETS: { icon: string; title: string; body: string }[] = [
-  { icon: "🔒", title: "Yours alone", body: "End-to-end encrypted — not even our servers can read it." },
-  { icon: "🎙️", title: "Crystal voice", body: "Studio-grade audio. Hop into a call in one tap." },
-  { icon: "🖥️", title: "Share your screen", body: "Up to 4K — or buttery 1080p60. Free, no catch." },
+const VALUE_BULLETS: { title: string; body: string }[] = [
+  { title: "Private messages", body: "Encrypted chats for your space." },
+  { title: "Voice calls", body: "Drop into a call when you need to talk." },
+  { title: "Screen sharing", body: "Share what you’re working on." },
 ];
 
 /**
@@ -29,6 +29,8 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
   const [error, setError] = useState("");
   const [accent, setAccentSel] = useState<string>(getActiveAccent);
   const inputRef = useRef<HTMLInputElement>(null);
+  const spotlightRef = useRef<HTMLDivElement>(null);
+  const pointerRef = useRef({ x: 0, y: 0, frame: 0 });
 
   function pickAccent(hex: string) {
     setAccentSel(hex);
@@ -37,10 +39,34 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
 
   useEffect(() => {
     inputRef.current?.focus();
+    const pointerState = pointerRef.current;
+    return () => {
+      if (pointerState.frame) window.cancelAnimationFrame(pointerState.frame);
+    };
   }, []);
 
   const trimmed = name.trim();
   const firstName = (displayName || "there").split(/\s+/)[0];
+
+  function handlePointerMove(e: PointerEvent<HTMLDivElement>) {
+    if (e.pointerType !== "mouse") return;
+    pointerRef.current.x = e.clientX;
+    pointerRef.current.y = e.clientY;
+    if (pointerRef.current.frame) return;
+    pointerRef.current.frame = window.requestAnimationFrame(() => {
+      pointerRef.current.frame = 0;
+      const { x, y } = pointerRef.current;
+      const spotlight = spotlightRef.current;
+      if (spotlight) {
+        spotlight.style.opacity = "1";
+        spotlight.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+      }
+    });
+  }
+
+  function handlePointerLeave() {
+    if (spotlightRef.current) spotlightRef.current.style.opacity = "0";
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -57,15 +83,19 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
 
   return (
     <div
-      className="flex h-screen w-screen items-center justify-center overflow-y-auto"
+      className="ohiyo-onboarding-screen relative flex h-screen w-screen items-center justify-center overflow-y-auto"
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
       style={{
         background:
           "radial-gradient(circle at 28% 18%, color-mix(in oklch, var(--accent) 16%, var(--bg-base)) 0%, var(--bg-base) 58%)",
         padding: "var(--space-6)",
       }}
     >
-      <div className="kc-fade-up flex w-full max-w-xl flex-col items-center text-center">
-        <div className="kc-float mb-1" style={{ color: "var(--accent)" }}>
+      <div ref={spotlightRef} className="ohiyo-cursor-spotlight" aria-hidden="true" />
+      <div className="ohiyo-onboarding-glow" aria-hidden="true" />
+      <div className="ohiyo-onboarding-hero relative z-10 flex w-full max-w-xl flex-col items-center text-center">
+        <div className="ohiyo-onboarding-mark mb-1" style={{ color: "var(--accent)" }}>
           <BirdMark size={64} />
         </div>
 
@@ -79,19 +109,18 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
           oh, hi {firstName} 👋
         </h1>
         <p className="mt-2 text-base" style={{ color: "var(--text-secondary)", maxWidth: 440 }}>
-          Your place to talk, hang out, and share — free forever, and private by design:
-          we genuinely can't read a word. Let's make your first space — about three seconds.
+          Start with one private space. Invite people when you’re ready.
         </p>
 
         {/* Create-your-first-space card */}
         <div
-          className="kc-card mt-7 w-full"
+          className="ohiyo-first-space-card kc-card mt-7 w-full"
           style={{
-            background: "var(--bg-channel)",
+            background: "linear-gradient(145deg, color-mix(in oklch, var(--text-primary) 4%, var(--bg-channel)), var(--bg-channel))",
             borderRadius: "var(--radius-xl)",
             boxShadow: "var(--shadow-lg)",
             padding: "var(--space-6)",
-            border: "1px solid color-mix(in oklch, var(--text-primary) 6%, transparent)",
+            border: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)",
           }}
         >
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -102,7 +131,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
             >
               Name your space
             </label>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 id="kc-space-name"
                 ref={inputRef}
@@ -117,33 +146,41 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
                 disabled={!trimmed || busy}
                 aria-busy={busy}
                 className="kc-cta flex flex-shrink-0 items-center justify-center gap-2 px-5 py-3 text-sm"
-                style={{ opacity: !trimmed || busy ? 0.65 : 1, cursor: !trimmed || busy ? "default" : "pointer" }}
+                style={{ opacity: !trimmed || busy ? 0.65 : 1, cursor: !trimmed || busy ? "default" : "pointer", minWidth: 112 }}
               >
                 {busy ? (
                   <span className="kc-spinner" style={{ width: 16, height: 16, borderColor: "rgba(255,255,255,0.35)", borderTopColor: "#fff" }} />
+                ) : trimmed ? (
+                  "Let's go"
                 ) : (
-                  "Let's go →"
+                  "Name it first"
                 )}
               </button>
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-[11px] font-semibold uppercase" style={{ color: "var(--text-muted)", letterSpacing: "0.06em" }}>Suggestions</span>
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => { setName(s); inputRef.current?.focus(); }}
-                  className="kc-interactive px-2.5 py-1 text-xs font-semibold"
+                  className="ohiyo-suggestion-chip kc-interactive px-2.5 py-1 text-xs font-semibold"
                   style={{
                     borderRadius: "var(--radius-full)",
-                    background: "var(--bg-input)",
+                    background: "color-mix(in oklch, var(--text-primary) 7%, var(--bg-input))",
                     color: "var(--text-secondary)",
+                    border: "1px solid color-mix(in oklch, var(--text-primary) 7%, transparent)",
                   }}
                 >
                   {s}
                 </button>
               ))}
             </div>
+
+            <p className="ohiyo-space-preview text-left text-xs" aria-live="polite">
+              {trimmed ? <>Creating <strong>{trimmed}</strong> — private by default.</> : "Private by default. You can change everything later."}
+            </p>
 
             {error && (
               <div
@@ -162,7 +199,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
 
         {/* Make it yours — pick an accent right away (recolors this screen live) */}
         {onPickAccent && (
-          <div className="mt-6 flex flex-col items-center gap-2">
+          <div className="ohiyo-accent-section mt-6 flex flex-col items-center gap-2">
             <span className="text-xs font-bold uppercase" style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}>
               Make it yours
             </span>
@@ -191,22 +228,17 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
               })}
             </div>
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-              You can fine-tune everything later in Settings → Appearance.
+              You can change this later in Settings.
             </span>
           </div>
         )}
 
-        {/* Value bullets */}
-        <div className="mt-6 grid w-full grid-cols-1 gap-2 sm:grid-cols-3">
+        {/* Concrete, no-hype setup notes */}
+        <div className="ohiyo-setup-notes mt-6 w-full" aria-label="What Ohiyo includes">
           {VALUE_BULLETS.map((b) => (
-            <div
-              key={b.title}
-              className="flex flex-col items-center gap-1 px-3 py-3"
-              style={{ borderRadius: "var(--radius-lg)", background: "color-mix(in oklch, var(--bg-channel) 55%, transparent)" }}
-            >
-              <span className="text-xl" aria-hidden>{b.icon}</span>
-              <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{b.title}</span>
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>{b.body}</span>
+            <div key={b.title} className="ohiyo-setup-note">
+              <span className="ohiyo-setup-note-title">{b.title}</span>
+              <span className="ohiyo-setup-note-body">{b.body}</span>
             </div>
           ))}
         </div>

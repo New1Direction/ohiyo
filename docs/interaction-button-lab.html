@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ohiyo Interaction Lab — Buttons & Clicks</title>
+  <style>
+    :root {
+      --bg-base: #f4e9dd;
+      --bg-sidebar: #fbf3ea;
+      --bg-channel: #fffcf8;
+      --bg-input: #f3e7da;
+      --bg-hover: #f1e2d2;
+      --text-primary: #2a2320;
+      --text-secondary: #6b5d54;
+      --text-muted: #9a8c82;
+      --accent: #f2683c;
+      --accent-hover: #db5429;
+      --danger: #e0483f;
+      --green: #1f9e6b;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-full: 999px;
+      --shadow-sm: 0 1px 2px rgba(40, 30, 24, 0.06), 0 1px 1px rgba(40, 30, 24, 0.04);
+      --shadow-lift: 0 6px 20px color-mix(in oklch, var(--accent) 30%, transparent), 0 2px 6px color-mix(in oklch, var(--accent) 16%, transparent);
+      --ease-snap: cubic-bezier(.2, 0, 0, 1);
+      --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+      --fast: 70ms;
+      --soft: 120ms;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, color-mix(in oklch, var(--accent) 18%, transparent), transparent 32rem),
+        var(--bg-base);
+      color: var(--text-primary);
+      padding: 28px;
+    }
+    header { max-width: 980px; margin: 0 auto 22px; }
+    h1 { margin: 0 0 8px; font-size: clamp(30px, 5vw, 54px); letter-spacing: -0.04em; }
+    p { color: var(--text-secondary); line-height: 1.55; }
+    .grid { max-width: 980px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; }
+    .card {
+      background: color-mix(in oklch, var(--bg-channel) 88%, white 12%);
+      border: 1px solid color-mix(in oklch, var(--text-primary) 8%, transparent);
+      border-radius: 22px;
+      padding: 18px;
+      box-shadow: 0 12px 34px rgba(40,30,24,.08);
+    }
+    .card h2 { margin: 0 0 6px; font-size: 18px; }
+    .note { margin: 0 0 14px; font-size: 13px; color: var(--text-muted); }
+    .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    button, a.fake {
+      touch-action: manipulation;
+      user-select: none;
+      border: 0;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 760;
+      border-radius: var(--radius-md);
+      min-height: 40px;
+      padding: 0 15px;
+      color: var(--text-primary);
+      background: var(--bg-input);
+      text-decoration: none;
+      transform: translateZ(0);
+      will-change: transform;
+    }
+    button:focus-visible, a.fake:focus-visible { outline: 3px solid color-mix(in oklch, var(--accent) 72%, transparent); outline-offset: 2px; }
+    button:disabled { opacity: .52; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+    /* Option A: fastest perceived click. Recommended for most Ohiyo controls. */
+    .snap { transition: background-color var(--fast) var(--ease-snap), color var(--fast) var(--ease-snap), transform 45ms linear; }
+    .snap:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .snap:active, .snap.is-pressing { transform: scale(.965) translateZ(0); }
+
+    /* Option B: current premium feel, slightly softer. */
+    .premium { transition: background-color var(--soft) var(--ease-snap), color var(--soft) var(--ease-snap), transform var(--soft) var(--ease-spring), box-shadow var(--soft) var(--ease-snap); }
+    .premium:hover { transform: translateY(-1px); background: var(--bg-hover); box-shadow: var(--shadow-sm); }
+    .premium:active, .premium.is-pressing { transform: scale(.972) translateZ(0); }
+
+    /* Option C: big CTA lift. Use sparingly for primary actions only. */
+    .lift { background: var(--accent); color: #fff; transition: transform var(--soft) var(--ease-spring), background-color var(--fast), box-shadow var(--soft); }
+    .lift:hover { background: var(--accent-hover); transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+    .lift:active, .lift.is-pressing { transform: translateY(0) scale(.965); }
+
+    /* Option D: no travel, just instant fill. Best for dense lists/channels. */
+    .flat { transition: background-color 60ms linear, color 60ms linear; }
+    .flat:hover { background: var(--bg-hover); }
+    .flat:active, .flat.is-pressing { background: color-mix(in oklch, var(--accent) 18%, var(--bg-hover)); }
+
+    /* Option E: icon tap target. */
+    .icon { width: 44px; height: 44px; padding: 0; border-radius: 14px; display: inline-grid; place-items: center; font-size: 20px; transition: background-color 70ms linear, color 70ms linear, transform 45ms linear; }
+    .icon:hover { background: var(--bg-hover); }
+    .icon:active, .icon.is-pressing { transform: scale(.92); color: var(--accent); }
+
+    .danger { color: #fff; background: var(--danger); }
+    .danger:hover { filter: brightness(.96); }
+    .pill { border-radius: var(--radius-full); }
+    .ghost { background: transparent; border: 1px solid color-mix(in oklch, var(--text-muted) 35%, transparent); }
+    .loading { position: relative; color: transparent !important; pointer-events: none; }
+    .loading::after { content: ""; position: absolute; inset: 0; margin: auto; width: 16px; height: 16px; border-radius: 50%; border: 2px solid color-mix(in oklch, white 45%, transparent); border-top-color: white; animation: spin .65s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .meter { max-width: 980px; margin: 16px auto 0; padding: 14px 18px; border-radius: 18px; background: rgba(255,255,255,.54); border: 1px solid color-mix(in oklch, var(--text-primary) 7%, transparent); color: var(--text-secondary); }
+    .meter strong { color: var(--accent); }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: background-color 60ms linear, color 60ms linear, box-shadow 60ms linear !important; }
+      button, a.fake { transform: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ohiyo Interaction Lab</h1>
+    <p>Compare hover/click options. For “0 lag”, the best default is <strong>Snap</strong>: tiny transform, 45–70ms transitions, no layout-heavy animation. Use Lift only for big primary CTAs.</p>
+  </header>
+
+  <main class="grid">
+    <section class="card">
+      <h2>A · Snap / fastest default</h2>
+      <p class="note">Recommended for most app buttons, rows, chips, picker items.</p>
+      <div class="row"><button class="snap">Message</button><button class="snap pill">Add Friend</button><button class="snap ghost">Cancel</button></div>
+    </section>
+    <section class="card">
+      <h2>B · Premium soft</h2>
+      <p class="note">Slight hover lift; polished but still responsive.</p>
+      <div class="row"><button class="premium">Open DM</button><button class="premium pill">Accept</button><button class="premium ghost">More</button></div>
+    </section>
+    <section class="card">
+      <h2>C · CTA lift</h2>
+      <p class="note">Use only for high-value actions like Create, Clone, Download.</p>
+      <div class="row"><button class="lift">Clone server</button><button class="lift pill">Create space</button></div>
+    </section>
+    <section class="card">
+      <h2>D · Dense list flat</h2>
+      <p class="note">Best for channel rows, command palette rows, long lists.</p>
+      <div class="row"><button class="flat"># general</button><button class="flat"># clips</button><button class="flat">@ friend</button></div>
+    </section>
+    <section class="card">
+      <h2>E · Icon taps</h2>
+      <p class="note">44px target for mobile, instant press scale.</p>
+      <div class="row"><button class="icon">😊</button><button class="icon">＋</button><button class="icon">📌</button><button class="icon danger">✕</button></div>
+    </section>
+    <section class="card">
+      <h2>States</h2>
+      <p class="note">Disabled and loading should never feel broken.</p>
+      <div class="row"><button class="snap" disabled>Disabled</button><button class="lift loading">Loading</button><button class="danger snap">Delete</button></div>
+    </section>
+  </main>
+
+  <div class="meter" id="meter">Click/tap any option. Visual press feedback should appear in the same frame. Last measured pointer→paint: <strong>waiting…</strong></div>
+
+  <script>
+    const meter = document.querySelector('#meter strong');
+    document.addEventListener('pointerdown', (event) => {
+      const btn = event.target.closest('button, a.fake');
+      if (!btn || btn.disabled) return;
+      const start = performance.now();
+      btn.classList.add('is-pressing');
+      requestAnimationFrame(() => {
+        meter.textContent = `${Math.round((performance.now() - start) * 10) / 10}ms`;
+      });
+    }, { passive: true });
+    document.addEventListener('pointerup', (event) => event.target.closest('button, a.fake')?.classList.remove('is-pressing'), { passive: true });
+    document.addEventListener('pointercancel', () => document.querySelectorAll('.is-pressing').forEach((el) => el.classList.remove('is-pressing')), { passive: true });
+  </script>
+</body>
+</html>

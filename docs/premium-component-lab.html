@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ohiyo Premium Component Lab</title>
+  <style>
+    :root {
+      --cream: #fff8f0;
+      --paper: #fffdf9;
+      --sand: #f4e9dd;
+      --sand-2: #ecd9c8;
+      --ink: #241f1c;
+      --muted: #75675e;
+      --faint: #a7978b;
+      --coral: #f2683c;
+      --coral-2: #ff8a5f;
+      --coral-dark: #d94f27;
+      --violet: #7c5cff;
+      --blue: #27a6ff;
+      --green: #21a675;
+      --danger: #e0483f;
+      --line: color-mix(in oklch, var(--ink) 8%, transparent);
+      --shadow: 0 20px 70px rgba(56, 39, 29, .16), 0 6px 18px rgba(56, 39, 29, .08);
+      --shadow-soft: 0 10px 30px rgba(56, 39, 29, .10), 0 2px 8px rgba(56, 39, 29, .06);
+      --ring: 0 0 0 3px color-mix(in oklch, var(--coral) 26%, transparent);
+      --snap: cubic-bezier(.2, 0, 0, 1);
+      --spring: cubic-bezier(.34, 1.56, .64, 1);
+      --tap: 70ms;
+      --fast: 120ms;
+      --soft: 220ms;
+      color-scheme: light;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(242, 104, 60, .25), transparent 34rem),
+        radial-gradient(circle at 92% 12%, rgba(124, 92, 255, .16), transparent 30rem),
+        linear-gradient(135deg, #f6e7d9, #fffaf4 45%, #f2dfcf);
+      padding: 28px;
+      user-select: none;
+    }
+    button, input { font: inherit; }
+    button, [role="button"] { touch-action: manipulation; cursor: pointer; user-select: none; transform: translateZ(0); }
+    button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(--ring); }
+    header { max-width: 1180px; margin: 0 auto 22px; display: grid; gap: 12px; }
+    .eyebrow { color: var(--coral-dark); font-size: 12px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(36px, 6vw, 72px); line-height: .92; letter-spacing: -.065em; }
+    .lede { max-width: 760px; color: var(--muted); font-size: 17px; line-height: 1.62; margin: 0; }
+    .shell { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 280px 1fr; gap: 18px; align-items: start; }
+    .panel {
+      background: color-mix(in oklch, var(--paper) 82%, white 18%);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+    }
+    .rail { position: sticky; top: 18px; padding: 14px; }
+    .rail .brand { display: flex; align-items: center; gap: 10px; padding: 8px 8px 16px; }
+    .mark { width: 42px; height: 42px; border-radius: 16px; display: grid; place-items: center; background: linear-gradient(135deg, var(--coral), var(--coral-2)); color: white; box-shadow: 0 10px 30px rgba(242, 104, 60, .35); }
+    .nav { display: grid; gap: 6px; }
+    .nav button {
+      width: 100%; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 16px; min-height: 42px; padding: 0 12px; background: transparent; color: var(--muted); font-weight: 760; text-align: left;
+      transition: background-color var(--tap) var(--snap), color var(--tap) var(--snap), transform 45ms linear;
+    }
+    .nav button:hover { background: color-mix(in oklch, var(--coral) 9%, transparent); color: var(--ink); }
+    .nav button[aria-current="true"] { background: linear-gradient(135deg, color-mix(in oklch, var(--coral) 18%, white), color-mix(in oklch, var(--violet) 9%, white)); color: var(--ink); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--coral) 18%, transparent); }
+    .nav button:active { transform: scale(.985); }
+    .content { display: grid; gap: 18px; }
+    .hero-card { padding: 22px; display: grid; grid-template-columns: 1.05fr .95fr; gap: 18px; background: linear-gradient(135deg, rgba(255,255,255,.86), rgba(255,248,240,.78)); }
+    .hero-copy { display: grid; align-content: center; gap: 14px; }
+    .hero-copy h2 { margin: 0; font-size: clamp(26px, 4vw, 46px); letter-spacing: -.045em; line-height: 1; }
+    .hero-copy p { margin: 0; color: var(--muted); line-height: 1.58; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .btn {
+      border: 0; border-radius: 16px; min-height: 44px; padding: 0 16px; font-weight: 860; display: inline-flex; align-items: center; gap: 9px;
+      transition: background-color var(--tap) var(--snap), color var(--tap) var(--snap), transform 45ms linear, box-shadow var(--fast) var(--snap), border-color var(--tap) var(--snap);
+    }
+    .btn:active { transform: scale(.965); }
+    .btn-primary { color: white; background: linear-gradient(135deg, var(--coral), var(--coral-2)); box-shadow: 0 14px 34px rgba(242, 104, 60, .30); }
+    .btn-primary:hover { box-shadow: 0 18px 42px rgba(242, 104, 60, .38); }
+    .btn-secondary { color: var(--ink); background: rgba(255,255,255,.7); border: 1px solid var(--line); }
+    .btn-secondary:hover { background: white; }
+    .btn-ghost { color: var(--muted); background: transparent; }
+    .btn-ghost:hover { color: var(--ink); background: color-mix(in oklch, var(--ink) 5%, transparent); }
+    .mock-chat { border-radius: 24px; background: #1f1b19; color: white; padding: 14px; box-shadow: var(--shadow); min-height: 310px; display: grid; grid-template-rows: auto 1fr auto; gap: 12px; overflow: hidden; }
+    .mock-top { display: flex; align-items: center; justify-content: space-between; }
+    .dots { display: flex; gap: 5px; }
+    .dots i { width: 9px; height: 9px; border-radius: 50%; background: #5b514a; }
+    .mock-msgs { display: grid; align-content: end; gap: 10px; }
+    .bubble { max-width: 86%; border-radius: 18px; padding: 10px 12px; font-size: 14px; line-height: 1.35; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.08); }
+    .bubble.me { justify-self: end; background: linear-gradient(135deg, var(--coral), var(--coral-2)); color: white; }
+    .composer { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; border-radius: 18px; background: rgba(255,255,255,.08); padding: 8px; }
+    .icon-btn { width: 36px; height: 36px; border: 0; border-radius: 13px; display: grid; place-items: center; background: transparent; color: rgba(255,255,255,.72); transition: background-color var(--tap), transform 45ms linear, color var(--tap); }
+    .icon-btn:hover { background: rgba(255,255,255,.10); color: white; }
+    .icon-btn:active { transform: scale(.9); }
+    .composer input { min-width: 0; height: 36px; border: 0; outline: 0; background: transparent; color: white; }
+    .composer input::placeholder { color: rgba(255,255,255,.46); }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .section { padding: 18px; }
+    .section h3 { margin: 0 0 4px; font-size: 19px; letter-spacing: -.02em; }
+    .section p { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .profile-card { position: relative; overflow: hidden; border-radius: 24px; padding: 16px; background: linear-gradient(135deg, #2f2445, #f2683c); color: white; min-height: 230px; box-shadow: var(--shadow-soft); }
+    .profile-card::before { content: ""; position: absolute; inset: -70px -30px auto auto; width: 180px; height: 180px; border-radius: 50%; background: rgba(255,255,255,.20); filter: blur(2px); }
+    .avatar { width: 68px; height: 68px; border-radius: 24px; display: grid; place-items: center; background: rgba(255,255,255,.20); border: 3px solid rgba(255,255,255,.45); font-size: 28px; box-shadow: 0 12px 32px rgba(0,0,0,.18); }
+    .profile-card h4 { margin: 12px 0 3px; font-size: 24px; }
+    .profile-card p { margin: 0 0 14px; color: rgba(255,255,255,.82); }
+    .glass-actions { display: flex; gap: 8px; }
+    .glass-actions button { border: 1px solid rgba(255,255,255,.24); background: rgba(255,255,255,.16); color: white; border-radius: 14px; height: 38px; padding: 0 12px; font-weight: 800; backdrop-filter: blur(10px); transition: background-color var(--tap), transform 45ms linear; }
+    .glass-actions button:hover { background: rgba(255,255,255,.24); }
+    .glass-actions button:active { transform: scale(.965); }
+    .steps { display: grid; gap: 10px; }
+    .step { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 18px; padding: 10px; background: white; transition: background-color var(--tap), transform 45ms linear, border-color var(--tap); }
+    .step:hover { border-color: color-mix(in oklch, var(--coral) 32%, transparent); background: color-mix(in oklch, var(--coral) 4%, white); }
+    .step:active { transform: scale(.99); }
+    .num { width: 38px; height: 38px; border-radius: 14px; display: grid; place-items: center; background: var(--sand); font-weight: 900; color: var(--coral-dark); }
+    .step strong { display: block; font-size: 14px; }
+    .step span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--line); border-radius: 18px; padding: 12px; background: white; }
+    .switch { width: 54px; height: 32px; border: 0; border-radius: 999px; background: var(--sand-2); padding: 3px; transition: background-color var(--tap); }
+    .switch::before { content: ""; display: block; width: 26px; height: 26px; border-radius: 50%; background: white; box-shadow: 0 2px 8px rgba(0,0,0,.18); transform: translateX(0); transition: transform var(--fast) var(--spring); }
+    .switch[aria-pressed="true"] { background: var(--green); }
+    .switch[aria-pressed="true"]::before { transform: translateX(22px); }
+    .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--sand); border-radius: 18px; padding: 4px; }
+    .seg button { border: 0; border-radius: 14px; background: transparent; min-height: 38px; font-weight: 820; color: var(--muted); transition: background-color var(--tap), color var(--tap), transform 45ms linear; }
+    .seg button:hover { color: var(--ink); }
+    .seg button[aria-selected="true"] { background: white; color: var(--ink); box-shadow: 0 2px 10px rgba(56, 39, 29, .08); }
+    .seg button:active { transform: scale(.97); }
+    .command { display: grid; gap: 8px; }
+    .command input { width: 100%; height: 44px; border: 1px solid var(--line); border-radius: 16px; padding: 0 14px; background: white; color: var(--ink); }
+    .cmd-row { border: 0; width: 100%; display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; min-height: 48px; padding: 7px 10px; border-radius: 16px; background: transparent; text-align: left; transition: background-color var(--tap), transform 45ms linear; }
+    .cmd-row:hover { background: var(--sand); }
+    .cmd-row:active { transform: scale(.99); }
+    .key { font-size: 11px; color: var(--faint); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; background: white; }
+    .voice { display: grid; gap: 10px; }
+    .voice-card { display: flex; align-items: center; gap: 10px; border-radius: 18px; padding: 10px; background: white; border: 1px solid var(--line); }
+    .voice-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 6px color-mix(in oklch, var(--green) 16%, transparent); }
+    .voice-actions { margin-left: auto; display: flex; gap: 6px; }
+    .round { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--sand); transition: background-color var(--tap), transform 45ms linear; }
+    .round:hover { background: var(--sand-2); }
+    .round:active { transform: scale(.9); }
+    .round.hot { background: var(--danger); color: white; }
+    .meter { margin-top: 18px; padding: 14px 18px; border-radius: 20px; background: rgba(255,255,255,.64); border: 1px solid var(--line); color: var(--muted); }
+    .meter strong { color: var(--coral-dark); }
+    @media (max-width: 880px) { .shell { grid-template-columns: 1fr; } .rail { position: static; } .hero-card { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: background-color var(--tap) linear, color var(--tap) linear, box-shadow var(--tap) linear !important; } button { transform: none !important; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Premium component direction</div>
+    <h1>Components that feel fast, soft, and expensive.</h1>
+    <p class="lede">A no-dependency visual lab for Ohiyo’s next polish layer: Radix/shadcn-style clarity, Linear-like density, Discord-like familiarity, and instant press feedback.</p>
+  </header>
+
+  <main class="shell">
+    <aside class="panel rail">
+      <div class="brand"><div class="mark">🐦</div><div><strong>Ohiyo Lab</strong><br><span style="color:var(--muted);font-size:12px">Premium UI set</span></div></div>
+      <nav class="nav" aria-label="Component sections">
+        <button aria-current="true">✨ Overview</button>
+        <button>💬 Chat composer</button>
+        <button>👤 Profile cards</button>
+        <button>🧭 Import wizard</button>
+        <button>🎙 Voice controls</button>
+        <button>⌘ Command menu</button>
+      </nav>
+    </aside>
+
+    <section class="content">
+      <section class="panel hero-card">
+        <div class="hero-copy">
+          <h2>The target: no-lag, premium feedback.</h2>
+          <p>Most clicks use a 45–70ms snap. Big CTAs get glow. Dense rows get instant fill only. Everything keeps visible focus rings and mobile-size tap targets.</p>
+          <div class="actions">
+            <button class="btn btn-primary">Clone Discord server</button>
+            <button class="btn btn-secondary">Preview UI</button>
+            <button class="btn btn-ghost">Skip for now</button>
+          </div>
+        </div>
+        <div class="mock-chat" aria-label="Chat component preview">
+          <div class="mock-top"><strong># general</strong><div class="dots"><i></i><i></i><i></i></div></div>
+          <div class="mock-msgs">
+            <div class="bubble">This feels way smoother now.</div>
+            <div class="bubble me">Wait until you click the picker ✨</div>
+          </div>
+          <div class="composer">
+            <button class="icon-btn" aria-label="Attach">＋</button>
+            <input placeholder="Say something…" />
+            <button class="icon-btn" aria-label="Emoji">😊</button>
+            <button class="icon-btn" aria-label="Send">➤</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <section class="panel section">
+          <h3>Profile action card</h3>
+          <p>Glossy, expressive, with glass buttons that still snap instantly.</p>
+          <div class="profile-card">
+            <div class="avatar">🌙</div>
+            <h4>Mika</h4>
+            <p>listening to dream pop · building a cozy server</p>
+            <div class="glass-actions"><button>Message</button><button>Add Friend</button><button>⋯</button></div>
+          </div>
+        </section>
+
+        <section class="panel section">
+          <h3>3-click import wizard</h3>
+          <p>Baby-simple steps with high-confidence hover/click states.</p>
+          <div class="steps">
+            <button class="step"><div class="num">1</div><div><strong>Add the Ohiyo bot</strong><span>We ask Discord for permission.</span></div><b>↗</b></button>
+            <button class="step"><div class="num">2</div><div><strong>Pick your server</strong><span>Choose the one you want cloned.</span></div><b>→</b></button>
+            <button class="step"><div class="num">3</div><div><strong>Clone into Ohiyo</strong><span>Channels, roles, emoji, and history.</span></div><b>✓</b></button>
+          </div>
+        </section>
+
+        <section class="panel section">
+          <h3>Settings controls</h3>
+          <p>Radix-style segmented controls and switches.</p>
+          <div class="seg" role="tablist" aria-label="Density">
+            <button role="tab">Compact</button><button role="tab" aria-selected="true">Cozy</button><button role="tab">Comfy</button>
+          </div>
+          <div style="height:10px"></div>
+          <div class="toggle-row"><div><strong>Profile glow</strong><br><span style="color:var(--muted);font-size:12px">Make your card shine.</span></div><button class="switch" aria-pressed="true" aria-label="Profile glow"></button></div>
+        </section>
+
+        <section class="panel section">
+          <h3>Command menu rows</h3>
+          <p>Fast dense rows: instant fill, no jumpy motion.</p>
+          <div class="command">
+            <input value="go to general" aria-label="Command search" />
+            <button class="cmd-row"><span>💬</span><strong># general</strong><span class="key">↵</span></button>
+            <button class="cmd-row"><span>👥</span><strong>Find people</strong><span class="key">⌘K</span></button>
+            <button class="cmd-row"><span>⚙️</span><strong>Open settings</strong><span class="key">S</span></button>
+          </div>
+        </section>
+
+        <section class="panel section">
+          <h3>Voice call controls</h3>
+          <p>Big, thumb-friendly, impossible to misread.</p>
+          <div class="voice">
+            <div class="voice-card"><div class="voice-dot"></div><div><strong>Connected to Lounge</strong><br><span style="color:var(--muted);font-size:12px">3 people talking</span></div><div class="voice-actions"><button class="round">🎙</button><button class="round">📹</button><button class="round hot">☎</button></div></div>
+          </div>
+        </section>
+
+        <section class="panel section">
+          <h3>Emoji / GIF picker direction</h3>
+          <p>Premium tile buttons for emoji, GIFs, stickers.</p>
+          <div class="seg" role="tablist" aria-label="Picker tabs"><button role="tab" aria-selected="true">Emoji</button><button role="tab">GIFs</button><button role="tab">Stickers</button></div>
+          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:12px">
+            <button class="round">😂</button><button class="round">🔥</button><button class="round">🚀</button><button class="round">✨</button><button class="round">💯</button><button class="round">🐦</button>
+          </div>
+        </section>
+      </section>
+
+      <div class="meter">Last measured pointer→paint: <strong>waiting…</strong></div>
+    </section>
+  </main>
+
+  <script>
+    const meter = document.querySelector('.meter strong');
+    document.addEventListener('pointerdown', (event) => {
+      const target = event.target.closest('button, [role="button"]');
+      if (!target || target.disabled) return;
+      const start = performance.now();
+      requestAnimationFrame(() => { meter.textContent = `${Math.round((performance.now() - start) * 10) / 10}ms`; });
+    }, { passive: true });
+    document.querySelectorAll('.switch').forEach((button) => button.addEventListener('click', () => button.setAttribute('aria-pressed', button.getAttribute('aria-pressed') !== 'true')));
+    document.querySelectorAll('.seg').forEach((seg) => seg.addEventListener('click', (event) => {
+      const btn = event.target.closest('button');
+      if (!btn) return;
+      seg.querySelectorAll('button').forEach((b) => b.removeAttribute('aria-selected'));
+      btn.setAttribute('aria-selected', 'true');
+    }));
+  </script>
+</body>
+</html>

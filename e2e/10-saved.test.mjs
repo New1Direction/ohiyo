@@ -18,10 +18,10 @@ try {
   const composer = page.locator('input[placeholder*="Say something"]');
   await composer.fill("keep this one for later");
   await composer.press("Enter");
-  await page.waitForSelector("text=keep this one for later", { timeout: 8000 });
+  await page.waitForSelector('[data-message-id]:not([data-message-id^="temp-"]) >> text=keep this one for later', { timeout: 8000 });
 
   // ── save it via the 🔖 action ──
-  const saveMsg = page.locator('[data-message-id]', { hasText: "keep this one for later" });
+  const saveMsg = page.locator('[data-message-id]:not([data-message-id^="temp-"])', { hasText: "keep this one for later" });
   await saveMsg.hover();
   await saveMsg.getByRole("button", { name: "Save message" }).first().click();
   await page.waitForSelector("text=/Saved/", { timeout: 6000 });

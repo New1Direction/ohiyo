@@ -1,11 +1,12 @@
 import "./index.css";
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from "react";
-import { api, setServerOrigin } from "./api";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore, type FormEvent } from "react";
+import { api, getApiBase, setServerOrigin } from "./api";
 import { Gateway } from "./gateway";
 import { AuthScreen } from "./components/AuthScreen";
+import { ModalShell } from "./components/ModalShell";
 import { ServerSidebar } from "./components/ServerSidebar";
 import { ChannelSidebar } from "./components/ChannelSidebar";
-import { ChatPane } from "./components/ChatPane";
+import { ChatPane, type ChatActivityNotice } from "./components/ChatPane";
 import { ToastStack } from "./components/ToastStack";
 import { SettingsModal, type Tab } from "./components/settings/SettingsModal";
 import { CommandPalette } from "./components/CommandPalette";
@@ -83,6 +84,7 @@ export default function App() {
   );
   const activeHome = homes.find((h) => h.id === activeHomeId) ?? homes[0];
   const token = activeHome?.token ?? null;
+  const [showAddHome, setShowAddHome] = useState(false);
 
   useEffect(() => {
     if (activeHome) setServerOrigin(activeHome.url);
@@ -100,16 +102,10 @@ export default function App() {
     if (home) setServerOrigin(home.url);
   }
 
-  function addHomeFromPrompt() {
-    const raw = window.prompt("Ohiyo server URL", "https://your-server.example.com");
-    if (!raw) return;
-    try {
-      const next = upsertHome(homes, { url: raw });
-      persistHomes(next);
-      setActiveHomeId(next[0].id);
-    } catch (err) {
-      window.alert(`That doesn't look like a server URL: ${err instanceof Error ? err.message : err}`);
-    }
+  function addHome(url: string) {
+    const next = upsertHome(homes, { url });
+    persistHomes(next);
+    setActiveHomeId(next[0].id);
   }
 
   // Persist the token to the active home so sessions survive reloads per server.
@@ -124,27 +120,98 @@ export default function App() {
   }
 
   if (!activeHome) return null;
+  const addHomeModal = showAddHome ? (
+    <AddHomeModal
+      onAdd={(url) => {
+        addHome(url);
+        setShowAddHome(false);
+      }}
+      onClose={() => setShowAddHome(false)}
+    />
+  ) : null;
   if (!token) {
     return (
-      <AuthScreen
-        home={activeHome}
-        homes={homes}
-        onAuth={handleAuth}
-        onSwitchHome={setActiveHomeId}
-        onAddHome={addHomeFromPrompt}
-      />
+      <>
+        <AuthScreen
+          home={activeHome}
+          homes={homes}
+          onAuth={handleAuth}
+          onSwitchHome={setActiveHomeId}
+          onAddHome={() => setShowAddHome(true)}
+        />
+        {addHomeModal}
+      </>
     );
   }
   return (
-    <MainApp
-      key={activeHome.id}
-      token={token}
-      homes={homes}
-      activeHomeId={activeHome.id}
-      onSwitchHome={setActiveHomeId}
-      onAddHome={addHomeFromPrompt}
-      onLogout={handleLogout}
-    />
+    <>
+      <MainApp
+        key={activeHome.id}
+        token={token}
+        homes={homes}
+        activeHomeId={activeHome.id}
+        onSwitchHome={setActiveHomeId}
+        onAddHome={() => setShowAddHome(true)}
+        onLogout={handleLogout}
+      />
+      {addHomeModal}
+    </>
+  );
+}
+
+function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClose: () => void }) {
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const trimmed = url.trim();
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!trimmed) return;
+    try {
+      onAdd(trimmed);
+    } catch {
+      setError("That does not look like an Ohiyo home link. Paste the full https:// address and try again.");
+    }
+  }
+
+  return (
+    <ModalShell onClose={onClose} labelledBy="kc-add-home-title" maxWidthClass="max-w-md">
+      <h2
+        id="kc-add-home-title"
+        style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "var(--text-2xl)", color: "var(--text-primary)" }}
+      >
+        Add an Ohiyo home
+      </h2>
+      <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-muted)" }}>
+        Paste the invite or home link you were given. Most people only need the default home already selected.
+      </p>
+      <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
+        <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+          Home link
+          <input
+            value={url}
+            onChange={(e) => { setUrl(e.target.value); setError(null); }}
+            placeholder="https://your-ohiyo-home.example"
+            aria-label="Ohiyo home link"
+            autoComplete="url"
+            className="kc-field px-3.5 py-3 text-sm outline-none"
+          />
+        </label>
+        {error && (
+          <div role="alert" className="rounded-xl px-3 py-2 text-sm" style={{ background: "color-mix(in oklch, var(--danger) 12%, var(--bg-elevated))", color: "var(--danger)" }}>
+            {error}
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="kc-interactive rounded-full px-4 py-2 text-sm font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" }}>
+            Cancel
+          </button>
+          <button type="submit" disabled={!trimmed} className="kc-cta rounded-full px-4 py-2 text-sm" style={{ opacity: trimmed ? 1 : 0.6 }}>
+            Add home
+          </button>
+        </div>
+      </form>
+    </ModalShell>
   );
 }
 
@@ -225,6 +292,7 @@ function MainApp({
   const [activities, setActivities] = useState<Map<string, Activity>>(new Map());
   const [watchSession, setWatchSession] = useState<WatchSession | null>(null);
   const [voiceMembers, setVoiceMembers] = useState<Map<string, string>>(new Map()); // userId → voice channelId
+  const [chatActivityNotices, setChatActivityNotices] = useState<Array<ChatActivityNotice & { channelId: string }>>([]);
   const [e2eChannels, setE2eChannels] = useState<Set<string>>(() => {
     try {
       return new Set<string>(JSON.parse(localStorage.getItem("kc:e2e-channels") || "[]"));
@@ -263,6 +331,14 @@ function MainApp({
       t: "WatchControl",
       d: { channel_id: cid, action, url: payload?.url ?? null, position: payload?.position ?? null },
     });
+  }
+
+  /** Add a soft, non-persistent note to the currently open chat. */
+  function pushChatActivityNotice(channelId: string, notice: ChatActivityNotice) {
+    setChatActivityNotices((prev) => [...prev.slice(-7), { ...notice, channelId }]);
+    window.setTimeout(() => {
+      setChatActivityNotices((prev) => prev.filter((item) => item.id !== notice.id));
+    }, 45_000);
   }
 
   /** Join a friend's voice channel by id (from their presence "Join" button). */
@@ -362,6 +438,10 @@ function MainApp({
   }, [token]);
 
   useEffect(() => { selectedChannelRef.current = selectedChannel; }, [selectedChannel]);
+  useEffect(() => {
+    if (!selectedChannel?.id) return;
+    setChatActivityNotices((prev) => prev.filter((notice) => notice.channelId === selectedChannel.id));
+  }, [selectedChannel?.id]);
 
   // Disappearing messages: prune locally the instant a message's TTL lapses, so it
   // vanishes immediately rather than lingering until the server's sweep broadcast.
@@ -683,11 +763,32 @@ function MainApp({
               : s
           )
         );
+        const currentChannel = selectedChannelRef.current;
+        if (currentChannel?.server_id === server_id && user.id !== currentUserRef.current?.id) {
+          pushChatActivityNotice(currentChannel.id, {
+            id: `join-${server_id}-${user.id}-${Date.now()}`,
+            kind: "join",
+            text: `${user.display_name} joined the space`,
+            createdAt: Date.now(),
+            user,
+          });
+        }
         break;
       }
 
       case "MemberLeave": {
         const { server_id, user_id } = event.d;
+        const leavingUser = serversRef.current.find((s) => s.id === server_id)?.members.find((m) => m.id === user_id);
+        const currentChannel = selectedChannelRef.current;
+        if (currentChannel?.server_id === server_id && user_id !== currentUserRef.current?.id && leavingUser) {
+          pushChatActivityNotice(currentChannel.id, {
+            id: `leave-${server_id}-${user_id}-${Date.now()}`,
+            kind: "leave",
+            text: `${leavingUser.display_name} left the space`,
+            createdAt: Date.now(),
+            user: leavingUser,
+          });
+        }
         if (user_id === currentUserRef.current?.id) {
           // We left or were removed — drop the server and leave its channel if open.
           setServers((prev) => prev.filter((s) => s.id !== server_id));
@@ -1442,6 +1543,7 @@ function MainApp({
       void handleSelectChannel(channel);
     } catch (err) {
       toast(`Couldn't open that chat: ${err instanceof Error ? err.message : err}`, "error");
+      throw err;
     }
   }
 
@@ -1452,6 +1554,46 @@ function MainApp({
       toast(`Channel #${name} created`, "success");
     } catch (err) {
       toast(`Failed: ${err instanceof Error ? err.message : err}`, "error");
+    }
+  }
+
+  function handleCurrentUserUpdate(user: PublicUser) {
+    setCurrentUser(user);
+    setServers((prev) =>
+      prev.map((s) => ({
+        ...s,
+        members: s.members.map((m) => (m.id === user.id ? user : m)),
+      }))
+    );
+    setMessages((prev) => prev.map((m) => (m.author.id === user.id ? { ...m, author: user } : m)));
+    setGroupMembers((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([channelId, members]) => [
+          channelId,
+          members.map((m) => (m.id === user.id ? user : m)),
+        ])
+      )
+    );
+  }
+
+  async function handleSetServerIcon(serverId: string, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch(`${getApiBase()}/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const uploaded = (await res.json()) as Array<{ id: string }>;
+      const fileId = uploaded[0]?.id;
+      if (!fileId) throw new Error("Upload failed");
+      const updated = await api.setServerIcon(token, serverId, fileId);
+      setServers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      toast("Server logo updated", "success");
+    } catch (err) {
+      toast(`Couldn't update server logo: ${err instanceof Error ? err.message : err}`, "error");
     }
   }
 
@@ -1551,10 +1693,12 @@ function MainApp({
             myActivity={currentUser ? activities.get(currentUser.id) ?? null : null}
             onSetActivity={updateActivity}
             canManageChannels={can(myPerms, PERM.MANAGE_CHANNELS)}
+            canManageServer={can(myPerms, PERM.MANAGE_SERVER)}
             onOpenCategories={() => setShowCategories(true)}
             onSelectChannel={handleSelectChannel}
             onJoinVoice={handleJoinVoice}
             onCreateChannel={handleCreateChannel}
+            onSetServerIcon={handleSetServerIcon}
             onInvite={() => setShowInvite(true)}
             onFindPeople={() => setShowFindPeople(true)}
             onOpenEvents={() => setShowEvents(true)}
@@ -1598,7 +1742,11 @@ function MainApp({
         onForward={(msg) => setForwarding(msg)}
         onOpenSearch={selectedServer ? () => setShowSearch(true) : undefined}
         onOpenMembers={selectedServer ? () => setShowMembers(true) : undefined}
+        onOpenDm={openDmWith}
         mentionables={selectedServer?.members ?? []}
+        channelMembers={selectedServer?.members ?? undefined}
+        onlineUserIds={onlineUsers}
+        activityNotices={selectedChannel ? chatActivityNotices.filter((notice) => notice.channelId === selectedChannel.id) : []}
         currentUsername={currentUser.username}
         receipts={selectedChannel ? receipts[selectedChannel.id] : undefined}
         watchSession={watchSession}
@@ -1696,6 +1844,7 @@ function MainApp({
           token={token}
           serverId={selectedServer.id}
           serverName={selectedServer.name}
+          serverIconUrl={selectedServer.icon_url}
           onClose={() => setShowInvite(false)}
         />
       )}
@@ -1731,6 +1880,7 @@ function MainApp({
           activities={activities}
           voiceMembers={voiceMembers}
           onJoinVoice={joinVoiceById}
+          onOpenDm={openDmWith}
           canKick={can(myPerms, PERM.KICK_MEMBERS)}
           canBan={can(myPerms, PERM.BAN_MEMBERS)}
           canManageRoles={can(myPerms, PERM.MANAGE_ROLES)}
@@ -1803,6 +1953,7 @@ function MainApp({
           initialTab={settingsTab}
           onClose={() => { setShowSettings(false); setSettingsTab("appearance"); }}
           onToast={toast}
+          onCurrentUserUpdate={handleCurrentUserUpdate}
         />
       )}
     </div>

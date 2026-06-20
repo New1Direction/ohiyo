@@ -12,10 +12,18 @@ type Props = {
 export function SavedModal({ token, onJump, onClose }: Props) {
   const [saved, setSaved] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
-    setSaved(await api.listSaved(token).catch(() => []));
-    setLoading(false);
+    try {
+      setError(null);
+      setSaved(await api.listSaved(token));
+    } catch {
+      setSaved([]);
+      setError("Saved messages could not load. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => {
     void refresh();
@@ -23,8 +31,12 @@ export function SavedModal({ token, onJump, onClose }: Props) {
   }, []);
 
   async function remove(m: Message) {
-    await api.unsaveMessage(token, m.channel_id, m.id).catch(() => {});
-    await refresh();
+    try {
+      await api.unsaveMessage(token, m.channel_id, m.id);
+      await refresh();
+    } catch {
+      setError("Could not remove that saved message. Try again.");
+    }
   }
 
   return (
@@ -41,6 +53,10 @@ export function SavedModal({ token, onJump, onClose }: Props) {
           <div className="flex flex-col gap-2">
             {[0, 1, 2].map((i) => <div key={i} className="kc-skeleton" style={{ height: 52 }} />)}
           </div>
+        ) : error ? (
+          <p role="alert" className="text-center text-sm" style={{ color: "var(--danger)", padding: "var(--space-5)" }}>
+            {error}
+          </p>
         ) : saved.length === 0 ? (
           <p className="text-center text-sm" style={{ color: "var(--text-muted)", padding: "var(--space-5)" }}>
             Nothing saved yet. Hit the 🔖 on any message to keep it here.

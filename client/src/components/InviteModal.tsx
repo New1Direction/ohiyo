@@ -6,11 +6,12 @@ type Props = {
   token: string;
   serverId: string;
   serverName: string;
+  serverIconUrl?: string | null;
   onClose: () => void;
 };
 
 /** Generates a shareable invite link for a server and makes it one tap to copy. */
-export function InviteModal({ token, serverId, serverName, onClose }: Props) {
+export function InviteModal({ token, serverId, serverName, serverIconUrl, onClose }: Props) {
   const [info, setInfo] = useState<InviteInfo | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -45,8 +46,16 @@ export function InviteModal({ token, serverId, serverName, onClose }: Props) {
   return (
     <ModalShell onClose={onClose} labelledBy="kc-invite-title">
       <div className="flex flex-col items-center text-center">
-        <div className="text-3xl" aria-hidden>
-          ✉️
+        <div
+          className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl text-3xl font-bold"
+          style={{ background: "var(--accent)", color: "#fff", boxShadow: "var(--shadow-md)" }}
+          aria-hidden
+        >
+          {serverIconUrl ? (
+            <img src={serverIconUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            serverName.slice(0, 2).toUpperCase() || "✉️"
+          )}
         </div>
         <h2
           id="kc-invite-title"

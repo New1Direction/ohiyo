@@ -23,6 +23,7 @@ import { MessageActionSheet } from "./MessageActionSheet";
 // Composer drafts persisted per channel so a half-written message survives a reload,
 // not just a channel switch. Cleared on send.
 const DRAFT_PREFIX = "kc:draft:";
+const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
 function persistDraft(channelId: string, text: string) {
   try {
     if (text.trim()) localStorage.setItem(DRAFT_PREFIX + channelId, text);
@@ -36,6 +37,25 @@ function loadDraft(channelId: string): string {
     return localStorage.getItem(DRAFT_PREFIX + channelId) ?? "";
   } catch {
     return "";
+  }
+}
+function hiddenMessagesKey(channelId: string, userId: string): string {
+  return `${HIDDEN_MESSAGES_PREFIX}${userId || "anonymous"}:${channelId}`;
+}
+function loadHiddenMessages(channelId: string, userId: string): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(hiddenMessagesKey(channelId, userId)) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+function saveHiddenMessages(channelId: string, userId: string, ids: Set<string>) {
+  try {
+    const key = hiddenMessagesKey(channelId, userId);
+    if (ids.size) localStorage.setItem(key, JSON.stringify([...ids]));
+    else localStorage.removeItem(key);
+  } catch {
+    /* storage off */
   }
 }
 
@@ -71,6 +91,31 @@ type OgData = {
 };
 
 const QUICK_EMOJI = ["👍", "❤️", "😂", "😮", "😢", "🔥", "✅", "🎉", "👀", "🚀", "💯", "🙏", "😍", "😎", "🤔"];
+const EMOJI_CATALOG = [
+  ["😀", "grin happy smile"], ["😂", "laugh tears funny"], ["🤣", "rofl laughing"], ["😭", "cry sob"], ["🥹", "teary touched"], ["😍", "love heart eyes"],
+  ["🥰", "love hearts"], ["😘", "kiss"], ["😎", "cool sunglasses"], ["🥳", "party celebrate"], ["😤", "huff angry"], ["😡", "rage angry"],
+  ["🤯", "mind blown"], ["🫡", "salute"], ["🤔", "think hmm"], ["🫠", "melt"], ["🫶", "heart hands"], ["🙏", "pray please thanks"],
+  ["👍", "thumbs up yes"], ["👎", "thumbs down no"], ["👏", "clap applause"], ["🙌", "raise hands"], ["💪", "strong flex"], ["🤝", "handshake"],
+  ["❤️", "heart love red"], ["🧡", "orange heart"], ["💛", "yellow heart"], ["💚", "green heart"], ["💙", "blue heart"], ["💜", "purple heart"],
+  ["🖤", "black heart"], ["🤍", "white heart"], ["💔", "broken heart"], ["💕", "two hearts"], ["💯", "hundred"], ["✨", "sparkles"],
+  ["🔥", "fire hot"], ["⭐", "star"], ["🌙", "moon"], ["☀️", "sun"], ["🌈", "rainbow"], ["⚡", "lightning"],
+  ["🎉", "party popper"], ["🎊", "confetti"], ["🎂", "cake birthday"], ["🎁", "gift"], ["🏆", "trophy"], ["🥇", "gold medal"],
+  ["👀", "eyes look"], ["💀", "skull dead"], ["🤡", "clown"], ["🤌", "chef kiss"], ["😈", "devil"], ["👻", "ghost"],
+  ["🐱", "cat"], ["🐶", "dog"], ["🐸", "frog"], ["🐧", "penguin"], ["🐭", "mouse"], ["🐰", "bunny"],
+  ["🍕", "pizza"], ["🍔", "burger"], ["🍟", "fries"], ["🍣", "sushi"], ["🍪", "cookie"], ["☕", "coffee"],
+  ["🎮", "game controller"], ["🎧", "headphones music"], ["🎵", "music note"], ["🎬", "movie film"], ["📸", "camera"], ["💻", "laptop code"],
+  ["🚀", "rocket launch"], ["🛸", "ufo"], ["🧠", "brain smart"], ["🫵", "you point"], ["✅", "check yes"], ["❌", "x no"],
+] as const;
+const TENOR_SAMPLE_KEY = "LIVDSRZULELA"; // Public sample key from Tenor docs; no customer setup.
+type GifResult = { id: string; title: string; url: string; preview: string };
+
+export type ChatActivityNotice = {
+  id: string;
+  kind: "join" | "leave";
+  text: string;
+  createdAt: number;
+  user?: PublicUser;
+};
 
 type Props = {
   channel: Channel | null;
@@ -97,8 +142,16 @@ type Props = {
   onSaveRecovery?: () => void;
   onOpenSearch?: () => void;
   onOpenMembers?: () => void;
+  /** Open/start a direct message from a user's profile card. */
+  onOpenDm?: (user: PublicUser) => void | Promise<void>;
   /** Members offered in the @-mention autocomplete (current server). */
   mentionables?: PublicUser[];
+  /** People who belong to the current server/channel context, used for the friendly "who's here" header. */
+  channelMembers?: PublicUser[];
+  /** User ids currently online. */
+  onlineUserIds?: Set<string>;
+  /** Soft local activity notes like "Mina joined". These are not persisted to message history. */
+  activityNotices?: ChatActivityNotice[];
   /** Current user's username, for highlighting mentions of you. */
   currentUsername?: string;
   /** Read cursors for this channel (userId → last_read_at). Drives DM receipts. */
@@ -172,6 +225,8 @@ type UploadedFile = {
   url: string;
   content_type: string;
   size_bytes: number;
+  width?: number | null;
+  height?: number | null;
 };
 
 export function ChatPane({
@@ -196,7 +251,11 @@ export function ChatPane({
   onSaveRecovery,
   onOpenSearch,
   onOpenMembers,
+  onOpenDm,
   mentionables = [],
+  channelMembers = [],
+  onlineUserIds = new Set<string>(),
+  activityNotices = [],
   currentUsername = "",
   receipts,
   watchSession,
@@ -226,6 +285,7 @@ export function ChatPane({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [hiddenMessageIds, setHiddenMessageIds] = useState<Set<string>>(() => (channel?.id ? loadHiddenMessages(channel.id, currentUserId) : new Set()));
   const [showPoll, setShowPoll] = useState(false);
   const lastTypingRef = useRef(0);
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([]);
@@ -233,6 +293,13 @@ export function ChatPane({
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [emojiPickerFor, setEmojiPickerFor] = useState<string | null>(null);
   const [pickerPos, setPickerPos] = useState<{ x: number; y: number } | null>(null);
+  const [composerPickerOpen, setComposerPickerOpen] = useState(false);
+  const [composerPickerTab, setComposerPickerTab] = useState<"emoji" | "gif">("emoji");
+  const [emojiQuery, setEmojiQuery] = useState("");
+  const [gifQuery, setGifQuery] = useState("excited");
+  const [gifResults, setGifResults] = useState<GifResult[]>([]);
+  const [gifLoading, setGifLoading] = useState(false);
+  const [gifUrl, setGifUrl] = useState("");
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   // Signal safety number: revealed only on demand (optional verification).
   const [safety, setSafety] = useState<{ open: boolean; value: string | null; loading: boolean }>({
@@ -309,6 +376,45 @@ export function ChatPane({
     });
   }
 
+  function insertComposerText(text: string) {
+    if (!channel) return;
+    const el = composerRef.current;
+    const start = el?.selectionStart ?? input.length;
+    const end = el?.selectionEnd ?? start;
+    const padLeft = start > 0 && !/\s$/.test(input.slice(0, start)) ? " " : "";
+    const padRight = end < input.length && !/^\s/.test(input.slice(end)) ? " " : "";
+    const inserted = `${padLeft}${text}${padRight}`;
+    const next = input.slice(0, start) + inserted + input.slice(end);
+    const caret = start + inserted.length;
+    setInput(next);
+    inputRef.current = next;
+    draftsRef.current[channel.id] = next;
+    persistDraft(channel.id, next);
+    setMention(null);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  }
+
+  function sendGif(url: string) {
+    if (!channel) return;
+    const trimmed = url.trim();
+    if (!/^https?:\/\//i.test(trimmed)) {
+      onToast("Paste a valid GIF link", "error");
+      return;
+    }
+    forceBottomRef.current = true;
+    onSend(trimmed, [], replyTarget?.id ?? null);
+    setInput("");
+    inputRef.current = "";
+    draftsRef.current[channel.id] = "";
+    persistDraft(channel.id, "");
+    setReplyTarget(null);
+    setGifUrl("");
+    setComposerPickerOpen(false);
+  }
+
   // Refresh the row-height metrics from the density/font-scale CSS vars on mount and
   // whenever the user changes density or font scale, then drop react-window's cached
   // heights so every row re-measures at the new scale.
@@ -337,7 +443,7 @@ export function ChatPane({
   // instead of yanking them down — "scroll never betrays the user".
   useEffect(() => {
     listRef.current?.resetAfterIndex(0);
-    const last = groups.length - 1;
+    const last = rows.length - 1;
     if (last < 0) return;
     // A channel switch may have stashed a reading position to restore once the new
     // channel's rows exist. Consume it before the auto-scroll-to-bottom logic.
@@ -356,8 +462,8 @@ export function ChatPane({
     } else {
       setShowJump(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- groups is derived from messages (declared below); re-running on messages already covers groups.length
-  }, [messages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rows is derived from messages/activityNotices (declared below); re-running on those already covers rows.length
+  }, [messages, activityNotices, hiddenMessageIds]);
 
   // Track whether the user is pinned to the bottom (read off the scroll container) and
   // remember this channel's reading position for restore-on-return.
@@ -370,7 +476,7 @@ export function ChatPane({
   }
 
   function jumpToBottom() {
-    const last = groups.length - 1;
+    const last = rows.length - 1;
     if (last >= 0) listRef.current?.scrollToItem(last, "end");
     atBottomRef.current = true;
     setShowJump(false);
@@ -380,7 +486,8 @@ export function ChatPane({
   // keystroke in a new channel always fires.
   useEffect(() => {
     lastTypingRef.current = 0;
-  }, [channel?.id]);
+    setHiddenMessageIds(channel?.id ? loadHiddenMessages(channel.id, currentUserId) : new Set());
+  }, [channel?.id, currentUserId]);
 
   // Per-channel drafts: on switch, stash the outgoing draft and restore the
   // incoming one; don't carry a half-written reply/mention across channels.
@@ -436,7 +543,7 @@ export function ChatPane({
     };
   }, [channel?.id]);
 
-  // Close emoji picker on outside click.
+  // Close reaction emoji picker on outside click.
   useEffect(() => {
     if (!emojiPickerFor) return;
     const close = () => setEmojiPickerFor(null);
@@ -444,13 +551,52 @@ export function ChatPane({
     return () => window.removeEventListener("click", close);
   }, [emojiPickerFor]);
 
+  // GIF search: uses Tenor's public sample API key from their docs. If it fails,
+  // the picker still supports pasting any GIF URL.
+  useEffect(() => {
+    if (!composerPickerOpen || composerPickerTab !== "gif") return;
+    const q = gifQuery.trim();
+    if (!q) {
+      setGifResults([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setGifLoading(true);
+      fetch(`https://g.tenor.com/v1/search?q=${encodeURIComponent(q)}&key=${TENOR_SAMPLE_KEY}&limit=18&media_filter=minimal`, { signal: controller.signal })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error("gif search failed"))))
+        .then((data: { results?: Array<{ id: string; title?: string; media?: Array<{ gif?: { url: string }; tinygif?: { url: string } }> }> }) => {
+          const results = (data.results ?? [])
+            .map((g) => {
+              const media = g.media?.[0];
+              const url = media?.gif?.url;
+              const preview = media?.tinygif?.url ?? url;
+              return url && preview ? { id: g.id, title: g.title || "GIF", url, preview } : null;
+            })
+            .filter((g): g is GifResult => Boolean(g));
+          setGifResults(results);
+        })
+        .catch((err) => {
+          if (err.name !== "AbortError") setGifResults([]);
+        })
+        .finally(() => setGifLoading(false));
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [composerPickerOpen, composerPickerTab, gifQuery]);
+
   // Apply plugin message transforms.
   const displayMessages = messages
     .map((m) => pluginManager.applyMessageTransforms(m))
     .filter((m): m is Message => m !== null);
 
-  // Group consecutive messages by same author.
+  // Group consecutive messages by same author, then add soft local activity notes
+  // as lightweight rows. These notices feel like chat activity without polluting
+  // the real persisted message history.
   type MsgGroup = { author: Message["author"]; msgs: Message[]; isMe: boolean };
+  type ChatRow = { kind: "messages"; group: MsgGroup } | { kind: "activity"; notice: ChatActivityNotice };
   const groups: MsgGroup[] = [];
   for (const msg of displayMessages) {
     const last = groups[groups.length - 1];
@@ -460,22 +606,32 @@ export function ChatPane({
       groups.push({ author: msg.author, msgs: [msg], isMe: msg.author.id === currentUserId });
     }
   }
+  const rows: ChatRow[] = [
+    ...groups.map((group) => ({ kind: "messages" as const, group })),
+    ...activityNotices.map((notice) => ({ kind: "activity" as const, notice })),
+  ];
 
   function estimateHeight(index: number): number {
-    const g = groups[index];
-    if (!g) return 60;
+    const row = rows[index];
+    if (!row) return 60;
+    if (row.kind === "activity") return 48;
+    const g = row.group;
     const { linePx, basePx, fontScale } = metricsRef.current;
     // Fewer characters fit per line as the font scales up, so the wrap estimate tracks it.
     const charsPerLine = Math.max(20, Math.round(80 / fontScale));
-    const textLines = g.msgs.reduce((sum, m) => sum + Math.ceil(m.content.length / charsPerLine), 0);
-    // Reserve the real rendered image height so loading an image never shifts layout.
-    const imageH = g.msgs.reduce(
+    const textLines = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 1 : Math.ceil(m.content.length / charsPerLine)), 0);
+    // Reserve the rendered attachment height so images/videos do not get clipped in the virtualized list.
+    const mediaH = g.msgs.reduce(
       (sum, m) =>
         sum +
-        (m.attachments ?? []).reduce((s, a) => {
-          if (!a.content_type.startsWith("image/")) return s;
-          return s + (a.width && a.height ? fitImg(a.width, a.height, 400, 300).h + 20 : 160);
-        }, 0),
+        (hiddenMessageIds.has(m.id) ? 0 : (m.attachments ?? []).reduce((s, a) => {
+          if (a.content_type.startsWith("image/")) {
+            return s + (a.width && a.height ? fitImg(a.width, a.height, 400, 300).h + 20 : 180);
+          }
+          if (a.content_type.startsWith("video/")) return s + 278;
+          if (a.content_type.startsWith("audio/")) return s + 58;
+          return s + 34;
+        }, 0)),
       0
     );
     const hasReactions = g.msgs.some((m) => (m.reactions?.length ?? 0) > 0);
@@ -484,7 +640,7 @@ export function ChatPane({
     const failed = g.msgs.filter((m) => m._state === "failed").length;
     const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
     const embedsH = g.msgs.reduce((sum, m) => sum + (m.embeds?.length ?? 0) * 92, 0);
-    return basePx + Math.max(textLines, 1) * linePx + imageH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
+    return basePx + Math.max(textLines, 1) * linePx + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
   }
 
   const handleSend = useCallback(
@@ -602,6 +758,27 @@ export function ChatPane({
     }
   }
 
+  function hideMessageForMe(messageId: string) {
+    if (!channel) return;
+    setHiddenMessageIds((prev) => {
+      const next = new Set(prev);
+      next.add(messageId);
+      saveHiddenMessages(channel.id, currentUserId, next);
+      return next;
+    });
+    onToast("Hidden for you", "info");
+  }
+
+  function unhideMessageForMe(messageId: string) {
+    if (!channel) return;
+    setHiddenMessageIds((prev) => {
+      const next = new Set(prev);
+      next.delete(messageId);
+      saveHiddenMessages(channel.id, currentUserId, next);
+      return next;
+    });
+  }
+
   if (!channel) {
     return (
       <div
@@ -634,9 +811,17 @@ export function ChatPane({
     );
   }
 
+  const peopleHere = channelMembers
+    .filter((member, index, all) => all.findIndex((m) => m.id === member.id) === index)
+    .sort((a, b) => Number(onlineUserIds.has(b.id)) - Number(onlineUserIds.has(a.id)) || a.display_name.localeCompare(b.display_name));
+  const onlineHereCount = peopleHere.filter((member) => onlineUserIds.has(member.id)).length;
+  const memberSummary = peopleHere.length > 0
+    ? `${peopleHere.length} ${peopleHere.length === 1 ? "person" : "people"}${onlineHereCount ? ` · ${onlineHereCount} online` : ""}`
+    : "People";
+
   return (
     <div className="flex flex-1 flex-col" style={{ background: "var(--bg-channel)" }} {...getRootProps()}>
-      <input {...getInputProps()} />
+      <input {...getInputProps({ "aria-label": "Attach files" })} />
 
       {/* Drop overlay */}
       {isDragActive && (
@@ -693,6 +878,42 @@ export function ChatPane({
           </>
         )}
         <div className="flex-1" />
+        {peopleHere.length > 0 && onOpenMembers && (
+          <button
+            type="button"
+            onClick={onOpenMembers}
+            className="kc-interactive flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold"
+            style={{
+              background: "color-mix(in oklch, var(--accent) 8%, var(--bg-input))",
+              border: "1px solid color-mix(in oklch, var(--accent) 18%, var(--bg-hover))",
+              color: "var(--text-secondary)",
+              cursor: "pointer",
+            }}
+            aria-label={`See who's here: ${memberSummary}`}
+            title="See who's here"
+          >
+            <span className="flex -space-x-2" aria-hidden="true">
+              {peopleHere.slice(0, 4).map((member) => (
+                <span
+                  key={member.id}
+                  className="relative flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ring-2"
+                  style={{
+                    background: avatarBg(member.id),
+                    backgroundImage: member.avatar_url ? `url(${assetUrl(member.avatar_url)})` : undefined,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    color: "#fff",
+                    boxShadow: onlineUserIds.has(member.id) ? "0 0 0 2px color-mix(in oklch, var(--success, #22c55e) 72%, white)" : undefined,
+                    border: "2px solid var(--bg-channel)",
+                  }}
+                >
+                  {!member.avatar_url && member.display_name[0]?.toUpperCase()}
+                </span>
+              ))}
+            </span>
+            <span>{memberSummary}</span>
+          </button>
+        )}
         {onOpenSearch && (
           <button
             type="button"
@@ -733,6 +954,7 @@ export function ChatPane({
                 currentUserId={currentUserId}
                 token={token}
                 seedMembers={groupMembers}
+                onOpenDm={onOpenDm}
                 onToast={onToast}
                 onClose={() => setShowGroupMembers(false)}
               />
@@ -1051,7 +1273,7 @@ export function ChatPane({
           <div className="flex h-full items-center justify-center" style={{ color: "var(--text-muted)" }}>
             <LoadingSpinner />
           </div>
-        ) : groups.length === 0 ? (
+        ) : rows.length === 0 ? (
           <ChannelWelcome
             channelName={channel?.name && channel.name !== "dm" ? channel.name : undefined}
             isDM={channel?.channel_type === "dm" || channel?.channel_type === "group_dm"}
@@ -1062,26 +1284,38 @@ export function ChatPane({
           <AutoSizedList
             listRef={listRef}
             outerRef={listOuterRef}
-            itemCount={groups.length}
+            itemCount={rows.length}
             estimatedItemSize={60}
             estimateHeight={estimateHeight}
             onScroll={handleListScroll}
           >
             {({ index, style }: { index: number; style: React.CSSProperties }) => {
-              const g = groups[index];
+              const row = rows[index];
+              if (row.kind === "activity") {
+                return <ActivityNoticeRow key={row.notice.id} notice={row.notice} style={style} />;
+              }
+              const g = row.group;
               return (
                 <div style={style} className="msg-group px-4 pt-2 hover:bg-white/[0.02]">
                   <div className="flex items-start gap-3">
                     <button
                       className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
-                      style={{ background: avatarBg(g.author.id), color: "#fff", cursor: "pointer", border: "none" }}
+                      style={{
+                        background: avatarBg(g.author.id),
+                        backgroundImage: g.author.avatar_url ? `url(${assetUrl(g.author.avatar_url)})` : undefined,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                        color: "#fff",
+                        cursor: "pointer",
+                        border: "none",
+                      }}
                       onClick={(e) => {
                         profileAnchorRef.current = e.currentTarget as HTMLElement;
                         setProfileUserId(g.author.id);
                       }}
                       title={`View ${g.author.display_name}'s profile`}
                     >
-                      {g.author.display_name[0]?.toUpperCase()}
+                      {!g.author.avatar_url && g.author.display_name[0]?.toUpperCase()}
                     </button>
                     <div className="min-w-0 flex-1">
                       <div className="msg-meta flex items-baseline gap-2">
@@ -1112,7 +1346,12 @@ export function ChatPane({
                             </div>
                           )}
                           {msg.reply_to && <ReplyQuote reply={msg.reply_to} />}
-                          {editingId === msg.id ? (
+                          {hiddenMessageIds.has(msg.id) ? (
+                            <HiddenMessageNotice
+                              authorName={msg.author.display_name}
+                              onUndo={() => unhideMessageForMe(msg.id)}
+                            />
+                          ) : editingId === msg.id ? (
                             <EditBox
                               value={editText}
                               onChange={setEditText}
@@ -1228,6 +1467,11 @@ export function ChatPane({
                                 </button>
                               )}
                               {!msg.id.startsWith("temp-") && (
+                                <button type="button" aria-label="Hide message for me" title="Hide for me" onClick={(e) => { e.stopPropagation(); hideMessageForMe(msg.id); }}>
+                                  <Icon name="trash" size={16} />
+                                </button>
+                              )}
+                              {!msg.id.startsWith("temp-") && (
                                 <button type="button" aria-label="Save message" title="Save" onClick={(e) => { e.stopPropagation(); handleSave(msg.id); }}>
                                   <Icon name="bookmark" size={16} />
                                 </button>
@@ -1276,26 +1520,13 @@ export function ChatPane({
 
       {/* Pending attachments preview */}
       {pendingFiles.length > 0 && (
-        <div className="mx-4 flex gap-2 flex-wrap">
+        <div className="kc-composer-files mx-4 mb-2 flex gap-2 flex-wrap">
           {pendingFiles.map((f) => (
-            <div
+            <PendingAttachmentPreview
               key={f.id}
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs"
-              style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }}
-            >
-              <span>{fileIcon(f.content_type)}</span>
-              <span className="max-w-[120px] truncate">{f.filename}</span>
-              <span style={{ color: "var(--text-muted)" }}>{formatBytes(f.size_bytes)}</span>
-              <button
-                type="button"
-                aria-label={`Remove ${f.filename}`}
-                onClick={() => setPendingFiles((prev) => prev.filter((p) => p.id !== f.id))}
-                className="ml-1 kc-interactive"
-                style={{ color: "var(--danger)", background: "none", border: "none", cursor: "pointer" }}
-              >
-                <span aria-hidden="true">✕</span>
-              </button>
-            </div>
+              file={f}
+              onRemove={() => setPendingFiles((prev) => prev.filter((p) => p.id !== f.id))}
+            />
           ))}
         </div>
       )}
@@ -1329,10 +1560,7 @@ export function ChatPane({
 
       {/* Reply chip */}
       {replyTarget && (
-        <div
-          className="mx-4 mb-1 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs"
-          style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }}
-        >
+        <div className="kc-composer-reply mx-4 mb-2 flex items-center gap-2 px-3 py-1.5 text-xs">
           <span style={{ color: "var(--accent)", fontWeight: 700 }}>↩</span>
           <span className="flex-shrink-0">
             Replying to <strong>{replyTarget.author.display_name}</strong>
@@ -1352,33 +1580,67 @@ export function ChatPane({
         </div>
       )}
 
+      {composerPickerOpen && (
+        <ComposerMediaPicker
+          tab={composerPickerTab}
+          onTab={setComposerPickerTab}
+          emojiQuery={emojiQuery}
+          onEmojiQuery={setEmojiQuery}
+          serverEmojis={serverEmojis}
+          onPickEmoji={(em) => insertComposerText(em)}
+          onPickCustomEmoji={(em) => insertComposerText(`:${em.name}:`)}
+          gifQuery={gifQuery}
+          onGifQuery={setGifQuery}
+          gifResults={gifResults}
+          gifLoading={gifLoading}
+          gifUrl={gifUrl}
+          onGifUrl={setGifUrl}
+          onSendGif={sendGif}
+        />
+      )}
+
       {/* Input */}
       <form
         onSubmit={handleSend}
-        className="mx-4 mb-4 flex items-center gap-2 rounded-lg px-4 py-2"
-        style={{ background: "var(--bg-input)", marginBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+        className="kc-composer-shell mx-4 mb-4"
+        style={{ marginBottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
-        <button
-          type="button"
-          onClick={open}
-          className="kc-icon-btn flex-shrink-0 text-lg"
-          title="Upload a file"
-          aria-label="Attach a file"
-        >
-          <Icon name="plus" size={20} />
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowPoll(true)}
-          className="kc-icon-btn flex-shrink-0 text-base"
-          title="Create a poll"
-          aria-label="Create a poll"
-        >
-          <Icon name="poll" />
-        </button>
+        <div className="kc-composer-tools" aria-label="Message tools">
+          <button
+            type="button"
+            onClick={open}
+            className="kc-icon-btn flex-shrink-0 text-lg"
+            title="Upload a file"
+            aria-label="Attach a file"
+          >
+            <Icon name="plus" size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowPoll(true)}
+            className="kc-icon-btn flex-shrink-0 text-base"
+            title="Create a poll"
+            aria-label="Create a poll"
+          >
+            <Icon name="poll" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setComposerPickerOpen((v) => !v);
+              setComposerPickerTab("emoji");
+            }}
+            className={`kc-icon-btn flex-shrink-0 text-base${composerPickerOpen ? " active" : ""}`}
+            title="Emoji and GIFs"
+            aria-label="Emoji and GIFs"
+            aria-expanded={composerPickerOpen}
+          >
+            <Icon name="react" />
+          </button>
+        </div>
         <input
           ref={composerRef}
-          className="flex-1 bg-transparent text-sm outline-none"
+          className="kc-composer-input flex-1 bg-transparent text-sm outline-none"
           style={{ color: "var(--text-primary)" }}
           placeholder={
             replyTarget
@@ -1407,7 +1669,7 @@ export function ChatPane({
         <button
           type="submit"
           aria-label="Send message"
-          className={`kc-icon-btn flex-shrink-0 text-lg${input.trim() || pendingFiles.length > 0 ? " active" : ""}`}
+          className={`kc-composer-send kc-icon-btn flex-shrink-0 text-lg${input.trim() || pendingFiles.length > 0 ? " active" : ""}`}
         >
           <Icon name="send" />
         </button>
@@ -1421,6 +1683,7 @@ export function ChatPane({
           onPin={onPinMessage ? () => { onPinMessage(actionSheetMsg.id, !actionSheetMsg.pinned); setActionSheetMsg(null); } : undefined}
           onForward={onForward ? () => { onForward(actionSheetMsg); setActionSheetMsg(null); } : undefined}
           onSave={() => { handleSave(actionSheetMsg.id); setActionSheetMsg(null); }}
+          onHide={() => { hideMessageForMe(actionSheetMsg.id); setActionSheetMsg(null); }}
           onEdit={onEditMessage && !actionSheetMsg.poll ? () => { setEditingId(actionSheetMsg.id); setEditText(actionSheetMsg.content); setActionSheetMsg(null); } : undefined}
           onDelete={onDeleteMessage ? () => { setConfirmDeleteId(actionSheetMsg.id); setActionSheetMsg(null); } : undefined}
           onClose={() => setActionSheetMsg(null)}
@@ -1482,6 +1745,8 @@ export function ChatPane({
           userId={profileUserId}
           token={token}
           anchorRef={profileAnchorRef}
+          currentUserId={currentUserId}
+          onOpenDm={onOpenDm}
           onClose={() => setProfileUserId(null)}
         />
       )}
@@ -1909,6 +2174,161 @@ function renderInlineMarkdown(
   return parts;
 }
 
+// ── Composer emoji/GIF picker ────────────────────────────────────────────────
+
+function ComposerMediaPicker({
+  tab,
+  onTab,
+  emojiQuery,
+  onEmojiQuery,
+  serverEmojis,
+  onPickEmoji,
+  onPickCustomEmoji,
+  gifQuery,
+  onGifQuery,
+  gifResults,
+  gifLoading,
+  gifUrl,
+  onGifUrl,
+  onSendGif,
+}: {
+  tab: "emoji" | "gif";
+  onTab: (tab: "emoji" | "gif") => void;
+  emojiQuery: string;
+  onEmojiQuery: (q: string) => void;
+  serverEmojis: ServerEmoji[];
+  onPickEmoji: (emoji: string) => void;
+  onPickCustomEmoji: (emoji: ServerEmoji) => void;
+  gifQuery: string;
+  onGifQuery: (q: string) => void;
+  gifResults: GifResult[];
+  gifLoading: boolean;
+  gifUrl: string;
+  onGifUrl: (url: string) => void;
+  onSendGif: (url: string) => void;
+}) {
+  const q = emojiQuery.trim().toLowerCase();
+  const unicode = EMOJI_CATALOG.filter(([emoji, tags]) => !q || emoji.includes(q) || tags.includes(q)).slice(0, 96);
+  const custom = serverEmojis.filter((e) => !q || e.name.toLowerCase().includes(q)).slice(0, 48);
+  const pill = (active: boolean): React.CSSProperties => ({
+    border: "none",
+    borderRadius: 999,
+    padding: "6px 12px",
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: "pointer",
+    background: active ? "var(--accent)" : "var(--bg-input)",
+    color: active ? "#fff" : "var(--text-secondary)",
+  });
+
+  return (
+    <div
+      className="mx-4 mb-2 overflow-hidden rounded-2xl border"
+      style={{ background: "var(--bg-sidebar)", borderColor: "var(--bg-hover)", boxShadow: "var(--shadow-md)" }}
+    >
+      <div className="flex items-center justify-between gap-2 border-b p-2" style={{ borderColor: "var(--bg-hover)" }}>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => onTab("emoji")} style={pill(tab === "emoji")}>Emoji</button>
+          <button type="button" onClick={() => onTab("gif")} style={pill(tab === "gif")}>GIFs</button>
+        </div>
+        <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+          {tab === "emoji" ? "Unicode + server emoji" : "Powered by Tenor · paste links too"}
+        </div>
+      </div>
+
+      {tab === "emoji" ? (
+        <div className="p-3">
+          <input
+            value={emojiQuery}
+            onChange={(e) => onEmojiQuery(e.target.value)}
+            placeholder="Search emoji…"
+            className="kc-field mb-3 w-full px-3 py-2 text-sm outline-none"
+          />
+          {custom.length > 0 && (
+            <>
+              <div className="mb-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Server emoji</div>
+              <div className="mb-3 grid grid-cols-8 gap-1 sm:grid-cols-10">
+                {custom.map((em) => (
+                  <button
+                    key={em.id}
+                    type="button"
+                    onClick={() => onPickCustomEmoji(em)}
+                    className="kc-interactive flex h-9 items-center justify-center rounded-lg"
+                    style={{ border: "none", background: "var(--bg-input)", cursor: "pointer" }}
+                    title={`:${em.name}:`}
+                  >
+                    <img src={`${getFileBase()}${em.url}`} alt={`:${em.name}:`} className="max-h-7 max-w-7 object-contain" />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Emoji</div>
+          <div className="grid max-h-56 grid-cols-8 gap-1 overflow-y-auto sm:grid-cols-12">
+            {unicode.map(([emoji, tags]) => (
+              <button
+                key={`${emoji}-${tags}`}
+                type="button"
+                onClick={() => onPickEmoji(emoji)}
+                className="kc-interactive flex h-9 items-center justify-center rounded-lg text-xl"
+                style={{ border: "none", background: "transparent", cursor: "pointer" }}
+                title={tags}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="p-3">
+          <div className="mb-3 flex gap-2">
+            <input
+              value={gifQuery}
+              onChange={(e) => onGifQuery(e.target.value)}
+              placeholder="Search GIFs…"
+              className="kc-field min-w-0 flex-1 px-3 py-2 text-sm outline-none"
+            />
+            <button type="button" onClick={() => onGifQuery(gifQuery || "excited")} className="kc-cta px-3 py-2 text-sm">Search</button>
+          </div>
+          <div className="mb-3 flex gap-2">
+            <input
+              value={gifUrl}
+              onChange={(e) => onGifUrl(e.target.value)}
+              placeholder="Or paste a GIF/image URL…"
+              className="kc-field min-w-0 flex-1 px-3 py-2 text-sm outline-none"
+            />
+            <button type="button" onClick={() => onSendGif(gifUrl)} className="kc-cta px-3 py-2 text-sm">Send</button>
+          </div>
+          {gifLoading ? (
+            <div className="grid grid-cols-3 gap-2">
+              {[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="kc-skeleton h-24 rounded-xl" />)}
+            </div>
+          ) : gifResults.length > 0 ? (
+            <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+              {gifResults.map((gif) => (
+                <button
+                  key={gif.id}
+                  type="button"
+                  onClick={() => onSendGif(gif.url)}
+                  className="kc-interactive overflow-hidden rounded-xl border p-0"
+                  style={{ borderColor: "var(--bg-hover)", background: "var(--bg-input)", cursor: "pointer" }}
+                  title={gif.title}
+                >
+                  <img src={gif.preview} alt={gif.title} className="h-24 w-full object-cover" loading="lazy" />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl p-4 text-center text-sm" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
+              No GIFs loaded. Try another search or paste a GIF link.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Attachment list ───────────────────────────────────────────────────────────
 
 /** Scale (w,h) to fit within (maxW,maxH), preserving aspect ratio, never upscaling. */
@@ -1922,6 +2342,49 @@ function avatarBg(id: string): string {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
   return `linear-gradient(135deg, oklch(70% 0.13 ${h}), oklch(60% 0.15 ${(h + 28) % 360}))`;
+}
+
+function assetUrl(url: string): string {
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  return `${getFileBase()}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
+function PendingAttachmentPreview({ file, onRemove }: { file: UploadedFile; onRemove: () => void }) {
+  const url = `${getFileBase()}/files/${file.id}`;
+  const isImage = file.content_type.startsWith("image/");
+  const isVideo = file.content_type.startsWith("video/");
+  const d = isImage && file.width && file.height ? fitImg(file.width, file.height, 180, 120) : null;
+  return (
+    <div
+      className="relative overflow-hidden rounded-xl border text-xs"
+      style={{ background: "var(--bg-input)", borderColor: "var(--bg-hover)", color: "var(--text-secondary)", width: isImage || isVideo ? 190 : undefined }}
+    >
+      {isImage ? (
+        <img
+          src={url}
+          alt={file.filename}
+          className="block w-full object-cover"
+          style={{ height: d?.h ?? 110, maxHeight: 120 }}
+        />
+      ) : isVideo ? (
+        <video src={url} muted playsInline preload="metadata" className="block h-[110px] w-full object-cover" />
+      ) : null}
+      <div className="flex items-center gap-1 px-2 py-1.5">
+        <span>{fileIcon(file.content_type)}</span>
+        <span className="min-w-0 flex-1 truncate">{file.filename}</span>
+        <span style={{ color: "var(--text-muted)" }}>{formatBytes(file.size_bytes)}</span>
+      </div>
+      <button
+        type="button"
+        aria-label={`Remove ${file.filename}`}
+        onClick={onRemove}
+        className="kc-interactive absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full"
+        style={{ color: "#fff", background: "rgba(0,0,0,.55)", border: "none", cursor: "pointer" }}
+      >
+        <span aria-hidden="true">✕</span>
+      </button>
+    </div>
+  );
 }
 
 function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
@@ -1957,10 +2420,13 @@ function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
               <video
                 src={url}
                 controls
-                style={{ maxWidth: 320, maxHeight: 240, borderRadius: 6, display: "block" }}
+                playsInline
+                preload="none"
+                style={{ width: "min(360px, 100%)", maxHeight: 240, borderRadius: 10, display: "block", background: "var(--bg-input)", objectFit: "contain" }}
               />
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                {att.filename} · {formatBytes(att.size_bytes)}
+                {att.filename} · {formatBytes(att.size_bytes)} · loads only when played
+                {" · "}<a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>Open</a>
               </div>
             </div>
           );
@@ -1968,7 +2434,7 @@ function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
         if (att.content_type.startsWith("audio/")) {
           return (
             <div key={att.id}>
-              <audio src={url} controls style={{ maxWidth: 300 }} />
+              <audio src={url} controls preload="none" style={{ maxWidth: 300 }} />
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 {att.filename} · {formatBytes(att.size_bytes)}
               </div>
@@ -2047,6 +2513,65 @@ function ReplyQuote({ reply }: { reply: NonNullable<Message["reply_to"]> }) {
       <span style={{ color: "var(--accent)", flexShrink: 0 }}>↩</span>
       <span style={{ fontWeight: 600, color: "var(--text-secondary)", flexShrink: 0 }}>{reply.author}</span>
       <span className="truncate" style={{ opacity: 0.85 }}>{reply.content}</span>
+    </div>
+  );
+}
+
+function HiddenMessageNotice({ authorName, onUndo }: { authorName: string; onUndo: () => void }) {
+  return (
+    <div
+      className="mt-1 inline-flex max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-xs"
+      style={{
+        background: "color-mix(in oklch, var(--bg-input) 84%, transparent)",
+        border: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)",
+        color: "var(--text-muted)",
+      }}
+    >
+      <span className="truncate">Hidden for you · {authorName}</span>
+      <button
+        type="button"
+        className="kc-interactive font-semibold"
+        style={{ color: "var(--accent)", background: "none", border: "none", cursor: "pointer" }}
+        onClick={(e) => { e.stopPropagation(); onUndo(); }}
+      >
+        Show
+      </button>
+    </div>
+  );
+}
+
+function ActivityNoticeRow({ notice, style }: { notice: ChatActivityNotice; style: React.CSSProperties }) {
+  return (
+    <div style={style} className="flex items-center justify-center px-4 py-2">
+      <div
+        className="inline-flex max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"
+        style={{
+          background: "color-mix(in oklch, var(--accent) 8%, var(--bg-elevated))",
+          border: "1px solid color-mix(in oklch, var(--accent) 18%, var(--bg-input))",
+          color: "var(--text-secondary)",
+        }}
+      >
+        {notice.user && (
+          <span
+            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold"
+            style={{
+              background: avatarBg(notice.user.id),
+              backgroundImage: notice.user.avatar_url ? `url(${assetUrl(notice.user.avatar_url)})` : undefined,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              color: "#fff",
+            }}
+            aria-hidden="true"
+          >
+            {!notice.user.avatar_url && notice.user.display_name[0]?.toUpperCase()}
+          </span>
+        )}
+        <span className="truncate">{notice.text}</span>
+        <span aria-hidden="true" style={{ color: "var(--text-muted)" }}>·</span>
+        <time dateTime={new Date(notice.createdAt).toISOString()} style={{ color: "var(--text-muted)" }}>
+          now
+        </time>
+      </div>
     </div>
   );
 }

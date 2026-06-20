@@ -1,9 +1,10 @@
 name: Release
 
 # Build the desktop installers on every version tag (and on manual dispatch), and
-# attach them to a DRAFT GitHub Release. When the signing secrets below are present the
-# macOS build is signed + notarized and the updater artifacts are produced; with them
-# unset the build still succeeds, just unsigned (first launch shows an OS warning). See
+# attach them to a DRAFT GitHub Release. macOS builds are ad-hoc signed by default
+# (required so downloaded Apple Silicon apps are not reported as damaged). When the
+# signing secrets below are present the macOS build is Developer ID signed + notarized
+# and the updater artifacts are produced. See
 # DEPLOY.md §4 for how to obtain and set the certificates.
 on:
   push:
@@ -30,6 +31,8 @@ jobs:
           # - platform: windows-latest
           #   target: ""
     runs-on: ${{ matrix.platform }}
+    env:
+      HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,25 +60,54 @@ jobs:
         working-directory: client
         run: npm ci
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Enable macOS Developer ID signing
+        if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING == 'true'
+        working-directory: client
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          node -e "const fs=require('fs'); const p='src-tauri/tauri.conf.json'; const c=JSON.parse(fs.readFileSync(p,'utf8')); c.bundle.macOS.signingIdentity=process.env.APPLE_SIGNING_IDENTITY; fs.writeFileSync(p, JSON.stringify(c,null,2)+'\n');"
+
+      - name: Build desktop installers (macOS signed + notarized)
+        if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING == 'true'
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Bake the production backend URL into the bundle (https://your-app.fly.dev).
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
-          # macOS code-signing + notarization. UNCOMMENT these (and set the secrets — see
-          # DEPLOY.md §4) to ship signed + notarized builds. They MUST stay commented out
-          # while unset: passing them empty makes tauri-action run `security import` with an
-          # empty cert and the macOS build fails. Commented = unsigned build (Gatekeeper
-          # warning on first launch) that still produces working installers.
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Tauri auto-updater signing. Uncomment + set secrets to emit updater artifacts.
-          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: client
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          releaseName: "Ohiyo v__VERSION__"
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+
+      - name: Build desktop installers (macOS ad-hoc fallback)
+        if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING != 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+        with:
+          projectPath: client
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          releaseName: "Ohiyo v__VERSION__"
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+
+      - name: Build desktop installers (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
         with:
           projectPath: client
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}

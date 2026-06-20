@@ -1,4 +1,4 @@
-import { launchBrowser, register, shot, log, uniq } from "./harness.mjs";
+import { currentToken, launchBrowser, register, shot, log, uniq } from "./harness.mjs";
 
 // Disappearing messages: A picks a timer in the DM (both sides get the banner via the
 // live broadcast); a short TTL makes a sent message actually vanish from view.
@@ -32,8 +32,8 @@ try {
   await pageA.click('button[aria-label="Direct Messages"]');
   await pageA.click('button[aria-label="Find people"]');
   await pageA.fill('input[aria-label="Search people"]', B);
-  await pageA.waitForSelector(`button:has-text("@${B}")`, { timeout: 6000 });
-  await pageA.click(`button:has-text("@${B}")`);
+  await pageA.waitForSelector(`button[aria-label="Message @${B}"]`, { timeout: 6000 });
+  await pageA.click(`button[aria-label="Message @${B}"]`);
   await pageA.waitForSelector('input[placeholder="Say something…"]', { timeout: 8000 });
   // A sends a hello so B's DM list shows the conversation
   const hello = pageA.locator('input[placeholder="Say something…"]');
@@ -58,7 +58,7 @@ try {
   await shot(pageA, "37-disappearing-on");
 
   // Shorten to 2s via REST (the picker minimum is 30s — too slow for a test) and send.
-  const tokenA = await pageA.evaluate(() => localStorage.getItem("token"));
+  const tokenA = await currentToken(pageA);
   const dms = await (await fetch(`${API}/users/@me/dms`, { headers: { Authorization: `Bearer ${tokenA}` } })).json();
   const cid = dms[0]?.id;
   if (!cid) throw new Error("no DM channel via API");

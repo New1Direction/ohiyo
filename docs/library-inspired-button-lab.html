@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ohiyo Library-Inspired Button Lab</title>
+  <style>
+    :root {
+      --cream: #fff8f0;
+      --paper: #fffdf9;
+      --sand: #f3e7da;
+      --sand-2: #ead6c4;
+      --ink: #27211e;
+      --muted: #75665d;
+      --faint: #a39084;
+      --line: color-mix(in oklch, var(--ink) 9%, transparent);
+      --coral: #f2683c;
+      --coral-2: #ff9166;
+      --coral-dark: #d95228;
+      --violet: #7c5cff;
+      --blue: #27a6ff;
+      --green: #22a06b;
+      --danger: #e0483f;
+      --dark: #15131a;
+      --dark-2: #201d2a;
+      --dark-line: rgba(255,255,255,.1);
+      --radius-sm: 10px;
+      --radius-md: 15px;
+      --radius-lg: 24px;
+      --radius-full: 999px;
+      --shadow-soft: 0 12px 34px rgba(54, 38, 28, .11), 0 2px 8px rgba(54, 38, 28, .06);
+      --shadow-lift: 0 18px 48px rgba(242, 104, 60, .28), 0 4px 12px rgba(242, 104, 60, .14);
+      --snap: cubic-bezier(.2, 0, 0, 1);
+      --spring: cubic-bezier(.34, 1.56, .64, 1);
+      --tap: 70ms;
+      --fast: 130ms;
+      --slow: 650ms;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 8% 2%, rgba(242,104,60,.25), transparent 28rem),
+        radial-gradient(circle at 92% 5%, rgba(124,92,255,.15), transparent 28rem),
+        linear-gradient(135deg, #f4e1d0, #fffaf4 44%, #f2dfcf);
+      padding: 28px;
+      user-select: none;
+    }
+    button, a { font: inherit; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+    button { border: 0; cursor: pointer; }
+    button:focus-visible, a:focus-visible { outline: 0; box-shadow: 0 0 0 3px color-mix(in oklch, var(--coral) 34%, transparent); }
+    button:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+    header { max-width: 1120px; margin: 0 auto 22px; }
+    .eyebrow { color: var(--coral-dark); font-size: 12px; font-weight: 950; letter-spacing: .15em; text-transform: uppercase; }
+    h1 { margin: 8px 0 10px; font-size: clamp(34px, 6vw, 68px); line-height: .94; letter-spacing: -.065em; }
+    .lede { max-width: 780px; margin: 0; color: var(--muted); font-size: 17px; line-height: 1.6; }
+    .grid { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 26px;
+      background: color-mix(in oklch, var(--paper) 88%, white 12%);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-soft);
+      padding: 18px;
+      min-height: 218px;
+    }
+    .card.dark { background: linear-gradient(135deg, #15131a, #211d2d); color: white; border-color: var(--dark-line); }
+    .card h2 { margin: 0 0 5px; font-size: 20px; letter-spacing: -.025em; }
+    .card p { margin: 0 0 16px; color: var(--muted); line-height: 1.5; font-size: 13px; }
+    .card.dark p { color: rgba(255,255,255,.62); }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .tag { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: var(--radius-full); font-size: 11px; font-weight: 850; background: color-mix(in oklch, var(--coral) 12%, transparent); color: var(--coral-dark); margin-bottom: 12px; }
+    .dark .tag { background: rgba(255,255,255,.09); color: rgba(255,255,255,.82); }
+
+    .base {
+      position: relative;
+      min-height: 42px;
+      padding: 0 15px;
+      border-radius: var(--radius-md);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-weight: 850;
+      text-decoration: none;
+      transform: translateZ(0);
+      transition: background-color var(--tap) var(--snap), color var(--tap) var(--snap), border-color var(--tap) var(--snap), transform 45ms linear, box-shadow var(--fast) var(--snap), filter var(--tap) linear;
+    }
+    .base:active { transform: scale(.965) translateZ(0); }
+
+    /* shadcn/ui-inspired: calm, accessible, app-native. */
+    .shad-primary { background: var(--ink); color: white; }
+    .shad-primary:hover { background: #3a312d; }
+    .shad-secondary { background: var(--sand); color: var(--ink); }
+    .shad-secondary:hover { background: var(--sand-2); }
+    .shad-outline { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+    .shad-outline:hover { background: var(--sand); }
+    .shad-ghost { background: transparent; color: var(--muted); }
+    .shad-ghost:hover { color: var(--ink); background: color-mix(in oklch, var(--ink) 5%, transparent); }
+
+    /* Origin UI-inspired: darker, denser, sexier. */
+    .origin-primary { background: linear-gradient(135deg, #fff, #d8d2ff); color: #191622; box-shadow: 0 12px 30px rgba(124,92,255,.22); }
+    .origin-primary:hover { filter: brightness(1.04); box-shadow: 0 16px 40px rgba(124,92,255,.32); }
+    .origin-dark { background: rgba(255,255,255,.08); color: white; border: 1px solid rgba(255,255,255,.12); }
+    .origin-dark:hover { background: rgba(255,255,255,.14); }
+    .origin-violet { background: rgba(124,92,255,.18); color: #dfd8ff; border: 1px solid rgba(124,92,255,.32); }
+    .origin-violet:hover { background: rgba(124,92,255,.26); }
+
+    /* Magic UI-inspired: shimmer / animated border, only for wow moments. */
+    .magic-shimmer { overflow: hidden; background: linear-gradient(135deg, var(--coral), var(--coral-2)); color: white; box-shadow: var(--shadow-lift); }
+    .magic-shimmer::after {
+      content: "";
+      position: absolute;
+      inset: -2px;
+      transform: translateX(-120%) skewX(-18deg);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+      transition: transform var(--slow) var(--snap);
+    }
+    .magic-shimmer:hover::after { transform: translateX(120%) skewX(-18deg); }
+    .magic-border { color: var(--ink); background: linear-gradient(var(--paper), var(--paper)) padding-box, linear-gradient(135deg, var(--coral), var(--violet), var(--blue)) border-box; border: 1.5px solid transparent; }
+    .magic-border:hover { box-shadow: 0 0 0 4px rgba(242,104,60,.10), 0 14px 34px rgba(124,92,255,.16); }
+    .magic-glow { background: #17131f; color: white; box-shadow: 0 0 0 1px rgba(255,255,255,.10), 0 0 32px rgba(242,104,60,.28); }
+    .magic-glow:hover { box-shadow: 0 0 0 1px rgba(255,255,255,.18), 0 0 46px rgba(242,104,60,.42); }
+
+    /* Aceternity-inspired: spotlight and cinematic. Keep rare. */
+    .acet-spot { overflow: hidden; color: white; background: #111018; border: 1px solid rgba(255,255,255,.12); }
+    .acet-spot::before {
+      content: "";
+      position: absolute;
+      inset: -80px;
+      background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(124,92,255,.55), transparent 27%);
+      opacity: 0;
+      transition: opacity var(--fast) var(--snap);
+    }
+    .acet-spot:hover::before { opacity: 1; }
+    .acet-spot span { position: relative; z-index: 1; }
+    .acet-grid { color: white; background: linear-gradient(135deg, #14121b, #211b30); border: 1px solid rgba(255,255,255,.12); }
+    .acet-grid::after { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px); background-size: 10px 10px; mask-image: linear-gradient(90deg, transparent, black 28%, black 72%, transparent); opacity: .32; }
+    .acet-grid:hover { box-shadow: 0 18px 44px rgba(17,16,24,.28); }
+
+    /* Uiverse-inspired: fun/3D/CSS toy. Use for playful Ohiyo moments, not core app. */
+    .uiverse-3d { background: var(--coral); color: white; box-shadow: 0 6px 0 var(--coral-dark), 0 12px 24px rgba(242,104,60,.20); transform: translateY(-3px) translateZ(0); }
+    .uiverse-3d:hover { transform: translateY(-4px) translateZ(0); }
+    .uiverse-3d:active { transform: translateY(2px) scale(.99) translateZ(0); box-shadow: 0 1px 0 var(--coral-dark), 0 6px 14px rgba(242,104,60,.14); }
+    .uiverse-soft { border-radius: 18px; background: linear-gradient(145deg, #fffaf5, #ead8c7); color: var(--ink); box-shadow: 6px 6px 14px rgba(92,63,46,.15), -6px -6px 14px rgba(255,255,255,.8); }
+    .uiverse-soft:hover { filter: brightness(1.02); }
+    .uiverse-pill { border-radius: var(--radius-full); color: white; background: linear-gradient(90deg, var(--coral), var(--violet), var(--blue)); background-size: 180% 100%; }
+    .uiverse-pill:hover { background-position: 100% 0; }
+
+    /* Ohiyo final recommendation: fast, branded, not gimmicky. */
+    .ohiyo-main { background: linear-gradient(135deg, var(--coral), var(--coral-2)); color: white; box-shadow: 0 12px 30px rgba(242,104,60,.24); }
+    .ohiyo-main:hover { box-shadow: 0 16px 38px rgba(242,104,60,.32); }
+    .ohiyo-main:active { transform: scale(.965) translateZ(0); box-shadow: 0 8px 20px rgba(242,104,60,.20); }
+    .ohiyo-secondary { background: color-mix(in oklch, var(--coral) 10%, white); color: var(--coral-dark); border: 1px solid color-mix(in oklch, var(--coral) 22%, transparent); }
+    .ohiyo-secondary:hover { background: color-mix(in oklch, var(--coral) 16%, white); }
+    .ohiyo-row { min-height: 40px; background: transparent; color: var(--muted); justify-content: flex-start; }
+    .ohiyo-row:hover { background: var(--sand); color: var(--ink); }
+    .ohiyo-icon { width: 42px; height: 42px; padding: 0; border-radius: 14px; background: transparent; color: var(--muted); }
+    .ohiyo-icon:hover { background: var(--sand); color: var(--ink); }
+    .ohiyo-icon:active { transform: scale(.9) translateZ(0); }
+
+    .verdict { grid-column: 1 / -1; display: grid; grid-template-columns: 1.2fr .8fr; gap: 16px; background: linear-gradient(135deg, rgba(255,255,255,.92), rgba(255,248,240,.82)); }
+    .verdict h2 { font-size: 28px; }
+    .score { display: grid; gap: 8px; align-content: center; }
+    .score div { display: flex; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--line); padding: 8px 0; color: var(--muted); }
+    .score strong { color: var(--ink); }
+    .meter { max-width: 1120px; margin: 16px auto 0; padding: 14px 18px; border-radius: 20px; background: rgba(255,255,255,.66); border: 1px solid var(--line); color: var(--muted); }
+    .meter strong { color: var(--coral-dark); }
+
+    @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } .verdict { grid-template-columns: 1fr; } }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: background-color var(--tap) linear, color var(--tap) linear, border-color var(--tap) linear, box-shadow var(--tap) linear !important; }
+      button { transform: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Library-inspired, Ohiyo-owned</div>
+    <h1>Button styles worth stealing ideas from.</h1>
+    <p class="lede">A practical comparison of shadcn/ui, Origin UI, Magic UI, Aceternity-style effects, and Uiverse-style CSS toys — translated into Ohiyo’s visual language without importing a heavy dependency.</p>
+  </header>
+
+  <main class="grid">
+    <section class="card" data-family="shadcn">
+      <span class="tag">shadcn/ui style</span>
+      <h2>Clean app defaults</h2>
+      <p>Best for most product UI: predictable, accessible, low-noise, easy to theme.</p>
+      <div class="row">
+        <button class="base shad-primary">Primary</button>
+        <button class="base shad-secondary">Secondary</button>
+        <button class="base shad-outline">Outline</button>
+        <button class="base shad-ghost">Ghost</button>
+      </div>
+    </section>
+
+    <section class="card dark" data-family="origin">
+      <span class="tag">Origin UI style</span>
+      <h2>Dark, dense, polished</h2>
+      <p>Great inspiration for command menus, settings panes, and premium modals.</p>
+      <div class="row">
+        <button class="base origin-primary">Launch</button>
+        <button class="base origin-dark">Open panel</button>
+        <button class="base origin-violet">Upgrade vibe</button>
+      </div>
+    </section>
+
+    <section class="card" data-family="magic">
+      <span class="tag">Magic UI style</span>
+      <h2>Animated wow moments</h2>
+      <p>Use sparingly for high-value CTAs, success screens, landing/download moments.</p>
+      <div class="row">
+        <button class="base magic-shimmer">Shimmer CTA</button>
+        <button class="base magic-border">Animated border</button>
+        <button class="base magic-glow">Glow</button>
+      </div>
+    </section>
+
+    <section class="card dark" data-family="aceternity">
+      <span class="tag">Aceternity style</span>
+      <h2>Cinematic spotlight</h2>
+      <p>Beautiful for marketing and celebration, too dramatic for every chat click.</p>
+      <div class="row">
+        <button class="base acet-spot"><span>Spotlight</span></button>
+        <button class="base acet-grid">Grid beam</button>
+      </div>
+    </section>
+
+    <section class="card" data-family="uiverse">
+      <span class="tag">Uiverse / CSS toy style</span>
+      <h2>Fun one-off buttons</h2>
+      <p>Good for playful mascots, sticker packs, party actions. Avoid for core nav.</p>
+      <div class="row">
+        <button class="base uiverse-3d">3D press</button>
+        <button class="base uiverse-soft">Soft clay</button>
+        <button class="base uiverse-pill">Gradient pill</button>
+      </div>
+    </section>
+
+    <section class="card" data-family="ohiyo">
+      <span class="tag">Ohiyo recommendation</span>
+      <h2>Use this in the app</h2>
+      <p>Fast shadcn clarity + Ohiyo warmth + Magic-level polish only where it helps.</p>
+      <div class="row">
+        <button class="base ohiyo-main">Clone server</button>
+        <button class="base ohiyo-secondary">Message</button>
+        <button class="base ohiyo-row"># general</button>
+        <button class="base ohiyo-icon" aria-label="Emoji">😊</button>
+      </div>
+    </section>
+
+    <section class="card verdict">
+      <div>
+        <span class="tag">TL;DR</span>
+        <h2>Adopt ideas, not dependencies.</h2>
+        <p>For Ohiyo, the winning formula is shadcn/Radix structure, Origin density for power surfaces, Magic shimmer only for special moments, and CSS-only tap feedback for chat speed.</p>
+        <div class="row">
+          <button class="base ohiyo-main">Use Ohiyo final</button>
+          <button class="base shad-outline">Keep exploring</button>
+        </div>
+      </div>
+      <div class="score" aria-label="Recommendation scores">
+        <div><span>Core chat buttons</span><strong>Ohiyo final</strong></div>
+        <div><span>Modals/settings</span><strong>shadcn + Origin</strong></div>
+        <div><span>Import success</span><strong>Magic / Aceternity</strong></div>
+        <div><span>Playful one-offs</span><strong>Uiverse ideas</strong></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="meter">Last measured pointer→paint: <strong>waiting…</strong></div>
+
+  <script>
+    const meter = document.querySelector('.meter strong');
+    document.addEventListener('pointermove', (event) => {
+      const spot = event.target.closest('.acet-spot');
+      if (!spot) return;
+      const r = spot.getBoundingClientRect();
+      spot.style.setProperty('--mx', `${((event.clientX - r.left) / r.width) * 100}%`);
+      spot.style.setProperty('--my', `${((event.clientY - r.top) / r.height) * 100}%`);
+    }, { passive: true });
+    document.addEventListener('pointerdown', (event) => {
+      const button = event.target.closest('button');
+      if (!button || button.disabled) return;
+      const start = performance.now();
+      requestAnimationFrame(() => {
+        meter.textContent = `${Math.round((performance.now() - start) * 10) / 10}ms`;
+      });
+    }, { passive: true });
+  </script>
+</body>
+</html>

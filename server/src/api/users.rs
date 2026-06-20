@@ -1,9 +1,9 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     auth::AuthUser,
@@ -66,6 +66,234 @@ pub async fn me(
         .map_err(|_| (StatusCode::NOT_FOUND, "user not found".into()))?;
 
     Ok(Json(user.into()))
+}
+
+#[derive(Serialize)]
+pub struct FriendRelation {
+    /// none | pending_outgoing | pending_incoming | friends
+    pub status: String,
+}
+
+#[derive(Serialize)]
+pub struct FriendItem {
+    pub user: PublicUser,
+    /// pending | accepted
+    pub status: String,
+    /// incoming/outgoing for pending requests; null for accepted friends.
+    pub direction: Option<String>,
+    pub updated_at: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct FriendshipPairRow {
+    requester_id: String,
+    addressee_id: String,
+    status: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct FriendshipUserRow {
+    id: String,
+    username: String,
+    display_name: String,
+    password_hash: String,
+    avatar_url: Option<String>,
+    created_at: i64,
+    status: String,
+    addressee_id: String,
+    updated_at: i64,
+}
+
+fn relation_status(auth_id: &str, row: Option<FriendshipPairRow>) -> String {
+    match row {
+        None => "none".to_owned(),
+        Some(r) if r.status == "accepted" => "friends".to_owned(),
+        Some(r) if r.requester_id == auth_id => "pending_outgoing".to_owned(),
+        Some(_) => "pending_incoming".to_owned(),
+    }
+}
+
+async fn fetch_friendship_pair(
+    state: &AppState,
+    a: &str,
+    b: &str,
+) -> Result<Option<FriendshipPairRow>, (StatusCode, String)> {
+    sqlx::query_as(
+        "SELECT requester_id, addressee_id, status FROM friendships
+         WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)
+         LIMIT 1",
+    )
+    .bind(a)
+    .bind(b)
+    .bind(b)
+    .bind(a)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(crate::api::error::internal)
+}
+
+/// GET /users/@me/friends — friends plus incoming/outgoing pending requests.
+pub async fn list_friends(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<FriendItem>>, (StatusCode, String)> {
+    let rows: Vec<FriendshipUserRow> = sqlx::query_as(
+        "SELECT u.*, f.status, f.addressee_id, f.updated_at
+         FROM friendships f
+         JOIN users u ON u.id = CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END
+         WHERE f.requester_id = ? OR f.addressee_id = ?
+         ORDER BY CASE WHEN f.status = 'pending' AND f.addressee_id = ? THEN 0
+                       WHEN f.status = 'pending' THEN 1 ELSE 2 END,
+                  f.updated_at DESC",
+    )
+    .bind(&auth.0)
+    .bind(&auth.0)
+    .bind(&auth.0)
+    .bind(&auth.0)
+    .fetch_all(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| {
+                let direction = if r.status == "pending" {
+                    Some(if r.addressee_id == auth.0 { "incoming" } else { "outgoing" }.to_owned())
+                } else {
+                    None
+                };
+                FriendItem {
+                    user: PublicUser::from(User {
+                        id: r.id,
+                        username: r.username,
+                        display_name: r.display_name,
+                        password_hash: r.password_hash,
+                        avatar_url: r.avatar_url,
+                        created_at: r.created_at,
+                    }),
+                    status: r.status,
+                    direction,
+                    updated_at: r.updated_at,
+                }
+            })
+            .collect(),
+    ))
+}
+
+/// GET /users/{user_id}/friendship — relationship between current user and profile.
+pub async fn get_friendship(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<FriendRelation>, (StatusCode, String)> {
+    if user_id == auth.0 {
+        return Ok(Json(FriendRelation { status: "self".to_owned() }));
+    }
+    let row = fetch_friendship_pair(&state, &auth.0, &user_id).await?;
+    Ok(Json(FriendRelation { status: relation_status(&auth.0, row) }))
+}
+
+/// POST /users/{user_id}/friend-request — request friendship; auto-accepts an incoming request.
+pub async fn send_friend_request(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<FriendRelation>, (StatusCode, String)> {
+    if user_id == auth.0 {
+        return Err((StatusCode::BAD_REQUEST, "You can't add yourself.".into()));
+    }
+
+    let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE id = ?")
+        .bind(&user_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    if exists.is_none() {
+        return Err((StatusCode::NOT_FOUND, "User not found".into()));
+    }
+
+    let now = now_unix();
+    if let Some(row) = fetch_friendship_pair(&state, &auth.0, &user_id).await? {
+        if row.status == "accepted" {
+            return Ok(Json(FriendRelation { status: "friends".to_owned() }));
+        }
+        if row.addressee_id == auth.0 {
+            sqlx::query("UPDATE friendships SET status = 'accepted', updated_at = ? WHERE requester_id = ? AND addressee_id = ?")
+                .bind(now)
+                .bind(&user_id)
+                .bind(&auth.0)
+                .execute(&state.db)
+                .await
+                .map_err(crate::api::error::internal)?;
+            return Ok(Json(FriendRelation { status: "friends".to_owned() }));
+        }
+        return Ok(Json(FriendRelation { status: "pending_outgoing".to_owned() }));
+    }
+
+    sqlx::query(
+        "INSERT INTO friendships (id, requester_id, addressee_id, status, created_at, updated_at)
+         VALUES (?, ?, ?, 'pending', ?, ?)",
+    )
+    .bind(new_id())
+    .bind(&auth.0)
+    .bind(&user_id)
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+
+    Ok(Json(FriendRelation { status: "pending_outgoing".to_owned() }))
+}
+
+/// POST /users/{user_id}/friend-request/accept — accept an incoming request.
+pub async fn accept_friend_request(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<FriendRelation>, (StatusCode, String)> {
+    let now = now_unix();
+    let res = sqlx::query(
+        "UPDATE friendships SET status = 'accepted', updated_at = ?
+         WHERE requester_id = ? AND addressee_id = ? AND status = 'pending'",
+    )
+    .bind(now)
+    .bind(&user_id)
+    .bind(&auth.0)
+    .execute(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+
+    if res.rows_affected() == 0 {
+        let row = fetch_friendship_pair(&state, &auth.0, &user_id).await?;
+        if matches!(row.as_ref().map(|r| r.status.as_str()), Some("accepted")) {
+            return Ok(Json(FriendRelation { status: "friends".to_owned() }));
+        }
+        return Err((StatusCode::NOT_FOUND, "No incoming friend request".into()));
+    }
+
+    Ok(Json(FriendRelation { status: "friends".to_owned() }))
+}
+
+/// DELETE /users/{user_id}/friendship — cancel, decline, or remove a friend.
+pub async fn delete_friendship(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    sqlx::query(
+        "DELETE FROM friendships
+         WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)",
+    )
+    .bind(&auth.0)
+    .bind(&user_id)
+    .bind(&user_id)
+    .bind(&auth.0)
+    .execute(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn list_dms(

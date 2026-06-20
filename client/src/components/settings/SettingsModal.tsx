@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import type { PublicUser, ServerEmoji, ServerWithChannels } from "../../api";
+import type { ProfileSong, ProfileTheme, PublicUser, ServerEmoji, ServerWithChannels } from "../../api";
 import { api, getApiBase, getFileBase } from "../../api";
 import type { Theme, ThemeVar } from "../../themes";
 import {
@@ -15,7 +15,7 @@ import {
   THEME_VAR_GROUPS,
 } from "../../themes";
 import { isValidHex } from "../../lib/color";
-import { ProfileCardView, type ProfileCardData } from "../ProfileCardView";
+import { PROFILE_PATTERNS, PROFILE_VIBES, ProfileCardView, type ProfileCardData } from "../ProfileCardView";
 import type { PluginManager } from "../../plugins/registry";
 import { isDesktop } from "../../lib/desktop";
 import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauriVault";
@@ -46,9 +46,10 @@ type Props = {
   initialTab?: Tab;
   onClose: () => void;
   onToast: (text: string, type?: "info" | "success" | "error") => void;
+  onCurrentUserUpdate?: (user: PublicUser) => void;
 };
 
-export function SettingsModal({ currentUser, pluginManager, token, servers, initialTab, onClose, onToast }: Props) {
+export function SettingsModal({ currentUser, pluginManager, token, servers, initialTab, onClose, onToast, onCurrentUserUpdate }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "appearance");
 
   function handleKey(e: React.KeyboardEvent) {
@@ -113,7 +114,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, init
         <div className="flex-1 overflow-y-auto px-10 py-16">
           {tab === "appearance" && <AppearanceTab onToast={onToast} token={token} />}
           {tab === "plugins" && <PluginsTab pluginManager={pluginManager} onToast={onToast} />}
-          {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} />}
+          {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} onCurrentUserUpdate={onCurrentUserUpdate} />}
           {tab === "profile" && <ProfileTab token={token} onToast={onToast} />}
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
           {tab === "security" && <SecurityTab token={token} onToast={onToast} />}
@@ -359,64 +360,97 @@ function AppearanceTab({
         </div>
       </div>
 
-      <div className="mb-1 text-sm font-semibold">Theme</div>
-      <div className="grid grid-cols-3 gap-3 mb-8 mt-2">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">Choose a look</div>
+          <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+            Pick the mood Ohiyo opens with. You can change this anytime.
+          </p>
+        </div>
+        <div
+          className="rounded-full px-3 py-1 text-xs font-semibold"
+          style={{ background: "color-mix(in oklch, var(--accent) 12%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in oklch, var(--accent) 24%, transparent)" }}
+        >
+          Using {currentTheme.name}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 mb-8 sm:grid-cols-2 xl:grid-cols-3">
         {allThemes.map((theme) => {
           const isSelected = currentTheme.id === theme.id;
           const isCustom = !BUILTIN_THEMES.find((b) => b.id === theme.id);
+          const isRecommended = theme.id === "chrome-blue";
           return (
             <div
               key={theme.id}
               role="button"
               tabIndex={0}
+              aria-label={`Use ${theme.name} theme`}
               onClick={() => select(theme)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(theme); }
               }}
-              className="relative cursor-pointer rounded-lg overflow-hidden"
+              className="kc-interactive relative cursor-pointer overflow-hidden rounded-2xl"
               style={{
-                border: `2px solid ${isSelected ? "var(--accent)" : "var(--bg-hover)"}`,
-                transition: "border-color 0.15s",
+                border: `1.5px solid ${isSelected ? theme.vars["--accent"] : "color-mix(in oklch, var(--text-primary) 10%, transparent)"}`,
+                background: theme.vars["--bg-channel"],
+                boxShadow: isSelected ? `0 0 0 1px ${theme.vars["--accent"]}, 0 18px 42px -34px ${theme.vars["--accent"]}` : undefined,
               }}
             >
-              {/* Color preview */}
-              <div className="h-14" style={{ background: theme.vars["--bg-sidebar"] }}>
-                <div className="h-4" style={{ background: theme.vars["--bg-base"] }} />
-                <div className="flex gap-1 px-2 py-1">
-                  {["--accent", "--green", "--danger"].map((v) => (
-                    <div
-                      key={v}
-                      className="h-2 w-2 rounded-full"
-                      style={{ background: theme.vars[v as keyof typeof theme.vars] }}
-                    />
-                  ))}
+              <div className="p-3" style={{ background: `linear-gradient(135deg, ${theme.vars["--bg-sidebar"]}, ${theme.vars["--bg-base"]})` }}>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    {["--accent", "--green", "--danger"].map((v) => (
+                      <span
+                        key={v}
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ background: theme.vars[v as keyof typeof theme.vars] }}
+                      />
+                    ))}
+                  </div>
+                  {isRecommended && (
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                      style={{ background: theme.vars["--accent"], color: "white" }}
+                    >
+                      Recommended
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2 rounded-xl p-3" style={{ background: theme.vars["--bg-channel"] }}>
+                  <div className="h-2 w-20 rounded-full" style={{ background: theme.vars["--text-muted"], opacity: 0.45 }} />
+                  <div className="flex items-center gap-2">
+                    <span className="h-7 w-7 rounded-full" style={{ background: theme.vars["--accent"] }} />
+                    <span className="h-8 flex-1 rounded-full" style={{ background: theme.vars["--bg-input"], border: `1px solid ${theme.vars["--bg-hover"]}` }} />
+                  </div>
                 </div>
               </div>
-              <div
-                className="flex items-center justify-between px-2 py-1.5"
-                style={{ background: theme.vars["--bg-channel"] }}
-              >
-                <span className="text-xs font-semibold" style={{ color: theme.vars["--text-primary"] }}>
-                  {theme.name}
-                </span>
-                {isCustom && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteCustom(theme.id); }}
-                    className="text-xs"
-                    style={{ color: theme.vars["--danger"] }}
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5" style={{ background: theme.vars["--bg-channel"] }}>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold" style={{ color: theme.vars["--text-primary"] }}>
+                    {theme.name}
+                  </div>
+                  <div className="text-[11px]" style={{ color: theme.vars["--text-muted"] }}>
+                    {isSelected ? "Active now" : isCustom ? "Your custom look" : "Tap to preview"}
+                  </div>
+                </div>
+                {isSelected ? (
+                  <span
+                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                    style={{ background: theme.vars["--accent"], color: "white" }}
                   >
-                    ✕
+                    ✓
+                  </span>
+                ) : isCustom ? (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleDeleteCustom(theme.id); }}
+                    className="kc-interactive rounded-full px-2 py-1 text-xs font-semibold"
+                    style={{ color: theme.vars["--danger"], background: "transparent", border: `1px solid ${theme.vars["--bg-hover"]}` }}
+                  >
+                    Remove
                   </button>
-                )}
+                ) : null}
               </div>
-              {isSelected && (
-                <div
-                  className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs"
-                  style={{ background: "var(--accent)", color: "white" }}
-                >
-                  ✓
-                </div>
-              )}
             </div>
           );
         })}
@@ -500,32 +534,41 @@ function AppearanceTab({
       </div>
 
       {/* Export / Import (advanced) */}
-      <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)" }}>
-        <div className="mb-2 font-semibold text-sm">Import / Export Theme</div>
-        <button
-          onClick={() => handleExport(currentTheme)}
-          className="mb-3 rounded px-3 py-1.5 text-sm"
-          style={{ background: "var(--accent)", color: "white" }}
-        >
-          Export Current Theme
-        </button>
+      <details className="rounded-2xl p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
+        <summary className="cursor-pointer text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
+          Advanced theme sharing
+        </summary>
+        <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
+          Only use this if someone sent you a theme file, or if you want to copy your current look to another device.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => handleExport(currentTheme)}
+            className="kc-interactive rounded-full px-3 py-1.5 text-sm font-semibold"
+            style={{ background: "var(--bg-input)", color: "var(--text-primary)", border: "1px solid var(--bg-hover)" }}
+          >
+            Copy my current look
+          </button>
+        </div>
         <textarea
-          placeholder="Paste theme JSON here…"
+          placeholder="Paste a theme file here…"
           value={importText}
           onChange={(e) => setImportText(e.target.value)}
           rows={4}
-          className="mb-2 w-full rounded p-2 text-xs outline-none font-mono"
-          style={{ background: "var(--bg-input)", color: "var(--text-primary)", resize: "vertical" }}
+          className="mt-3 mb-2 w-full rounded-xl p-3 text-xs outline-none font-mono"
+          style={{ background: "var(--bg-input)", color: "var(--text-primary)", resize: "vertical", border: "1px solid var(--bg-hover)" }}
         />
         <button
+          type="button"
           onClick={handleImport}
           disabled={!importText.trim()}
-          className="rounded px-3 py-1.5 text-sm"
-          style={{ background: importText.trim() ? "var(--accent)" : "var(--bg-hover)", color: "white" }}
+          className="rounded-full px-3 py-1.5 text-sm font-semibold"
+          style={{ background: importText.trim() ? "var(--accent)" : "var(--bg-hover)", color: "white", opacity: importText.trim() ? 1 : 0.65 }}
         >
-          Import Theme
+          Add theme
         </button>
-      </div>
+      </details>
     </div>
   );
 }
@@ -694,7 +737,7 @@ function PluginsTab({
 
 // ── Account tab ───────────────────────────────────────────────────────────────
 
-function AccountTab({ currentUser, token, onToast }: { currentUser: PublicUser | null; token: string; onToast: (t: string, type?: "info" | "success" | "error") => void }) {
+function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate }: { currentUser: PublicUser | null; token: string; onToast: (t: string, type?: "info" | "success" | "error") => void; onCurrentUserUpdate?: (user: PublicUser) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentUser?.avatar_url ?? null);
 
@@ -714,8 +757,9 @@ function AccountTab({ currentUser, token, onToast }: { currentUser: PublicUser |
       const data = await res.json() as Array<{ id: string; url: string }>;
       const fileId = data[0]?.id;
       if (!fileId) throw new Error("Upload failed");
-      await api.setAvatar(token, fileId);
-      setAvatarUrl(`${getFileBase()}/files/${fileId}`);
+      const updated = await api.setAvatar(token, fileId);
+      setAvatarUrl(updated.avatar_url ?? `${getFileBase()}/files/${fileId}`);
+      onCurrentUserUpdate?.(updated);
       onToast("Avatar updated! GIFs are supported.", "success");
     } catch (err) {
       onToast(`Avatar upload failed: ${err instanceof Error ? err.message : err}`, "error");
@@ -776,6 +820,7 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
   const [newName, setNewName] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const selectedServer = servers.find((s) => s.id === selectedServerId) ?? null;
 
   useEffect(() => {
     if (!selectedServerId) return;
@@ -831,6 +876,17 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
       ) : (
         <>
           {/* Server selector */}
+          {selectedServer && (
+            <div className="mb-3 flex items-center gap-3 rounded-xl p-3" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
+              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl text-sm font-bold" style={{ background: "var(--accent)", color: "#fff" }}>
+                {selectedServer.icon_url ? <img src={selectedServer.icon_url} alt="" className="h-full w-full object-cover" /> : selectedServer.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{selectedServer.name}</div>
+                <div className="text-xs" style={{ color: "var(--text-muted)" }}>Emoji will be added to this server.</div>
+              </div>
+            </div>
+          )}
           <div className="mb-4">
             <label htmlFor="kc-emoji-server-select" className="mb-1.5 block text-xs font-bold uppercase" style={{ color: "var(--text-muted)" }}>Server</label>
             <select
@@ -900,11 +956,40 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
 
 // ── Profile tab ───────────────────────────────────────────────────────────────
 
+function cleanSongs(songs: ProfileSong[]): ProfileSong[] {
+  return songs
+    .map((s) => ({
+      title: s.title.trim(),
+      artist: s.artist?.trim() || null,
+      url: s.url?.trim() || null,
+    }))
+    .filter((s) => s.title)
+    .slice(0, 3);
+}
+
+function padSongs(songs: ProfileSong[]): ProfileSong[] {
+  const clean = cleanSongs(songs);
+  while (clean.length < 3) clean.push({ title: "", artist: "", url: "" });
+  return clean.slice(0, 3);
+}
+
 function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, type?: "info" | "success" | "error") => void }) {
   const [bio, setBio] = useState("");
-  const [pronouns, setPronouns] = useState("");
   const [status, setStatus] = useState("");
   const [bannerColor, setBannerColor] = useState("#5865f2");
+  const [profileTheme, setProfileTheme] = useState<ProfileTheme>({
+    vibe: "sunset",
+    accent: "#ff7a45",
+    pattern: "stars",
+    glow: true,
+    emoji: "✨",
+    showStatus: true,
+    showBio: true,
+    showActive: true,
+    showSongs: true,
+    showSocials: true,
+  });
+  const [topSongs, setTopSongs] = useState<ProfileSong[]>([{ title: "", artist: "", url: "" }, { title: "", artist: "", url: "" }, { title: "", artist: "", url: "" }]);
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
   const bannerFileRef = useRef<HTMLInputElement>(null);
   // Read-only base fields (name, @handle, avatar, socials) used by the live preview.
@@ -917,9 +1002,17 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
       .then((r) => r.json())
       .then((d) => {
         setBio(d.bio ?? "");
-        setPronouns(d.pronouns ?? "");
         setStatus(d.custom_status ?? "");
         setBannerColor(d.banner_color ?? "#f2683c");
+        setProfileTheme({
+          showStatus: true,
+          showBio: true,
+          showActive: true,
+          showSongs: true,
+          showSocials: true,
+          ...(d.profile_theme ?? { vibe: "sunset", accent: d.banner_color ?? "#ff7a45", pattern: "stars", glow: true, emoji: "✨" }),
+        });
+        setTopSongs(padSongs(d.top_songs ?? []));
         setBannerUrl(d.banner_url ?? null);
         setBase({
           username: d.username,
@@ -942,7 +1035,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
       await fetch(`${getApiBase()}/users/@me/profile`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ bio, pronouns, banner_color: bannerColor, custom_status: status }),
+        body: JSON.stringify({ bio, banner_color: bannerColor, custom_status: status, profile_theme: profileTheme, top_songs: cleanSongs(topSongs) }),
       });
       onToast("Profile saved", "success");
     } catch {
@@ -978,11 +1071,12 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
     username: base.username ?? "username",
     avatar_url: base.avatar_url ?? null,
     last_active_at: base.last_active_at ?? null,
-    pronouns,
     custom_status: status,
     bio,
     banner_color: bannerColor,
     banner_url: bannerUrl,
+    profile_theme: profileTheme,
+    top_songs: cleanSongs(topSongs),
     social_github: base.social_github ?? null,
     social_twitter: base.social_twitter ?? null,
     social_youtube: base.social_youtube ?? null,
@@ -1008,15 +1102,6 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
               style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
             />
           </Field>
-          <Field label="Pronouns">
-            <input
-              value={pronouns}
-              onChange={(e) => setPronouns(e.target.value)}
-              placeholder="they/them"
-              className="w-full rounded px-3 py-2 text-sm outline-none"
-              style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
-            />
-          </Field>
           <Field label="Bio">
             <textarea
               value={bio}
@@ -1027,18 +1112,165 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
               style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
             />
           </Field>
+          <Field label="Top 3 Songs" hint="Show your current favorites on your profile. Link is optional.">
+            <div className="flex flex-col gap-2">
+              {topSongs.map((song, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border p-2"
+                  style={{ background: "var(--bg-input)", borderColor: "var(--bg-hover)" }}
+                >
+                  <div className="mb-1 text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                    Song {i + 1}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input
+                      value={song.title}
+                      onChange={(e) => setTopSongs((prev) => prev.map((s, idx) => idx === i ? { ...s, title: e.target.value } : s))}
+                      placeholder="Song title"
+                      className="rounded px-3 py-2 text-sm outline-none"
+                      style={{ background: "var(--bg-sidebar)", color: "var(--text-primary)" }}
+                    />
+                    <input
+                      value={song.artist ?? ""}
+                      onChange={(e) => setTopSongs((prev) => prev.map((s, idx) => idx === i ? { ...s, artist: e.target.value } : s))}
+                      placeholder="Artist"
+                      className="rounded px-3 py-2 text-sm outline-none"
+                      style={{ background: "var(--bg-sidebar)", color: "var(--text-primary)" }}
+                    />
+                  </div>
+                  <input
+                    value={song.url ?? ""}
+                    onChange={(e) => setTopSongs((prev) => prev.map((s, idx) => idx === i ? { ...s, url: e.target.value } : s))}
+                    placeholder="Spotify / YouTube / SoundCloud link"
+                    className="mt-2 w-full rounded px-3 py-2 text-sm outline-none"
+                    style={{ background: "var(--bg-sidebar)", color: "var(--text-primary)" }}
+                  />
+                </div>
+              ))}
+            </div>
+          </Field>
           <Field label="Banner Color">
             <div className="flex items-center gap-3">
               <input
                 type="color"
                 value={isValidHex(bannerColor) ? bannerColor : "#5865f2"}
-                onChange={(e) => setBannerColor(e.target.value)}
+                onChange={(e) => {
+                  setBannerColor(e.target.value);
+                  setProfileTheme((t) => ({ ...t, accent: t.vibe === "custom" ? e.target.value : t.accent }));
+                }}
                 aria-label="Banner color"
                 className="kc-color-input"
               />
               <span className="text-sm font-mono" style={{ color: "var(--text-secondary)" }}>
                 {bannerColor}
               </span>
+            </div>
+          </Field>
+          <Field label="Profile Vibe" hint="Controls the card glow, gradient, sticker, and pattern.">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {Object.entries(PROFILE_VIBES).map(([id, vibe]) => {
+                const active = (profileTheme.vibe ?? "sunset") === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setProfileTheme((t) => ({ ...t, vibe: id as ProfileTheme["vibe"], accent: vibe.a }))}
+                    className="kc-interactive rounded-xl px-3 py-2 text-left text-xs font-bold"
+                    style={{
+                      border: `1px solid ${active ? vibe.a : "var(--bg-hover)"}`,
+                      background: `linear-gradient(135deg, ${vibe.a}, ${vibe.b})`,
+                      color: "#fff",
+                      boxShadow: active ? `0 0 0 2px color-mix(in oklch, ${vibe.a} 36%, transparent)` : undefined,
+                    }}
+                  >
+                    {vibe.label}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setProfileTheme((t) => ({ ...t, vibe: "custom", accent: bannerColor }))}
+                className="kc-interactive rounded-xl px-3 py-2 text-left text-xs font-bold"
+                style={{ border: `1px solid ${profileTheme.vibe === "custom" ? bannerColor : "var(--bg-hover)"}`, background: "var(--bg-input)", color: "var(--text-primary)" }}
+              >
+                Custom
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+                Accent
+                <input
+                  type="color"
+                  value={isValidHex(profileTheme.accent ?? "") ? profileTheme.accent : bannerColor}
+                  onChange={(e) => setProfileTheme((t) => ({ ...t, vibe: "custom", accent: e.target.value }))}
+                  aria-label="Profile accent"
+                  className="kc-color-input"
+                />
+              </label>
+              <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+                Sticker
+                <input
+                  value={profileTheme.emoji ?? ""}
+                  onChange={(e) => setProfileTheme((t) => ({ ...t, emoji: e.target.value.slice(0, 2) }))}
+                  placeholder="✨"
+                  className="w-16 rounded px-2 py-1 text-sm outline-none"
+                  style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+                <input
+                  type="checkbox"
+                  checked={profileTheme.glow ?? true}
+                  onChange={(e) => setProfileTheme((t) => ({ ...t, glow: e.target.checked }))}
+                />
+                Glow
+              </label>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {PROFILE_PATTERNS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setProfileTheme((t) => ({ ...t, pattern: p.id }))}
+                  className="kc-interactive rounded-full px-3 py-1.5 text-xs font-semibold"
+                  style={{
+                    border: "none",
+                    background: (profileTheme.pattern ?? "stars") === p.id ? "var(--accent)" : "var(--bg-input)",
+                    color: (profileTheme.pattern ?? "stars") === p.id ? "#fff" : "var(--text-secondary)",
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Show / Hide Sections" hint="Leave fields filled in, but choose what appears publicly.">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {([
+                ["showStatus", "Status"],
+                ["showBio", "Bio"],
+                ["showActive", "Active badge"],
+                ["showSongs", "Top songs"],
+                ["showSocials", "Socials"],
+              ] as const).map(([key, label]) => {
+                const on = profileTheme[key] ?? true;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setProfileTheme((t) => ({ ...t, [key]: !(t[key] ?? true) }))}
+                    className="kc-interactive rounded-full px-3 py-2 text-xs font-bold"
+                    style={{
+                      border: "none",
+                      background: on ? "color-mix(in oklch, var(--accent) 18%, transparent)" : "var(--bg-input)",
+                      color: on ? "var(--accent)" : "var(--text-muted)",
+                    }}
+                  >
+                    {on ? "✓" : "○"} {label}
+                  </button>
+                );
+              })}
             </div>
           </Field>
           <Field label="Banner Image">

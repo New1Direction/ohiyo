@@ -17,6 +17,16 @@ const LAST_USERNAME_KEY = "kc:last-username";
 const MIN_PASSWORD = 8;
 const MIN_USERNAME = 2;
 const MAX_USERNAME = 32;
+const AUTH_FACTS = [
+  "Chinchillas take dust baths to keep their fur soft.",
+  "Sea otters hold hands so they don’t drift apart.",
+  "Ohiyo keeps your chats end-to-end encrypted.",
+  "Red pandas use their tails like cozy blankets.",
+  "Penguins recognize each other by voice.",
+  "No ads. No tracking. Just your people.",
+  "Chinchillas can have more than 50 hairs from one follicle.",
+  "Foxes use their tails for balance, warmth, and style.",
+];
 
 /** Map raw server/network errors to warm, human copy. */
 function friendlyError(raw: string, mode: Mode): string {
@@ -43,7 +53,7 @@ function EyeIcon({ off }: { off: boolean }) {
   );
 }
 
-export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Props) {
+export function AuthScreen({ home, onAuth }: Props) {
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState(() => localStorage.getItem(LAST_USERNAME_KEY) ?? "");
   const [password, setPassword] = useState("");
@@ -53,6 +63,7 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [linkCode, setLinkCode] = useState("");
+  const [factIndex, setFactIndex] = useState(0);
   const usernameRef = useRef<HTMLInputElement>(null);
   const linkRef = useRef<HTMLInputElement>(null);
 
@@ -123,6 +134,13 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
     if (mode === "link") linkRef.current?.focus();
   }, [mode]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setFactIndex((i) => (i + 1) % AUTH_FACTS.length);
+    }, 7200);
+    return () => window.clearInterval(timer);
+  }, []);
+
   function switchMode(next: Mode) {
     setMode(next);
     setError("");
@@ -142,15 +160,20 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
 
   return (
     <main
-      className="flex h-screen w-screen items-center justify-center"
+      className="relative flex h-screen w-screen items-center justify-center overflow-hidden"
       style={{
         background:
           "radial-gradient(circle at 30% 20%, color-mix(in oklch, var(--accent) 16%, var(--bg-base)) 0%, var(--bg-base) 55%)",
         padding: "var(--space-4)",
       }}
     >
+      <div className="ohiyo-auth-sticks" aria-hidden="true">
+        {Array.from({ length: 18 }, (_, i) => <span key={`twig-${i}`} />)}
+        {Array.from({ length: 30 }, (_, i) => <i key={`leaf-${i}`} />)}
+      </div>
+      <div className="relative z-10 flex w-full max-w-sm flex-col items-center">
       <div
-        className="kc-fade-up w-full max-w-sm"
+        className="ohiyo-auth-card w-full"
         style={{
           background: "var(--bg-channel)",
           borderRadius: "var(--radius-xl)",
@@ -171,46 +194,43 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
           >
             <BirdMark size={40} />
           </div>
-          <h1
-            style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-2xl)", color: "var(--text-primary)" }}
-          >
-            {mode === "login" ? "Welcome back" : mode === "register" ? "Join Ohiyo" : "Link this device"}
-          </h1>
-          <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-            {mode === "login"
-              ? "Good to see you again."
-              : mode === "register"
-                ? "Free forever. Takes ten seconds."
-                : "Enter the code from a device you're already signed in on."}
-          </p>
-          <div className="mt-4 flex w-full items-center gap-2">
-            <select
-              value={home.id}
-              onChange={(e) => onSwitchHome(e.target.value)}
-              className="kc-field flex-1 px-3 py-2 text-xs outline-none"
-              aria-label="Ohiyo server"
+          <div key={mode} className="ohiyo-auth-mode-copy w-full">
+            <h1
+              style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-2xl)", color: "var(--text-primary)" }}
+            >
+              {mode === "login" ? "Welcome back" : mode === "register" ? "Join Ohiyo" : "Link this device"}
+            </h1>
+            <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+              {mode === "login"
+                ? "Good to see you again."
+                : mode === "register"
+                  ? "Free forever. Takes ten seconds."
+                  : "Enter the code from a device you're already signed in on."}
+            </p>
+            <div
+              className="ohiyo-auth-status-pill mt-4 flex w-full items-center justify-center gap-2 rounded-full px-3 py-2 text-xs"
               title={home.url}
+              style={{
+                background: "color-mix(in oklch, var(--text-primary) 6%, transparent)",
+                color: "var(--text-muted)",
+                border: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)",
+              }}
             >
-              {homes.map((h) => (
-                <option key={h.id} value={h.id}>{h.name}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={onAddHome}
-              className="kc-interactive px-3 py-2 text-xs font-semibold"
-              style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--accent)", border: "none" }}
-            >
-              + Server
-            </button>
-          </div>
-          <div className="mt-1 max-w-full truncate text-xs" title={home.url} style={{ color: "var(--text-muted)" }}>
-            {home.url}
+              <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: "var(--green)", boxShadow: "0 0 10px color-mix(in oklch, var(--green) 48%, transparent)" }} />
+              <span>{mode === "login" ? "Secure Ohiyo sign-in" : mode === "register" ? "Private account setup" : "Safe device link"}</span>
+            </div>
           </div>
         </div>
 
+        <div className="ohiyo-auth-form-zone">
         {mode !== "link" && (
-        <form key={mode} onSubmit={handleSubmit} className="kc-fade-up flex flex-col gap-3" aria-label={mode === "login" ? "Sign in" : "Create account"}>
+        <form
+          key={mode}
+          onSubmit={handleSubmit}
+          className="ohiyo-auth-mode-panel flex flex-col gap-3"
+          aria-label={mode === "login" ? "Sign in" : "Create account"}
+          autoComplete="off"
+        >
           <div>
             <input
               ref={usernameRef}
@@ -218,11 +238,13 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
               type="text"
               placeholder="Username"
               aria-label="Username"
+              name="username"
               value={username}
               onChange={(e) => { setUsername(e.target.value); if (error) setError(""); }}
               autoComplete="username"
               autoCapitalize="none"
               autoCorrect="off"
+              data-no-native-autocomplete="true"
               spellCheck={false}
               required
               minLength={MIN_USERNAME}
@@ -244,9 +266,11 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
               type="text"
               placeholder="Display name (optional)"
               aria-label="Display name (optional)"
+              name="nickname"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               autoComplete="nickname"
+              data-no-native-autocomplete="true"
               maxLength={48}
               className="kc-field px-3.5 py-3 text-sm outline-none"
             />
@@ -259,12 +283,14 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
                 type={showPassword ? "text" : "password"}
                 placeholder="Password"
                 aria-label="Password"
+                name="password"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); if (error) setError(""); }}
                 onKeyDown={onPasswordKey}
                 onKeyUp={onPasswordKey}
                 onBlur={() => setCapsLock(false)}
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
+                data-no-native-autocomplete="true"
                 required
                 minLength={MIN_PASSWORD}
                 className="kc-field px-3.5 py-3 pr-11 text-sm outline-none"
@@ -327,7 +353,7 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
         )}
 
         {mode === "link" && (
-          <form onSubmit={handleLinkSubmit} className="kc-fade-up flex flex-col gap-3" aria-label="Link a device">
+          <form key="link" onSubmit={handleLinkSubmit} className="ohiyo-auth-mode-panel flex flex-col gap-3" aria-label="Link a device" autoComplete="off">
             <input
               ref={linkRef}
               id="kc-linkcode"
@@ -341,6 +367,7 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
               }}
               autoComplete="one-time-code"
               autoCapitalize="characters"
+              data-no-native-autocomplete="true"
               autoCorrect="off"
               spellCheck={false}
               className="kc-field px-3.5 py-3 text-center font-mono text-base tracking-widest outline-none"
@@ -382,27 +409,28 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
             </p>
           </form>
         )}
+        </div>
 
         <p className="mt-5 text-center text-xs" style={{ color: "var(--text-muted)" }}>
           {mode === "login" ? (
             <>
               New to Ohiyo?{" "}
-              <button onClick={() => switchMode("register")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
+              <button type="button" onClick={() => switchMode("register")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
                 Create an account
               </button>
               <br />
               Already signed in elsewhere?{" "}
-              <button onClick={() => switchMode("link")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
+              <button type="button" onClick={() => switchMode("link")} className="kc-interactive font-semibold" style={{ color: "var(--green)", textShadow: "0 0 12px color-mix(in oklch, var(--green) 30%, transparent)" }}>
                 Link a device
               </button>
               <br />
               <span style={{ color: "var(--text-muted)", opacity: 0.85 }}>
                 Forgot it? If you saved a recovery code you can{" "}
-                <button onClick={() => switchMode("link")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
+                <button type="button" onClick={() => switchMode("link")} className="kc-interactive font-semibold" style={{ color: "var(--green)", textShadow: "0 0 12px color-mix(in oklch, var(--green) 28%, transparent)" }}>
                   link a device
                 </button>{" "}
                 or{" "}
-                <button onClick={() => switchMode("register")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
+                <button type="button" onClick={() => switchMode("register")} className="kc-interactive font-semibold" style={{ color: "var(--danger)", textShadow: "0 0 12px color-mix(in oklch, var(--danger) 28%, transparent)" }}>
                   start fresh
                 </button>
                 .
@@ -411,16 +439,21 @@ export function AuthScreen({ home, homes, onAuth, onSwitchHome, onAddHome }: Pro
           ) : (
             <>
               Already settled in?{" "}
-              <button onClick={() => switchMode("login")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
+              <button type="button" onClick={() => switchMode("login")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
                 Sign in
               </button>
             </>
           )}
         </p>
 
-        <p className="mt-4 text-center text-xs" style={{ color: "var(--text-muted)", opacity: 0.8 }}>
-          End-to-end encrypted · No ads · No tracking · Yours
+        <p className="ohiyo-trust-text mt-4 text-center text-xs" aria-label="End-to-end encrypted. No ads. No tracking. Yours.">
+          <span className="ohiyo-trust-primary">End-to-end encrypted</span>
+          <span className="ohiyo-trust-secondary">No ads · No tracking · Yours</span>
         </p>
+      </div>
+      <p key={factIndex} className="ohiyo-auth-fact mt-4 text-center text-xs" aria-live="off">
+        {AUTH_FACTS[factIndex]}
+      </p>
       </div>
     </main>
   );

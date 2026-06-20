@@ -1,11 +1,13 @@
 use axum::{
-    extract::{Multipart, State},
+    extract::{Multipart, Path as AxumPath, State},
     http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
     time::Duration,
 };
 use tokio::{io::AsyncWriteExt, process::Command, time::timeout};
@@ -44,7 +46,7 @@ pub struct DiscrawlArchiveBody {
     pub history: Option<HistoryWindow>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DiscrawlImportResponse {
     pub server: ServerWithChannels,
     pub report: ImportReport,
@@ -72,10 +74,36 @@ pub struct DiscordGuildInfo {
     pub icon_url: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ManagedDiscordImportBody {
     pub guild_id: String,
     pub history: Option<HistoryWindow>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedDiscordImportJobState {
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ManagedDiscordImportJob {
+    pub id: String,
+    pub state: ManagedDiscordImportJobState,
+    pub stage: String,
+    pub message: String,
+    pub result: Option<DiscrawlImportResponse>,
+    pub error: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ManagedDiscordImportJobStartResponse {
+    pub job: ManagedDiscordImportJob,
 }
 
 #[derive(Debug, Serialize)]
@@ -129,6 +157,70 @@ pub async fn list_discord_guilds(
     require_managed_discord_import_enabled()?;
     let guilds = fetch_bot_guilds().await?;
     Ok(Json(guilds))
+}
+
+pub async fn start_managed_discord_import_job(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<ManagedDiscordImportBody>,
+) -> Result<Json<ManagedDiscordImportJobStartResponse>, (StatusCode, String)> {
+    require_managed_discord_import_enabled()?;
+    let guild_id = validate_guild_id(&body.guild_id)?;
+    let history = body.history.unwrap_or(HistoryWindow::All);
+    let job_id = new_id();
+    let job = ManagedDiscordImportJob {
+        id: job_id.clone(),
+        state: ManagedDiscordImportJobState::Queued,
+        stage: "queued".to_owned(),
+        message: "Queued — Ohiyo is getting ready to clone your server.".to_owned(),
+        result: None,
+        error: None,
+        created_at: now_ts(),
+        updated_at: now_ts(),
+    };
+    upsert_import_job(&auth.0, job.clone());
+
+    let owner_id = auth.0.clone();
+    tokio::spawn(async move {
+        update_import_job(&owner_id, &job_id, |job| {
+            job.state = ManagedDiscordImportJobState::Running;
+            job.stage = "connecting".to_owned();
+            job.message = "Connecting to Discord and reading your server…".to_owned();
+        });
+        let result = run_managed_discord_import_inner(owner_id.clone(), state, guild_id, history, |stage, message| {
+            update_import_job(&owner_id, &job_id, |job| {
+                job.state = ManagedDiscordImportJobState::Running;
+                job.stage = stage.to_owned();
+                job.message = message.to_owned();
+            });
+        }).await;
+        match result {
+            Ok(response) => update_import_job(&owner_id, &job_id, |job| {
+                job.state = ManagedDiscordImportJobState::Succeeded;
+                job.stage = "done".to_owned();
+                job.message = "Done — your Ohiyo space is ready.".to_owned();
+                job.result = Some(response);
+                job.error = None;
+            }),
+            Err((_status, message)) => update_import_job(&owner_id, &job_id, |job| {
+                job.state = ManagedDiscordImportJobState::Failed;
+                job.stage = "failed".to_owned();
+                job.message = "Discord clone failed.".to_owned();
+                job.error = Some(message);
+            }),
+        }
+    });
+
+    Ok(Json(ManagedDiscordImportJobStartResponse { job }))
+}
+
+pub async fn get_managed_discord_import_job(
+    auth: AuthUser,
+    AxumPath(job_id): AxumPath<String>,
+) -> Result<Json<ManagedDiscordImportJob>, (StatusCode, String)> {
+    get_import_job(&auth.0, &job_id)
+        .map(Json)
+        .ok_or((StatusCode::NOT_FOUND, "import job not found".to_owned()))
 }
 
 pub async fn upload_discrawl_archive(
@@ -221,8 +313,22 @@ pub async fn run_managed_discord_import(
 ) -> Result<Json<DiscrawlImportResponse>, (StatusCode, String)> {
     require_managed_discord_import_enabled()?;
     let guild_id = validate_guild_id(&body.guild_id)?;
-    let archive = run_discrawl_job(&guild_id, body.history.unwrap_or(HistoryWindow::All)).await?;
+    let history = body.history.unwrap_or(HistoryWindow::All);
+    run_managed_discord_import_inner(auth.0, state, guild_id, history, |_, _| {})
+        .await
+        .map(Json)
+}
 
+async fn run_managed_discord_import_inner(
+    owner_id: String,
+    state: AppState,
+    guild_id: String,
+    history: HistoryWindow,
+    progress: impl Fn(&str, &str) + Send + Sync,
+) -> Result<DiscrawlImportResponse, (StatusCode, String)> {
+    let archive = run_discrawl_job(&guild_id, history, &progress).await?;
+
+    progress("reading_archive", "Reading the cloned Discord archive…");
     let guild = discrawl::read_source_guild(
         &archive.db_path,
         DiscrawlReadOptions {
@@ -232,12 +338,12 @@ pub async fn run_managed_discord_import(
     )
     .await
     .map_err(crate::api::error::internal)?;
-    let opts = ImportOptions {
-        history: body.history.unwrap_or(HistoryWindow::All),
-    };
-    let (server_id, report) = import::run_import(&state.db, &auth.0, &guild, opts)
+    let opts = ImportOptions { history };
+    progress("importing", "Creating channels, messages, authors, and attachments in Ohiyo…");
+    let (server_id, report) = import::run_import(&state.db, &owner_id, &guild, opts)
         .await
         .map_err(crate::api::error::internal)?;
+    progress("opening_space", "Opening your new Ohiyo space…");
     let server = crate::api::servers::fetch_full(&server_id, &state).await?;
     cleanup_managed_job_dir(&archive.job_dir).await;
     broadcast_to_server(
@@ -246,7 +352,7 @@ pub async fn run_managed_discord_import(
         &GatewayEvent::ServerCreate(server.clone()),
     )
     .await;
-    Ok(Json(DiscrawlImportResponse { server, report }))
+    Ok(DiscrawlImportResponse { server, report })
 }
 
 pub async fn preview_discrawl_import(
@@ -294,6 +400,38 @@ fn read_opts(body: &DiscrawlArchiveBody) -> DiscrawlReadOptions {
         guild_id: body.guild_id.clone(),
         media_root: body.media_root.as_ref().map(PathBuf::from),
     }
+}
+
+fn now_ts() -> i64 {
+    chrono::Utc::now().timestamp()
+}
+
+type ImportJobStore = HashMap<String, HashMap<String, ManagedDiscordImportJob>>;
+
+fn import_jobs() -> &'static Mutex<ImportJobStore> {
+    static JOBS: OnceLock<Mutex<ImportJobStore>> = OnceLock::new();
+    JOBS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn upsert_import_job(owner_id: &str, job: ManagedDiscordImportJob) {
+    let mut jobs = import_jobs().lock().expect("import job store poisoned");
+    jobs.entry(owner_id.to_owned())
+        .or_default()
+        .insert(job.id.clone(), job);
+}
+
+fn update_import_job(owner_id: &str, job_id: &str, update: impl FnOnce(&mut ManagedDiscordImportJob)) {
+    let mut jobs = import_jobs().lock().expect("import job store poisoned");
+    let Some(job) = jobs.get_mut(owner_id).and_then(|owner_jobs| owner_jobs.get_mut(job_id)) else {
+        return;
+    };
+    update(job);
+    job.updated_at = now_ts();
+}
+
+fn get_import_job(owner_id: &str, job_id: &str) -> Option<ManagedDiscordImportJob> {
+    let jobs = import_jobs().lock().expect("import job store poisoned");
+    jobs.get(owner_id).and_then(|owner_jobs| owner_jobs.get(job_id)).cloned()
 }
 
 #[derive(Debug, Deserialize)]
@@ -351,6 +489,7 @@ struct ManagedDiscrawlArchive {
 async fn run_discrawl_job(
     guild_id: &str,
     history: HistoryWindow,
+    progress: &(impl Fn(&str, &str) + Send + Sync),
 ) -> Result<ManagedDiscrawlArchive, (StatusCode, String)> {
     let job_dir = PathBuf::from(MANAGED_IMPORT_DIR).join(new_id());
     let config_home = job_dir.join("config");
@@ -366,6 +505,7 @@ async fn run_discrawl_job(
         .await
         .map_err(crate::api::error::internal)?;
 
+    progress("preparing", "Preparing the Discord clone workspace…");
     run_discrawl_command(
         &job_dir,
         &["init", "--guild", guild_id],
@@ -391,6 +531,7 @@ async fn run_discrawl_job(
         sync_args.push("--since");
         sync_args.push(&since);
     }
+    progress("syncing_discord", "Copying channels, messages, and attachments from Discord…");
     run_discrawl_command(&job_dir, &sync_args, &config_home, &data_home, &cache_home).await?;
 
     Ok(ManagedDiscrawlArchive {

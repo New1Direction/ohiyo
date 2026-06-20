@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { UserProfile } from "../api";
+import type { FriendshipStatus, PublicUser, UserProfile } from "../api";
 import { api } from "../api";
 import { ProfileCardView } from "./ProfileCardView";
 
@@ -8,23 +8,39 @@ type Props = {
   userId: string;
   token: string;
   anchorRef: React.RefObject<HTMLElement | null>;
+  currentUserId?: string;
+  onOpenDm?: (user: PublicUser) => void | Promise<void>;
   onClose: () => void;
 };
 
-export function UserProfileCard({ userId, token, anchorRef, onClose }: Props) {
+export function UserProfileCard({ userId, token, anchorRef, currentUserId, onOpenDm, onClose }: Props) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const cardRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [dmBusy, setDmBusy] = useState(false);
+  const [friendBusy, setFriendBusy] = useState(false);
+  const [friendship, setFriendship] = useState<FriendshipStatus>("none");
 
   useEffect(() => {
-    api
-      .getPublicProfile(token, userId)
-      .then((p) => {
+    let alive = true;
+    setLoading(true);
+    setProfile(null);
+    setFriendship("none");
+    Promise.all([
+      api.getPublicProfile(token, userId),
+      api.getFriendship(token, userId).catch(() => ({ status: "none" as FriendshipStatus })),
+    ])
+      .then(([p, rel]) => {
+        if (!alive) return;
         setProfile(p);
+        setFriendship(rel.status);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
   }, [token, userId]);
 
   useEffect(() => {
@@ -64,6 +80,25 @@ export function UserProfileCard({ userId, token, anchorRef, onClose }: Props) {
     return () => prev?.focus?.();
   }, []);
 
+  async function runFriendAction(action: "add" | "accept" | "remove") {
+    if (!profile) return;
+    setFriendBusy(true);
+    try {
+      if (action === "add") {
+        const rel = await api.sendFriendRequest(token, profile.id);
+        setFriendship(rel.status);
+      } else if (action === "accept") {
+        const rel = await api.acceptFriendRequest(token, profile.id);
+        setFriendship(rel.status);
+      } else {
+        await api.deleteFriendship(token, profile.id);
+        setFriendship("none");
+      }
+    } finally {
+      setFriendBusy(false);
+    }
+  }
+
   const card = (
     <div
       ref={cardRef}
@@ -91,7 +126,46 @@ export function UserProfileCard({ userId, token, anchorRef, onClose }: Props) {
           <div style={{ padding: 16, fontSize: 13, color: "var(--text-muted)" }}>Loading…</div>
         </>
       ) : profile ? (
-        <ProfileCardView data={profile} />
+        <>
+          <ProfileCardView data={profile} />
+          {profile.id !== currentUserId && (
+            <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+              {friendship === "pending_incoming" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <ActionButton busy={friendBusy} label="Accept" onClick={() => runFriendAction("accept")} primary />
+                  <ActionButton busy={friendBusy} label="Decline" onClick={() => runFriendAction("remove")} />
+                </div>
+              ) : friendship === "pending_outgoing" ? (
+                <ActionButton busy={friendBusy} label="Request Sent" onClick={() => runFriendAction("remove")} />
+              ) : friendship === "friends" ? (
+                <ActionButton busy={friendBusy} label="Friends ✓" onClick={() => runFriendAction("remove")} />
+              ) : (
+                <ActionButton busy={friendBusy} label="Add Friend" onClick={() => runFriendAction("add")} primary />
+              )}
+              {onOpenDm && (
+                <ActionButton
+                  busy={dmBusy}
+                  label="Message"
+                  primary={friendship === "friends"}
+                  onClick={async () => {
+                    setDmBusy(true);
+                    try {
+                      await onOpenDm({
+                        id: profile.id,
+                        username: profile.username,
+                        display_name: profile.display_name,
+                        avatar_url: profile.avatar_url,
+                      });
+                      onClose();
+                    } catch {
+                      setDmBusy(false);
+                    }
+                  }}
+                />
+              )}
+            </div>
+          )}
+        </>
       ) : (
         <>
           <div style={{ height: 72, background: "var(--bg-hover)" }} />
@@ -102,4 +176,38 @@ export function UserProfileCard({ userId, token, anchorRef, onClose }: Props) {
   );
 
   return createPortal(card, document.body);
+}
+
+function ActionButton({
+  label,
+  busy,
+  primary = false,
+  onClick,
+}: {
+  label: string;
+  busy: boolean;
+  primary?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onClick}
+      className="kc-interactive"
+      style={{
+        width: "100%",
+        border: "none",
+        borderRadius: "var(--radius-md)",
+        padding: "9px 12px",
+        cursor: busy ? "default" : "pointer",
+        background: primary ? "var(--accent)" : "var(--bg-input)",
+        color: primary ? "#fff" : "var(--text-primary)",
+        fontSize: 13,
+        fontWeight: 700,
+      }}
+    >
+      {busy ? "Working…" : label}
+    </button>
+  );
 }

@@ -159,6 +159,34 @@ export type ServerEmoji = {
   created_at: number;
 };
 
+export type FriendshipStatus = "self" | "none" | "pending_outgoing" | "pending_incoming" | "friends";
+
+export type FriendItem = {
+  user: PublicUser;
+  status: "pending" | "accepted";
+  direction: "incoming" | "outgoing" | null;
+  updated_at: number;
+};
+
+export type ProfileTheme = {
+  vibe?: "sunset" | "ocean" | "forest" | "grape" | "mono" | "custom";
+  accent?: string;
+  pattern?: "none" | "stars" | "hearts" | "bubbles";
+  glow?: boolean;
+  emoji?: string | null;
+  showStatus?: boolean;
+  showBio?: boolean;
+  showActive?: boolean;
+  showSongs?: boolean;
+  showSocials?: boolean;
+};
+
+export type ProfileSong = {
+  title: string;
+  artist?: string | null;
+  url?: string | null;
+};
+
 export type UserProfile = {
   id: string;
   username: string;
@@ -169,6 +197,8 @@ export type UserProfile = {
   banner_url: string | null;
   custom_status: string | null;
   avatar_url: string | null;
+  profile_theme: ProfileTheme | null;
+  top_songs: ProfileSong[];
   last_active_at: number | null;
   social_spotify: string | null;
   social_github: string | null;
@@ -284,6 +314,17 @@ export type DiscrawlImportResponse = {
   report: ImportReport;
 };
 
+export type ManagedDiscordImportJob = {
+  id: string;
+  state: "queued" | "running" | "succeeded" | "failed";
+  stage: string;
+  message: string;
+  result: DiscrawlImportResponse | null;
+  error: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
 /** A provisioned Instant-Server instance (control-plane view). */
 export interface HostedInstance {
   id: string;
@@ -379,6 +420,14 @@ export const api = {
       { method: "POST", body: JSON.stringify({ guild_id: guildId, history: history ?? null }) },
       token
     ),
+  startManagedDiscordImportJob: (token: string, guildId: string, history?: ImportHistoryWindow | null) =>
+    request<{ job: ManagedDiscordImportJob }>(
+      "/imports/discord/managed/jobs",
+      { method: "POST", body: JSON.stringify({ guild_id: guildId, history: history ?? null }) },
+      token
+    ),
+  getManagedDiscordImportJob: (token: string, jobId: string) =>
+    request<ManagedDiscordImportJob>(`/imports/discord/managed/jobs/${jobId}`, {}, token),
   uploadDiscrawlArchive: async (token: string, file: File) => {
     const form = new FormData();
     form.append("archive", file);
@@ -442,6 +491,12 @@ export const api = {
   joinServer: (token: string, serverId: string) =>
     request<ServerWithChannels>(`/servers/${serverId}/join`, {
       method: "POST",
+    }, token),
+
+  setServerIcon: (token: string, serverId: string, fileId: string) =>
+    request<ServerWithChannels>(`/servers/${serverId}/icon`, {
+      method: "POST",
+      body: JSON.stringify({ file_id: fileId }),
     }, token),
 
   kickMember: (token: string, serverId: string, userId: string) =>
@@ -603,6 +658,16 @@ export const api = {
   getPublicProfile: (token: string, userId: string) =>
     request<UserProfile>(`/users/${userId}/profile`, {}, token),
 
+  listFriends: (token: string) => request<FriendItem[]>("/users/@me/friends", {}, token),
+  getFriendship: (token: string, userId: string) =>
+    request<{ status: FriendshipStatus }>(`/users/${userId}/friendship`, {}, token),
+  sendFriendRequest: (token: string, userId: string) =>
+    request<{ status: FriendshipStatus }>(`/users/${userId}/friend-request`, { method: "POST" }, token),
+  acceptFriendRequest: (token: string, userId: string) =>
+    request<{ status: FriendshipStatus }>(`/users/${userId}/friend-request/accept`, { method: "POST" }, token),
+  deleteFriendship: (token: string, userId: string) =>
+    request<void>(`/users/${userId}/friendship`, { method: "DELETE" }, token),
+
   getMyProfile: (token: string) =>
     request<UserProfile>("/users/@me/profile", {}, token),
 
@@ -611,9 +676,10 @@ export const api = {
     patch: Partial<{
       display_name: string;
       bio: string;
-      pronouns: string;
       banner_color: string;
       custom_status: string;
+      profile_theme?: ProfileTheme;
+      top_songs?: ProfileSong[];
     }>
   ) =>
     request<UserProfile>("/users/@me/profile", {
@@ -634,7 +700,7 @@ export const api = {
     request<void>(`/servers/${serverId}/emojis/${emojiId}`, { method: "DELETE" }, token),
 
   setAvatar: (token: string, fileId: string) =>
-    request<void>("/users/@me/avatar", {
+    request<PublicUser>("/users/@me/avatar", {
       method: "POST",
       body: JSON.stringify({ file_id: fileId }),
     }, token),

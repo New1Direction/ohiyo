@@ -1,4 +1,4 @@
-import { launchBrowser, register, log, uniq } from "./harness.mjs";
+import { currentToken, launchBrowser, register, log, uniq } from "./harness.mjs";
 
 // Group E2E via Sender Keys: A, B, C in a group DM all enable E2E (each distributes a
 // sender key). One ciphertext per message is decrypted by every member; the server
@@ -25,8 +25,8 @@ async function setup(name, username, display, space) {
 
 async function openGroup(page) {
   await page.click('button[aria-label="Direct Messages"]');
-  await page.waitForSelector('button:has-text("Direct Message")', { timeout: 8000 });
-  await page.click('button:has-text("Direct Message")');
+  await page.waitForSelector('button:has-text("Squad")', { timeout: 8000 });
+  await page.click('button:has-text("Squad")');
   await page.waitForSelector('input[placeholder*="Say something"]', { timeout: 8000 });
 }
 
@@ -38,7 +38,7 @@ try {
   const [bId, cId, tokenA] = await Promise.all([
     idOf(pageB),
     idOf(pageC),
-    pageA.evaluate(() => localStorage.getItem("token")),
+    currentToken(pageA),
   ]);
   log("A, B, C registered");
 

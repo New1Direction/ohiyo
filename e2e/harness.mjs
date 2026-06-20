@@ -12,7 +12,7 @@ const require = createRequire(import.meta.url);
 const pw = require(join(__dirname, "..", "client", "node_modules", "playwright-core", "index.js"));
 const { chromium } = pw;
 
-export const ORIGIN = process.env.KIKKA_ORIGIN ?? "http://localhost:5173";
+export const ORIGIN = process.env.KIKKA_ORIGIN ?? "http://localhost:1420";
 export const SHOTS = process.env.KIKKA_SHOTS ?? "/tmp/kikka-shots";
 mkdirSync(SHOTS, { recursive: true });
 
@@ -29,12 +29,26 @@ function resolveChromium() {
   throw new Error("No cached Chromium found — set KIKKA_CHROMIUM or run `npx playwright install chromium`.");
 }
 
-export async function launchBrowser() {
-  return chromium.launch({ executablePath: resolveChromium(), headless: true });
+export async function launchBrowser(options = {}) {
+  const args = [...(options.args ?? [])];
+  if (options.fakeMedia) {
+    args.push("--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream");
+  }
+  return chromium.launch({ executablePath: resolveChromium(), headless: true, args });
 }
 
 export const PASS = "supersecret123";
 export const log = (...a) => console.log("•", ...a);
+
+export async function currentToken(page) {
+  return page.evaluate(() => {
+    const legacy = localStorage.getItem("token");
+    if (legacy) return legacy;
+    const homes = JSON.parse(localStorage.getItem("kc:homes:v1") || "[]");
+    const active = localStorage.getItem("kc:active-home:v1");
+    return (homes.find((h) => h.id === active) || homes[0] || {}).token || null;
+  });
+}
 export const settle = (page, ms = 300) => page.waitForTimeout(ms);
 export const uniq = () => Date.now().toString(36).slice(-6) + Math.floor(performance.now()).toString(36).slice(-2);
 

@@ -20,6 +20,9 @@ export function ForwardModal({ message, servers, onForward, onClose }: Props) {
   }
 
   const preview = message.content || (message.attachments?.length ? "attachment" : "");
+  const destinations = servers
+    .map((server) => ({ server, textChannels: server.channels.filter((c) => c.channel_type === "text") }))
+    .filter((item) => item.textChannels.length > 0);
 
   return (
     <ModalShell onClose={onClose} labelledBy="kc-forward-title" maxWidthClass="max-w-md">
@@ -39,16 +42,24 @@ export function ForwardModal({ message, servers, onForward, onClose }: Props) {
       )}
 
       <div className="mt-4 flex flex-col gap-2" style={{ maxHeight: 360, overflowY: "auto" }}>
-        {servers.map((s) => {
-          const text = s.channels.filter((c) => c.channel_type === "text");
-          if (text.length === 0) return null;
-          return (
+        {destinations.length === 0 ? (
+          <div className="rounded-2xl px-4 py-5 text-center text-sm" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
+            No text channels are available yet. Create a channel first, then forward this message.
+          </div>
+        ) : destinations.map(({ server: s, textChannels }) => (
             <div key={s.id}>
-              <div className="px-1 text-xs font-bold uppercase" style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}>
+              <div className="flex items-center gap-2 px-1 text-xs font-bold uppercase" style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}>
+                <span
+                  className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-md text-[9px]"
+                  style={{ background: "var(--accent)", color: "#fff", letterSpacing: 0 }}
+                  aria-hidden
+                >
+                  {s.icon_url ? <img src={s.icon_url} alt="" className="h-full w-full object-cover" /> : s.name.slice(0, 2).toUpperCase()}
+                </span>
                 {s.name}
               </div>
               <div className="mt-1 flex flex-col gap-0.5">
-                {text.map((c) => (
+                {textChannels.map((c) => (
                   <button
                     key={c.id}
                     type="button"
@@ -63,8 +74,7 @@ export function ForwardModal({ message, servers, onForward, onClose }: Props) {
                 ))}
               </div>
             </div>
-          );
-        })}
+          ))}
       </div>
     </ModalShell>
   );
