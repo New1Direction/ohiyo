@@ -154,18 +154,52 @@ export async function buildDistribution(groupId: string): Promise<string> {
 /** Install a peer's distributed sender key for a group (from a decrypted SKDM). */
 export function installDistribution(groupId: string, fromUserId: string, skdmJson: string): void {
   const d = JSON.parse(skdmJson) as { kid: number; ck: string; it: number; vk: string; ep?: number };
-  putJson(peerKey(groupId, fromUserId), {
+  const incoming: PeerState = {
     keyId: d.kid,
     chainKey: d.ck,
     iteration: d.it,
     verifyKey: d.vk,
     epoch: d.ep ?? 0,
-  } as PeerState);
+  };
+  // SKDMs ride async pairwise sessions, so delivery can reorder — and a malicious server
+  // can replay an old one. Refuse a distribution that would CLOBBER a newer chain with an
+  // older one (which would make the peer's subsequent messages undecryptable). Accept a
+  // newer epoch, a new key id (genuine re-distribution), or a forward iteration; reject a
+  // same-key, same-epoch rewind and any older epoch.
+  const existing = getJson<PeerState>(peerKey(groupId, fromUserId));
+  if (existing) {
+    if (incoming.epoch < (existing.epoch ?? 0)) return;
+    if (
+      incoming.epoch === (existing.epoch ?? 0) &&
+      incoming.keyId === existing.keyId &&
+      incoming.iteration < existing.iteration
+    ) {
+      return;
+    }
+  }
+  putJson(peerKey(groupId, fromUserId), incoming);
 }
+
+// Per-group serialization for our own send ratchet. groupEncrypt is a read-modify-write
+// on the chain key; two concurrent calls would both encrypt at the SAME iteration and so
+// reuse the deterministic (AES-256-GCM key, IV) pair on different plaintexts — a
+// catastrophic GCM failure (recoverable plaintext XOR + forgeable tags). Concurrency is
+// real here: flushOutbox retries queued sends without awaiting. Chaining each group's
+// encrypts makes the ratchet advance atomic before the next read.
+const encryptChains = new Map<string, Promise<unknown>>();
 
 /** Encrypt a message for the group with our sender key. Returns `grp1.<b64(json)>`,
  *  or null if we have no sender key yet (shouldn't happen after buildDistribution). */
-export async function groupEncrypt(groupId: string, plaintext: string): Promise<string | null> {
+export function groupEncrypt(groupId: string, plaintext: string): Promise<string | null> {
+  const prev = encryptChains.get(groupId) ?? Promise.resolve();
+  const run = prev.catch(() => {}).then(() => groupEncryptInner(groupId, plaintext));
+  // Tail never rejects, so one failed send can't poison the chain or leak an unhandled
+  // rejection; callers still get the real result (which may reject) via `run`.
+  encryptChains.set(groupId, run.catch(() => {}));
+  return run;
+}
+
+async function groupEncryptInner(groupId: string, plaintext: string): Promise<string | null> {
   const s = getJson<OwnState>(ownKey(groupId));
   if (!s) return null;
   const ck = unb64(s.chainKey);

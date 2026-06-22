@@ -3,28 +3,53 @@
 
 export const OPUS_TARGET_BITRATE = 256_000; // music-grade stereo
 
+/** Parse a `key=value;key=value` fmtp param string into an ordered map. */
+function parseFmtpParams(raw: string): Map<string, string> {
+  const params = new Map<string, string>();
+  for (const part of raw.split(";")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) params.set(trimmed, "");
+    else params.set(trimmed.slice(0, eq), trimmed.slice(eq + 1));
+  }
+  return params;
+}
+
 /** Rewrite the Opus fmtp line for music-grade stereo + FEC. */
 export function tuneOpusSdp(sdp: string, bitrate = OPUS_TARGET_BITRATE): string {
   const ptMatch = sdp.match(/^a=rtpmap:(\d+) opus\/48000\/2/im);
   if (!ptMatch) return sdp;
   const pt = ptMatch[1];
 
-  const opusParams = [
-    "stereo=1", // willing to RECEIVE stereo
-    "sprop-stereo=1", // WILL SEND stereo (makes music wide)
-    "useinbandfec=1",
-    "usedtx=0", // DTX off for music
-    `maxaveragebitrate=${bitrate}`,
-    "maxplaybackrate=48000",
-    "cbr=0",
-  ].join(";");
+  // Our desired params, in order. Merged on top of whatever the browser already emitted
+  // (minptime, useinbandfec, etc.) so we never drop the browser's defaults.
+  const desired: [string, string][] = [
+    ["stereo", "1"], // willing to RECEIVE stereo
+    ["sprop-stereo", "1"], // WILL SEND stereo (makes music wide)
+    ["useinbandfec", "1"],
+    ["usedtx", "0"], // DTX off for music
+    ["maxaveragebitrate", String(bitrate)],
+    ["maxplaybackrate", "48000"],
+    ["cbr", "0"],
+  ];
 
-  const fmtpRe = new RegExp(`^a=fmtp:${pt} .*$`, "m");
-  if (fmtpRe.test(sdp)) return sdp.replace(fmtpRe, `a=fmtp:${pt} ${opusParams}`);
-  // No fmtp yet — insert right after the rtpmap line.
+  // Capture the existing fmtp line AND its line terminator so we can reuse it verbatim
+  // (avoids forcing \r\n onto an \n-only SDP).
+  const fmtpRe = new RegExp(`^a=fmtp:${pt} (.*?)(\\r?\\n)`, "m");
+  const existing = sdp.match(fmtpRe);
+  if (existing) {
+    const merged = parseFmtpParams(existing[1]);
+    for (const [k, v] of desired) merged.set(k, v); // override/add ours, keep the rest
+    const paramStr = [...merged].map(([k, v]) => (v === "" ? k : `${k}=${v}`)).join(";");
+    return sdp.replace(fmtpRe, `a=fmtp:${pt} ${paramStr}${existing[2]}`);
+  }
+
+  // No fmtp yet — insert right after the rtpmap line, reusing that line's terminator.
+  const opusParams = desired.map(([k, v]) => `${k}=${v}`).join(";");
   return sdp.replace(
-    new RegExp(`^(a=rtpmap:${pt} opus/48000/2\\r?\\n)`, "m"),
-    `$1a=fmtp:${pt} ${opusParams}\r\n`,
+    new RegExp(`^(a=rtpmap:${pt} opus/48000/2)(\\r?\\n)`, "m"),
+    `$1$2a=fmtp:${pt} ${opusParams}$2`,
   );
 }
 

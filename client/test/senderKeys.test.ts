@@ -103,3 +103,46 @@ test("getGroupEpoch is monotonic and seeds a joiner's key at the current epoch",
   const wire = await groupEncrypt(G, "joiner message");
   assert.equal(envelopeOf(wire!).ep, 3);
 });
+
+test("concurrent groupEncrypt calls never share an iteration (no AES-GCM nonce reuse)", async () => {
+  const a = memStore();
+  const b = memStore();
+  use(a);
+  const skdm = await buildDistribution(G);
+  use(b);
+  installDistribution(G, ALICE, skdm);
+
+  // Two encrypts for the same group, fired concurrently. The per-group serialization must
+  // make each ratchet advance atomic — otherwise both encrypt at iteration 0 and reuse the
+  // deterministic (AES-256-GCM key, IV) pair, catastrophically breaking confidentiality.
+  use(a);
+  const [w1, w2] = await Promise.all([groupEncrypt(G, "first"), groupEncrypt(G, "second")]);
+  assert.equal(envelopeOf(w1!).it, 0, "first scheduled encrypt takes iteration 0");
+  assert.equal(envelopeOf(w2!).it, 1, "second must ratchet to iteration 1, not reuse 0");
+
+  // Both still decrypt for the recipient, in iteration order.
+  use(b);
+  assert.equal(await groupDecrypt(G, ALICE, w1!), "first");
+  assert.equal(await groupDecrypt(G, ALICE, w2!), "second");
+});
+
+test("installDistribution ignores a replayed/older-epoch SKDM (no clobber of a newer chain)", async () => {
+  const a = memStore();
+  const b = memStore();
+  // Alice mints epoch-0, then rekeys to epoch-1 and distributes both generations.
+  use(a);
+  const sk0 = await buildDistribution(G);
+  await setGroupEpoch(G, 1);
+  const sk1 = await buildDistribution(G);
+
+  // B installs the NEW (epoch-1) key; a stale/replayed epoch-0 SKDM then arrives late.
+  use(b);
+  installDistribution(G, ALICE, sk1);
+  installDistribution(G, ALICE, sk0); // must be ignored, not overwrite the good chain
+
+  // Alice sends at epoch-1; B must still decrypt — proving the replay didn't clobber it.
+  use(a);
+  const ct = await groupEncrypt(G, "still readable");
+  use(b);
+  assert.equal(await groupDecrypt(G, ALICE, ct!), "still readable");
+});

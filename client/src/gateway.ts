@@ -8,6 +8,7 @@ export type VoicePeer = {
   muted: boolean;
   video: boolean;
   screen: boolean;
+  listenOnly?: boolean;
 };
 
 // ── Server → client events ─────────────────────────────────────────────────────
@@ -67,8 +68,22 @@ export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 export type StatusHandler = (status: ConnectionStatus) => void;
 
 const HEARTBEAT_MS = 20_000;
+// A silently-dropped socket (mobile/NAT/sleep) emits no close event, so we watch the
+// last-inbound-frame time on each heartbeat tick and force-close once we've been quiet
+// for ~2 heartbeats — that triggers onclose → scheduleReconnect.
+const DEAD_CONNECTION_MS = HEARTBEAT_MS * 2;
 const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
+
+/** Every server→client event tag (the `t` discriminant). A frame whose `t` isn't one
+ *  of these is well-formed JSON but the wrong shape, so we drop it before fan-out. */
+const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set([
+  "Ready", "MessageCreate", "MessageUpdate", "MessageDelete", "DisappearingUpdate",
+  "SenderKeyDistribution", "GroupMembersUpdate", "VoiceKeyDistribution", "ServerCreate",
+  "ServerDelete", "ChannelCreate", "MemberJoin", "MemberLeave", "PermissionsUpdate",
+  "EventsChanged", "ReactionUpdate", "ReadReceipt", "PresenceUpdate", "TypingStart",
+  "VoiceState", "VoiceRoster", "VoiceSignal", "WatchUpdate",
+]);
 
 export class Gateway {
   private ws: WebSocket | null = null;
@@ -76,6 +91,7 @@ export class Gateway {
   private statusHandlers = new Set<StatusHandler>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private lastFrameAt = 0;
   private token: string;
   private attempts = 0;
   private closedByUser = false;
@@ -98,6 +114,9 @@ export class Gateway {
   async connect() {
     this.closedByUser = false;
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    // Detach + close any pre-existing socket so we never end up with two live sockets,
+    // each running its own heartbeat and scheduling its own reconnects.
+    this.detachSocket();
     this.setStatus("connecting");
     // Exchange the JWT for a one-time ticket so it never appears in the WS URL.
     let ticket: string;
@@ -109,32 +128,57 @@ export class Gateway {
       return;
     }
     if (this.closedByUser) return; // disconnect() happened while fetching the ticket
-    this.ws = new WebSocket(gatewayUrl(ticket));
+    const ws = new WebSocket(gatewayUrl(ticket));
+    this.ws = ws;
 
-    this.ws.onopen = () => {
+    ws.onopen = () => {
       this.attempts = 0;
+      this.lastFrameAt = Date.now();
       this.setStatus("connected");
       this.startHeartbeat();
     };
 
-    this.ws.onmessage = (e) => {
+    ws.onmessage = (e) => {
+      this.lastFrameAt = Date.now();
+      let event: GatewayEvent;
       try {
-        const event = JSON.parse(e.data) as GatewayEvent;
-        for (const h of this.handlers) h(event);
+        event = JSON.parse(e.data) as GatewayEvent;
       } catch (err) {
         console.warn("[gateway] dropped malformed frame", err);
+        return;
       }
+      // Guard against a well-formed-but-wrong-shape payload reaching handlers that
+      // read event.d.* — only fan out frames whose tag we recognize.
+      if (typeof event?.t !== "string" || !KNOWN_EVENT_TAGS.has(event.t)) {
+        console.warn("[gateway] dropped frame with unknown tag", (event as { t?: unknown })?.t);
+        return;
+      }
+      for (const h of this.handlers) h(event);
     };
 
-    this.ws.onclose = () => {
+    ws.onclose = () => {
       this.stopHeartbeat();
       this.setStatus("disconnected");
       if (!this.closedByUser) this.scheduleReconnect();
     };
 
-    this.ws.onerror = () => {
-      this.ws?.close();
+    ws.onerror = () => {
+      ws.close();
     };
+  }
+
+  /** Null out the handlers on the current socket and close it. Detaching the handlers
+   *  BEFORE closing keeps a soon-to-be-replaced socket from firing onclose →
+   *  scheduleReconnect and racing the fresh connection. */
+  private detachSocket() {
+    const ws = this.ws;
+    if (!ws) return;
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onclose = null;
+    ws.onerror = null;
+    try { ws.close(); } catch { /* already closing/closed */ }
+    this.ws = null;
   }
 
   /** Send a client→server event (signaling, voice state, heartbeat). */
@@ -150,7 +194,16 @@ export class Gateway {
 
   private startHeartbeat() {
     this.stopHeartbeat();
-    this.heartbeatTimer = setInterval(() => this.send({ t: "Heartbeat" }), HEARTBEAT_MS);
+    this.heartbeatTimer = setInterval(() => {
+      // Force a reconnect if the socket has gone silent (no inbound frame for ~2
+      // heartbeats) — a silently-dropped connection never fires onclose on its own.
+      if (this.lastFrameAt && Date.now() - this.lastFrameAt > DEAD_CONNECTION_MS) {
+        console.warn("[gateway] no inbound frames; treating socket as dead");
+        this.ws?.close(); // → onclose → scheduleReconnect
+        return;
+      }
+      this.send({ t: "Heartbeat" });
+    }, HEARTBEAT_MS);
   }
 
   private stopHeartbeat() {
@@ -161,6 +214,9 @@ export class Gateway {
   }
 
   private scheduleReconnect() {
+    // Clear any pending timer first — both onclose and the ticket-fetch catch can call
+    // this, and we must never leave an orphaned timer that fires a second connect().
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     // Exponential backoff with jitter, capped.
     const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** this.attempts);
     const jittered = delay * (0.7 + Math.random() * 0.3);
@@ -170,10 +226,11 @@ export class Gateway {
 
   disconnect() {
     this.closedByUser = true;
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     this.stopHeartbeat();
-    this.ws?.close();
-    this.ws = null;
+    // Null the handlers before closing so the detached socket's onclose can't fire and
+    // schedule a reconnect after the user explicitly disconnected.
+    this.detachSocket();
     this.setStatus("disconnected");
   }
 

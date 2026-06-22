@@ -22,6 +22,7 @@ import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauri
 import { generateRecoveryCode, encryptBackup, decryptBackup, type BackupBlob } from "../../lib/recovery";
 import {
   ACCENT_PRESETS,
+  APPEARANCE_CHANGED_EVENT,
   applyActiveAppearance,
   applyDensity,
   applyFontScale,
@@ -268,6 +269,25 @@ function AppearanceTab({
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftVars, setDraftVars] = useState<ThemeVar>(() => ({ ...currentTheme.vars }));
+
+  // Local state is seeded once at mount. When another device's appearance arrives via
+  // pullAppearance (or any other code applies a change), the DOM updates but these
+  // controls would show stale values and re-push them. Re-seed from the persisted source
+  // on APPEARANCE_CHANGED_EVENT so the controls follow. Skip while the editor is open so
+  // a live preview doesn't get clobbered mid-edit.
+  useEffect(() => {
+    const onAppearanceChanged = () => {
+      if (editing) return;
+      setCurrentTheme(loadTheme());
+      setCustomThemes(getCustomThemes());
+      setAccentVal(getActiveAccent());
+      setAccentOverride(loadAccent() !== null);
+      setDensityVal(loadDensity());
+      setFontScaleVal(loadFontScale());
+    };
+    window.addEventListener(APPEARANCE_CHANGED_EVENT, onAppearanceChanged);
+    return () => window.removeEventListener(APPEARANCE_CHANGED_EVENT, onAppearanceChanged);
+  }, [editing]);
 
   function openEditor() {
     setDraftVars({ ...currentTheme.vars });

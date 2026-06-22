@@ -235,6 +235,10 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
           if (recips.length) void distributeMyVoiceKey(cid, recips);
         }
       } catch (e) {
+        // A failure after room.connect() leaves a partially-connected room that reset()
+        // doesn't touch — disconnect it so we don't leak the socket + media.
+        void roomRef.current?.disconnect();
+        roomRef.current = null;
         reset();
         throw e;
       }

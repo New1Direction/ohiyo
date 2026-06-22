@@ -42,7 +42,7 @@ import {
   acknowledgeIdentityChange,
   type TrustState,
 } from "./lib/identityTrust";
-import { cachePlaintext, getCachedPlaintext } from "./lib/e2eCache";
+import { cachePlaintext, getCachedPlaintext, removeCachedPlaintext } from "./lib/e2eCache";
 import {
   groupEncrypt,
   groupDecrypt,
@@ -485,11 +485,14 @@ function MainApp({
     if (!hasTimedMessages) return;
     const id = setInterval(() => {
       const now = Math.floor(Date.now() / 1000);
-      setMessages((prev) =>
-        prev.some((m) => m.expires_at && m.expires_at <= now)
-          ? prev.filter((m) => !(m.expires_at && m.expires_at <= now))
-          : prev
-      );
+      setMessages((prev) => {
+        const expired = prev.filter((m) => m.expires_at && m.expires_at <= now);
+        if (expired.length === 0) return prev;
+        // Evict the forward-secret plaintext for disappeared messages so they can't be
+        // recovered from the on-disk cache (idempotent — safe under updater re-invocation).
+        for (const m of expired) removeCachedPlaintext(m.id);
+        return prev.filter((m) => !(m.expires_at && m.expires_at <= now));
+      });
     }, 1000);
     return () => clearInterval(id);
   }, [hasTimedMessages]);
@@ -655,7 +658,9 @@ function MainApp({
         const msg = event.d;
         typing.clearTyping(msg.channel_id, msg.author.id);
         if (selectedChannelRef.current?.id === msg.channel_id) {
-          setMessages((prev) => [...prev, msg]);
+          // Dedup by id: a duplicate MessageCreate (gateway replay, or a resend whose
+          // first response was lost) must not render the message twice.
+          setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
           if (isEncrypted(msg.content) || isSignalCiphertext(msg.content) || isGroupCiphertext(msg.content)) {
             void decryptMessages(msg.channel_id, [msg]).then((dec) => {
               const dm = dec[0];
@@ -705,6 +710,7 @@ function MainApp({
       }
 
       case "MessageDelete":
+        removeCachedPlaintext(event.d.id); // drop the forward-secret plaintext too
         setMessages((prev) => prev.filter((m) => m.id !== event.d.id));
         break;
 
@@ -1364,8 +1370,20 @@ function MainApp({
   }, []);
 
   // Re-send everything still queued in the outbox (called on connectivity return).
+  const flushingRef = useRef(false);
   const flushOutbox = useCallback(() => {
-    for (const m of pendingFailedOutbox()) void handleRetryMessage(m);
+    // Single-flight + sequential: firing all retries in parallel lets messages land out
+    // of order, and the two reconnect paths (the `online` listener and the connected
+    // effect) can otherwise overlap. The guard keeps the signature sync for the callers.
+    if (flushingRef.current) return;
+    flushingRef.current = true;
+    void (async () => {
+      try {
+        for (const m of pendingFailedOutbox()) await handleRetryMessage(m);
+      } finally {
+        flushingRef.current = false;
+      }
+    })();
   }, [handleRetryMessage]);
 
   // On startup, demote stale "pending" (a session that died mid-send) to failed.

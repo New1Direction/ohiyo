@@ -38,6 +38,11 @@ export function usePeerQuality(
 
     const tick = async () => {
       const current = getPeersRef.current();
+      // Snapshot the live peer-id set NOW, before any getStats await, so retention is
+      // driven by who's actually a peer — not by which getStats() calls happened to
+      // resolve. (A peer whose getStats rejects must still keep its state; a departed
+      // peer must be evicted even if every call fulfilled.)
+      const currentIds = new Set(current.keys());
       const results = await Promise.allSettled(
         [...current.entries()].map(async ([id, pc]) => ({ id, sample: extractSample(await pc.getStats()) })),
       );
@@ -55,11 +60,13 @@ export function usePeerQuality(
           st.set(id, { prevSample: sample, level, pendingDrops });
           out[id] = { level, metrics, updatedAt: sample.t };
         }
+        // Evict anything no longer a current peer from BOTH the output map and the
+        // per-peer state ref, so a peer whose getStats rejected can't linger forever.
         for (const id of Object.keys(out)) {
-          if (!current.has(id)) {
-            delete out[id];
-            st.delete(id);
-          }
+          if (!currentIds.has(id)) delete out[id];
+        }
+        for (const id of [...st.keys()]) {
+          if (!currentIds.has(id)) st.delete(id);
         }
         return out;
       });

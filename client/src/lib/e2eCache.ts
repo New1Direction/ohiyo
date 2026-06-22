@@ -63,3 +63,24 @@ export function getCachedPlaintext(msgId: string): string | null {
     return null;
   }
 }
+
+/** Evict a cached plaintext. MUST be called when a message is deleted or a disappearing
+ *  message's TTL lapses — otherwise the forward-secret plaintext lingers on disk (and on
+ *  web, in plaintext localStorage) long after the message "disappeared", defeating the
+ *  guarantee. Also drops it from the FIFO index so the bound stays accurate. */
+export function removeCachedPlaintext(msgId: string): void {
+  try {
+    const s = store();
+    s.removeItem(PREFIX + msgId);
+    let idx: string[] = [];
+    try {
+      idx = JSON.parse(s.getItem(INDEX) || "[]");
+    } catch {
+      idx = [];
+    }
+    const next = idx.filter((id) => id !== msgId);
+    if (next.length !== idx.length) s.setItem(INDEX, JSON.stringify(next));
+  } catch {
+    /* storage disabled — non-fatal */
+  }
+}

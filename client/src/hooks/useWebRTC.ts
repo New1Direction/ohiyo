@@ -83,6 +83,12 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   // Guards against overlapping mic-acquire/renegotiation runs from rapid Unmute clicks
   // (each would re-add a track and re-offer every peer — a signaling storm).
   const audioUpgradeInFlightRef = useRef(false);
+  // Guards a double screen-share start (two rapid clicks would overwrite
+  // screenStreamRef and leak the first capture).
+  const screenShareInFlightRef = useRef(false);
+  // Per-peer signaling serialization: offer/answer/candidate for a given peer must apply
+  // in arrival order, else addIceCandidate can race ahead of setRemoteDescription (glare).
+  const signalChainsRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const cbRef = useRef(cb);
   cbRef.current = cb;
@@ -165,6 +171,9 @@ export function useWebRTC(cb: WebRTCCallbacks) {
       });
     };
     pc.ontrack = (e) => {
+      // removeEventListener before add so a track that fires ontrack more than once
+      // (across renegotiations) never accumulates duplicate "ended" listeners.
+      e.track.removeEventListener("ended", rebuildRemote);
       e.track.addEventListener("ended", rebuildRemote);
       rebuildRemote();
     };
@@ -248,11 +257,13 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     setParticipants((prev) => {
       const next = new Map(prev);
       for (const p of peers) {
-        // The roster doesn't carry listen-only; preserve any value an earlier
-        // VoiceState already set for this peer, else default to false.
+        // Prefer the roster's own listen-only flag; fall back to any value an earlier
+        // VoiceState already set for this peer, else default to false. (Without the
+        // roster flag a joiner would show existing listen-only peers as live-mic until
+        // their next state change.)
         next.set(p.user_id, {
           user_id: p.user_id, user: p.user, muted: p.muted, video: p.video, screen: p.screen,
-          listenOnly: prev.get(p.user_id)?.listenOnly ?? false,
+          listenOnly: p.listenOnly ?? prev.get(p.user_id)?.listenOnly ?? false,
         });
       }
       return next;
@@ -263,35 +274,55 @@ export function useWebRTC(cb: WebRTCCallbacks) {
 
   const onPeerSignal = useCallback(async (sig: { from: string; kind: string; payload: string }) => {
     const { from, kind, payload } = sig;
-    if (kind === "offer") {
-      const entry = pcsRef.current.get(from) ?? createPeer(from, false);
-      // Perfect-negotiation collision handling: if we're mid-offer when a peer's
-      // offer arrives (rare glare, e.g. ICE restart), the "polite" peer rolls
-      // back and accepts; the "impolite" peer ignores. Deterministic by user id.
-      const collision = entry.pc.signalingState !== "stable";
-      const polite = cbRef.current.currentUserId > from;
-      if (collision) {
-        if (!polite) return;
-        try { await entry.pc.setLocalDescription({ type: "rollback" }); } catch { return; }
+
+    // The actual handling for ONE signal. Chained per-peer below so offer →
+    // setRemoteDescription always completes before a following candidate is applied.
+    const apply = async () => {
+      if (kind === "offer") {
+        const entry = pcsRef.current.get(from) ?? createPeer(from, false);
+        // Perfect-negotiation collision handling: if we're mid-offer when a peer's
+        // offer arrives (rare glare, e.g. ICE restart), the "polite" peer rolls
+        // back and accepts; the "impolite" peer ignores. Deterministic by user id.
+        const collision = entry.pc.signalingState !== "stable";
+        const polite = cbRef.current.currentUserId > from;
+        if (collision) {
+          if (!polite) return;
+          try { await entry.pc.setLocalDescription({ type: "rollback" }); } catch { return; }
+        }
+        await entry.pc.setRemoteDescription(JSON.parse(payload));
+        for (const c of entry.pending.splice(0)) await entry.pc.addIceCandidate(c).catch(() => {});
+        applyVideoCodecPreference(entry.pc); // before createAnswer
+        const answer = await entry.pc.createAnswer();
+        await entry.pc.setLocalDescription({ type: answer.type, sdp: tuneOpusSdp(answer.sdp!) });
+        cbRef.current.sendSignal(from, "answer", JSON.stringify(entry.pc.localDescription));
+      } else if (kind === "answer") {
+        const entry = pcsRef.current.get(from);
+        if (!entry) return;
+        await entry.pc.setRemoteDescription(JSON.parse(payload));
+        for (const c of entry.pending.splice(0)) await entry.pc.addIceCandidate(c).catch(() => {});
+      } else if (kind === "candidate") {
+        const entry = pcsRef.current.get(from);
+        if (!entry) return;
+        const cand: RTCIceCandidateInit = JSON.parse(payload);
+        if (entry.pc.remoteDescription) await entry.pc.addIceCandidate(cand).catch(() => {});
+        else entry.pending.push(cand);
       }
-      await entry.pc.setRemoteDescription(JSON.parse(payload));
-      for (const c of entry.pending.splice(0)) await entry.pc.addIceCandidate(c).catch(() => {});
-      applyVideoCodecPreference(entry.pc); // before createAnswer
-      const answer = await entry.pc.createAnswer();
-      await entry.pc.setLocalDescription({ type: answer.type, sdp: tuneOpusSdp(answer.sdp!) });
-      cbRef.current.sendSignal(from, "answer", JSON.stringify(entry.pc.localDescription));
-    } else if (kind === "answer") {
-      const entry = pcsRef.current.get(from);
-      if (!entry) return;
-      await entry.pc.setRemoteDescription(JSON.parse(payload));
-      for (const c of entry.pending.splice(0)) await entry.pc.addIceCandidate(c).catch(() => {});
-    } else if (kind === "candidate") {
-      const entry = pcsRef.current.get(from);
-      if (!entry) return;
-      const cand: RTCIceCandidateInit = JSON.parse(payload);
-      if (entry.pc.remoteDescription) await entry.pc.addIceCandidate(cand).catch(() => {});
-      else entry.pending.push(cand);
-    }
+    };
+
+    // Serialize per peer: append to that peer's promise chain so signals apply strictly
+    // in arrival order. One signal's failure must not poison the chain (catch in tail).
+    const chains = signalChainsRef.current;
+    const prev = chains.get(from) ?? Promise.resolve();
+    const next = prev.then(apply).catch((err) => {
+      console.warn("[webrtc] signal handling failed", err);
+    });
+    chains.set(from, next);
+    // Garbage-collect the chain entry once it's the tail and settled, so the map doesn't
+    // grow unbounded across reconnects.
+    void next.finally(() => {
+      if (chains.get(from) === next) chains.delete(from);
+    });
+    await next;
   }, [createPeer]);
 
   const onVoiceState = useCallback((s: {
@@ -522,6 +553,11 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     const cur = selfRef.current;
     if (cur.screen) {
       // ── Stop sharing ──
+      // Detach the onended handler BEFORE stopping the track: track.stop() fires
+      // "ended", which would otherwise re-enter toggleScreenShare and — because setSelf
+      // is async — take the START branch and re-prompt getDisplayMedia.
+      const stoppingVideo = screenStreamRef.current?.getVideoTracks()[0] ?? null;
+      if (stoppingVideo) stoppingVideo.onended = null;
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
       screenShareBitrateRef.current = null;
@@ -547,44 +583,54 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     }
 
     // ── Start sharing ──
-    const preset = getPreset(opts?.presetId ?? DEFAULT_PRESET_ID);
-    let captured;
+    // Guard a double start: a second rapid click must not run a parallel capture that
+    // overwrites screenStreamRef and leaks the first one.
+    if (screenShareInFlightRef.current) return;
+    screenShareInFlightRef.current = true;
     try {
-      captured = await captureDisplay(preset, opts?.wantAudio ?? false);
-    } catch {
-      return; // user cancelled the native picker
-    }
-    const { stream: display, videoTrack: screenTrack, audioTrack } = captured;
-    screenStreamRef.current = display;
-    screenShareBitrateRef.current = preset.maxBitrate;
-
-    // Swap the screen video onto every sender (no renegotiation) + apply bitrate.
-    for (const { pc } of pcsRef.current.values()) {
-      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-      if (sender) {
-        await sender.replaceTrack(screenTrack).catch(() => {});
-        await applySenderBitrate(sender, preset.maxBitrate);
+      const preset = getPreset(opts?.presetId ?? DEFAULT_PRESET_ID);
+      let captured;
+      try {
+        captured = await captureDisplay(preset, opts?.wantAudio ?? false);
+      } catch {
+        return; // user cancelled the native picker
       }
-    }
+      const { stream: display, videoTrack: screenTrack, audioTrack } = captured;
+      // Stop any stale capture before reassigning so we never leak a prior screen stream.
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = display;
+      screenShareBitrateRef.current = preset.maxBitrate;
 
-    // Optional system/tab audio → its own sender per peer; needs renegotiation.
-    if (audioTrack) {
-      for (const [id, { pc }] of pcsRef.current) {
-        try {
-          const sender = pc.addTrack(audioTrack, display);
-          screenAudioSendersRef.current.set(id, sender);
-        } catch { /* ignore */ }
+      // Swap the screen video onto every sender (no renegotiation) + apply bitrate.
+      for (const { pc } of pcsRef.current.values()) {
+        const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+        if (sender) {
+          await sender.replaceTrack(screenTrack).catch(() => {});
+          await applySenderBitrate(sender, preset.maxBitrate);
+        }
       }
-      for (const id of pcsRef.current.keys()) await renegotiate(id);
-    }
 
-    // Local self-tile previews the screen.
-    const preview = new MediaStream([screenTrack, ...(localStreamRef.current?.getAudioTracks() ?? [])]);
-    setLocalStream(preview);
-    screenTrack.onended = () => { void toggleScreenShare(); };
-    const next = { ...selfRef.current, screen: true };
-    setSelf(next);
-    pushMeta(next);
+      // Optional system/tab audio → its own sender per peer; needs renegotiation.
+      if (audioTrack) {
+        for (const [id, { pc }] of pcsRef.current) {
+          try {
+            const sender = pc.addTrack(audioTrack, display);
+            screenAudioSendersRef.current.set(id, sender);
+          } catch { /* ignore */ }
+        }
+        for (const id of pcsRef.current.keys()) await renegotiate(id);
+      }
+
+      // Local self-tile previews the screen.
+      const preview = new MediaStream([screenTrack, ...(localStreamRef.current?.getAudioTracks() ?? [])]);
+      setLocalStream(preview);
+      screenTrack.onended = () => { void toggleScreenShare(); };
+      const next = { ...selfRef.current, screen: true };
+      setSelf(next);
+      pushMeta(next);
+    } finally {
+      screenShareInFlightRef.current = false;
+    }
   }, [pushMeta, renegotiate]);
 
   // Tear down media + peer connections if the component unmounts mid-call.
