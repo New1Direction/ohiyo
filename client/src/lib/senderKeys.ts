@@ -46,8 +46,11 @@ async function hmac(key: ArrayBuffer, msg: Uint8Array): Promise<ArrayBuffer> {
 const messageKeyOf = (ck: ArrayBuffer) => hmac(ck, new Uint8Array([0x01]));
 const nextChainOf = (ck: ArrayBuffer) => hmac(ck, new Uint8Array([0x02]));
 
-// message key → AES-256-GCM key + deterministic 12-byte IV via HKDF (each message key
-// is used exactly once, so the derived (key, iv) pair is unique).
+// message key → AES-256-GCM key (+ a deterministic 12-byte IV kept ONLY for decrypting
+// legacy envelopes that predate the random-IV format). New messages carry a random IV in
+// the envelope instead (see groupEncryptInner), so the (key, IV) pair stays unique even if
+// the same chain iteration is ever encrypted twice — e.g. two tabs/windows sharing the
+// persisted chain key, which per-context serialization alone cannot prevent.
 async function deriveAes(messageKey: ArrayBuffer): Promise<{ key: CryptoKey; iv: Uint8Array }> {
   const base = await crypto.subtle.importKey("raw", messageKey, "HKDF", false, ["deriveBits"]);
   const bits = new Uint8Array(
@@ -204,13 +207,17 @@ async function groupEncryptInner(groupId: string, plaintext: string): Promise<st
   if (!s) return null;
   const ck = unb64(s.chainKey);
   const mk = await messageKeyOf(ck);
-  const { key, iv } = await deriveAes(mk);
+  const { key } = await deriveAes(mk);
+  // Random per-message IV, transmitted in the envelope. A deterministic IV meant a re-used
+  // chain iteration → re-used (key, IV) pair — catastrophic for AES-GCM. Randomizing the IV
+  // removes the nonce-uniqueness requirement, closing the cross-tab/-window reuse window.
+  const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, te.encode(plaintext));
   const signKey = await crypto.subtle.importKey("jwk", s.signPriv, { name: "ECDSA", namedCurve: "P-256" }, false, [
     "sign",
   ]);
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, signKey, ct);
-  const envelope = { kid: s.keyId, it: s.iteration, ct: b64(ct), sig: b64(sig), ep: s.epoch ?? 0 };
+  const envelope = { kid: s.keyId, it: s.iteration, ct: b64(ct), sig: b64(sig), ep: s.epoch ?? 0, iv: b64(iv.buffer) };
   // Ratchet forward (forward secrecy: this message key can't be re-derived).
   s.chainKey = b64(await nextChainOf(ck));
   s.iteration += 1;
@@ -226,7 +233,7 @@ export async function groupDecrypt(groupId: string, fromUserId: string, wire: st
   if (!wire.startsWith("grp1.")) return null;
   const peer = getJson<PeerState>(peerKey(groupId, fromUserId));
   if (!peer) return null;
-  let env: { kid: number; it: number; ct: string; sig: string; ep?: number };
+  let env: { kid: number; it: number; ct: string; sig: string; ep?: number; iv?: string };
   try {
     env = JSON.parse(td.decode(unb64(wire.slice(5))));
   } catch {
@@ -252,10 +259,12 @@ export async function groupDecrypt(groupId: string, fromUserId: string, wire: st
   const ctBuf = unb64(env.ct);
   const ok = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, verifyKey, unb64(env.sig), ctBuf);
   if (!ok) return null;
-  const { key, iv } = await deriveAes(mk);
+  const derived = await deriveAes(mk);
+  // New envelopes carry a random IV; legacy ones (no `iv`) used the deterministic one.
+  const iv = env.iv ? new Uint8Array(unb64(env.iv)) : derived.iv;
   let plaintext: string;
   try {
-    plaintext = td.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ctBuf));
+    plaintext = td.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, derived.key, ctBuf));
   } catch {
     return null;
   }

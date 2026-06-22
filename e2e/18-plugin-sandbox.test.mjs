@@ -25,6 +25,11 @@ try {
             Worker: typeof Worker, document: typeof document,
             window: typeof window, localStorage: typeof localStorage,
             indexedDB: typeof indexedDB,
+            BroadcastChannel: typeof BroadcastChannel, RTCPeerConnection: typeof RTCPeerConnection,
+            WebTransport: typeof WebTransport, EventSource: typeof EventSource,
+            SharedWorker: typeof SharedWorker, Request: typeof Request,
+            Response: typeof Response, caches: typeof caches,
+            sendBeacon: (self.navigator && typeof self.navigator.sendBeacon),
             protoFetch: typeof proto.fetch, protoWebSocket: typeof proto.WebSocket,
           };
           kikkacord.toast("probe:" + JSON.stringify(r), "info");
@@ -57,7 +62,13 @@ try {
   const probe = result.toasts.find((t) => t.startsWith("probe:"));
   if (!probe) throw new Error("plugin onLoad never ran");
   const globals = JSON.parse(probe.slice("probe:".length));
-  for (const k of ["fetch", "XMLHttpRequest", "WebSocket", "importScripts", "Worker", "document", "window", "localStorage", "indexedDB", "protoFetch", "protoWebSocket"]) {
+  for (const k of [
+    "fetch", "XMLHttpRequest", "WebSocket", "importScripts", "Worker", "document",
+    "window", "localStorage", "indexedDB",
+    "BroadcastChannel", "RTCPeerConnection", "WebTransport", "EventSource",
+    "SharedWorker", "Request", "Response", "caches", "sendBeacon",
+    "protoFetch", "protoWebSocket",
+  ]) {
     if (globals[k] !== "undefined") throw new Error(`SECURITY: '${k}' reachable inside sandbox (got ${globals[k]})`);
   }
   log("no DOM · no network · no storage reachable from sandbox (incl. prototype chain) ✓");

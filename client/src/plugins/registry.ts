@@ -473,6 +473,14 @@ export class PluginManager {
       host.terminate();
       throw new Error(`Invalid plugin: ${(e as Error).message}`);
     }
+    // Defense-in-depth: the worker bootstrap already allowlists the id, but the
+    // host must not trust a manifest that arrives over postMessage — the id is
+    // used as a localStorage key prefix (`plugin:<id>:`) so an out-of-allowlist
+    // id could collide with another plugin's store.
+    if (!isValidPluginId(manifest.id)) {
+      host.terminate();
+      throw new Error(`Invalid plugin id "${manifest.id}" (must match ^[A-Za-z0-9._-]+$)`);
+    }
     if (this.plugins.some((p) => p.id === manifest.id)) {
       host.terminate();
       throw new Error(`Plugin "${manifest.id}" already installed`);
@@ -582,6 +590,13 @@ export class PluginManager {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const PLUGIN_ID_RE = /^[A-Za-z0-9._-]+$/;
+
+/** A plugin id becomes a localStorage key prefix; restrict it to safe chars. */
+function isValidPluginId(id: unknown): id is string {
+  return typeof id === "string" && PLUGIN_ID_RE.test(id);
+}
 
 function injectStyle(id: string, css: string): HTMLStyleElement {
   document.getElementById(id)?.remove();

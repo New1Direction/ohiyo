@@ -15,6 +15,7 @@ import {
   THEME_VAR_GROUPS,
 } from "../../themes";
 import { isValidHex } from "../../lib/color";
+import { safeHttpUrl } from "../../lib/url";
 import { PROFILE_PATTERNS, PROFILE_VIBES, ProfileCardView, type ProfileCardData } from "../ProfileCardView";
 import type { PluginManager } from "../../plugins/registry";
 import { isDesktop } from "../../lib/desktop";
@@ -1109,7 +1110,9 @@ function cleanSongs(songs: ProfileSong[]): ProfileSong[] {
     .map((s) => ({
       title: s.title.trim(),
       artist: s.artist?.trim() || null,
-      url: s.url?.trim() || null,
+      // Reject non-http(s) schemes (e.g. javascript:) at the input boundary so a
+      // crafted URL never reaches the rendered profile link.
+      url: safeHttpUrl(s.url?.trim()) ?? null,
     }))
     .filter((s) => s.title)
     .slice(0, 3);

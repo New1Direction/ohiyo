@@ -9,12 +9,26 @@
  * can be re-sent once on flush — a known, accepted trade-off for now.
  */
 import type { Message } from "../api";
+import { getVaultStore } from "./tauriVault";
 
 const KEY = "kc:outbox";
 
+// The outbox holds OPTIMISTIC messages including their raw plaintext `content`/`_send`
+// (pre-encryption), so it must not sit in plaintext localStorage on desktop. Route it
+// through the encrypted vault when available (desktop); fall back to localStorage on web,
+// where no OS secure store exists — the same accepted tradeoff as the message cache.
+type KvStore = {
+  getItem(k: string): string | null;
+  setItem(k: string, v: string): void;
+  removeItem(k: string): void;
+};
+function store(): KvStore {
+  return getVaultStore() ?? localStorage;
+}
+
 export function loadOutbox(): Message[] {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = store().getItem(KEY);
     return raw ? (JSON.parse(raw) as Message[]) : [];
   } catch {
     return [];
@@ -23,7 +37,7 @@ export function loadOutbox(): Message[] {
 
 function save(list: Message[]): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(list));
+    store().setItem(KEY, JSON.stringify(list));
   } catch {
     /* storage full / unavailable — ignore */
   }

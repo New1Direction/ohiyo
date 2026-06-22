@@ -42,13 +42,26 @@ function clampVolume(value: number) {
 // One AudioContext for the whole call. Browsers cap concurrent AudioContexts (~6),
 // so a per-participant context blows the budget in larger rooms. Analyser nodes are
 // cheap and unbounded, so each tile keeps its own analyser off this shared context.
+//
+// Ref-counted: each tile that uses the context retains it on mount and releases it
+// on unmount. When the last tile releases (call teardown), the context is closed so
+// it doesn't leak across calls.
 let sharedAudioCtx: AudioContext | null = null;
-function getSharedAudioContext(): AudioContext | null {
+let sharedAudioCtxRefs = 0;
+function acquireSharedAudioContext(): AudioContext | null {
   const AudioContextCtor =
     window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextCtor) return null;
   if (!sharedAudioCtx || sharedAudioCtx.state === "closed") sharedAudioCtx = new AudioContextCtor();
+  sharedAudioCtxRefs += 1;
   return sharedAudioCtx;
+}
+function releaseSharedAudioContext(): void {
+  sharedAudioCtxRefs = Math.max(0, sharedAudioCtxRefs - 1);
+  if (sharedAudioCtxRefs === 0 && sharedAudioCtx && sharedAudioCtx.state !== "closed") {
+    void sharedAudioCtx.close().catch(() => {});
+    sharedAudioCtx = null;
+  }
 }
 
 // Reduced-motion gate for the speaking-ring pulse (README promises reduced-motion support).
@@ -93,9 +106,9 @@ function useAudioLevel(stream: MediaStream | null, active: boolean) {
       return;
     }
 
-    // Share one AudioContext across all tiles (see getSharedAudioContext). Each tile
-    // still owns its analyser + source, which are cheap and cleaned up below.
-    const ctx = getSharedAudioContext();
+    // Share one AudioContext across all tiles (see acquireSharedAudioContext). Each
+    // tile still owns its analyser + source, which are cheap and cleaned up below.
+    const ctx = acquireSharedAudioContext();
     if (!ctx) return;
 
     const analyser = ctx.createAnalyser();
@@ -121,10 +134,11 @@ function useAudioLevel(stream: MediaStream | null, active: boolean) {
 
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
-      // Disconnect this tile's nodes, but leave the SHARED context open for the
-      // other tiles still measuring. Closing it would kill everyone's analysers.
+      // Disconnect this tile's nodes, then release our ref. The context stays open
+      // while other tiles still hold a ref; it closes only when the last one releases.
       source.disconnect();
       analyser.disconnect();
+      releaseSharedAudioContext();
     };
   }, [stream, active]);
 

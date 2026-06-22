@@ -180,6 +180,9 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
 
   const joinVoice = useCallback(
     async (cid: string, opts?: { video?: boolean }) => {
+      // Guard against a rapid double-join: a second call would `new Room()` again
+      // and orphan the first (WS socket + E2EE worker + mic all leaked).
+      if (roomRef.current || callState !== "idle") return;
       channelRef.current = cid;
       setChannelId(cid);
       setCallState("joining");
@@ -243,7 +246,7 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
         throw e;
       }
     },
-    [refresh, refreshLocal, reset, ensureMyVoiceKey, distributeMyVoiceKey, evictVoiceKey]
+    [callState, refresh, refreshLocal, reset, ensureMyVoiceKey, distributeMyVoiceKey, evictVoiceKey]
   );
 
   const hangUp = useCallback(() => {

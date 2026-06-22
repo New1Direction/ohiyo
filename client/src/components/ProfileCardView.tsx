@@ -1,4 +1,5 @@
 import type { ProfileTheme, UserProfile } from "../api";
+import { safeHttpUrl } from "../lib/url";
 
 /** The fields the profile card renders — shared by the hover popover and the
  *  live editor preview (container/presentational split). */
@@ -33,13 +34,16 @@ function relativeTime(ts: number): string {
 
 type SocialLink = { key: keyof ProfileCardData; label: string; icon: string; buildUrl: (val: string) => string };
 
+// Prefix-interpolated handles are `encodeURIComponent`-escaped so a crafted
+// handle can't manipulate the path/host. Full-URL fields (YouTube/Spotify) are
+// passed through verbatim here and validated with `safeHttpUrl` at render time.
 const SOCIAL_LINKS: SocialLink[] = [
-  { key: "social_github", label: "GitHub", icon: "🐙", buildUrl: (v) => `https://github.com/${v}` },
-  { key: "social_twitter", label: "X / Twitter", icon: "🐦", buildUrl: (v) => `https://x.com/${v.replace(/^@/, "")}` },
-  { key: "social_youtube", label: "YouTube", icon: "▶️", buildUrl: (v) => (v.startsWith("http") ? v : `https://youtube.com/${v}`) },
-  { key: "social_twitch", label: "Twitch", icon: "🟣", buildUrl: (v) => `https://twitch.tv/${v}` },
-  { key: "social_steam", label: "Steam", icon: "🎮", buildUrl: (v) => `https://steamcommunity.com/id/${v}` },
-  { key: "social_spotify", label: "Spotify", icon: "🎵", buildUrl: (v) => (v.startsWith("http") ? v : `https://open.spotify.com/artist/${v}`) },
+  { key: "social_github", label: "GitHub", icon: "🐙", buildUrl: (v) => `https://github.com/${encodeURIComponent(v)}` },
+  { key: "social_twitter", label: "X / Twitter", icon: "🐦", buildUrl: (v) => `https://x.com/${encodeURIComponent(v.replace(/^@/, ""))}` },
+  { key: "social_youtube", label: "YouTube", icon: "▶️", buildUrl: (v) => (v.startsWith("http") ? v : `https://youtube.com/${encodeURIComponent(v)}`) },
+  { key: "social_twitch", label: "Twitch", icon: "🟣", buildUrl: (v) => `https://twitch.tv/${encodeURIComponent(v)}` },
+  { key: "social_steam", label: "Steam", icon: "🎮", buildUrl: (v) => `https://steamcommunity.com/id/${encodeURIComponent(v)}` },
+  { key: "social_spotify", label: "Spotify", icon: "🎵", buildUrl: (v) => (v.startsWith("http") ? v : `https://open.spotify.com/artist/${encodeURIComponent(v)}`) },
 ];
 
 export const PROFILE_VIBES = {
@@ -309,8 +313,9 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
                   border: `1px solid color-mix(in oklch, ${theme.accent} 12%, transparent)`,
                   textDecoration: "none",
                 };
-                return !preview && song.url ? (
-                  <a key={`${song.title}-${i}`} href={song.url} target="_blank" rel="noopener noreferrer" style={style}>{body}</a>
+                const songHref = safeHttpUrl(song.url);
+                return !preview && songHref ? (
+                  <a key={`${song.title}-${i}`} href={songHref} target="_blank" rel="noopener noreferrer" style={style}>{body}</a>
                 ) : (
                   <div key={`${song.title}-${i}`} style={style}>{body}</div>
                 );
@@ -357,10 +362,11 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
                   background: "var(--bg-input)",
                   border: "1px solid color-mix(in oklch, var(--text-primary) 7%, transparent)",
                 };
-                return preview ? (
+                const socialHref = safeHttpUrl(s.buildUrl(val));
+                return preview || !socialHref ? (
                   <div key={s.key} style={style} title={val}>{row}</div>
                 ) : (
-                  <a key={s.key} href={s.buildUrl(val)} target="_blank" rel="noopener noreferrer" style={style} title={val}>{row}</a>
+                  <a key={s.key} href={socialHref} target="_blank" rel="noopener noreferrer" style={style} title={val}>{row}</a>
                 );
               })}
             </div>

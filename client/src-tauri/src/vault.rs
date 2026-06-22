@@ -25,7 +25,8 @@ const VAULT_FILE: &str = "kc-vault.bin";
 ///   kc:e2e-keypair the (legacy) ECDH keypair — exact key, no suffix
 ///   kc:e2e-pt:     E2E plaintext cache
 ///   kc:tok:        token storage
-const ALLOWED_KEY_PREFIXES: &[&str] = &["kc:sig:", "kc:sk:", "kc:e2e-pt:", "kc:tok:"];
+///   kc:outbox      unsent-message outbox (holds optimistic plaintext)
+const ALLOWED_KEY_PREFIXES: &[&str] = &["kc:sig:", "kc:sk:", "kc:e2e-pt:", "kc:tok:", "kc:outbox"];
 const ALLOWED_EXACT_KEYS: &[&str] = &["kc:e2e-keypair"];
 
 /// True when `key` belongs to a known vault namespace.

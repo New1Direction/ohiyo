@@ -58,6 +58,10 @@ const BOOTSTRAP = `
   self.kikkacord = {
     definePlugin: function (def) {
       if (!def || !def.id || !def.name) { post("error", "Plugin must have id and name"); return; }
+      // The id is used as a localStorage key prefix (\`plugin:<id>:\`) on the host,
+      // so allowlist it to safe chars — otherwise a crafted id could collide with
+      // another plugin's store or escape the namespace.
+      if (!/^[A-Za-z0-9._-]+$/.test(String(def.id))) { post("error", "Plugin id must match ^[A-Za-z0-9._-]+$"); return; }
       manifest = {
         id: String(def.id), name: String(def.name),
         description: String(def.description || ""), version: String(def.version || "0.0.0"),

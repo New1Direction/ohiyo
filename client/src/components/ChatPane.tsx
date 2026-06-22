@@ -18,6 +18,7 @@ import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions";
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
+import { safeHttpUrl } from "../lib/url";
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 
@@ -2108,17 +2109,6 @@ function LinkPreviewCard({ url }: { url: string }) {
   );
 }
 
-/** Accept only http(s) URLs — blocks javascript:/data: from third-party OG data. */
-function safeHttpUrl(s: string | null | undefined): string | undefined {
-  if (!s) return undefined;
-  try {
-    const u = new URL(s, window.location.origin);
-    return u.protocol === "http:" || u.protocol === "https:" ? u.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** Server-persisted link-preview card (no client fetch — fields come from the gateway). */
 function EmbedCard({ embed }: { embed: Embed }) {
   if (!embed.title && !embed.description && !embed.image) return null;
@@ -2190,18 +2180,25 @@ function InlineText({ text, serverEmojis, currentUsername = "", suppressLinkPrev
     const before = text.slice(last, match.index);
     if (before) segments.push(...renderInlineMarkdown(before, String(last), currentUsername, emojiMap));
     const url = match[0].replace(/[.,!?)]+$/, "");
-    urls.push(url);
+    // Defense-in-depth: the regex anchors on https?:// but re-validate the scheme
+    // before it reaches href so odd inputs can't open-redirect.
+    const safeUrl = safeHttpUrl(url);
+    if (safeUrl) urls.push(safeUrl);
     segments.push(
-      <a
-        key={match.index}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: "var(--accent)", textDecoration: "underline" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {url}
-      </a>
+      safeUrl ? (
+        <a
+          key={match.index}
+          href={safeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--accent)", textDecoration: "underline" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {url}
+        </a>
+      ) : (
+        <span key={match.index}>{url}</span>
+      )
     );
     last = match.index! + match[0].length;
   }
@@ -2453,7 +2450,9 @@ function avatarBg(id: string): string {
 }
 
 function assetUrl(url: string): string {
-  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  // Only http(s) absolute URLs pass through; data:/blob: are rejected so a
+  // crafted attachment URL can't smuggle an inline payload into <img>/<video>.
+  if (/^https?:/i.test(url)) return url;
   return `${getFileBase()}${url.startsWith("/") ? url : `/${url}`}`;
 }
 

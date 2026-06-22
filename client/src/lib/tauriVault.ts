@@ -25,7 +25,14 @@ import { setHomesTokenStore } from "./homes";
 // Signal (kc:sig:), group sender keys (kc:sk:), the legacy ECDH keypair, per-home
 // session tokens (kc:tok:), and decrypted forward-secret message plaintext (kc:e2e-pt:).
 // kc:tok: and kc:e2e-pt: are accepted by the Rust vault_set allowlist (CONTRACT B).
-const KEY_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair", "kc:tok:", "kc:e2e-pt:"];
+const KEY_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair", "kc:tok:", "kc:e2e-pt:", "kc:outbox"];
+
+// Subset included in an encrypted RECOVERY backup: cryptographic key material + the
+// forward-secret plaintext cache (otherwise-unrecoverable history). Deliberately EXCLUDES
+// the session token (kc:tok:) and the transient send outbox (kc:outbox) — neither is key
+// material, both have their own lifecycle, and a long-lived offline backup that leaked them
+// would hand an attacker a ready-to-use session alongside the keys.
+const EXPORT_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair", "kc:e2e-pt:"];
 
 let mirror: Map<string, string> | null = null;
 
@@ -111,7 +118,7 @@ export async function initVaultBackend(): Promise<boolean> {
  */
 export function exportKeyMaterial(): Record<string, string> {
   const out: Record<string, string> = {};
-  const matches = (k: string) => KEY_PREFIXES.some((p) => k.startsWith(p));
+  const matches = (k: string) => EXPORT_PREFIXES.some((p) => k.startsWith(p));
   if (isDesktop() && mirror) {
     for (const [k, v] of mirror) if (matches(k)) out[k] = v;
   } else {
@@ -130,7 +137,7 @@ export function exportKeyMaterial(): Record<string, string> {
  */
 export async function importKeyMaterial(material: Record<string, string>): Promise<void> {
   for (const [k, v] of Object.entries(material)) {
-    if (!KEY_PREFIXES.some((p) => k.startsWith(p))) continue;
+    if (!EXPORT_PREFIXES.some((p) => k.startsWith(p))) continue;
     if (isDesktop() && mirror) {
       mirror.set(k, v);
       await invoke("vault_set", { key: k, value: v });
