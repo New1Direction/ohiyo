@@ -104,6 +104,16 @@ pub fn new_typing_cooldowns() -> TypingCooldowns {
 /// Minimum gap between typing broadcasts for a single user in one channel.
 const TYPING_COOLDOWN: Duration = Duration::from_secs(2);
 
+/// Largest inbound WebSocket text frame we'll parse. axum's HTTP body limit does not
+/// cover WS frames, so without this an authed connection could OOM the server with a
+/// single huge frame. Every legitimate `ClientEvent` is far smaller (ICE candidates,
+/// short metadata); 64 KiB leaves generous headroom.
+const MAX_WS_FRAME_BYTES: usize = 65_536;
+
+/// Cap on how many distinct typing-cooldown entries a single user may pin, so one
+/// connection can't grow the shared map by spamming many channels.
+const MAX_TYPING_CHANNELS_PER_USER: usize = 64;
+
 /// A participant currently connected to a voice channel.
 #[derive(Clone)]
 pub struct VoiceMember {
@@ -320,10 +330,22 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     while let Some(Ok(msg)) = ws_rx.next().await {
         match msg {
             Message::Close(_) => break,
-            Message::Text(t) => match serde_json::from_str::<ClientEvent>(&t) {
-                Ok(ev) => handle_client_event(ev, &user_id, me.as_ref(), &state).await,
-                Err(e) => tracing::debug!("gateway: bad client frame from {user_id}: {e}"),
-            },
+            Message::Text(t) => {
+                // Cap inbound frame size before parsing: axum's HTTP body limit does
+                // NOT apply to WebSocket frames, so an authed client could otherwise OOM
+                // the server with one giant frame. No legitimate client event is large.
+                if t.len() > MAX_WS_FRAME_BYTES {
+                    tracing::debug!(
+                        "gateway: dropping oversized frame ({} bytes) from {user_id}",
+                        t.len()
+                    );
+                    continue;
+                }
+                match serde_json::from_str::<ClientEvent>(&t) {
+                    Ok(ev) => handle_client_event(ev, &user_id, me.as_ref(), &state).await,
+                    Err(e) => tracing::debug!("gateway: bad client frame from {user_id}: {e}"),
+                }
+            }
             _ => {}
         }
     }
@@ -464,6 +486,13 @@ async fn handle_client_event(
             listen_only,
         } => {
             let Some(me) = me else { return };
+            // Re-check access on every meta update: a user kicked/removed after joining
+            // stays in the room map until WS disconnect, and would otherwise keep
+            // broadcasting VoiceState. Drop the update if they can no longer see the
+            // channel (the async check runs before any lock is taken).
+            if !crate::api::messages::user_can_access(state, &channel_id, user_id).await {
+                return;
+            }
             {
                 let mut rooms = state.voice.write().unwrap_or_else(|e| e.into_inner());
                 if let Some(room) = rooms.get_mut(&channel_id) {
@@ -499,6 +528,12 @@ async fn handle_client_event(
             kind,
             payload,
         } => {
+            // A sender kicked after joining lingers in the room map until disconnect;
+            // re-check channel access so they can't keep relaying signaling.
+            if !crate::api::messages::user_can_access(state, &channel_id, user_id).await {
+                tracing::debug!("gateway: rejected signal from {user_id}: no channel access");
+                return;
+            }
             // Only relay between two users who are BOTH in this voice room.
             // Prevents an outsider from injecting signaling at an arbitrary user.
             let authorized = {
@@ -549,8 +584,26 @@ async fn handle_client_event(
                     .typing_cooldowns
                     .write()
                     .unwrap_or_else(|e| e.into_inner());
+                // Per-user bound: a single connection can't pin entries for unbounded
+                // channels. Only enforce when this key is genuinely new (re-typing an
+                // already-tracked channel just refreshes the timestamp, no growth). At
+                // the cap, drop this user's stalest entry before inserting.
+                let this_user = &key.0;
+                if !cooldowns.contains_key(&key) {
+                    let user_entries = cooldowns.keys().filter(|(u, _)| u == this_user).count();
+                    if user_entries >= MAX_TYPING_CHANNELS_PER_USER {
+                        if let Some(oldest) = cooldowns
+                            .iter()
+                            .filter(|((u, _), _)| u == this_user)
+                            .max_by_key(|(_, t)| t.elapsed())
+                            .map(|(k, _)| k.clone())
+                        {
+                            cooldowns.remove(&oldest);
+                        }
+                    }
+                }
                 cooldowns.insert(key, Instant::now());
-                // Bound memory — periodically evict entries past the cooldown window.
+                // Global backstop — periodically evict entries past the cooldown window.
                 if cooldowns.len() > 1024 {
                     cooldowns.retain(|_, t| t.elapsed() < TYPING_COOLDOWN * 4);
                 }
@@ -940,6 +993,11 @@ async fn handle_watch_control(
                 let Some(s) = watch.get_mut(channel_id) else {
                     return;
                 };
+                // Only the host who started the session may drive playback; any other
+                // channel member is access-authorized but must not hijack it.
+                if s.host_id != user_id {
+                    return;
+                }
                 if action == "play" {
                     s.paused = false;
                 } else if action == "pause" {
@@ -952,8 +1010,14 @@ async fn handle_watch_control(
                 Some(s.clone())
             }
             "stop" => {
-                watch.remove(channel_id);
-                None
+                // Only the host may end the session (silently ignore non-hosts).
+                match watch.get(channel_id) {
+                    Some(s) if s.host_id == user_id => {
+                        watch.remove(channel_id);
+                        None
+                    }
+                    _ => return,
+                }
             }
             _ => return,
         }

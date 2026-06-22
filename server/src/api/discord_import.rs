@@ -648,8 +648,11 @@ async fn run_discrawl_command(
         return Ok(());
     }
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The subprocess inherits DISCORD_BOT_TOKEN; its stderr/stdout could echo the token
+    // (or a `Bot <token>` Authorization header) on error. Redact before it reaches the
+    // logs or the API error body.
+    let stderr = redact_secrets(&String::from_utf8_lossy(&output.stderr));
+    let stdout = redact_secrets(&String::from_utf8_lossy(&output.stdout));
     tracing::warn!(
         args = ?args,
         status = ?output.status.code(),
@@ -661,6 +664,45 @@ async fn run_discrawl_command(
         StatusCode::BAD_GATEWAY,
         concise_discrawl_error(&stderr, &stdout),
     ))
+}
+
+/// Redact anything that looks like a Discord bot token (or an Authorization line) from
+/// subprocess output before it's logged or surfaced in an API response. Discord bot
+/// tokens are three base64url-ish segments joined by dots; we also scrub whole lines
+/// mentioning "token" or a `Bot ` prefix to catch headers and verbose framings.
+fn redact_secrets(text: &str) -> String {
+    const REDACTED: &str = "[redacted]";
+    let is_token_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'-';
+
+    text.lines()
+        .map(|line| {
+            // Scrub entire lines that name a token or carry a `Bot ` credential.
+            let lower = line.to_ascii_lowercase();
+            if lower.contains("token") || lower.contains("bot ") || lower.contains("authorization")
+            {
+                return REDACTED.to_owned();
+            }
+            // Otherwise redact token-shaped substrings (a.b.c with long-ish segments).
+            let mut out = String::with_capacity(line.len());
+            for word in line.split_inclusive(|c: char| c.is_whitespace()) {
+                let trimmed = word.trim_end();
+                let ws = &word[trimmed.len()..];
+                let segments: Vec<&str> = trimmed.split('.').collect();
+                let token_shaped = segments.len() == 3
+                    && segments
+                        .iter()
+                        .all(|s| s.len() >= 6 && s.bytes().all(is_token_byte));
+                if token_shaped {
+                    out.push_str(REDACTED);
+                } else {
+                    out.push_str(trimmed);
+                }
+                out.push_str(ws);
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn concise_discrawl_error(stderr: &str, stdout: &str) -> String {
@@ -902,5 +944,30 @@ mod tests {
         // Cleanup.
         tokio::fs::remove_file(&valid).await.ok();
         tokio::fs::remove_file(&secret).await.ok();
+    }
+
+    #[test]
+    fn redact_secrets_scrubs_tokens_and_token_lines() {
+        // A token-shaped a.b.c value mid-line is redacted, surrounding text kept.
+        let line = "failed with MTIzNDU2Nzg5MDEyMzQ1Njc4.GaBcDe.fGhIjKlMnOpQrStUvWxYz0123 oops";
+        let out = redact_secrets(line);
+        assert!(!out.contains("MTIzNDU2Nzg5MDEyMzQ1Njc4"));
+        assert!(out.contains("[redacted]"));
+        assert!(out.contains("failed with"));
+        assert!(out.contains("oops"));
+
+        // Lines mentioning a token / Bot header / authorization are scrubbed entirely.
+        assert_eq!(
+            redact_secrets("DISCORD_BOT_TOKEN=abc.def.ghi"),
+            "[redacted]"
+        );
+        assert_eq!(
+            redact_secrets("Authorization: Bot abc.def.ghi"),
+            "[redacted]"
+        );
+
+        // Ordinary output is untouched.
+        let plain = "Rate limited, retrying in 5s";
+        assert_eq!(redact_secrets(plain), plain);
     }
 }

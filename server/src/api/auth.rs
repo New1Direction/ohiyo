@@ -154,7 +154,7 @@ pub async fn login(
     }
 
     let secret = jwt_secret();
-    let token_version = current_token_version(&state, &user.id).await;
+    let token_version = current_token_version(&state, &user.id).await?;
     let token =
         create_token(&user.id, token_version, &secret).map_err(crate::api::error::internal)?;
 
@@ -164,16 +164,20 @@ pub async fn login(
     }))
 }
 
-/// Read a user's current token generation counter. Missing/error → 0 (the column
-/// default), which is the safe baseline for a token that carries no explicit version.
-async fn current_token_version(state: &AppState, user_id: &str) -> i64 {
-    sqlx::query_scalar::<_, i64>("SELECT token_version FROM users WHERE id = ?")
+/// Read a user's current token generation counter (stamped into newly minted tokens).
+/// A DB error is propagated, NOT swallowed: silently returning 0 on a fault would mint a
+/// version-0 token that "log out everywhere" could never revoke. A missing row → 0 (the
+/// column default) is fine for an existing user.
+async fn current_token_version(
+    state: &AppState,
+    user_id: &str,
+) -> Result<i64, (StatusCode, String)> {
+    let v: Option<i64> = sqlx::query_scalar("SELECT token_version FROM users WHERE id = ?")
         .bind(user_id)
         .fetch_optional(&state.db)
         .await
-        .ok()
-        .flatten()
-        .unwrap_or(0)
+        .map_err(crate::api::error::internal)?;
+    Ok(v.unwrap_or(0))
 }
 
 /// POST /auth/logout-everywhere — bump the user's token_version, invalidating every
@@ -315,7 +319,7 @@ pub async fn link_complete(
         .await
         .map_err(|_| invalid())?;
     let secret = jwt_secret();
-    let token_version = current_token_version(&state, &user.id).await;
+    let token_version = current_token_version(&state, &user.id).await?;
     let token = create_token(&user.id, token_version, &secret).map_err(|e| {
         tracing::error!(error = %e, "token error in link_complete");
         (

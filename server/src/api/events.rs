@@ -141,6 +141,19 @@ pub async fn rsvp_event(
     if !is_member(&state, &server_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "not a member".into()));
     }
+    // The event must belong to the server in the path. Without this, a member of their
+    // OWN server could pass another server's `event_id` and RSVP to (and broadcast on)
+    // an event they can't see — the membership check alone doesn't scope the resource.
+    let belongs: Option<(i64,)> =
+        sqlx::query_as("SELECT 1 FROM events WHERE id = ? AND server_id = ?")
+            .bind(&event_id)
+            .bind(&server_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    if belongs.is_none() {
+        return Err((StatusCode::NOT_FOUND, "event not found".into()));
+    }
     let had: Option<(i64,)> =
         sqlx::query_as("SELECT 1 FROM event_rsvps WHERE event_id = ? AND user_id = ?")
             .bind(&event_id)

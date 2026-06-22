@@ -386,12 +386,27 @@ fn attachment_local_path(media_path: Option<String>, media_root: Option<&Path>) 
     if media_path.is_empty() {
         return None;
     }
+    // A media file is only safe to read if it resolves INSIDE the configured media_root.
+    // A crafted archive must not be able to point at an absolute path (`/etc/passwd`) or
+    // escape via `..`; without a root there's no safe base at all. The check is LEXICAL —
+    // canonicalize() can't be used because the file may not exist yet at scan time.
+    let root = media_root?;
     let path = PathBuf::from(&media_path);
-    if path.is_absolute() {
-        Some(path.to_string_lossy().into_owned())
+    let resolved = if path.is_absolute() {
+        path
     } else {
-        media_root.map(|root| root.join(path).to_string_lossy().into_owned())
+        root.join(&path)
+    };
+    if resolved
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return None;
     }
+    if !resolved.starts_with(root) {
+        return None;
+    }
+    Some(resolved.to_string_lossy().into_owned())
 }
 
 fn parse_discrawl_time(s: &str) -> Result<i64> {
@@ -599,5 +614,27 @@ mod tests {
             "/media/aa/note.txt"
         );
         assert_eq!(guild.channels[1].kind, "voice");
+    }
+
+    #[test]
+    fn attachment_local_path_confines_to_media_root() {
+        let root = PathBuf::from("/media");
+        // Relative paths resolve under the root (the normal case).
+        assert_eq!(
+            attachment_local_path(Some("aa/note.txt".into()), Some(&root)).as_deref(),
+            Some("/media/aa/note.txt")
+        );
+        // An absolute path outside the root is rejected (no `/etc/passwd` exfiltration).
+        assert_eq!(
+            attachment_local_path(Some("/etc/passwd".into()), Some(&root)),
+            None
+        );
+        // `..` traversal is rejected.
+        assert_eq!(
+            attachment_local_path(Some("../../etc/passwd".into()), Some(&root)),
+            None
+        );
+        // No media_root → nothing to confine against → rejected.
+        assert_eq!(attachment_local_path(Some("/media/x".into()), None), None);
     }
 }

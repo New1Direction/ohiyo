@@ -484,7 +484,12 @@ pub struct HostedInstance {
     pub region: String,
     pub tier: String,
     pub status: String,
+    // Internal Fly infra IDs — populated from the DB (sqlx::FromRow) but never serialized
+    // to clients: machine_id feeds the `fly-replay` routing header, so disclosing it is an
+    // infrastructure-targeting risk. `default` keeps any JSON round-trip valid.
+    #[serde(skip_serializing, default)]
     pub machine_id: Option<String>,
+    #[serde(skip_serializing, default)]
     pub volume_id: Option<String>,
     pub public_url: Option<String>,
     pub error: Option<String>,
