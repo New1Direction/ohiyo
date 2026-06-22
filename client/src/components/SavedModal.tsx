@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type Message } from "../api";
 import { ModalShell } from "./ModalShell";
 
@@ -14,7 +14,7 @@ export function SavedModal({ token, onJump, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     try {
       setError(null);
       setSaved(await api.listSaved(token));
@@ -24,11 +24,12 @@ export function SavedModal({ token, onJump, onClose }: Props) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [token]);
+
+  // Re-fetch if the token rotates while the modal is open.
   useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh]);
 
   async function remove(m: Message) {
     try {

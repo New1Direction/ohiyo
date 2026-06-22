@@ -120,6 +120,9 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       muted: !p.isMicrophoneEnabled,
       video: p.isCameraEnabled,
       screen: p.isScreenShareEnabled,
+      // Listen-only = joined without ever publishing a mic track; distinct from muted
+      // (mic track present but disabled), which still has an audio publication.
+      listenOnly: p.audioTrackPublications.size === 0,
     };
   };
 
@@ -181,7 +184,9 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       setChannelId(cid);
       setCallState("joining");
       // Announce presence over the gateway (drives the member-list "in voice" + Join).
-      cbRef.current.sendJoin(cid, false, opts?.video ?? false);
+      // LiveKit always publishes a mic on join (setMicrophoneEnabled(true) below), so
+      // the SFU engine never joins listen-only.
+      cbRef.current.sendJoin(cid, false, opts?.video ?? false, false);
       try {
         const { token: lkToken, url } = await api.getLiveKitToken(tokenRef.current, cid);
         // Lazy-load the SDK so it stays out of the main bundle (fetched on first join).
@@ -253,7 +258,8 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       cid,
       !room.localParticipant.isMicrophoneEnabled,
       room.localParticipant.isCameraEnabled,
-      room.localParticipant.isScreenShareEnabled
+      room.localParticipant.isScreenShareEnabled,
+      false
     );
   }, []);
 

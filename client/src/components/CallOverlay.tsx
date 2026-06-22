@@ -39,6 +39,23 @@ function clampVolume(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
+// One AudioContext for the whole call. Browsers cap concurrent AudioContexts (~6),
+// so a per-participant context blows the budget in larger rooms. Analyser nodes are
+// cheap and unbounded, so each tile keeps its own analyser off this shared context.
+let sharedAudioCtx: AudioContext | null = null;
+function getSharedAudioContext(): AudioContext | null {
+  const AudioContextCtor =
+    window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return null;
+  if (!sharedAudioCtx || sharedAudioCtx.state === "closed") sharedAudioCtx = new AudioContextCtor();
+  return sharedAudioCtx;
+}
+
+// Reduced-motion gate for the speaking-ring pulse (README promises reduced-motion support).
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
+
 function loadCallVolumes(): Record<string, number> {
   if (typeof window === "undefined") return {};
   try {
@@ -76,10 +93,11 @@ function useAudioLevel(stream: MediaStream | null, active: boolean) {
       return;
     }
 
-    const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextCtor) return;
+    // Share one AudioContext across all tiles (see getSharedAudioContext). Each tile
+    // still owns its analyser + source, which are cheap and cleaned up below.
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
 
-    const ctx = new AudioContextCtor();
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 512;
     analyser.smoothingTimeConstant = 0.72;
@@ -103,9 +121,10 @@ function useAudioLevel(stream: MediaStream | null, active: boolean) {
 
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
+      // Disconnect this tile's nodes, but leave the SHARED context open for the
+      // other tiles still measuring. Closing it would kill everyone's analysers.
       source.disconnect();
       analyser.disconnect();
-      void ctx.close().catch(() => {});
     };
   }, [stream, active]);
 
@@ -157,6 +176,7 @@ function VideoTile({
   const videoRef = useRef<HTMLVideoElement>(null);
   const showVideo = (video || screen) && !!stream;
   const { level, speaking } = useAudioLevel(stream, !!stream && !muted);
+  const reducedMotion = prefersReducedMotion();
 
   useEffect(() => {
     const videoEl = videoRef.current;
@@ -188,7 +208,7 @@ function VideoTile({
         borderRadius: "var(--radius-lg)",
         display: "flex", alignItems: "center", justifyContent: "center",
         boxShadow: speaking
-          ? `0 0 0 ${Math.max(3, Math.min(10, level * 90))}px color-mix(in oklch, var(--green) 30%, transparent), var(--shadow-md)`
+          ? `0 0 0 ${reducedMotion ? 4 : Math.max(3, Math.min(10, level * 90))}px color-mix(in oklch, var(--green) 30%, transparent), var(--shadow-md)`
           : "var(--shadow-md)",
       }}
     >
@@ -208,7 +228,7 @@ function VideoTile({
           display: "flex", alignItems: "center", justifyContent: "center",
           overflow: "hidden",
           fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "2rem",
-          boxShadow: speaking ? `0 0 0 ${Math.max(6, Math.min(18, level * 150))}px color-mix(in oklch, var(--green) 24%, transparent)` : "none",
+          boxShadow: speaking ? `0 0 0 ${reducedMotion ? 8 : Math.max(6, Math.min(18, level * 150))}px color-mix(in oklch, var(--green) 24%, transparent)` : "none",
         }}>
           {avatarUrl ? (
             <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
@@ -536,13 +556,14 @@ function VoiceParticipantRow({
   onVolumeChange?: (volume: number) => void;
 }) {
   const { level, speaking } = useAudioLevel(stream, !!stream && !muted);
+  const reducedMotion = prefersReducedMotion();
 
   return (
     <div
       className={`kc-call-voice-row${muted ? " kc-call-voice-row--muted" : ""}${isSelf ? " kc-call-voice-row--self" : ""}${speaking ? " kc-call-voice-row--speaking" : ""}`}
       style={{
         boxShadow: speaking
-          ? `0 0 0 ${Math.max(2, Math.min(7, level * 90))}px color-mix(in oklch, var(--green) 25%, transparent), var(--shadow-sm)`
+          ? `0 0 0 ${reducedMotion ? 3 : Math.max(2, Math.min(7, level * 90))}px color-mix(in oklch, var(--green) 25%, transparent), var(--shadow-sm)`
           : undefined,
       }}
     >
@@ -684,7 +705,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       muted: p.muted,
       video: p.video,
       screen: p.screen,
-      listenOnly: false,
+      listenOnly: p.listenOnly,
       stream: remoteStreams.get(p.user_id) ?? null,
       isSelf: false,
       quality: quality[p.user_id]?.level ?? "unknown" as QualityLevel,

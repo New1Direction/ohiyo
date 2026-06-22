@@ -19,12 +19,35 @@ import { isDesktop } from "./desktop";
 import { setSignalBackend } from "./signal";
 import { setSenderKeyBackend } from "./senderKeys";
 import { setE2eStore } from "./e2e";
+import { setHomesTokenStore } from "./homes";
 
-// localStorage namespaces that hold E2E key material → moved into the vault. Covers
-// Signal (kc:sig:), group sender keys (kc:sk:), and the legacy ECDH keypair.
-const KEY_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair"];
+// localStorage namespaces that hold sensitive material → moved into the vault. Covers
+// Signal (kc:sig:), group sender keys (kc:sk:), the legacy ECDH keypair, per-home
+// session tokens (kc:tok:), and decrypted forward-secret message plaintext (kc:e2e-pt:).
+// kc:tok: and kc:e2e-pt: are accepted by the Rust vault_set allowlist (CONTRACT B).
+const KEY_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair", "kc:tok:", "kc:e2e-pt:"];
 
 let mirror: Map<string, string> | null = null;
+
+/** A synchronous store backed by the locked-RAM mirror with async write-through. */
+export type VaultStore = {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+  keys: () => string[];
+};
+
+let vaultStore: VaultStore | null = null;
+
+/**
+ * The active vault-backed store on desktop, or null in a browser (callers then use
+ * localStorage). Reads hit the in-memory mirror synchronously; writes also flow to the
+ * native vault (encrypted-at-rest). Lets sync APIs (homes tokens, decrypted-message
+ * cache) move off plaintext localStorage on desktop without a sync→async refactor.
+ */
+export function getVaultStore(): VaultStore | null {
+  return vaultStore;
+}
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import("@tauri-apps/api/core");
@@ -70,6 +93,10 @@ export async function initVaultBackend(): Promise<boolean> {
     setSignalBackend(backend);
     setSenderKeyBackend({ getItem: backend.getItem, setItem: backend.setItem });
     setE2eStore({ getItem: backend.getItem, setItem: backend.setItem });
+    // Per-home session tokens move into the vault too (sealed-at-rest on desktop).
+    setHomesTokenStore(backend);
+    // Expose the same mirror-backed store to the sync token/plaintext callers.
+    vaultStore = backend;
     return true;
   } catch {
     return false; // vault unavailable — fall back to localStorage

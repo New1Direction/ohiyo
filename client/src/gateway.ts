@@ -43,16 +43,16 @@ export type GatewayEvent =
   | { t: "ReadReceipt"; d: { channel_id: string; user_id: string; last_read_message_id: string; last_read_at: number } }
   | { t: "PresenceUpdate"; d: { user_id: string; online: boolean; status?: string; activity?: Activity | null } }
   | { t: "TypingStart"; d: { channel_id: string; user_id: string; user: PublicUser } }
-  | { t: "VoiceState"; d: { channel_id: string; user_id: string; user: PublicUser; joined: boolean; muted: boolean; video: boolean; screen: boolean } }
+  | { t: "VoiceState"; d: { channel_id: string; user_id: string; user: PublicUser; joined: boolean; muted: boolean; video: boolean; screen: boolean; listenOnly: boolean } }
   | { t: "VoiceRoster"; d: { channel_id: string; peers: VoicePeer[] } }
   | { t: "VoiceSignal"; d: { from: string; to: string; channel_id: string; kind: string; payload: string } }
   | { t: "WatchUpdate"; d: { channel_id: string; session: WatchSession | null } };
 
 // ── Client → server events (mirror the server's ClientEvent enum) ──────────────
 export type ClientEvent =
-  | { t: "JoinVoice"; d: { channel_id: string; muted: boolean; video: boolean } }
+  | { t: "JoinVoice"; d: { channel_id: string; muted: boolean; video: boolean; listen_only: boolean } }
   | { t: "LeaveVoice"; d: { channel_id: string } }
-  | { t: "VoiceMeta"; d: { channel_id: string; muted: boolean; video: boolean; screen: boolean } }
+  | { t: "VoiceMeta"; d: { channel_id: string; muted: boolean; video: boolean; screen: boolean; listen_only: boolean } }
   | { t: "Signal"; d: { to: string; channel_id: string; kind: string; payload: string } }
   | { t: "Typing"; d: { channel_id: string } }
   | { t: "Ack"; d: { channel_id: string; message_id: string } }

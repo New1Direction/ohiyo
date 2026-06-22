@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type Role, type PublicUser } from "../api";
 import { PERM_LABELS } from "../permissions";
 import { ModalShell } from "./ModalShell";
@@ -20,7 +20,7 @@ export function RolesModal({ token, serverId, members, ownerId, onClose }: Props
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     try {
       setError(null);
       const rs = await api.listRoles(token, serverId);
@@ -37,12 +37,12 @@ export function RolesModal({ token, serverId, members, ownerId, onClose }: Props
       setAssigned({});
       setError("Roles could not load. Check your connection and try again.");
     }
-  }
+  }, [token, serverId, members]);
 
+  // Re-fetch when the token rotates or the target server/member set changes mid-open.
   useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();

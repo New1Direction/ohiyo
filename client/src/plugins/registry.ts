@@ -2,6 +2,15 @@ import type { OhiyoPlugin, PluginAPI, PluginEventHandler, PluginEventName } from
 import type { Message } from "../api";
 import { SandboxHost, sanitizePluginCss } from "./sandbox";
 
+// Allowlist for the user-configurable font-picker value before it is
+// interpolated into a `font-family` declaration. Letters, digits, spaces and a
+// small set of separators only — no characters that could escape the rule.
+const FONT_FAMILY_RE = /^[A-Za-z0-9 ,_-]+$/;
+
+// Persisted record for an installed user (third-party) plugin. `id` is the
+// resolved plugin manifest id; it is optional only for legacy url-only entries.
+type UserPluginEntry = { id?: string; url: string };
+
 // ── Built-in plugins ──────────────────────────────────────────────────────────
 
 const compactModePlugin: OhiyoPlugin = {
@@ -32,7 +41,10 @@ const customCssPlugin: OhiyoPlugin = {
   author: "Ohiyo",
   onLoad: (api) => {
     const css = api.store.get<string>("custom-css") ?? "";
-    injectStyle("custom-css-plugin", css);
+    // Even though this is a "trusted" built-in, the CSS body is fully
+    // user-controlled, so run it through the same sanitizer used for
+    // untrusted third-party plugins (strips url()/@import/expression()/etc.).
+    injectStyle("custom-css-plugin", sanitizePluginCss(css));
   },
   onUnload: () => {
     document.getElementById("custom-css-plugin")?.remove();
@@ -156,7 +168,12 @@ const fontPickerPlugin: OhiyoPlugin = {
   version: "1.0.0",
   author: "Ohiyo",
   onLoad: (api) => {
-    const font = api.store.get<string>("font") ?? "inherit";
+    const stored = api.store.get<string>("font") ?? "inherit";
+    // The font value is interpolated straight into a <style>, so allowlist it to
+    // a conservative font-family character set (letters, digits, space, comma,
+    // underscore, hyphen). Anything else (quotes, braces, semicolons, url(), …)
+    // would let an attacker break out of the declaration — fall back to inherit.
+    const font = FONT_FAMILY_RE.test(stored) ? stored : "inherit";
     injectStyle("font-picker-plugin", `body { font-family: ${font}, sans-serif !important; }`);
   },
   onUnload: () => {
@@ -368,7 +385,11 @@ export class PluginManager {
     for (const plugin of this.loaded.values()) {
       if (!current) break;
       if (plugin.transformMessage) {
-        current = plugin.transformMessage(current);
+        try {
+          current = plugin.transformMessage(current);
+        } catch {
+          // A throwing plugin must not crash the render path — skip its transform.
+        }
       }
     }
     return current;
@@ -379,18 +400,45 @@ export class PluginManager {
     let current = text;
     for (const plugin of this.loaded.values()) {
       if (plugin.transformSend) {
-        current = plugin.transformSend(current);
+        try {
+          current = plugin.transformSend(current);
+        } catch {
+          // A throwing plugin must not block sending — skip its transform.
+        }
       }
     }
     return current;
   }
 
-  userPluginUrls(): string[] {
+  // The persisted user-plugin list. Stored as `{ id, url }[]` so uninstall can
+  // look up by plugin id rather than fragile array-index alignment. Reads the
+  // legacy `string[]` shape transparently (id is unknown until first reload).
+  private userPluginEntries(): UserPluginEntry[] {
+    let raw: unknown;
     try {
-      return JSON.parse(localStorage.getItem("kikkacord:user-plugin-urls") ?? "[]");
+      raw = JSON.parse(localStorage.getItem("kikkacord:user-plugin-urls") ?? "[]");
     } catch {
       return [];
     }
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((item): UserPluginEntry | null => {
+        if (typeof item === "string") return { url: item }; // legacy shape
+        if (item && typeof item === "object" && typeof (item as UserPluginEntry).url === "string") {
+          const e = item as UserPluginEntry;
+          return typeof e.id === "string" ? { id: e.id, url: e.url } : { url: e.url };
+        }
+        return null;
+      })
+      .filter((e): e is UserPluginEntry => e !== null);
+  }
+
+  private saveUserPluginEntries(entries: UserPluginEntry[]) {
+    localStorage.setItem("kikkacord:user-plugin-urls", JSON.stringify(entries));
+  }
+
+  userPluginUrls(): string[] {
+    return this.userPluginEntries().map((e) => e.url);
   }
 
   async installFromUrl(url: string): Promise<string> {
@@ -441,9 +489,15 @@ export class PluginManager {
       css: sanitizePluginCss(manifest.css),
     };
     this.plugins.push(plugin);
-    const urls = this.userPluginUrls();
-    if (!urls.includes(url)) {
-      localStorage.setItem("kikkacord:user-plugin-urls", JSON.stringify([...urls, url]));
+    const entries = this.userPluginEntries();
+    const existing = entries.find((e) => e.url === url);
+    if (!existing) {
+      this.saveUserPluginEntries([...entries, { id: manifest.id, url }]);
+    } else if (existing.id !== manifest.id) {
+      // Backfill the id onto a legacy/url-only entry now that we know it.
+      this.saveUserPluginEntries(
+        entries.map((e) => (e.url === url ? { id: manifest.id, url } : e)),
+      );
     }
     return manifest.id;
   }
@@ -463,12 +517,10 @@ export class PluginManager {
     this.sandboxes.get(pluginId)?.terminate();
     this.sandboxes.delete(pluginId);
     this.plugins = this.plugins.filter((p) => p.id !== pluginId);
-    const BUILTIN_IDS = new Set(BUILTIN_PLUGINS.map((p) => p.id));
-    const urls = this.userPluginUrls();
-    // We don't have a url→id map, so just persist remaining user plugin IDs
-    const remainingIds = this.plugins.filter((p) => !BUILTIN_IDS.has(p.id)).map((p) => p.id);
-    const remainingUrls = urls.filter((_, i) => i < remainingIds.length);
-    localStorage.setItem("kikkacord:user-plugin-urls", JSON.stringify(remainingUrls));
+    // Drop the persisted entry by id. Legacy url-only entries (no id yet) are
+    // kept; they get their id backfilled on the next successful reload/install.
+    const remaining = this.userPluginEntries().filter((e) => e.id !== pluginId);
+    this.saveUserPluginEntries(remaining);
   }
 
   isUserPlugin(id: string): boolean {

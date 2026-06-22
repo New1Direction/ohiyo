@@ -17,6 +17,23 @@ const KEYRING_SERVICE: &str = "kikkacord";
 const KEYRING_ACCOUNT: &str = "vault-master";
 const VAULT_FILE: &str = "kc-vault.bin";
 
+/// Namespaces the webview is allowed to persist into the vault. Anything outside
+/// these prefixes is rejected by `vault_set` so a compromised/buggy frontend
+/// can't dump arbitrary attacker-chosen keys into the sealed store:
+///   kc:sig:        Signal session/identity state
+///   kc:sk:         group sender keys
+///   kc:e2e-keypair the (legacy) ECDH keypair — exact key, no suffix
+///   kc:e2e-pt:     E2E plaintext cache
+///   kc:tok:        token storage
+const ALLOWED_KEY_PREFIXES: &[&str] = &["kc:sig:", "kc:sk:", "kc:e2e-pt:", "kc:tok:"];
+const ALLOWED_EXACT_KEYS: &[&str] = &["kc:e2e-keypair"];
+
+/// True when `key` belongs to a known vault namespace.
+fn is_allowed_key(key: &str) -> bool {
+    ALLOWED_EXACT_KEYS.contains(&key)
+        || ALLOWED_KEY_PREFIXES.iter().any(|p| key.starts_with(p))
+}
+
 pub struct VaultState {
     inner: Mutex<Vault>,
     master: [u8; 32],
@@ -106,6 +123,9 @@ pub fn vault_snapshot(state: State<VaultState>) -> HashMap<String, String> {
 
 #[tauri::command]
 pub fn vault_set(state: State<VaultState>, key: String, value: String) -> Result<(), String> {
+    if !is_allowed_key(&key) {
+        return Err("vault_set: disallowed key namespace".to_string());
+    }
     let mut v = state.inner.lock().unwrap();
     v.set(&key, &value).map_err(|e| e.to_string())?;
     state.persist(&v);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type EventInfo } from "../api";
 import { ModalShell } from "./ModalShell";
 
@@ -21,7 +21,7 @@ export function EventsModal({ token, serverId, currentUserId, refreshKey, onClos
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     try {
       setError(null);
       setEvents(await api.listEvents(token, serverId));
@@ -29,11 +29,13 @@ export function EventsModal({ token, serverId, currentUserId, refreshKey, onClos
       setEvents([]);
       setError("Events could not load. Check your connection and try again.");
     }
-  }
+  }, [token, serverId]);
+
+  // Re-fetch on a gateway EventsChanged bump, and when the token/server changes
+  // (e.g. a token rotation while the modal is open).
   useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
+  }, [refresh, refreshKey]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
