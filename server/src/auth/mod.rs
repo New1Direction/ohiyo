@@ -3,7 +3,10 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use axum::{extract::FromRequestParts, http::request::Parts};
+use axum::{
+    extract::{FromRef, FromRequestParts},
+    http::request::Parts,
+};
 use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
@@ -11,6 +14,7 @@ use axum_extra::{
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 
 use crate::types::Claims;
+use crate::AppState;
 
 pub const JWT_EXPIRY_SECS: usize = 60 * 60 * 24 * 30; // 30 days
 
@@ -41,11 +45,12 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
         .is_ok()
 }
 
-pub fn create_token(user_id: &str, secret: &str) -> Result<String> {
+pub fn create_token(user_id: &str, token_version: i64, secret: &str) -> Result<String> {
     let exp = (chrono::Utc::now().timestamp() as usize) + JWT_EXPIRY_SECS;
     let claims = Claims {
         sub: user_id.to_owned(),
         exp,
+        token_version,
     };
     let token = encode(
         &Header::default(),
@@ -72,20 +77,44 @@ pub struct AuthUser(pub String);
 impl<S> FromRequestParts<S> for AuthUser
 where
     S: Send + Sync,
+    AppState: FromRef<S>,
 {
     type Rejection = (axum::http::StatusCode, &'static str);
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let secret = jwt_secret();
 
         let TypedHeader(Authorization(bearer)) =
-            TypedHeader::<Authorization<Bearer>>::from_request_parts(parts, _state)
+            TypedHeader::<Authorization<Bearer>>::from_request_parts(parts, state)
                 .await
                 .map_err(|_| (axum::http::StatusCode::UNAUTHORIZED, "missing token"))?;
 
         let claims = verify_token(bearer.token(), &secret)
             .map_err(|_| (axum::http::StatusCode::UNAUTHORIZED, "invalid token"))?;
 
-        Ok(AuthUser(claims.sub))
+        // Instant revocation: the token carries the user's `token_version` (stamped at
+        // mint time; see `create_token`). "Log out everywhere" and password changes bump
+        // `users.token_version`, which immediately invalidates every previously minted
+        // token. We verify it here on every authenticated request — one indexed SELECT
+        // against in-process SQLite, cheap enough for this server's scale. A missing row
+        // (deleted user) or a token minted before the current version is rejected.
+        let app = AppState::from_ref(state);
+        let current: Option<i64> =
+            sqlx::query_scalar("SELECT token_version FROM users WHERE id = ?")
+                .bind(&claims.sub)
+                .fetch_optional(&app.db)
+                .await
+                .map_err(|_| {
+                    (
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "auth check failed",
+                    )
+                })?;
+
+        match current {
+            Some(v) if claims.token_version >= v => Ok(AuthUser(claims.sub)),
+            Some(_) => Err((axum::http::StatusCode::UNAUTHORIZED, "token revoked")),
+            None => Err((axum::http::StatusCode::UNAUTHORIZED, "invalid token")),
+        }
     }
 }

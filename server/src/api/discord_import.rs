@@ -165,6 +165,14 @@ pub async fn start_managed_discord_import_job(
     Json(body): Json<ManagedDiscordImportBody>,
 ) -> Result<Json<ManagedDiscordImportJobStartResponse>, (StatusCode, String)> {
     require_managed_discord_import_enabled()?;
+    // One import at a time per user: reject if a Queued/Running job already exists, so a
+    // user can't spawn unbounded concurrent Discrawl clones (each is heavy + long-running).
+    if owner_has_active_job(&auth.0) {
+        return Err((
+            StatusCode::CONFLICT,
+            "an import is already running — wait for it to finish".into(),
+        ));
+    }
     let guild_id = validate_guild_id(&body.guild_id)?;
     let history = body.history.unwrap_or(HistoryWindow::All);
     let job_id = new_id();
@@ -266,7 +274,10 @@ pub async fn upload_discrawl_archive(
         .map_err(crate::api::error::internal)?;
 
     let max_bytes = max_discrawl_db_upload_bytes();
-    let mut size_bytes: i64 = 0;
+    // Accumulate in u64 so a huge upload can't wrap an i64 and bypass the size cap;
+    // `max_bytes` is a non-negative i64, widened for the comparison.
+    let max_bytes_u = max_bytes.max(0) as u64;
+    let mut size_bytes: u64 = 0;
     let mut header = Vec::with_capacity(SQLITE_MAGIC.len());
 
     while let Some(chunk) = field
@@ -274,8 +285,8 @@ pub async fn upload_discrawl_archive(
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
     {
-        size_bytes += chunk.len() as i64;
-        if size_bytes > max_bytes {
+        size_bytes = size_bytes.saturating_add(chunk.len() as u64);
+        if size_bytes > max_bytes_u {
             cleanup_tmp(&tmp_path).await;
             return Err((
                 StatusCode::PAYLOAD_TOO_LARGE,
@@ -293,6 +304,10 @@ pub async fn upload_discrawl_archive(
     }
     tmp_file.flush().await.ok();
     drop(tmp_file);
+
+    // Narrow once, checked, for the response field (bounded by max_bytes anyway).
+    let size_bytes: i64 = i64::try_from(size_bytes)
+        .map_err(|_| (StatusCode::PAYLOAD_TOO_LARGE, "archive too large".into()))?;
 
     if header.as_slice() != SQLITE_MAGIC {
         cleanup_tmp(&tmp_path).await;
@@ -371,7 +386,7 @@ pub async fn preview_discrawl_import(
     Json(body): Json<DiscrawlArchiveBody>,
 ) -> Result<Json<DiscrawlPreview>, (StatusCode, String)> {
     require_local_discrawl_import_enabled()?;
-    validate_db_path(&body.db_path)?;
+    validate_db_path(&body.db_path).await?;
     let preview = discrawl::preview(&body.db_path, read_opts(&body))
         .await
         .map_err(crate::api::error::internal)?;
@@ -384,7 +399,7 @@ pub async fn run_discrawl_import(
     Json(body): Json<DiscrawlArchiveBody>,
 ) -> Result<Json<DiscrawlImportResponse>, (StatusCode, String)> {
     require_local_discrawl_import_enabled()?;
-    validate_db_path(&body.db_path)?;
+    validate_db_path(&body.db_path).await?;
     let guild = discrawl::read_source_guild(&body.db_path, read_opts(&body))
         .await
         .map_err(crate::api::error::internal)?;
@@ -418,13 +433,45 @@ fn now_ts() -> i64 {
 
 type ImportJobStore = HashMap<String, HashMap<String, ManagedDiscordImportJob>>;
 
+/// TTL after which a completed (succeeded/failed) job is evicted from the in-memory
+/// store, so the map can't grow unbounded across many imports.
+const COMPLETED_JOB_TTL_SECS: i64 = 60 * 60; // 1 hour
+
 fn import_jobs() -> &'static Mutex<ImportJobStore> {
     static JOBS: OnceLock<Mutex<ImportJobStore>> = OnceLock::new();
     JOBS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// True if a job is still in flight (Queued or Running).
+fn is_job_active(job: &ManagedDiscordImportJob) -> bool {
+    matches!(
+        job.state,
+        ManagedDiscordImportJobState::Queued | ManagedDiscordImportJobState::Running
+    )
+}
+
+/// Evict completed/failed jobs older than the TTL (called while holding the lock).
+/// Active jobs are always retained regardless of age.
+fn evict_stale_jobs(jobs: &mut ImportJobStore) {
+    let now = now_ts();
+    for owner_jobs in jobs.values_mut() {
+        owner_jobs
+            .retain(|_, job| is_job_active(job) || now - job.updated_at < COMPLETED_JOB_TTL_SECS);
+    }
+    jobs.retain(|_, owner_jobs| !owner_jobs.is_empty());
+}
+
+/// True if the owner already has a Queued or Running job (used to cap concurrency).
+fn owner_has_active_job(owner_id: &str) -> bool {
+    let mut jobs = import_jobs().lock().unwrap_or_else(|e| e.into_inner());
+    evict_stale_jobs(&mut jobs);
+    jobs.get(owner_id)
+        .is_some_and(|owner_jobs| owner_jobs.values().any(is_job_active))
+}
+
 fn upsert_import_job(owner_id: &str, job: ManagedDiscordImportJob) {
-    let mut jobs = import_jobs().lock().expect("import job store poisoned");
+    let mut jobs = import_jobs().lock().unwrap_or_else(|e| e.into_inner());
+    evict_stale_jobs(&mut jobs);
     jobs.entry(owner_id.to_owned())
         .or_default()
         .insert(job.id.clone(), job);
@@ -435,7 +482,7 @@ fn update_import_job(
     job_id: &str,
     update: impl FnOnce(&mut ManagedDiscordImportJob),
 ) {
-    let mut jobs = import_jobs().lock().expect("import job store poisoned");
+    let mut jobs = import_jobs().lock().unwrap_or_else(|e| e.into_inner());
     let Some(job) = jobs
         .get_mut(owner_id)
         .and_then(|owner_jobs| owner_jobs.get_mut(job_id))
@@ -447,7 +494,7 @@ fn update_import_job(
 }
 
 fn get_import_job(owner_id: &str, job_id: &str) -> Option<ManagedDiscordImportJob> {
-    let jobs = import_jobs().lock().expect("import job store poisoned");
+    let jobs = import_jobs().lock().unwrap_or_else(|e| e.into_inner());
     jobs.get(owner_id)
         .and_then(|owner_jobs| owner_jobs.get(job_id))
         .cloned()
@@ -774,7 +821,11 @@ fn validate_guild_id(guild_id: &str) -> Result<String, (StatusCode, String)> {
     Ok(trimmed.to_owned())
 }
 
-fn validate_db_path(path: &str) -> Result<(), (StatusCode, String)> {
+/// Validate a host path to a Discrawl archive. Beyond the extension check, the path is
+/// canonicalized and confined to the import upload/staging directory — mirroring
+/// `cleanup_uploaded_archive_if_staged` — so a caller cannot use `../` traversal or an
+/// absolute path to read an arbitrary SQLite file on the host (e.g. another tenant's DB).
+async fn validate_db_path(path: &str) -> Result<(), (StatusCode, String)> {
     if path.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "db_path required".into()));
     }
@@ -784,5 +835,72 @@ fn validate_db_path(path: &str) -> Result<(), (StatusCode, String)> {
             "db_path must point to a SQLite archive (.db/.sqlite/.sqlite3)".into(),
         ));
     }
+    // Canonicalize the allowed root and the requested path, then require the path to live
+    // inside the root. Canonicalization resolves `..`, symlinks, and relative segments, so
+    // the prefix check can't be defeated by traversal. A non-existent path fails here too.
+    let upload_root = tokio::fs::canonicalize(IMPORT_UPLOAD_DIR)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "import upload directory is not available".into(),
+            )
+        })?;
+    let resolved = tokio::fs::canonicalize(path).await.map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "db_path does not point to an uploaded archive".into(),
+        )
+    })?;
+    if !resolved.starts_with(&upload_root) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "db_path must point to an uploaded archive".into(),
+        ));
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn validate_db_path_rejects_traversal_and_accepts_staged_archive() {
+        // Stage a real archive inside the upload dir, plus a "secret" outside it that a
+        // traversal would try to reach. Use unique names so parallel tests don't clash.
+        tokio::fs::create_dir_all(IMPORT_UPLOAD_DIR).await.unwrap();
+        let stem = format!("vt-{}", new_id());
+        let valid = PathBuf::from(IMPORT_UPLOAD_DIR).join(format!("{stem}.db"));
+        tokio::fs::write(&valid, b"SQLite format 3\0")
+            .await
+            .unwrap();
+
+        // Secret DB outside the upload dir (sibling of the import-uploads root).
+        let outside_dir = PathBuf::from("import-uploads");
+        let secret = outside_dir.join(format!("{stem}-secret.db"));
+        tokio::fs::write(&secret, b"SQLite format 3\0")
+            .await
+            .unwrap();
+
+        // A valid staged path is accepted.
+        let valid_str = valid.to_string_lossy().to_string();
+        assert!(validate_db_path(&valid_str).await.is_ok());
+
+        // A traversal path that escapes the upload dir (but keeps a .db extension) is
+        // rejected even though the target file exists and is a real SQLite archive.
+        let traversal = PathBuf::from(IMPORT_UPLOAD_DIR).join(format!("../{stem}-secret.db"));
+        let traversal_str = traversal.to_string_lossy().to_string();
+        let err = validate_db_path(&traversal_str).await.unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+
+        // Non-.db extension is rejected before any filesystem access.
+        assert!(validate_db_path("import-uploads/discord/notes.txt")
+            .await
+            .is_err());
+
+        // Cleanup.
+        tokio::fs::remove_file(&valid).await.ok();
+        tokio::fs::remove_file(&secret).await.ok();
+    }
 }

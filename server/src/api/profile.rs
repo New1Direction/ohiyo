@@ -30,7 +30,7 @@ pub async fn set_avatar(
 
     // Absolute URL prefix for served files; guaranteed present by validate_config().
     let base = crate::public_base_url();
-    let avatar_url = format!("{base}/files/{}", body.file_id);
+    let avatar_url = crate::signed_file_url(&base, &body.file_id);
     sqlx::query("UPDATE users SET avatar_url = ? WHERE id = ?")
         .bind(&avatar_url)
         .bind(&auth.0)
@@ -74,7 +74,7 @@ pub async fn set_banner(
     }
 
     let base = crate::public_base_url();
-    let banner_url = format!("{base}/files/{}", body.file_id);
+    let banner_url = crate::signed_file_url(&base, &body.file_id);
     sqlx::query("UPDATE users SET banner_url = ? WHERE id = ?")
         .bind(&banner_url)
         .bind(&auth.0)
@@ -241,25 +241,41 @@ pub async fn update_profile(
             .map_err(crate::api::error::internal)?;
     }
 
-    macro_rules! update_field {
-        ($field:ident) => {
-            if let Some(val) = &body.$field {
-                let col = stringify!($field);
-                let sql = format!("UPDATE users SET {} = ? WHERE id = ?", col);
-                sqlx::query(&sql)
-                    .bind(val)
-                    .bind(&auth.0)
-                    .execute(&state.db)
-                    .await
-                    .map_err(|e| crate::api::error::internal(e))?;
-            }
-        };
+    // Explicit per-field parameterized statements. Each column name is a hard-coded
+    // string literal (never interpolated from a variable) so there is no path for a
+    // field name to influence the SQL — the value is always a bound parameter.
+    if let Some(val) = &body.bio {
+        sqlx::query("UPDATE users SET bio = ? WHERE id = ?")
+            .bind(val)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
     }
-
-    update_field!(bio);
-    update_field!(pronouns);
-    update_field!(banner_color);
-    update_field!(custom_status);
+    if let Some(val) = &body.pronouns {
+        sqlx::query("UPDATE users SET pronouns = ? WHERE id = ?")
+            .bind(val)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
+    if let Some(val) = &body.banner_color {
+        sqlx::query("UPDATE users SET banner_color = ? WHERE id = ?")
+            .bind(val)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
+    if let Some(val) = &body.custom_status {
+        sqlx::query("UPDATE users SET custom_status = ? WHERE id = ?")
+            .bind(val)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
     if let Some(theme) = &body.profile_theme {
         let raw = serde_json::to_string(theme).map_err(crate::api::error::internal)?;
         sqlx::query("UPDATE users SET theme_data = ? WHERE id = ?")
@@ -301,12 +317,54 @@ pub async fn update_profile(
             .await
             .map_err(crate::api::error::internal)?;
     }
-    update_field!(social_spotify);
-    update_field!(social_github);
-    update_field!(social_twitter);
-    update_field!(social_steam);
-    update_field!(social_youtube);
-    update_field!(social_twitch);
+    if let Some(val) = &body.social_spotify {
+        sqlx::query("UPDATE users SET social_spotify = ? WHERE id = ?")
+            .bind(val)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
+    if let Some(val) = &body.social_github {
+        sqlx::query("UPDATE users SET social_github = ? WHERE id = ?")
+            .bind(val)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
+    if let Some(val) = &body.social_twitter {
+        sqlx::query("UPDATE users SET social_twitter = ? WHERE id = ?")
+            .bind(val)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
+    if let Some(val) = &body.social_steam {
+        sqlx::query("UPDATE users SET social_steam = ? WHERE id = ?")
+            .bind(val)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
+    if let Some(val) = &body.social_youtube {
+        sqlx::query("UPDATE users SET social_youtube = ? WHERE id = ?")
+            .bind(val)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
+    if let Some(val) = &body.social_twitch {
+        sqlx::query("UPDATE users SET social_twitch = ? WHERE id = ?")
+            .bind(val)
+            .bind(&auth.0)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
 
     let row: ProfileRow = sqlx::query_as(
         "SELECT id, username, display_name, bio, pronouns, banner_color, banner_url, custom_status,

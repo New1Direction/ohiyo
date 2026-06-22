@@ -194,6 +194,10 @@ struct AttachmentMeta {
     size_bytes: i64,
     width: Option<i64>,
     height: Option<i64>,
+    /// Signed `/files/<id>?s=<sig>` path, persisted into the `attachments` JSON so the
+    /// client can load the file directly (and so the URL validates under
+    /// `OHIYO_REQUIRE_SIGNED_FILES`) without rebuilding it from the bare id.
+    url: String,
 }
 
 /// Row shape for an attachment-metadata lookup:
@@ -351,6 +355,7 @@ pub async fn send_message(
 
             if let Some((filename, content_type, size_bytes, width, height)) = row {
                 metas.push(AttachmentMeta {
+                    url: crate::signed_file_path(file_id),
                     id: file_id.clone(),
                     filename,
                     content_type,
@@ -950,15 +955,31 @@ pub async fn distribute_sender_key(
     // Enforce the membership boundary server-side: a sender key may only be relayed to
     // users who are CURRENTLY in the channel. This is what makes a re-key effective —
     // a member removed at a higher epoch must never receive a fresh key, no matter what
-    // recipient map a (buggy or malicious) client submits.
-    let members: std::collections::HashSet<String> =
-        sqlx::query_scalar("SELECT user_id FROM dm_participants WHERE channel_id = ?")
+    // recipient map a (buggy or malicious) client submits. Membership depends on the
+    // channel kind: server channels draw from server_members, DMs from dm_participants.
+    // (A NULL server_id decodes as Some("") on this stack — double-flatten to None.)
+    let server_id: Option<String> =
+        sqlx::query_scalar::<_, Option<String>>("SELECT server_id FROM channels WHERE id = ?")
+            .bind(&channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+    let members: std::collections::HashSet<String> = match server_id {
+        Some(sid) => sqlx::query_scalar("SELECT user_id FROM server_members WHERE server_id = ?")
+            .bind(sid)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default(),
+        None => sqlx::query_scalar("SELECT user_id FROM dm_participants WHERE channel_id = ?")
             .bind(&channel_id)
             .fetch_all(&state.db)
             .await
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
+            .unwrap_or_default(),
+    }
+    .into_iter()
+    .collect();
     for (uid, envelope) in body.envelopes {
         if envelope.len() > 20_000 || !members.contains(&uid) {
             continue;
@@ -1008,7 +1029,7 @@ pub async fn distribute_voice_key(
         return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
     }
     let in_room: std::collections::HashSet<String> = {
-        let rooms = state.voice.read().unwrap();
+        let rooms = state.voice.read().unwrap_or_else(|e| e.into_inner());
         match rooms.get(&channel_id) {
             Some(room) => room.keys().cloned().collect(),
             None => return Err((StatusCode::FORBIDDEN, "no active call here".into())),

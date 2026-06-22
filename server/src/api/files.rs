@@ -1,11 +1,11 @@
 use axum::{
     body::Body,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{header, StatusCode},
     response::Response,
     Json,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
@@ -116,7 +116,12 @@ pub async fn upload_file(
             .map_err(crate::api::error::internal)?;
 
         let mut hasher = Sha256::new();
-        let mut size_bytes: i64 = 0;
+        // Accumulate in u64 so a multi-GiB upload can't wrap an i64 and slip the quota
+        // check. `used`/`quota` come from the DB as non-negative i64; widen them to u64
+        // for the comparison, and only narrow back to i64 (checked) at the bind site.
+        let mut size_bytes: u64 = 0;
+        let used_u = used.max(0) as u64;
+        let quota_u = quota.max(0) as u64;
         let mut data = field;
 
         while let Some(chunk) = data
@@ -124,10 +129,10 @@ pub async fn upload_file(
             .await
             .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
         {
-            size_bytes += chunk.len() as i64;
+            size_bytes = size_bytes.saturating_add(chunk.len() as u64);
             // Abort the moment this upload would push the user over quota — so an
             // over-limit file is never fully written to disk in the first place.
-            if used + size_bytes > quota {
+            if used_u.saturating_add(size_bytes) > quota_u {
                 tmp_file.flush().await.ok();
                 drop(tmp_file);
                 tokio::fs::remove_file(&tmp_path).await.ok();
@@ -143,6 +148,11 @@ pub async fn upload_file(
                 .map_err(crate::api::error::internal)?;
         }
         tmp_file.flush().await.ok();
+
+        // Narrow to i64 once, checked, for the DB column / API field. A file larger
+        // than i64::MAX bytes is impossible in practice but rejected rather than wrapped.
+        let size_bytes: i64 = i64::try_from(size_bytes)
+            .map_err(|_| (StatusCode::PAYLOAD_TOO_LARGE, "file too large".into()))?;
 
         let sha256 = format!("{:x}", hasher.finalize());
 
@@ -172,10 +182,14 @@ pub async fn upload_file(
                 .map_err(crate::api::error::internal)?;
 
             // Read image pixel dimensions (cheap header parse; None for non-images).
-            let (w, h) = match imagesize::size(&final_path) {
-                Ok(dim) => (Some(dim.width as i64), Some(dim.height as i64)),
-                Err(_) => (None, None),
-            };
+            // `imagesize::size` does synchronous file I/O, so run it on the blocking
+            // pool to keep the Tokio worker free for other connections.
+            let dims_path = final_path.clone();
+            let (w, h) =
+                match tokio::task::spawn_blocking(move || imagesize::size(&dims_path)).await {
+                    Ok(Ok(dim)) => (Some(dim.width as i64), Some(dim.height as i64)),
+                    _ => (None, None),
+                };
 
             let path_str = final_path.to_string_lossy().to_string();
             sqlx::query(
@@ -202,7 +216,7 @@ pub async fn upload_file(
         };
 
         results.push(FileInfo {
-            url: format!("/files/{}", file_id),
+            url: crate::signed_file_path(&file_id),
             id: file_id,
             filename,
             content_type,
@@ -217,11 +231,59 @@ pub async fn upload_file(
     Ok(Json(results))
 }
 
+/// Optional capability signature on a `/files/{id}` request. The server appends
+/// `?s=<sig>` to every file URL it emits (see `crate::signed_file_path` /
+/// `signed_file_url`); enforcement of that signature is gated by
+/// `OHIYO_REQUIRE_SIGNED_FILES` (see `serve_file`).
+#[derive(Deserialize)]
+pub struct FileQuery {
+    s: Option<String>,
+}
+
 /// Serve a file by ID.
+///
+/// SECURITY / ACCESS-CONTROL: this route is unauthenticated by necessity. Avatars,
+/// server icons, and message attachments are all rendered with plain `<img src>` /
+/// `background-image: url()` / `<video src>` / `<audio src>`, none of which can send an
+/// `Authorization` header. Requiring `AuthUser` here would 401 every image in the UI
+/// (and break e2e/15-images).
+///
+/// SIGNED FILE URLS (`OHIYO_REQUIRE_SIGNED_FILES`): every `/files/{id}` URL the server
+/// emits carries an HMAC capability signature `?s=<sig>` where
+/// `sig = first 32 hex of HMAC-SHA256(JWT_SECRET, id)` (see `crate::sign_file_id`). This
+/// handler ENFORCES that signature only when `OHIYO_REQUIRE_SIGNED_FILES` is truthy
+/// ("1"/"true", case-insensitive); a mismatched/missing signature then returns 404 (we
+/// return *not found* rather than 401 so the response never reveals whether the id
+/// exists). When the flag is unset/false — the DEFAULT — the `s` param is ignored
+/// entirely and serving is byte-for-byte unchanged.
+///
+/// CAVEAT for an existing deployment: signing is store-time. avatars, server icons, and
+/// banners persisted *before* this upgrade hold a bare `/files/{id}` URL with no `?s=`;
+/// if you enable the flag, those pre-existing assets must be re-saved (re-set the
+/// avatar/icon/banner) to acquire a signature, otherwise they 404 under enforcement.
+/// Message attachments and fresh uploads are signed going forward.
+///
+/// Mitigations in place regardless of the flag: file ids are unguessable UUIDv4s (no
+/// enumeration), and the response forces non-media types to download as opaque
+/// octet-streams under a locked-down CSP + `nosniff` (see `is_inline_safe` and
+/// `security_headers`) so an uploaded file can never execute as a document.
+///
+/// FOLLOW-UP: once signed URLs are enforced everywhere, gate private attachments by
+/// membership (uploader or a member of a channel/DM referencing the file).
 pub async fn serve_file(
     Path(id): Path<String>,
+    Query(query): Query<FileQuery>,
     State(state): State<AppState>,
 ) -> Result<Response, (StatusCode, String)> {
+    // Capability gate (default OFF). When enforcement is on, the URL must carry a
+    // signature matching this id; on mismatch we 404 rather than 401 so we never
+    // disclose whether the id exists. When off, `s` is ignored — serving is unchanged.
+    if crate::require_signed_files()
+        && query.s.as_deref() != Some(crate::sign_file_id(&id).as_str())
+    {
+        return Err((StatusCode::NOT_FOUND, "not found".into()));
+    }
+
     let row: Option<(String, String, String)> =
         sqlx::query_as("SELECT path, filename, content_type FROM files WHERE id = ?")
             .bind(&id)
@@ -264,12 +326,18 @@ pub async fn serve_file(
         )
     };
 
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, served_type)
         .header(header::CONTENT_DISPOSITION, disposition)
         .body(body)
-        .unwrap())
+        .map_err(|e| {
+            tracing::error!("serve_file: failed to build response for {id}: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to serve file".into(),
+            )
+        })
 }
 
 #[cfg(test)]
@@ -288,5 +356,28 @@ mod tests {
         assert!(!is_inline_safe("application/pdf"));
         assert!(!is_inline_safe("application/octet-stream"));
         assert!(!is_inline_safe(""));
+    }
+
+    #[test]
+    fn signed_file_id_is_deterministic_and_path_carries_it() {
+        // `sign_file_id` reads JWT_SECRET; set a known one so this test is hermetic.
+        std::env::set_var("JWT_SECRET", "0123456789abcdef0123456789abcdef");
+
+        let id = "11111111-2222-3333-4444-555555555555";
+        let sig = crate::sign_file_id(id);
+
+        // Deterministic: same id → same 32-hex-char signature every call.
+        assert_eq!(sig, crate::sign_file_id(id));
+        assert_eq!(sig.len(), 32);
+        assert!(sig.chars().all(|c| c.is_ascii_hexdigit()));
+
+        // The emitted path embeds exactly the computed signature.
+        assert_eq!(crate::signed_file_path(id), format!("/files/{id}?s={sig}"));
+
+        // A tampered signature must not equal the real one (forgery is rejected).
+        let tampered = format!("{sig}deadbeef");
+        assert_ne!(tampered, sig);
+        // A different id yields a different signature.
+        assert_ne!(crate::sign_file_id("a-different-id"), sig);
     }
 }

@@ -109,7 +109,7 @@ pub async fn create_emoji(
         .map_err(crate::api::error::internal)?;
 
     let _path = file_url.ok_or_else(|| (StatusCode::NOT_FOUND, "File not found".into()))?;
-    let url = format!("/files/{}", body.file_id);
+    let url = crate::signed_file_path(&body.file_id);
 
     let id = new_id();
     let now = now_unix();

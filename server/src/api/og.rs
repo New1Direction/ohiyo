@@ -4,43 +4,56 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 
 use crate::{auth::AuthUser, AppState};
 
-/// SSRF guard — reject URLs whose host resolves to a private/loopback/link-local
-/// address (blocks cloud metadata at 169.254.169.254, localhost, internal services).
-async fn is_public_url(url: &str) -> bool {
-    let parsed = match url::Url::parse(url) {
-        Ok(u) => u,
-        Err(_) => return false,
-    };
-    let host = match parsed.host_str() {
-        Some(h) => h.to_owned(),
-        None => return false,
-    };
+/// True if `ip` is a public, routable address (i.e. NOT loopback/private/link-local/
+/// unspecified/broadcast). Blocks cloud metadata at 169.254.169.254, localhost, and
+/// internal services.
+fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.octets()[0] == 0)
+        }
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            !(v6.is_loopback() || v6.is_unspecified()
+                || (s[0] & 0xfe00) == 0xfc00 // unique-local fc00::/7
+                || (s[0] & 0xffc0) == 0xfe80) // link-local fe80::/10
+        }
+    }
+}
+
+/// Resolve `url`'s host and return `(host, port, validated_addrs)` ONLY if every
+/// resolved address is public. Returns `None` if the URL is malformed, resolution
+/// fails, or ANY resolved address is private/loopback/link-local — so an attacker
+/// can't slip an internal IP into a multi-record DNS answer.
+async fn resolve_public_addrs(url: &str) -> Option<(String, u16, Vec<SocketAddr>)> {
+    let parsed = url::Url::parse(url).ok()?;
+    let host = parsed.host_str()?.to_owned();
     let port = parsed.port_or_known_default().unwrap_or(443);
-    let addrs: Vec<_> = match tokio::net::lookup_host((host.as_str(), port)).await {
-        Ok(it) => it.collect(),
-        Err(_) => return false,
-    };
-    !addrs.is_empty()
-        && addrs.iter().all(|sa| match sa.ip() {
-            IpAddr::V4(v4) => {
-                !(v4.is_loopback()
-                    || v4.is_private()
-                    || v4.is_link_local()
-                    || v4.is_unspecified()
-                    || v4.is_broadcast()
-                    || v4.octets()[0] == 0)
-            }
-            IpAddr::V6(v6) => {
-                let s = v6.segments();
-                !(v6.is_loopback() || v6.is_unspecified()
-                    || (s[0] & 0xfe00) == 0xfc00 // unique-local fc00::/7
-                    || (s[0] & 0xffc0) == 0xfe80) // link-local fe80::/10
-            }
-        })
+    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .ok()?
+        .collect();
+    if addrs.is_empty() || !addrs.iter().all(|sa| is_public_ip(sa.ip())) {
+        return None;
+    }
+    Some((host, port, addrs))
+}
+
+/// SSRF guard — reject URLs whose host resolves to a private/loopback/link-local
+/// address. Used by callers that only need a yes/no answer (e.g. the watch-party
+/// URL guard); the link-preview fetcher uses `resolve_public_addrs` so it can pin
+/// the connection to the exact IP it validated (closes the DNS-rebinding window).
+pub(crate) async fn is_public_url(url: &str) -> bool {
+    resolve_public_addrs(url).await.is_some()
 }
 
 #[derive(Deserialize)]
@@ -60,11 +73,17 @@ pub struct OgData {
 
 static HTTP: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
 
+const HTTP_TIMEOUT_SECS: u64 = 5;
+const HTTP_USER_AGENT: &str = "Ohiyo/1.0 (link preview bot)";
+
+/// Shared client for the specialised handlers (YouTube oEmbed, GitHub API) that hit
+/// fixed, trusted hosts. The generic page fetcher does NOT use this — it pins each
+/// request to a validated IP via `pinned_client` (see `fetch_guarded`).
 fn http() -> &'static reqwest::Client {
     HTTP.get_or_init(|| {
         reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .user_agent("Ohiyo/1.0 (link preview bot)")
+            .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
+            .user_agent(HTTP_USER_AGENT)
             // No auto-redirects: we follow manually so EVERY hop is SSRF-checked
             // (a public URL must not be able to bounce us to an internal address).
             .redirect(reqwest::redirect::Policy::none())
@@ -73,21 +92,40 @@ fn http() -> &'static reqwest::Client {
     })
 }
 
+/// Build a one-off client that forces `host` to resolve ONLY to `addr` — the exact
+/// address we already validated as public. This pins the TCP connect to the checked
+/// IP, eliminating the check-then-connect TOCTOU / DNS-rebinding window (between our
+/// `lookup_host` and reqwest's own resolution, a hostile resolver could otherwise
+/// return an internal IP).
+fn pinned_client(host: &str, addr: SocketAddr) -> Option<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
+        .user_agent(HTTP_USER_AGENT)
+        .redirect(reqwest::redirect::Policy::none())
+        .resolve_to_addrs(host, &[addr])
+        .build()
+        .ok()
+}
+
 /// Max bytes buffered from a previewed page — bounds memory on large/hostile pages.
 const MAX_BODY_BYTES: usize = 512 * 1024;
 /// Max redirect hops, each re-validated against the SSRF guard.
 const MAX_REDIRECTS: usize = 5;
 
-/// GET `url`, manually following up to `MAX_REDIRECTS` redirects and re-running the
-/// SSRF guard on every hop. Returns the final non-redirect response, or `None` if a
-/// hop is disallowed / the chain is too long / a request fails.
+/// GET `url`, manually following up to `MAX_REDIRECTS` redirects. On every hop we
+/// resolve the host, validate that ALL resolved addresses are public, then pin the
+/// request to one validated address so the connection lands on the IP we checked
+/// (not a rebound internal one). Returns the final non-redirect response, or `None`
+/// if a hop is disallowed / the chain is too long / a request fails.
 async fn fetch_guarded(url: &str) -> Option<reqwest::Response> {
     let mut current = url.to_owned();
     for _ in 0..=MAX_REDIRECTS {
-        if !is_public_url(&current).await {
-            return None;
-        }
-        let resp = http().get(&current).send().await.ok()?;
+        // Resolve + validate every IP, and capture the validated set so we connect to
+        // the same address we checked (check and connect share one resolution result).
+        let (host, _port, addrs) = resolve_public_addrs(&current).await?;
+        let addr = *addrs.first()?;
+        let client = pinned_client(&host, addr)?;
+        let resp = client.get(&current).send().await.ok()?;
         if resp.status().is_redirection() {
             let loc = resp
                 .headers()
