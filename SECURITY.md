@@ -63,3 +63,10 @@ Ohiyo does **not** roll its own crypto. End-to-end encryption is built on the
 implementation. Reports about how we *use* the protocol — key handling, session
 management, trust and verification flows, metadata exposure, or sandbox
 escapes — are exactly the kind of thing we want to hear about.
+
+Voice/video is encrypted media (LiveKit FrameCryptor when the SFU is on, DTLS-SRTP
+on the peer-to-peer mesh), but the WebRTC **signaling** channel rides the gateway:
+establishing a call assumes the server relays offers/answers honestly. A malicious
+server operator could disrupt or man-in-the-middle *call setup* — consistent with
+the out-of-scope note above — so the integrity guarantee for voice is "honest
+server," whereas message content holds even against a dishonest one.

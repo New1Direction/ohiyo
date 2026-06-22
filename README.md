@@ -16,7 +16,7 @@ with export and self-host always one click away.
   <img src="./brand/kikka-chinchilla.svg" alt="Kikka, the coral chinchilla mascot" width="120" />
 </p>
 
-> **Status:** v0.1.0 — early but real. 22 end-to-end suites green. There's no public
+> **Status:** v0.1.0 — early but real. 25 end-to-end suites green. There's no public
 > backend yet — you self-host your own (it's one command). Desktop builds in
 > [Releases](../../releases).
 
@@ -36,8 +36,9 @@ with export and self-host always one click away.
   [`docs/superpowers/`](docs/superpowers/).)*
 - **Text** — servers, channels, threads-of-thought, DMs, reactions, edits/deletes,
   attachments, **read receipts / delivered state** on DMs.
-- **Voice & video** — WebRTC voice, video, and screen-share. STUN-only on LAN;
-  optional coturn (`infra/coturn/`) for symmetric-NAT users.
+- **Voice & video** — WebRTC voice, video, and screen-share. Peer-to-peer with STUN on
+  LAN; optional coturn (`infra/coturn/`) for symmetric-NAT users, or an optional LiveKit
+  SFU (`infra/livekit/`) for larger rooms.
 - **Plugins** — arbitrary third-party plugins run in a **genuinely isolated Web
   Worker sandbox**: no network, no DOM, no token access, even via the prototype
   chain. See `client/src/plugins/`.
@@ -55,7 +56,7 @@ with export and self-host always one click away.
 | Desktop  | Tauri 2 |
 | Realtime | WebRTC (voice/video/screen-share), WS gateway with one-time tickets |
 | Deploy   | Fly.io + Docker (see [`DEPLOY.md`](DEPLOY.md)) |
-| Quality  | ESLint (hooks-as-error), `tsc`, unit tests, `cargo test`, 22-suite e2e, GitHub Actions CI |
+| Quality  | ESLint (hooks-as-error), `tsc`, unit tests, `cargo test`, 25-suite e2e, GitHub Actions CI |
 
 ## Repo layout
 
@@ -110,7 +111,7 @@ backend — point this at **your own** Fly app or self-hosted server. See
 ```bash
 cd client
 npm run test:unit     # unit tests (Node 22.6+)
-KIKKA_ORIGIN=http://localhost:1420 npm run test:e2e   # full suite (22)
+KIKKA_ORIGIN=http://localhost:1420 npm run test:e2e   # full suite (25)
 KIKKA_ORIGIN=http://localhost:1420 npm run test:e2e receipts   # filter by substring
 npm run lint          # ESLint — react-hooks rules are errors
 npm run typecheck     # tsc --noEmit
