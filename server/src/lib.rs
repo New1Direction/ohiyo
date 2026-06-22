@@ -297,6 +297,10 @@ async fn security_headers(req: Request, next: Next) -> Response {
         "strict-transport-security",
         HeaderValue::from_static("max-age=31536000; includeSubDomains"),
     );
+    h.insert(
+        "permissions-policy",
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
+    );
     res
 }
 

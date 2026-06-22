@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -210,6 +212,13 @@ pub async fn send_friend_request(
     State(state): State<AppState>,
     Path(user_id): Path<String>,
 ) -> Result<Json<FriendRelation>, (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("friend-request:{}", auth.0),
+        20,
+        Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
     if user_id == auth.0 {
         return Err((StatusCode::BAD_REQUEST, "You can't add yourself.".into()));
     }
@@ -347,6 +356,12 @@ pub async fn open_dm(
     State(state): State<AppState>,
     Json(body): Json<OpenDmBody>,
 ) -> Result<Json<Channel>, (StatusCode, String)> {
+    if !state
+        .rate
+        .check(&format!("open-dm:{}", auth.0), 20, Duration::from_secs(60))
+    {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
     if body.recipient_id == auth.0 {
         return Err((StatusCode::BAD_REQUEST, "You can't DM yourself.".into()));
     }
@@ -434,6 +449,13 @@ pub async fn open_group_dm(
     State(state): State<AppState>,
     Json(body): Json<OpenGroupDmBody>,
 ) -> Result<Json<Channel>, (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("open-group-dm:{}", auth.0),
+        20,
+        Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
     let mut members: Vec<String> = body
         .recipient_ids
         .into_iter()

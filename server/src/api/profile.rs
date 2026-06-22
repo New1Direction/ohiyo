@@ -59,18 +59,21 @@ pub async fn set_banner(
     State(state): State<AppState>,
     Json(body): Json<SetBannerBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    // Must be a real file AND uploaded by the caller — otherwise any user could point
+    // Must be a real image AND uploaded by the caller — otherwise any user could point
     // their avatar/banner at someone else's uploaded file by guessing its id.
     let exists: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM files WHERE id = ? AND uploader_id = ?")
+        sqlx::query_as("SELECT content_type FROM files WHERE id = ? AND uploader_id = ?")
             .bind(&body.file_id)
             .bind(&auth.0)
             .fetch_optional(&state.db)
             .await
             .map_err(crate::api::error::internal)?;
 
-    if exists.is_none() {
+    let Some((content_type,)) = exists else {
         return Err((StatusCode::NOT_FOUND, "File not found".into()));
+    };
+    if !content_type.starts_with("image/") {
+        return Err((StatusCode::BAD_REQUEST, "Banner must be an image".into()));
     }
 
     let base = crate::public_base_url();
@@ -399,6 +402,10 @@ pub async fn get_prefs(
     Ok(Json(json))
 }
 
+/// Upper bound on a stored plugin-prefs blob — reject larger before the DB write so an
+/// unbounded body can't bloat the row / DB. Generous for real preference payloads.
+const MAX_PREFS_BYTES: usize = 64 * 1024; // 64 KiB
+
 pub async fn set_prefs(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -406,6 +413,12 @@ pub async fn set_prefs(
 ) -> Result<StatusCode, (StatusCode, String)> {
     let json_str =
         serde_json::to_string(&body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    if json_str.len() > MAX_PREFS_BYTES {
+        return Err((
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "preferences too large".into(),
+        ));
+    }
 
     sqlx::query(
         "INSERT INTO user_prefs (user_id, prefs_json) VALUES (?,?)
@@ -443,6 +456,11 @@ pub async fn get_key_backup(
     }
 }
 
+/// Upper bound on the opaque key-backup ciphertext blob. The server never inspects it,
+/// but it must still reject an unbounded body before persisting. Ample for the recovery
+/// envelope (wrapped keys + metadata).
+const MAX_KEY_BACKUP_BYTES: usize = 512 * 1024; // 512 KiB
+
 pub async fn put_key_backup(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -450,6 +468,9 @@ pub async fn put_key_backup(
 ) -> Result<StatusCode, (StatusCode, String)> {
     let blob =
         serde_json::to_string(&body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    if blob.len() > MAX_KEY_BACKUP_BYTES {
+        return Err((StatusCode::PAYLOAD_TOO_LARGE, "key backup too large".into()));
+    }
     sqlx::query(
         "INSERT INTO key_backups (user_id, blob, updated_at) VALUES (?,?,?)
          ON CONFLICT(user_id) DO UPDATE SET blob = excluded.blob, updated_at = excluded.updated_at",

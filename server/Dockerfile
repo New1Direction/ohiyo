@@ -50,6 +50,14 @@ COPY --from=discrawl-builder /usr/local/bin/discrawl /usr/local/bin/discrawl
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Run as a dedicated non-root user. /data (the volume mount, holding the SQLite DB,
+# litestream state and uploads/) must be writable by it; the bound port :3000 is
+# unprivileged (>1024), so dropping root needs no extra capability.
+RUN useradd -r -u 10001 -m ohiyo \
+    && mkdir -p /data \
+    && chown -R ohiyo /data
+USER ohiyo
+
 ENV BIND_ADDR=0.0.0.0:3000 \
     DATABASE_URL=sqlite:/data/ohiyo.db \
     OHIYO_DISCRAWL_BIN=/usr/local/bin/discrawl \

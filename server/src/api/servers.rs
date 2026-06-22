@@ -306,20 +306,28 @@ pub async fn ban_member(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// DELETE /servers/{server_id}/bans/{user_id} — owner lifts a ban.
+/// DELETE /servers/{server_id}/bans/{user_id} — a moderator lifts a ban.
 pub async fn unban_member(
     auth: AuthUser,
     Path((server_id, target_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    require_mod_action(
+    // No rank-hierarchy check here: the target is a banned user, no longer a member, so
+    // `member_top_position` resolves to the "no roles" floor — comparing ranks would
+    // wrongly block every unban. Gate purely on the BAN_MEMBERS permission instead.
+    if !crate::api::roles::has_perm(
         &state,
         &server_id,
         &auth.0,
-        &target_id,
         crate::api::roles::perm::BAN_MEMBERS,
     )
-    .await?;
+    .await
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you don't have permission for that".into(),
+        ));
+    }
     sqlx::query("DELETE FROM server_bans WHERE server_id = ? AND user_id = ?")
         .bind(&server_id)
         .bind(&target_id)

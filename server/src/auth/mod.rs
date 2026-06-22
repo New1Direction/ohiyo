@@ -1,7 +1,7 @@
 use anyhow::Result;
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
+    Algorithm, Argon2, Params, Version,
 };
 use axum::{
     extract::{FromRef, FromRequestParts},
@@ -29,7 +29,16 @@ pub fn jwt_secret() -> String {
 
 pub fn hash_password(password: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
-    let hash = Argon2::default()
+    // Argon2id (hybrid) per OWASP / RFC 9106 — Argon2::default() is Argon2i, which is
+    // weaker against time-space tradeoff attacks. Params: 19 MiB memory, t=2, p=1. Verify
+    // stays on Argon2::default() since the algorithm/params are read from the stored PHC
+    // string, so existing Argon2i hashes keep verifying.
+    let argon = Argon2::new(
+        Algorithm::Argon2id,
+        Version::V0x13,
+        Params::new(19456, 2, 1, None).map_err(|e| anyhow::anyhow!("argon2 params: {e}"))?,
+    );
+    let hash = argon
         .hash_password(password.as_bytes(), &salt)
         .map_err(|e| anyhow::anyhow!("hash error: {e}"))?
         .to_string();

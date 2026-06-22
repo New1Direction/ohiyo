@@ -563,6 +563,13 @@ async fn handle_client_event(
 
         ClientEvent::Typing { channel_id } => {
             let Some(me) = me else { return };
+            // Authorize before broadcasting: a user kicked/removed (or never a member)
+            // must not be able to forge typing indicators in channels they can't see.
+            // Mirrors the Ack/Signal/VoiceMeta handlers — the async check runs before
+            // any lock is taken.
+            if !crate::api::messages::user_can_access(state, &channel_id, user_id).await {
+                return;
+            }
             // Server-side throttle: drop pings within TYPING_COOLDOWN of the last
             // one for this (user, channel), so a misbehaving client can't flood
             // the DB + broadcast path. No await is held across the locks.
