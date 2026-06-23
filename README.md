@@ -16,7 +16,7 @@ with export and self-host always one click away.
   <img src="./brand/kikka-chinchilla.svg" alt="Kikka, the coral chinchilla mascot" width="120" />
 </p>
 
-> **Status:** v0.1.0 — early but real. 25 end-to-end suites green. There's no public
+> **Status:** v0.2.0 — early but real. 25 end-to-end suites green. There's no public
 > backend yet — you self-host your own (it's one command). Desktop builds in
 > [Releases](../../releases).
 
@@ -68,6 +68,7 @@ infra/coturn/  Optional TURN server for WebRTC behind strict NATs
 brand/         Mascot (Kikka) + brand assets (Daybreak)
 site/          Public landing page (deploys to ohiyo.gg)
 docs/          Design specs & plans
+CHANGELOG.md   Release notes (Keep a Changelog)
 DEPLOY.md      Production deploy guide (Fly.io)
 UX-GATES.md    UX acceptance gates
 ```
