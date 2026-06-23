@@ -62,11 +62,11 @@ Vite client). Start both, then:
 
 ```bash
 cd client
-KIKKA_ORIGIN=http://localhost:1420 npm run test:e2e          # all 22 suites
+KIKKA_ORIGIN=http://localhost:1420 npm run test:e2e          # all 25 suites
 KIKKA_ORIGIN=http://localhost:1420 npm run test:e2e receipts # filter by substring
 ```
 
-The 22 suites cover signup, invites, moderation, roles, polls, mentions, events,
+The 25 suites cover signup, invites, moderation, roles, polls, mentions, events,
 drafts, image uploads, receipts, the plugin sandbox, and the encrypted-DM /
 group / multi-device / disappearing-message flows. A few of the crypto suites
 are timing-sensitive, so e2e is run on demand and on a weekly schedule rather
@@ -124,6 +124,16 @@ feat: pin messages in channels
 Adds a pin action to the message context menu and a pinned-messages
 drawer. Server stores pins per-channel; gateway broadcasts pin/unpin.
 ```
+
+## Changelog
+
+We keep a [`CHANGELOG.md`](CHANGELOG.md) in the
+[Keep a Changelog](https://keepachangelog.com/) format. If your change is user-facing or
+security-relevant, add a one-line entry under the **`## [Unreleased]`** heading in the
+right category — **Added**, **Changed**, **Fixed**, or **Security** — written for the
+people running and using Ohiyo, not for reviewers. At release time a maintainer renames
+`[Unreleased]` to the new version and tags it. Pure-internal refactors and test-only
+changes don't need an entry.
 
 ## A friendly note
 
