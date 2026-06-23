@@ -6,7 +6,10 @@
   "permissions": [
     "core:default",
     "core:event:default",
-    "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }, { "url": "mailto:*" }]
+    },
     "deep-link:default",
     "notification:default"
   ]

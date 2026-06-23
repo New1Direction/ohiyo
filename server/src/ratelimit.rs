@@ -21,7 +21,7 @@ impl RateLimiter {
     /// within `window`), `false` if the caller should be throttled.
     pub fn check(&self, key: &str, max: usize, window: Duration) -> bool {
         let now = Instant::now();
-        let mut map = self.hits.lock().unwrap();
+        let mut map = self.hits.lock().unwrap_or_else(|e| e.into_inner());
 
         // Opportunistic cleanup so the map can't grow unbounded.
         if map.len() > 10_000 {

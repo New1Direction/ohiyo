@@ -62,7 +62,12 @@ impl FlyProvisioner {
             .json()
             .await
             .map_err(|e| ProvisionError::Upstream(e.to_string()))?;
-        Ok(v["id"].as_str().unwrap_or_default().to_string())
+        // A missing/non-string id means an empty volume id would mount /data as tmpfs
+        // (DB wiped on restart) — fail loudly instead of silently returning "".
+        let id = v["id"].as_str().filter(|s| !s.is_empty()).ok_or_else(|| {
+            ProvisionError::Upstream("fly volume create returned no volume id".to_string())
+        })?;
+        Ok(id.to_string())
     }
 
     /// The Fly Machines `POST /machines` body for one instance. Pure — unit-tested.
@@ -122,7 +127,15 @@ impl MachineProvisioner for FlyProvisioner {
             .json()
             .await
             .map_err(|e| ProvisionError::Upstream(e.to_string()))?;
-        let machine_id = v["id"].as_str().unwrap_or_default().to_string();
+        // An empty machine_id would make every later status/destroy call target nothing —
+        // treat a missing id as an upstream failure rather than yielding "".
+        let machine_id = v["id"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                ProvisionError::Upstream("fly create returned no machine id".to_string())
+            })?
+            .to_string();
         Ok(ProvisionedMachine {
             machine_id,
             volume_id,

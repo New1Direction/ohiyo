@@ -235,8 +235,27 @@ export const BUILTIN_THEMES: Theme[] = [
 const STORAGE_KEY = "kikkacord:theme";
 const CUSTOM_THEMES_KEY = "kikkacord:custom-themes";
 
+const DEFAULT_THEME: Theme = BUILTIN_THEMES[0];
+
+/** A theme is only usable if its `vars` is a non-null object — a partial blob (no vars)
+ *  would otherwise blow up at Object.entries(theme.vars) on first paint. */
+function isValidTheme(t: unknown): t is Theme {
+  return (
+    !!t &&
+    typeof t === "object" &&
+    typeof (t as Theme).vars === "object" &&
+    (t as Theme).vars !== null
+  );
+}
+
 export function applyTheme(theme: Theme) {
   const root = document.documentElement;
+  // Reset to the default theme's FULL var set first, then overlay this theme. A theme
+  // that omits some keys (custom/imported) would otherwise inherit the previous theme's
+  // values for those keys — cross-theme color bleed.
+  for (const [k, v] of Object.entries(DEFAULT_THEME.vars)) {
+    root.style.setProperty(k, v);
+  }
   for (const [k, v] of Object.entries(theme.vars)) {
     root.style.setProperty(k, v);
   }
@@ -246,17 +265,24 @@ export function applyTheme(theme: Theme) {
 export function loadTheme(): Theme {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Theme;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (isValidTheme(parsed)) return parsed;
+    }
   } catch {
     // ignore
   }
-  return BUILTIN_THEMES[0];
+  return DEFAULT_THEME;
 }
 
 export function getCustomThemes(): Theme[] {
   try {
     const raw = localStorage.getItem(CUSTOM_THEMES_KEY);
-    if (raw) return JSON.parse(raw) as Theme[];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Keep only well-formed themes so a partial entry can't reach applyTheme.
+      if (Array.isArray(parsed)) return parsed.filter(isValidTheme);
+    }
   } catch {
     // ignore
   }

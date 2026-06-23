@@ -125,8 +125,18 @@ pub async fn delete_message(id: String) {
 /// `None` on any transport/parse error so the caller can fall back to SQL.
 pub async fn search_ids(server_id: &str, q: &str, limit: usize) -> Option<Vec<String>> {
     let (url, key) = config()?;
-    // server_id is a server-issued UUID; escape quotes defensively for the filter DSL.
-    let filter = format!("server_id = '{}'", server_id.replace('\'', "\\'"));
+    // `server_id` comes from the URL path. Server ids are UUIDs (ASCII alphanumeric +
+    // hyphen), so validate against that charset and reject anything else BEFORE building
+    // the filter — quote-escaping is the wrong convention for Meilisearch's filter DSL
+    // and is not a reliable defense against injection. An invalid id yields no results.
+    if server_id.is_empty()
+        || !server_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
+        return None;
+    }
+    let filter = format!("server_id = '{server_id}'");
     let res = http()
         .post(format!("{url}/indexes/messages/search"))
         .bearer_auth(&key)

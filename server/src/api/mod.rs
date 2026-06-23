@@ -37,6 +37,8 @@ pub fn router() -> Router<AppState> {
         // Auth
         .route("/auth/register", post(auth::register))
         .route("/auth/login", post(auth::login))
+        // Revoke every token minted before now (bumps users.token_version).
+        .route("/auth/logout-everywhere", post(auth::logout_everywhere))
         // Device linking (QR / one-time code) — add a device without re-entering the password
         .route("/devices/link/start", post(auth::link_start))
         .route("/devices/link/complete", post(auth::link_complete))
@@ -130,7 +132,9 @@ pub fn router() -> Router<AppState> {
         .route("/servers/{id}", get(servers::get_server))
         .route("/servers/{id}", delete(servers::delete_server))
         .route("/servers/{id}/icon", post(servers::set_server_icon))
-        .route("/servers/{id}/join", post(servers::join_server))
+        // NOTE: there is deliberately no open "/servers/{id}/join" — joining a server
+        // requires a valid invite code via POST /invites/{code} (see api::invites).
+        // An open join-by-id endpoint let any authed user bypass invites entirely.
         .route("/servers/{id}/leave", post(servers::leave_server))
         .route(
             "/servers/{server_id}/members/{user_id}",

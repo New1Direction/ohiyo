@@ -28,10 +28,13 @@ pub async fn list_servers(
     .await
     .map_err(crate::api::error::internal)?;
 
-    let mut out = Vec::new();
-    for server in servers {
-        out.push(fetch_full(&server.id, &state).await?);
-    }
+    // Fetch each server's full payload concurrently (WAL + pooled connections) instead
+    // of N serial round-trips, matching the concurrent pattern in the gateway Ready path.
+    let out: Vec<ServerWithChannels> =
+        futures_util::future::join_all(servers.iter().map(|server| fetch_full(&server.id, &state)))
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
     Ok(Json(out))
 }
 
@@ -161,7 +164,7 @@ pub async fn set_server_icon(
         ));
     }
 
-    let icon_url = format!("{}/files/{}", crate::public_base_url(), body.file_id);
+    let icon_url = crate::signed_file_url(&crate::public_base_url(), &body.file_id);
     sqlx::query("UPDATE servers SET icon_url = ? WHERE id = ?")
         .bind(&icon_url)
         .bind(&id)
@@ -172,48 +175,6 @@ pub async fn set_server_icon(
     let full = fetch_full(&id, &state).await?;
     broadcast_to_server(&state, &id, &GatewayEvent::ServerCreate(full.clone())).await;
     Ok(Json(full))
-}
-
-pub async fn join_server(
-    auth: AuthUser,
-    Path(id): Path<String>,
-    State(state): State<AppState>,
-) -> Result<Json<ServerWithChannels>, (StatusCode, String)> {
-    if is_banned(&state, &id, &auth.0).await {
-        return Err((
-            StatusCode::FORBIDDEN,
-            "you're banned from this server".into(),
-        ));
-    }
-    let now = now_unix();
-
-    sqlx::query(
-        "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?,?,?)",
-    )
-    .bind(&id)
-    .bind(&auth.0)
-    .bind(now)
-    .execute(&state.db)
-    .await
-    .map_err(crate::api::error::internal)?;
-
-    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
-        .bind(&auth.0)
-        .fetch_one(&state.db)
-        .await
-        .map_err(crate::api::error::internal)?;
-
-    broadcast_to_server(
-        &state,
-        &id,
-        &GatewayEvent::MemberJoin {
-            server_id: id.clone(),
-            user: PublicUser::from(user),
-        },
-    )
-    .await;
-
-    Ok(Json(fetch_full(&id, &state).await?))
 }
 
 pub async fn leave_server(
@@ -345,20 +306,28 @@ pub async fn ban_member(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// DELETE /servers/{server_id}/bans/{user_id} — owner lifts a ban.
+/// DELETE /servers/{server_id}/bans/{user_id} — a moderator lifts a ban.
 pub async fn unban_member(
     auth: AuthUser,
     Path((server_id, target_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    require_mod_action(
+    // No rank-hierarchy check here: the target is a banned user, no longer a member, so
+    // `member_top_position` resolves to the "no roles" floor — comparing ranks would
+    // wrongly block every unban. Gate purely on the BAN_MEMBERS permission instead.
+    if !crate::api::roles::has_perm(
         &state,
         &server_id,
         &auth.0,
-        &target_id,
         crate::api::roles::perm::BAN_MEMBERS,
     )
-    .await?;
+    .await
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you don't have permission for that".into(),
+        ));
+    }
     sqlx::query("DELETE FROM server_bans WHERE server_id = ? AND user_id = ?")
         .bind(&server_id)
         .bind(&target_id)

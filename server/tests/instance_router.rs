@@ -52,7 +52,11 @@ async fn provisioned_subdomain_replays_to_its_machine() {
         .await
         .unwrap();
     let sub = inst["subdomain"].as_str().unwrap();
-    let machine = inst["machine_id"].as_str().unwrap();
+    // machine_id is intentionally NOT exposed in the API response anymore (it's an internal
+    // Fly id — see #[serde(skip_serializing)] on HostedInstance). The fake provisioner
+    // derives it deterministically as `fake-machine-{instance_id}`, so the test
+    // reconstructs the expected value from the still-public instance id.
+    let machine = format!("fake-machine-{}", inst["id"].as_str().unwrap());
 
     let res = srv
         .client

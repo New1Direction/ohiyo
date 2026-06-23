@@ -144,9 +144,11 @@ pub async fn create_livekit_token(
         &EncodingKey::from_secret(api_secret.as_bytes()),
     )
     .map_err(|e| {
+        // Don't leak JWT/crypto internals to the client; log server-side, return generic.
+        tracing::error!("livekit token mint failed for {}: {e}", auth.0);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("token mint failed: {e}"),
+            "could not create voice token".to_owned(),
         )
     })?;
 

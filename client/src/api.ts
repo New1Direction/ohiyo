@@ -92,6 +92,13 @@ export type AttachmentMeta = {
   /** Pixel dimensions for images, so the client reserves space before load (no shift). */
   width?: number | null;
   height?: number | null;
+  /**
+   * Server-emitted relative file URL, signed (`/files/<id>?s=<sig>`) when the server
+   * has signed-file enforcement available. Prefer this over rebuilding from `id` so the
+   * URL validates under `OHIYO_REQUIRE_SIGNED_FILES`. Absent on attachments stored by
+   * older servers — callers fall back to `/files/<id>`.
+   */
+  url?: string;
 };
 
 export type ReplyPreview = {

@@ -11,6 +11,7 @@ import { ToastStack } from "./components/ToastStack";
 import { SettingsModal, type Tab } from "./components/settings/SettingsModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { CallOverlay } from "./components/CallOverlay";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BootSplash } from "./components/BootSplash";
 import { Onboarding } from "./components/Onboarding";
 import { NoServersYet } from "./components/NoServersYet";
@@ -28,7 +29,7 @@ import { CategoriesModal } from "./components/CategoriesModal";
 import { ForwardModal } from "./components/ForwardModal";
 import { PERM, can } from "./permissions";
 import { mentionsYou } from "./lib/mentions";
-import { notify, ensureNotificationPermission, initDeepLinks, claimNotification } from "./lib/desktop";
+import { notify, ensureNotificationPermission, initDeepLinks, claimNotification, isDesktop } from "./lib/desktop";
 import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendingFailedOutbox, reconcileStalePending } from "./lib/outbox";
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
@@ -41,7 +42,7 @@ import {
   acknowledgeIdentityChange,
   type TrustState,
 } from "./lib/identityTrust";
-import { cachePlaintext, getCachedPlaintext } from "./lib/e2eCache";
+import { cachePlaintext, getCachedPlaintext, removeCachedPlaintext } from "./lib/e2eCache";
 import {
   groupEncrypt,
   groupDecrypt,
@@ -52,7 +53,7 @@ import {
 } from "./lib/senderKeys";
 import { formatDuration } from "./lib/disappearing";
 import { initVaultBackend } from "./lib/tauriVault";
-import type { UseWebRTCReturn } from "./hooks/useWebRTC";
+import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
 import { applyActiveAppearance, setAccent } from "./lib/appearance";
@@ -85,10 +86,30 @@ export default function App() {
   const activeHome = homes.find((h) => h.id === activeHomeId) ?? homes[0];
   const token = activeHome?.token ?? null;
   const [showAddHome, setShowAddHome] = useState(false);
+  // Desktop: the session token lives in the encrypted vault, which hydrates
+  // asynchronously. Until it's ready we can't tell "logged out" from "token still
+  // sealed", so the UI is gated on this flag. Web has no vault → ready immediately.
+  const [vaultReady, setVaultReady] = useState(() => !isDesktop());
 
   useEffect(() => {
     if (activeHome) setServerOrigin(activeHome.url);
   }, [activeHome]);
+
+  // Hydrate the desktop vault once at startup, then re-read homes so each home's token
+  // resolves from the now-warm vault (it was absent from the synchronous first load).
+  // `.finally` guarantees we never get stuck on the splash if the vault is unavailable.
+  useEffect(() => {
+    if (!isDesktop()) return; // web: tokens already came from localStorage synchronously
+    let cancelled = false;
+    void initVaultBackend().finally(() => {
+      if (cancelled) return;
+      setHomes(loadHomes());
+      setVaultReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function persistHomes(next: OhiyoHome[]) {
     setHomes(next);
@@ -120,6 +141,11 @@ export default function App() {
   }
 
   if (!activeHome) return null;
+  if (!vaultReady) {
+    // Desktop only: a brief wait while the encrypted vault unlocks and the session token
+    // hydrates, so an already-signed-in user never flashes the login screen.
+    return <div className="fixed inset-0 grid place-items-center text-sm opacity-60">Unlocking…</div>;
+  }
   const addHomeModal = showAddHome ? (
     <AddHomeModal
       onAdd={(url) => {
@@ -393,20 +419,28 @@ function MainApp({
   // Voice engine. Both hooks are called unconditionally (rules of hooks); liveKitEnabled
   // (fetched at runtime from /livekit/config) picks the P2P mesh (default) or the LiveKit
   // SFU (scales past ~5 participants). Either way signaling/presence flows through the gateway.
-  const webrtcCallbacks = {
-    currentUserId: currentUser?.id ?? "",
-    getIceServers: async () => (await api.getIceServers(token)).iceServers,
-    sendJoin: (cid: string, muted: boolean, video: boolean) =>
-      gatewayRef.current?.send({ t: "JoinVoice", d: { channel_id: cid, muted, video } }),
+  //
+  // The callbacks object MUST keep a stable identity across renders — the WebRTC hooks
+  // store it and a new object each render would churn their effects. Changing values
+  // (currentUserId, token) are read through a ref updated every render instead.
+  const webrtcStateRef = useRef({ currentUserId: currentUser?.id ?? "", token });
+  webrtcStateRef.current = { currentUserId: currentUser?.id ?? "", token };
+  const webrtcCallbacks = useRef<WebRTCCallbacks>({
+    get currentUserId() {
+      return webrtcStateRef.current.currentUserId;
+    },
+    getIceServers: async () => (await api.getIceServers(webrtcStateRef.current.token)).iceServers,
+    sendJoin: (cid: string, muted: boolean, video: boolean, listenOnly: boolean) =>
+      gatewayRef.current?.send({ t: "JoinVoice", d: { channel_id: cid, muted, video, listen_only: listenOnly } }),
     sendLeave: (cid: string) => gatewayRef.current?.send({ t: "LeaveVoice", d: { channel_id: cid } }),
-    sendMeta: (cid: string, muted: boolean, video: boolean, screen: boolean) =>
-      gatewayRef.current?.send({ t: "VoiceMeta", d: { channel_id: cid, muted, video, screen } }),
+    sendMeta: (cid: string, muted: boolean, video: boolean, screen: boolean, listenOnly: boolean) =>
+      gatewayRef.current?.send({ t: "VoiceMeta", d: { channel_id: cid, muted, video, screen, listen_only: listenOnly } }),
     sendSignal: (to: string, kind: string, payload: string) =>
       gatewayRef.current?.send({
         t: "Signal",
         d: { to, channel_id: activeVoiceRef.current ?? "", kind, payload },
       }),
-  };
+  }).current;
   const mesh = useWebRTC(webrtcCallbacks);
   const sfu = useWebRTCLiveKit(webrtcCallbacks, token);
   const webrtc = liveKitEnabled ? sfu : mesh;
@@ -451,11 +485,14 @@ function MainApp({
     if (!hasTimedMessages) return;
     const id = setInterval(() => {
       const now = Math.floor(Date.now() / 1000);
-      setMessages((prev) =>
-        prev.some((m) => m.expires_at && m.expires_at <= now)
-          ? prev.filter((m) => !(m.expires_at && m.expires_at <= now))
-          : prev
-      );
+      setMessages((prev) => {
+        const expired = prev.filter((m) => m.expires_at && m.expires_at <= now);
+        if (expired.length === 0) return prev;
+        // Evict the forward-secret plaintext for disappeared messages so they can't be
+        // recovered from the on-disk cache (idempotent — safe under updater re-invocation).
+        for (const m of expired) removeCachedPlaintext(m.id);
+        return prev.filter((m) => !(m.expires_at && m.expires_at <= now));
+      });
     }, 1000);
     return () => clearInterval(id);
   }, [hasTimedMessages]);
@@ -621,7 +658,9 @@ function MainApp({
         const msg = event.d;
         typing.clearTyping(msg.channel_id, msg.author.id);
         if (selectedChannelRef.current?.id === msg.channel_id) {
-          setMessages((prev) => [...prev, msg]);
+          // Dedup by id: a duplicate MessageCreate (gateway replay, or a resend whose
+          // first response was lost) must not render the message twice.
+          setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
           if (isEncrypted(msg.content) || isSignalCiphertext(msg.content) || isGroupCiphertext(msg.content)) {
             void decryptMessages(msg.channel_id, [msg]).then((dec) => {
               const dm = dec[0];
@@ -671,6 +710,7 @@ function MainApp({
       }
 
       case "MessageDelete":
+        removeCachedPlaintext(event.d.id); // drop the forward-secret plaintext too
         setMessages((prev) => prev.filter((m) => m.id !== event.d.id));
         break;
 
@@ -1330,8 +1370,20 @@ function MainApp({
   }, []);
 
   // Re-send everything still queued in the outbox (called on connectivity return).
+  const flushingRef = useRef(false);
   const flushOutbox = useCallback(() => {
-    for (const m of pendingFailedOutbox()) void handleRetryMessage(m);
+    // Single-flight + sequential: firing all retries in parallel lets messages land out
+    // of order, and the two reconnect paths (the `online` listener and the connected
+    // effect) can otherwise overlap. The guard keeps the signature sync for the callers.
+    if (flushingRef.current) return;
+    flushingRef.current = true;
+    void (async () => {
+      try {
+        for (const m of pendingFailedOutbox()) await handleRetryMessage(m);
+      } finally {
+        flushingRef.current = false;
+      }
+    })();
   }, [handleRetryMessage]);
 
   // On startup, demote stale "pending" (a session that died mid-send) to failed.
@@ -1802,12 +1854,15 @@ function MainApp({
       />
       )}
 
-      {/* Voice / video / screen-share call overlay */}
-      <CallOverlay
-        webrtc={webrtc}
-        currentUser={currentUser}
-        channelName={voiceChannel?.name ?? "Voice"}
-      />
+      {/* Voice / video / screen-share call overlay. A WebRTC throw degrades to a
+          small fallback instead of white-screening the whole app. */}
+      <ErrorBoundary label="Voice call" onReset={() => webrtc.hangUp()}>
+        <CallOverlay
+          webrtc={webrtc}
+          currentUser={currentUser}
+          channelName={voiceChannel?.name ?? "Voice"}
+        />
+      </ErrorBoundary>
 
       {/* Toast notifications */}
       <ToastStack toasts={toasts} />

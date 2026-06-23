@@ -191,6 +191,68 @@ pub fn public_base_url() -> String {
         .expect("PUBLIC_BASE_URL must be set — start via main(), which guarantees it")
 }
 
+// ── Signed file URLs (capability gate) ───────────────────────────────────────
+// A `/files/{id}` URL can optionally carry an HMAC capability signature so the
+// serve route can refuse to hand out a file unless the URL was emitted by this
+// server. The signature is store-time: every URL we persist/emit gets `?s=<sig>`
+// appended, but enforcement only happens when `OHIYO_REQUIRE_SIGNED_FILES` is
+// truthy. With the flag OFF the param is purely cosmetic and serving is unchanged
+// (current behaviour, byte-for-byte). With it ON, only signed URLs validate — see
+// the caveat in `serve_file` about avatars/icons stored before the upgrade.
+
+/// Env var that gates signed-file enforcement on `serve_file`. Truthy ("1"/"true",
+/// case-insensitive) turns enforcement on; anything else (incl. unset) leaves it off.
+const REQUIRE_SIGNED_FILES_ENV: &str = "OHIYO_REQUIRE_SIGNED_FILES";
+
+/// Number of leading hex chars of the HMAC tag used as the file signature. 32 hex
+/// chars = 128 bits of the HMAC-SHA256 output — ample to make forgery infeasible
+/// without bloating every emitted URL.
+const FILE_SIG_HEX_LEN: usize = 32;
+
+/// Deterministic capability signature for a file id: the first
+/// [`FILE_SIG_HEX_LEN`] lowercase-hex chars of `HMAC-SHA256(JWT_SECRET, id)`.
+/// Keyed by the JWT secret so it rotates with sessions and needs no extra config.
+pub fn sign_file_id(id: &str) -> String {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let secret = crate::auth::jwt_secret();
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
+        .expect("HMAC accepts a key of any length");
+    mac.update(id.as_bytes());
+    let tag = mac.finalize().into_bytes();
+    let mut hex = String::with_capacity(FILE_SIG_HEX_LEN);
+    for byte in tag.iter().take(FILE_SIG_HEX_LEN / 2) {
+        use std::fmt::Write as _;
+        let _ = write!(hex, "{byte:02x}");
+    }
+    hex
+}
+
+/// A relative, signed `/files/<id>?s=<sig>` path. Use where the emitted URL is
+/// stored/served relative (message attachments, emoji).
+pub fn signed_file_path(id: &str) -> String {
+    format!("/files/{id}?s={}", sign_file_id(id))
+}
+
+/// An absolute, signed `<base>/files/<id>?s=<sig>` URL. Use where the emitted URL
+/// is persisted with the public base prefix (avatars, banners, server icons).
+pub fn signed_file_url(base: &str, id: &str) -> String {
+    format!("{base}/files/{id}?s={}", sign_file_id(id))
+}
+
+/// Whether `serve_file` must validate the `?s=` capability signature.
+/// True only for `OHIYO_REQUIRE_SIGNED_FILES` set to "1"/"true" (case-insensitive);
+/// unset or any other value leaves serving unchanged (default OFF).
+pub fn require_signed_files() -> bool {
+    std::env::var(REQUIRE_SIGNED_FILES_ENV)
+        .map(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            v == "1" || v == "true"
+        })
+        .unwrap_or(false)
+}
+
 /// Parse a comma-separated `CORS_ALLOWED_ORIGINS` value into header values, dropping
 /// blank or syntactically invalid tokens. Shared by `validate_config` (which rejects a
 /// value that yields no origins) and `build_app` (which builds the allowlist).
@@ -234,6 +296,10 @@ async fn security_headers(req: Request, next: Next) -> Response {
     h.insert(
         "strict-transport-security",
         HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+    );
+    h.insert(
+        "permissions-policy",
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
     );
     res
 }

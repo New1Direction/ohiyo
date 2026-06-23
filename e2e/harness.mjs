@@ -46,7 +46,10 @@ export async function currentToken(page) {
     if (legacy) return legacy;
     const homes = JSON.parse(localStorage.getItem("kc:homes:v1") || "[]");
     const active = localStorage.getItem("kc:active-home:v1");
-    return (homes.find((h) => h.id === active) || homes[0] || {}).token || null;
+    const home = homes.find((h) => h.id === active) || homes[0] || {};
+    // Tokens now live in a per-home secure slot (kc:tok:<id>) — on web that's
+    // localStorage; the blob `home.token` is only a legacy fallback.
+    return localStorage.getItem("kc:tok:" + home.id) || home.token || null;
   });
 }
 export const settle = (page, ms = 300) => page.waitForTimeout(ms);

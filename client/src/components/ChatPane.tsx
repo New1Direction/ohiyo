@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDropzone } from "react-dropzone";
 import { VariableSizeList as List } from "react-window";
@@ -6,6 +6,7 @@ import type { AttachmentMeta, Embed, Message, Channel, ReactionGroup, ServerEmoj
 import type { WatchSession } from "../gateway";
 import type { TrustState } from "../lib/identityTrust";
 import { WatchParty } from "./WatchParty";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { api, getApiBase, getFileBase } from "../api";
 import type { PluginManager } from "../plugins/registry";
 import { UserProfileCard } from "./UserProfileCard";
@@ -17,6 +18,7 @@ import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions";
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
+import { safeHttpUrl } from "../lib/url";
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 
@@ -90,6 +92,11 @@ type OgData = {
   favicon: string | null;
 };
 
+// Auth token for the (authenticated) link-preview endpoint, passed down via context
+// so the deeply-nested LinkPreviewCard can read it without a module-level mutable
+// `let` written during render (which is a side effect in render, and not concurrent-safe).
+const OgAuthTokenContext = createContext<string>("");
+
 const QUICK_EMOJI = ["👍", "❤️", "😂", "😮", "😢", "🔥", "✅", "🎉", "👀", "🚀", "💯", "🙏", "😍", "😎", "🤔"];
 const EMOJI_CATALOG = [
   ["😀", "grin happy smile"], ["😂", "laugh tears funny"], ["🤣", "rofl laughing"], ["😭", "cry sob"], ["🥹", "teary touched"], ["😍", "love heart eyes"],
@@ -106,7 +113,11 @@ const EMOJI_CATALOG = [
   ["🎮", "game controller"], ["🎧", "headphones music"], ["🎵", "music note"], ["🎬", "movie film"], ["📸", "camera"], ["💻", "laptop code"],
   ["🚀", "rocket launch"], ["🛸", "ufo"], ["🧠", "brain smart"], ["🫵", "you point"], ["✅", "check yes"], ["❌", "x no"],
 ] as const;
-const TENOR_SAMPLE_KEY = "LIVDSRZULELA"; // Public sample key from Tenor docs; no customer setup.
+// Tenor API key. Prefer VITE_TENOR_KEY (set per-deployment); the public sample key
+// from Tenor's docs is a rate-limited DEV-ONLY fallback so the GIF picker still works
+// locally without setup. Production deployments should set VITE_TENOR_KEY.
+const TENOR_SAMPLE_KEY = "LIVDSRZULELA";
+const TENOR_KEY = import.meta.env.VITE_TENOR_KEY || TENOR_SAMPLE_KEY;
 type GifResult = { id: string; title: string; url: string; preview: string };
 
 export type ChatActivityNotice = {
@@ -116,6 +127,11 @@ export type ChatActivityNotice = {
   createdAt: number;
   user?: PublicUser;
 };
+
+// Row model for the virtualized message list. Hoisted to module scope so the type
+// (and the memoized derivations that use it) is stable across renders.
+type MsgGroup = { author: Message["author"]; msgs: Message[]; isMe: boolean };
+type ChatRow = { kind: "messages"; group: MsgGroup } | { kind: "activity"; notice: ChatActivityNotice };
 
 type Props = {
   channel: Channel | null;
@@ -292,7 +308,6 @@ export function ChatPane({
   const draftsRef = useRef<Record<string, string>>({});
   const inputRef = useRef(input);
   inputRef.current = input;
-  ogAuthToken = token; // keep the link-preview fetch authenticated
   const prevChannelRef = useRef<string | null>(channel?.id ?? null);
   const [mention, setMention] = useState<{ query: string; at: number } | null>(null);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
@@ -577,7 +592,7 @@ export function ChatPane({
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setGifLoading(true);
-      fetch(`https://g.tenor.com/v1/search?q=${encodeURIComponent(q)}&key=${TENOR_SAMPLE_KEY}&limit=18&media_filter=minimal`, { signal: controller.signal })
+      fetch(`https://g.tenor.com/v1/search?q=${encodeURIComponent(q)}&key=${TENOR_KEY}&limit=18&media_filter=minimal`, { signal: controller.signal })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("gif search failed"))))
         .then((data: { results?: Array<{ id: string; title?: string; media?: Array<{ gif?: { url: string }; tinygif?: { url: string } }> }> }) => {
           const results = (data.results ?? [])
@@ -601,61 +616,77 @@ export function ChatPane({
     };
   }, [composerPickerOpen, composerPickerTab, gifQuery]);
 
-  // Apply plugin message transforms.
-  const displayMessages = messages
-    .map((m) => pluginManager.applyMessageTransforms(m))
-    .filter((m): m is Message => m !== null);
+  // Apply plugin message transforms. Memoized so react-window's VariableSizeList
+  // doesn't get fresh array identities (and discard its measured-height cache) on
+  // every unrelated render.
+  const displayMessages = useMemo(
+    () =>
+      messages
+        .map((m) => pluginManager.applyMessageTransforms(m))
+        .filter((m): m is Message => m !== null),
+    [messages, pluginManager]
+  );
 
   // Group consecutive messages by same author, then add soft local activity notes
   // as lightweight rows. These notices feel like chat activity without polluting
   // the real persisted message history.
-  type MsgGroup = { author: Message["author"]; msgs: Message[]; isMe: boolean };
-  type ChatRow = { kind: "messages"; group: MsgGroup } | { kind: "activity"; notice: ChatActivityNotice };
-  const groups: MsgGroup[] = [];
-  for (const msg of displayMessages) {
-    const last = groups[groups.length - 1];
-    if (last && last.author.id === msg.author.id) {
-      last.msgs.push(msg);
-    } else {
-      groups.push({ author: msg.author, msgs: [msg], isMe: msg.author.id === currentUserId });
+  const groups = useMemo(() => {
+    const out: MsgGroup[] = [];
+    for (const msg of displayMessages) {
+      const last = out[out.length - 1];
+      if (last && last.author.id === msg.author.id) {
+        last.msgs.push(msg);
+      } else {
+        out.push({ author: msg.author, msgs: [msg], isMe: msg.author.id === currentUserId });
+      }
     }
-  }
-  const rows: ChatRow[] = [
-    ...groups.map((group) => ({ kind: "messages" as const, group })),
-    ...activityNotices.map((notice) => ({ kind: "activity" as const, notice })),
-  ];
+    return out;
+  }, [displayMessages, currentUserId]);
 
-  function estimateHeight(index: number): number {
-    const row = rows[index];
-    if (!row) return 60;
-    if (row.kind === "activity") return 48;
-    const g = row.group;
-    const { linePx, basePx, fontScale } = metricsRef.current;
-    // Fewer characters fit per line as the font scales up, so the wrap estimate tracks it.
-    const charsPerLine = Math.max(20, Math.round(80 / fontScale));
-    const textLines = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 1 : Math.ceil(m.content.length / charsPerLine)), 0);
-    // Reserve the rendered attachment height so images/videos do not get clipped in the virtualized list.
-    const mediaH = g.msgs.reduce(
-      (sum, m) =>
-        sum +
-        (hiddenMessageIds.has(m.id) ? 0 : (m.attachments ?? []).reduce((s, a) => {
-          if (a.content_type.startsWith("image/")) {
-            return s + (a.width && a.height ? fitImg(a.width, a.height, 400, 300).h + 20 : 180);
-          }
-          if (a.content_type.startsWith("video/")) return s + 278;
-          if (a.content_type.startsWith("audio/")) return s + 58;
-          return s + 34;
-        }, 0)),
-      0
-    );
-    const hasReactions = g.msgs.some((m) => (m.reactions?.length ?? 0) > 0);
-    const replies = g.msgs.filter((m) => m.reply_to).length;
-    const pins = g.msgs.filter((m) => m.pinned).length;
-    const failed = g.msgs.filter((m) => m._state === "failed").length;
-    const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
-    const embedsH = g.msgs.reduce((sum, m) => sum + (m.embeds?.length ?? 0) * 92, 0);
-    return basePx + Math.max(textLines, 1) * linePx + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
-  }
+  const rows = useMemo<ChatRow[]>(
+    () => [
+      ...groups.map((group) => ({ kind: "messages" as const, group })),
+      ...activityNotices.map((notice) => ({ kind: "activity" as const, notice })),
+    ],
+    [groups, activityNotices]
+  );
+
+  // Stable identity so VariableSizeList keeps the same itemSize callback (it caches
+  // measured heights against it). Reads metricsRef.current (a ref, not a dep).
+  const estimateHeight = useCallback(
+    (index: number): number => {
+      const row = rows[index];
+      if (!row) return 60;
+      if (row.kind === "activity") return 48;
+      const g = row.group;
+      const { linePx, basePx, fontScale } = metricsRef.current;
+      // Fewer characters fit per line as the font scales up, so the wrap estimate tracks it.
+      const charsPerLine = Math.max(20, Math.round(80 / fontScale));
+      const textLines = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 1 : Math.ceil(m.content.length / charsPerLine)), 0);
+      // Reserve the rendered attachment height so images/videos do not get clipped in the virtualized list.
+      const mediaH = g.msgs.reduce(
+        (sum, m) =>
+          sum +
+          (hiddenMessageIds.has(m.id) ? 0 : (m.attachments ?? []).reduce((s, a) => {
+            if (a.content_type.startsWith("image/")) {
+              return s + (a.width && a.height ? fitImg(a.width, a.height, 400, 300).h + 20 : 180);
+            }
+            if (a.content_type.startsWith("video/")) return s + 278;
+            if (a.content_type.startsWith("audio/")) return s + 58;
+            return s + 34;
+          }, 0)),
+        0
+      );
+      const hasReactions = g.msgs.some((m) => (m.reactions?.length ?? 0) > 0);
+      const replies = g.msgs.filter((m) => m.reply_to).length;
+      const pins = g.msgs.filter((m) => m.pinned).length;
+      const failed = g.msgs.filter((m) => m._state === "failed").length;
+      const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
+      const embedsH = g.msgs.reduce((sum, m) => sum + (m.embeds?.length ?? 0) * 92, 0);
+      return basePx + Math.max(textLines, 1) * linePx + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
+    },
+    [rows, hiddenMessageIds]
+  );
 
   const handleSend = useCallback(
     (e: React.FormEvent) => {
@@ -838,6 +869,7 @@ export function ChatPane({
     : [];
 
   return (
+    <OgAuthTokenContext.Provider value={token}>
     <div className="flex flex-1 flex-col" style={{ background: "var(--bg-channel)" }} {...getRootProps()}>
       <input {...getInputProps({ "aria-label": "Attach files" })} />
 
@@ -1309,7 +1341,9 @@ export function ChatPane({
         </form>
       )}
       {watchSession && onWatchControl && (
-        <WatchParty session={watchSession} onControl={onWatchControl} />
+        <ErrorBoundary label="Watch party">
+          <WatchParty session={watchSession} onControl={onWatchControl} />
+        </ErrorBoundary>
       )}
 
       {/* Messages — virtualized */}
@@ -1320,6 +1354,9 @@ export function ChatPane({
             ? `${displayMessages[displayMessages.length - 1].author.display_name}: ${displayMessages[displayMessages.length - 1].content}`
             : ""}
         </div>
+        {/* A plugin message transform or a row renderer throwing degrades this
+            region to a fallback instead of taking down the whole app. */}
+        <ErrorBoundary label="Messages">
         {isLoading ? (
           <div className="flex h-full items-center justify-center" style={{ color: "var(--text-muted)" }}>
             <LoadingSpinner />
@@ -1559,6 +1596,7 @@ export function ChatPane({
             }}
           </AutoSizedList>
         )}
+        </ErrorBoundary>
         {showJump && (
           <button type="button" className="kc-jump-bottom" onClick={jumpToBottom} aria-label="Jump to latest messages">
             ↓ New messages
@@ -1812,6 +1850,7 @@ export function ChatPane({
         />
       )}
     </div>
+    </OgAuthTokenContext.Provider>
   );
 }
 
@@ -1968,30 +2007,49 @@ function MessageContent({ content, serverEmojis, currentUsername = "", suppressL
   return <>{parts}</>;
 }
 
+// Bounded LRU for link-preview lookups (a long-lived session can otherwise visit
+// thousands of URLs and grow this Map unbounded). Map preserves insertion order, so
+// the first key is the least-recently-used; touching a key re-inserts it as newest.
+const OG_CACHE_MAX = 500;
 const ogCache = new Map<string, OgData | null>();
-// Auth token for the (now authenticated) link-preview endpoint; kept current by ChatPane.
-let ogAuthToken = "";
+function ogCacheGet(url: string): OgData | null | undefined {
+  if (!ogCache.has(url)) return undefined;
+  const value = ogCache.get(url);
+  ogCache.delete(url);
+  ogCache.set(url, value as OgData | null); // mark most-recently-used
+  return value;
+}
+function ogCacheSet(url: string, value: OgData | null): void {
+  if (ogCache.has(url)) ogCache.delete(url);
+  ogCache.set(url, value);
+  while (ogCache.size > OG_CACHE_MAX) {
+    const oldest = ogCache.keys().next().value;
+    if (oldest === undefined) break;
+    ogCache.delete(oldest);
+  }
+}
 
 function useOgPreview(url: string): OgData | null {
-  const [data, setData] = useState<OgData | null>(() => ogCache.get(url) ?? null);
+  const token = useContext(OgAuthTokenContext);
+  const [data, setData] = useState<OgData | null>(() => ogCacheGet(url) ?? null);
   useEffect(() => {
     // Skip only when we already have real data — a cached null means "retry later".
-    if (ogCache.get(url) != null) return;
+    if (ogCacheGet(url) != null) return;
     const controller = new AbortController();
     fetch(`${getApiBase()}/og?url=${encodeURIComponent(url)}`, {
-      headers: ogAuthToken ? { Authorization: `Bearer ${ogAuthToken}` } : undefined,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       signal: controller.signal,
     })
       .then((r) => (r.ok ? (r.json() as Promise<OgData>) : Promise.reject(new Error("og failed"))))
       .then((d) => {
-        ogCache.set(url, d);
+        ogCacheSet(url, d);
         setData(d);
       })
       .catch((e) => {
-        if (e.name !== "AbortError") ogCache.set(url, null);
+        if (e.name !== "AbortError") ogCacheSet(url, null);
       });
     return () => controller.abort();
-  }, [url]);
+  }, [url, token]);
   return data;
 }
 
@@ -2049,17 +2107,6 @@ function LinkPreviewCard({ url }: { url: string }) {
       </div>
     </a>
   );
-}
-
-/** Accept only http(s) URLs — blocks javascript:/data: from third-party OG data. */
-function safeHttpUrl(s: string | null | undefined): string | undefined {
-  if (!s) return undefined;
-  try {
-    const u = new URL(s, window.location.origin);
-    return u.protocol === "http:" || u.protocol === "https:" ? u.href : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /** Server-persisted link-preview card (no client fetch — fields come from the gateway). */
@@ -2133,18 +2180,25 @@ function InlineText({ text, serverEmojis, currentUsername = "", suppressLinkPrev
     const before = text.slice(last, match.index);
     if (before) segments.push(...renderInlineMarkdown(before, String(last), currentUsername, emojiMap));
     const url = match[0].replace(/[.,!?)]+$/, "");
-    urls.push(url);
+    // Defense-in-depth: the regex anchors on https?:// but re-validate the scheme
+    // before it reaches href so odd inputs can't open-redirect.
+    const safeUrl = safeHttpUrl(url);
+    if (safeUrl) urls.push(safeUrl);
     segments.push(
-      <a
-        key={match.index}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: "var(--accent)", textDecoration: "underline" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {url}
-      </a>
+      safeUrl ? (
+        <a
+          key={match.index}
+          href={safeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--accent)", textDecoration: "underline" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {url}
+        </a>
+      ) : (
+        <span key={match.index}>{url}</span>
+      )
     );
     last = match.index! + match[0].length;
   }
@@ -2396,12 +2450,14 @@ function avatarBg(id: string): string {
 }
 
 function assetUrl(url: string): string {
-  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  // Only http(s) absolute URLs pass through; data:/blob: are rejected so a
+  // crafted attachment URL can't smuggle an inline payload into <img>/<video>.
+  if (/^https?:/i.test(url)) return url;
   return `${getFileBase()}${url.startsWith("/") ? url : `/${url}`}`;
 }
 
 function PendingAttachmentPreview({ file, onRemove }: { file: UploadedFile; onRemove: () => void }) {
-  const url = `${getFileBase()}/files/${file.id}`;
+  const url = assetUrl(file.url ?? `/files/${file.id}`);
   const isImage = file.content_type.startsWith("image/");
   const isVideo = file.content_type.startsWith("video/");
   const d = isImage && file.width && file.height ? fitImg(file.width, file.height, 180, 120) : null;
@@ -2443,7 +2499,7 @@ function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
   return (
     <div className="mt-1 flex flex-wrap gap-2">
       {attachments.map((att) => {
-        const url = `${getFileBase()}/files/${att.id}`;
+        const url = assetUrl(att.url ?? `/files/${att.id}`);
         if (att.content_type.startsWith("image/")) {
           const d = att.width && att.height ? fitImg(att.width, att.height, 400, 300) : null;
           return (

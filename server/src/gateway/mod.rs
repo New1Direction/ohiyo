@@ -54,7 +54,7 @@ pub async fn create_ws_ticket(
         .take(32)
         .map(char::from)
         .collect();
-    let mut tickets = state.tickets.lock().unwrap();
+    let mut tickets = state.tickets.lock().unwrap_or_else(|e| e.into_inner());
     tickets.retain(|_, (_, issued)| issued.elapsed() < TICKET_TTL); // prune expired
     tickets.insert(ticket.clone(), (auth.0, Instant::now()));
     Json(WsTicketResponse { ticket })
@@ -104,6 +104,16 @@ pub fn new_typing_cooldowns() -> TypingCooldowns {
 /// Minimum gap between typing broadcasts for a single user in one channel.
 const TYPING_COOLDOWN: Duration = Duration::from_secs(2);
 
+/// Largest inbound WebSocket text frame we'll parse. axum's HTTP body limit does not
+/// cover WS frames, so without this an authed connection could OOM the server with a
+/// single huge frame. Every legitimate `ClientEvent` is far smaller (ICE candidates,
+/// short metadata); 64 KiB leaves generous headroom.
+const MAX_WS_FRAME_BYTES: usize = 65_536;
+
+/// Cap on how many distinct typing-cooldown entries a single user may pin, so one
+/// connection can't grow the shared map by spamming many channels.
+const MAX_TYPING_CHANNELS_PER_USER: usize = 64;
+
 /// A participant currently connected to a voice channel.
 #[derive(Clone)]
 pub struct VoiceMember {
@@ -111,6 +121,8 @@ pub struct VoiceMember {
     pub muted: bool,
     pub video: bool,
     pub screen: bool,
+    /// True when the participant joined with no microphone (receive-only).
+    pub listen_only: bool,
 }
 
 // channel_id → (user_id → VoiceMember)
@@ -124,7 +136,7 @@ pub fn new_voice_rooms() -> VoiceRooms {
 
 /// Broadcast to a single user (unicast). Used for WebRTC signaling relay.
 pub fn broadcast_to_user(sessions: &SessionMap, user_id: &str, event: &GatewayEvent) {
-    let map = sessions.read().unwrap();
+    let map = sessions.read().unwrap_or_else(|e| e.into_inner());
     if let Some(conns) = map.get(user_id) {
         for tx in conns.values() {
             let _ = tx.send(event.clone());
@@ -139,9 +151,12 @@ pub async fn broadcast_to_server(state: &AppState, server_id: &str, event: &Gate
             .bind(server_id)
             .fetch_all(&state.db)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::warn!("broadcast_to_server members query failed for {server_id}: {e}");
+                Vec::new()
+            });
     // Acquire the lock AFTER the await — never hold a std RwLock across .await.
-    let map = state.sessions.read().unwrap();
+    let map = state.sessions.read().unwrap_or_else(|e| e.into_inner());
     for uid in members {
         if let Some(conns) = map.get(&uid) {
             for tx in conns.values() {
@@ -173,15 +188,25 @@ pub async fn broadcast_to_channel(state: &AppState, channel_id: &str, event: &Ga
             .bind(sid)
             .fetch_all(&state.db)
             .await
-            .unwrap_or_default(),
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    "broadcast_to_channel server members query failed for {channel_id}: {e}"
+                );
+                Vec::new()
+            }),
         None => sqlx::query_scalar("SELECT user_id FROM dm_participants WHERE channel_id = ?")
             .bind(channel_id)
             .fetch_all(&state.db)
             .await
-            .unwrap_or_default(),
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    "broadcast_to_channel dm participants query failed for {channel_id}: {e}"
+                );
+                Vec::new()
+            }),
     };
 
-    let map = state.sessions.read().unwrap();
+    let map = state.sessions.read().unwrap_or_else(|e| e.into_inner());
     for uid in recipients {
         if let Some(conns) = map.get(&uid) {
             for tx in conns.values() {
@@ -199,11 +224,11 @@ fn broadcast_to_voice(
     event: &GatewayEvent,
     except: Option<&str>,
 ) {
-    let rooms = voice.read().unwrap();
+    let rooms = voice.read().unwrap_or_else(|e| e.into_inner());
     let Some(room) = rooms.get(channel_id) else {
         return;
     };
-    let map = sessions.read().unwrap();
+    let map = sessions.read().unwrap_or_else(|e| e.into_inner());
     for uid in room.keys() {
         if Some(uid.as_str()) == except {
             continue;
@@ -227,7 +252,7 @@ pub async fn ws_handler(
 ) -> Response {
     // One-time ticket (consumed on use), so no long-lived token sits in the URL.
     let user_id = {
-        let mut tickets = state.tickets.lock().unwrap();
+        let mut tickets = state.tickets.lock().unwrap_or_else(|e| e.into_inner());
         match tickets.remove(&q.ticket) {
             Some((uid, issued)) if issued.elapsed() < TICKET_TTL => uid,
             _ => return (StatusCode::UNAUTHORIZED, "Invalid or expired ticket").into_response(),
@@ -243,7 +268,7 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     // Register this connection (multi-device: a user can have many at once).
     let conn_id = next_conn_id();
     {
-        let mut map = state.sessions.write().unwrap();
+        let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
         map.entry(user_id.clone())
             .or_default()
             .insert(conn_id, tx.clone());
@@ -262,8 +287,16 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
 
     // Send READY payload.
     if let Ok(ready) = build_ready(&user_id, &state).await {
-        let json = serde_json::to_string(&ready).unwrap_or_default();
-        let _ = ws_tx.send(Message::Text(json.into())).await;
+        match serde_json::to_string(&ready) {
+            Ok(json) => {
+                let _ = ws_tx.send(Message::Text(json.into())).await;
+            }
+            Err(e) => {
+                // A failed Ready serialize must NOT send an empty frame (the client would
+                // treat it as a malformed/empty snapshot); log and skip the send instead.
+                tracing::warn!("gateway: failed to serialize Ready for {user_id}: {e}");
+            }
+        }
     }
 
     // Forward broadcast events to this WS connection. A lagging receiver (slow
@@ -297,10 +330,22 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     while let Some(Ok(msg)) = ws_rx.next().await {
         match msg {
             Message::Close(_) => break,
-            Message::Text(t) => match serde_json::from_str::<ClientEvent>(&t) {
-                Ok(ev) => handle_client_event(ev, &user_id, me.as_ref(), &state).await,
-                Err(e) => tracing::debug!("gateway: bad client frame from {user_id}: {e}"),
-            },
+            Message::Text(t) => {
+                // Cap inbound frame size before parsing: axum's HTTP body limit does
+                // NOT apply to WebSocket frames, so an authed client could otherwise OOM
+                // the server with one giant frame. No legitimate client event is large.
+                if t.len() > MAX_WS_FRAME_BYTES {
+                    tracing::debug!(
+                        "gateway: dropping oversized frame ({} bytes) from {user_id}",
+                        t.len()
+                    );
+                    continue;
+                }
+                match serde_json::from_str::<ClientEvent>(&t) {
+                    Ok(ev) => handle_client_event(ev, &user_id, me.as_ref(), &state).await,
+                    Err(e) => tracing::debug!("gateway: bad client frame from {user_id}: {e}"),
+                }
+            }
             _ => {}
         }
     }
@@ -313,7 +358,7 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     // Unregister THIS connection. Only when the user's last connection drops do we
     // clear activity + announce offline (otherwise closing one device flaps presence).
     let last_connection = {
-        let mut map = state.sessions.write().unwrap();
+        let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
         if let Some(conns) = map.get_mut(&user_id) {
             conns.remove(&conn_id);
             if conns.is_empty() {
@@ -327,8 +372,16 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
         }
     };
     if last_connection {
-        state.activities.write().unwrap().remove(&user_id);
-        state.idle.write().unwrap().remove(&user_id);
+        state
+            .activities
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&user_id);
+        state
+            .idle
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&user_id);
         broadcast_presence(&state, &user_id, false).await;
     }
 }
@@ -345,15 +398,23 @@ async fn handle_client_event(
             channel_id,
             muted,
             video,
+            listen_only,
         } => {
             let Some(me) = me else { return };
+
+            // Authorize before touching the roster: the user must be able to see this
+            // channel. An unauthorized join adds nothing, announces nothing, and never
+            // receives the roster / key distribution — it returns silently.
+            if !crate::api::messages::user_can_access(state, &channel_id, user_id).await {
+                return;
+            }
 
             // Build the roster of peers already present (before adding ourselves),
             // then register ourselves. Single lock, no await inside. Returns None
             // if we're already in this room (duplicate join → ignore, don't
             // re-send the roster which would trigger a second offer wave).
             let roster: Option<Vec<VoicePeer>> = {
-                let mut rooms = state.voice.write().unwrap();
+                let mut rooms = state.voice.write().unwrap_or_else(|e| e.into_inner());
                 let room = rooms.entry(channel_id.clone()).or_default();
                 if room.contains_key(user_id) {
                     None
@@ -366,6 +427,7 @@ async fn handle_client_event(
                             muted: m.muted,
                             video: m.video,
                             screen: m.screen,
+                            listen_only: m.listen_only,
                         })
                         .collect();
                     room.insert(
@@ -375,6 +437,7 @@ async fn handle_client_event(
                             muted,
                             video,
                             screen: false,
+                            listen_only,
                         },
                     );
                     Some(peers)
@@ -405,6 +468,7 @@ async fn handle_client_event(
                     muted,
                     video,
                     screen: false,
+                    listen_only,
                 },
                 Some(user_id),
             );
@@ -419,15 +483,24 @@ async fn handle_client_event(
             muted,
             video,
             screen,
+            listen_only,
         } => {
             let Some(me) = me else { return };
+            // Re-check access on every meta update: a user kicked/removed after joining
+            // stays in the room map until WS disconnect, and would otherwise keep
+            // broadcasting VoiceState. Drop the update if they can no longer see the
+            // channel (the async check runs before any lock is taken).
+            if !crate::api::messages::user_can_access(state, &channel_id, user_id).await {
+                return;
+            }
             {
-                let mut rooms = state.voice.write().unwrap();
+                let mut rooms = state.voice.write().unwrap_or_else(|e| e.into_inner());
                 if let Some(room) = rooms.get_mut(&channel_id) {
                     if let Some(m) = room.get_mut(user_id) {
                         m.muted = muted;
                         m.video = video;
                         m.screen = screen;
+                        m.listen_only = listen_only;
                     }
                 }
             }
@@ -443,6 +516,7 @@ async fn handle_client_event(
                     muted,
                     video,
                     screen,
+                    listen_only,
                 },
                 None,
             );
@@ -454,10 +528,16 @@ async fn handle_client_event(
             kind,
             payload,
         } => {
+            // A sender kicked after joining lingers in the room map until disconnect;
+            // re-check channel access so they can't keep relaying signaling.
+            if !crate::api::messages::user_can_access(state, &channel_id, user_id).await {
+                tracing::debug!("gateway: rejected signal from {user_id}: no channel access");
+                return;
+            }
             // Only relay between two users who are BOTH in this voice room.
             // Prevents an outsider from injecting signaling at an arbitrary user.
             let authorized = {
-                let rooms = state.voice.read().unwrap();
+                let rooms = state.voice.read().unwrap_or_else(|e| e.into_inner());
                 rooms
                     .get(&channel_id)
                     .is_some_and(|room| room.contains_key(user_id) && room.contains_key(&to))
@@ -483,12 +563,22 @@ async fn handle_client_event(
 
         ClientEvent::Typing { channel_id } => {
             let Some(me) = me else { return };
+            // Authorize before broadcasting: a user kicked/removed (or never a member)
+            // must not be able to forge typing indicators in channels they can't see.
+            // Mirrors the Ack/Signal/VoiceMeta handlers — the async check runs before
+            // any lock is taken.
+            if !crate::api::messages::user_can_access(state, &channel_id, user_id).await {
+                return;
+            }
             // Server-side throttle: drop pings within TYPING_COOLDOWN of the last
             // one for this (user, channel), so a misbehaving client can't flood
             // the DB + broadcast path. No await is held across the locks.
             let key = (user_id.to_string(), channel_id.clone());
             {
-                let cooldowns = state.typing_cooldowns.read().unwrap();
+                let cooldowns = state
+                    .typing_cooldowns
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner());
                 if cooldowns
                     .get(&key)
                     .is_some_and(|t| t.elapsed() < TYPING_COOLDOWN)
@@ -497,9 +587,30 @@ async fn handle_client_event(
                 }
             }
             {
-                let mut cooldowns = state.typing_cooldowns.write().unwrap();
+                let mut cooldowns = state
+                    .typing_cooldowns
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner());
+                // Per-user bound: a single connection can't pin entries for unbounded
+                // channels. Only enforce when this key is genuinely new (re-typing an
+                // already-tracked channel just refreshes the timestamp, no growth). At
+                // the cap, drop this user's stalest entry before inserting.
+                let this_user = &key.0;
+                if !cooldowns.contains_key(&key) {
+                    let user_entries = cooldowns.keys().filter(|(u, _)| u == this_user).count();
+                    if user_entries >= MAX_TYPING_CHANNELS_PER_USER {
+                        if let Some(oldest) = cooldowns
+                            .iter()
+                            .filter(|((u, _), _)| u == this_user)
+                            .max_by_key(|(_, t)| t.elapsed())
+                            .map(|(k, _)| k.clone())
+                        {
+                            cooldowns.remove(&oldest);
+                        }
+                    }
+                }
                 cooldowns.insert(key, Instant::now());
-                // Bound memory — periodically evict entries past the cooldown window.
+                // Global backstop — periodically evict entries past the cooldown window.
                 if cooldowns.len() > 1024 {
                     cooldowns.retain(|_, t| t.elapsed() < TYPING_COOLDOWN * 4);
                 }
@@ -528,7 +639,7 @@ async fn handle_client_event(
         ClientEvent::SetActivity { activity } => {
             let sanitized = activity.and_then(|a| a.sanitized());
             {
-                let mut acts = state.activities.write().unwrap();
+                let mut acts = state.activities.write().unwrap_or_else(|e| e.into_inner());
                 match &sanitized {
                     Some(a) => {
                         acts.insert(user_id.to_string(), a.clone());
@@ -543,7 +654,7 @@ async fn handle_client_event(
 
         ClientEvent::SetPresence { idle } => {
             let changed = {
-                let mut set = state.idle.write().unwrap();
+                let mut set = state.idle.write().unwrap_or_else(|e| e.into_inner());
                 if idle {
                     set.insert(user_id.to_string())
                 } else {
@@ -644,7 +755,7 @@ async fn handle_ack(state: &AppState, user_id: &str, channel_id: &str, message_i
 /// Remove a user from one voice channel and notify the remaining peers.
 fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, channel_id: &str) {
     let removed = {
-        let mut rooms = state.voice.write().unwrap();
+        let mut rooms = state.voice.write().unwrap_or_else(|e| e.into_inner());
         if let Some(room) = rooms.get_mut(channel_id) {
             let r = room.remove(user_id).is_some();
             if room.is_empty() {
@@ -671,6 +782,7 @@ fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, channel
                 muted: false,
                 video: false,
                 screen: false,
+                listen_only: false,
             },
             // Don't echo the leave back to the departing user themselves.
             Some(user_id),
@@ -681,7 +793,7 @@ fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, channel
 /// Remove a user from every voice channel on disconnect.
 fn cleanup_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>) {
     let channels: Vec<String> = {
-        let rooms = state.voice.read().unwrap();
+        let rooms = state.voice.read().unwrap_or_else(|e| e.into_inner());
         rooms
             .iter()
             .filter(|(_, room)| room.contains_key(user_id))
@@ -707,7 +819,12 @@ async fn load_public_user(state: &AppState, user_id: &str) -> Option<PublicUser>
 fn presence_status(state: &AppState, user_id: &str, online: bool) -> String {
     if !online {
         "offline".to_string()
-    } else if state.idle.read().unwrap().contains(user_id) {
+    } else if state
+        .idle
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(user_id)
+    {
         "idle".to_string()
     } else {
         "online".to_string()
@@ -733,13 +850,21 @@ async fn presence_audience(state: &AppState, user_id: &str) -> Vec<String> {
     .bind(user_id)
     .fetch_all(&state.db)
     .await
-    .unwrap_or_default()
+    .unwrap_or_else(|e| {
+        tracing::warn!("presence_audience query failed for {user_id}: {e}");
+        Vec::new()
+    })
 }
 
 async fn broadcast_presence(state: &AppState, user_id: &str, online: bool) {
     let status = presence_status(state, user_id, online);
     let activity = if online {
-        state.activities.read().unwrap().get(user_id).cloned()
+        state
+            .activities
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(user_id)
+            .cloned()
     } else {
         None
     };
@@ -767,9 +892,9 @@ async fn send_presence_snapshot(
     let audience = presence_audience(state, user_id).await;
 
     // Sync section — no await while the locks are held.
-    let sessions = state.sessions.read().unwrap();
-    let acts = state.activities.read().unwrap();
-    let idle = state.idle.read().unwrap();
+    let sessions = state.sessions.read().unwrap_or_else(|e| e.into_inner());
+    let acts = state.activities.read().unwrap_or_else(|e| e.into_inner());
+    let idle = state.idle.read().unwrap_or_else(|e| e.into_inner());
     for uid in audience {
         if uid == user_id || !sessions.contains_key(&uid) {
             continue;
@@ -797,7 +922,7 @@ async fn send_voice_snapshot(
 ) {
     // Copy the rooms out of the lock, then access-check + send (no await under the lock).
     let rooms: Vec<(String, Vec<VoiceMember>)> = {
-        let r = state.voice.read().unwrap();
+        let r = state.voice.read().unwrap_or_else(|e| e.into_inner());
         r.iter()
             .map(|(cid, m)| (cid.clone(), m.values().cloned().collect()))
             .collect()
@@ -817,6 +942,7 @@ async fn send_voice_snapshot(
                 muted: m.muted,
                 video: m.video,
                 screen: m.screen,
+                listen_only: m.listen_only,
             });
         }
     }
@@ -836,15 +962,28 @@ async fn handle_watch_control(
     if !crate::api::messages::user_can_access(state, channel_id, user_id).await {
         return;
     }
+    // For "set", validate the user-supplied URL up front (before acquiring the lock,
+    // since the SSRF guard is async). Reject schemes other than http(s) and any host
+    // that resolves to a private/loopback/link-local address — the same guard used by
+    // the link-preview fetcher — so a watch-party URL can't be an SSRF vector.
+    let validated_url: Option<String> = if action == "set" {
+        match url
+            .as_deref()
+            .filter(|u| u.starts_with("http://") || u.starts_with("https://"))
+        {
+            Some(u) if crate::api::og::is_public_url(u).await => Some(u.to_string()),
+            _ => return,
+        }
+    } else {
+        None
+    };
     let now = crate::types::now_unix();
     // Compute the new session under the lock; broadcast after it's dropped (no await held).
     let session = {
-        let mut watch = state.watch.write().unwrap();
+        let mut watch = state.watch.write().unwrap_or_else(|e| e.into_inner());
         match action {
             "set" => {
-                let Some(url) =
-                    url.filter(|u| u.starts_with("http://") || u.starts_with("https://"))
-                else {
+                let Some(url) = validated_url else {
                     return;
                 };
                 let s = crate::types::WatchSession {
@@ -861,6 +1000,11 @@ async fn handle_watch_control(
                 let Some(s) = watch.get_mut(channel_id) else {
                     return;
                 };
+                // Only the host who started the session may drive playback; any other
+                // channel member is access-authorized but must not hijack it.
+                if s.host_id != user_id {
+                    return;
+                }
                 if action == "play" {
                     s.paused = false;
                 } else if action == "pause" {
@@ -873,8 +1017,14 @@ async fn handle_watch_control(
                 Some(s.clone())
             }
             "stop" => {
-                watch.remove(channel_id);
-                None
+                // Only the host may end the session (silently ignore non-hosts).
+                match watch.get(channel_id) {
+                    Some(s) if s.host_id == user_id => {
+                        watch.remove(channel_id);
+                        None
+                    }
+                    _ => return,
+                }
             }
             _ => return,
         }

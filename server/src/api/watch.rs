@@ -18,6 +18,11 @@ pub async fn get_watch(
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
-    let session = state.watch.read().unwrap().get(&channel_id).cloned();
+    let session = state
+        .watch
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&channel_id)
+        .cloned();
     Ok(Json(session))
 }

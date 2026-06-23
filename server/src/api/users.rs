@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -210,6 +212,13 @@ pub async fn send_friend_request(
     State(state): State<AppState>,
     Path(user_id): Path<String>,
 ) -> Result<Json<FriendRelation>, (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("friend-request:{}", auth.0),
+        20,
+        Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
     if user_id == auth.0 {
         return Err((StatusCode::BAD_REQUEST, "You can't add yourself.".into()));
     }
@@ -347,6 +356,25 @@ pub async fn open_dm(
     State(state): State<AppState>,
     Json(body): Json<OpenDmBody>,
 ) -> Result<Json<Channel>, (StatusCode, String)> {
+    if !state
+        .rate
+        .check(&format!("open-dm:{}", auth.0), 20, Duration::from_secs(60))
+    {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
+    if body.recipient_id == auth.0 {
+        return Err((StatusCode::BAD_REQUEST, "You can't DM yourself.".into()));
+    }
+    // The recipient must exist before we create participant rows for them.
+    let recipient_exists: Option<String> = sqlx::query_scalar("SELECT id FROM users WHERE id = ?")
+        .bind(&body.recipient_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    if recipient_exists.is_none() {
+        return Err((StatusCode::NOT_FOUND, "User not found".into()));
+    }
+
     // Check if a DM already exists between these two users.
     let existing: Option<Channel> = sqlx::query_as(
         "SELECT c.* FROM channels c
@@ -421,6 +449,13 @@ pub async fn open_group_dm(
     State(state): State<AppState>,
     Json(body): Json<OpenGroupDmBody>,
 ) -> Result<Json<Channel>, (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("open-group-dm:{}", auth.0),
+        20,
+        Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
     let mut members: Vec<String> = body
         .recipient_ids
         .into_iter()
@@ -430,6 +465,24 @@ pub async fn open_group_dm(
     members.dedup();
     if members.is_empty() || members.len() > 20 {
         return Err((StatusCode::BAD_REQUEST, "need 1–20 other people".into()));
+    }
+
+    // Every recipient must exist before we create participant rows for them. Count the
+    // matching user rows in one query; a mismatch means at least one id is unknown.
+    let placeholders = std::iter::repeat_n("?", members.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let existing_sql = format!("SELECT COUNT(*) FROM users WHERE id IN ({placeholders})");
+    let mut existing_q = sqlx::query_scalar::<_, i64>(&existing_sql);
+    for uid in &members {
+        existing_q = existing_q.bind(uid);
+    }
+    let existing_count: i64 = existing_q
+        .fetch_one(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    if existing_count != members.len() as i64 {
+        return Err((StatusCode::NOT_FOUND, "One or more users not found".into()));
     }
 
     let id = new_id();

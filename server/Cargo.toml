@@ -10,7 +10,11 @@ tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate", "uuid", "chrono"] }
+# default-features = false drops the MySQL/Postgres backends (and the transitive `rsa`
+# crate, RUSTSEC-2023-0071) that sqlx's default `any` feature would otherwise link.
+# We only ever talk to embedded SQLite via runtime queries, so we enable exactly the
+# backend/runtime/migrate/type features actually used — no network TLS backend needed.
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "migrate", "uuid", "chrono", "macros"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 jsonwebtoken = "9"

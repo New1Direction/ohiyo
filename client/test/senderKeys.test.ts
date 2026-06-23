@@ -27,7 +27,7 @@ function memStore(): Store {
 const use = (s: Store) => setSenderKeyBackend(s);
 
 // Decode a `grp1.` envelope back to its JSON (test-only introspection).
-function envelopeOf(wire: string): { kid: number; it: number; ct: string; sig: string; ep?: number } {
+function envelopeOf(wire: string): { kid: number; it: number; ct: string; sig: string; ep?: number; iv?: string } {
   return JSON.parse(Buffer.from(wire.slice(5), "base64").toString("utf8"));
 }
 
@@ -102,4 +102,76 @@ test("getGroupEpoch is monotonic and seeds a joiner's key at the current epoch",
   assert.equal(JSON.parse(skdm).ep, 3);
   const wire = await groupEncrypt(G, "joiner message");
   assert.equal(envelopeOf(wire!).ep, 3);
+});
+
+test("concurrent groupEncrypt calls never share an iteration (no AES-GCM nonce reuse)", async () => {
+  const a = memStore();
+  const b = memStore();
+  use(a);
+  const skdm = await buildDistribution(G);
+  use(b);
+  installDistribution(G, ALICE, skdm);
+
+  // Two encrypts for the same group, fired concurrently. The per-group serialization must
+  // make each ratchet advance atomic — otherwise both encrypt at iteration 0 and reuse the
+  // deterministic (AES-256-GCM key, IV) pair, catastrophically breaking confidentiality.
+  use(a);
+  const [w1, w2] = await Promise.all([groupEncrypt(G, "first"), groupEncrypt(G, "second")]);
+  assert.equal(envelopeOf(w1!).it, 0, "first scheduled encrypt takes iteration 0");
+  assert.equal(envelopeOf(w2!).it, 1, "second must ratchet to iteration 1, not reuse 0");
+
+  // Both still decrypt for the recipient, in iteration order.
+  use(b);
+  assert.equal(await groupDecrypt(G, ALICE, w1!), "first");
+  assert.equal(await groupDecrypt(G, ALICE, w2!), "second");
+});
+
+test("two sends at the SAME chain iteration (cross-tab race) use different IVs — no nonce reuse", async () => {
+  const a = memStore();
+  const b = memStore();
+  use(a);
+  const skdm = await buildDistribution(G);
+  use(b);
+  installDistribution(G, ALICE, skdm);
+
+  // Simulate two browser tabs/windows that both read iteration 0 of the shared own-key
+  // before either persists the ratchet: snapshot the state, encrypt, rewind, encrypt again.
+  // Per-context serialization can't prevent this (separate JS contexts); the random IV must.
+  use(a);
+  const ownStateKey = `kc:sk:own:${G}`;
+  const snapshot = a.getItem(ownStateKey)!;
+  const w1 = await groupEncrypt(G, "from tab 1");
+  a.setItem(ownStateKey, snapshot); // rewind to iteration 0, as a second tab would still see it
+  const w2 = await groupEncrypt(G, "from tab 2");
+
+  const e1 = envelopeOf(w1!);
+  const e2 = envelopeOf(w2!);
+  assert.equal(e1.it, 0);
+  assert.equal(e2.it, 0, "both encrypted at the same iteration — the cross-tab race");
+  assert.ok(e1.iv && e2.iv, "envelopes must carry a random IV");
+  assert.notEqual(e1.iv, e2.iv, "same iteration but DIFFERENT IVs → no AES-GCM nonce reuse");
+  // And the message is still authentic + decryptable end-to-end.
+  use(b);
+  assert.equal(await groupDecrypt(G, ALICE, w1!), "from tab 1");
+});
+
+test("installDistribution ignores a replayed/older-epoch SKDM (no clobber of a newer chain)", async () => {
+  const a = memStore();
+  const b = memStore();
+  // Alice mints epoch-0, then rekeys to epoch-1 and distributes both generations.
+  use(a);
+  const sk0 = await buildDistribution(G);
+  await setGroupEpoch(G, 1);
+  const sk1 = await buildDistribution(G);
+
+  // B installs the NEW (epoch-1) key; a stale/replayed epoch-0 SKDM then arrives late.
+  use(b);
+  installDistribution(G, ALICE, sk1);
+  installDistribution(G, ALICE, sk0); // must be ignored, not overwrite the good chain
+
+  // Alice sends at epoch-1; B must still decrypt — proving the replay didn't clobber it.
+  use(a);
+  const ct = await groupEncrypt(G, "still readable");
+  use(b);
+  assert.equal(await groupDecrypt(G, ALICE, ct!), "still readable");
 });

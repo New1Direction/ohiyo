@@ -120,6 +120,9 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       muted: !p.isMicrophoneEnabled,
       video: p.isCameraEnabled,
       screen: p.isScreenShareEnabled,
+      // Listen-only = joined without ever publishing a mic track; distinct from muted
+      // (mic track present but disabled), which still has an audio publication.
+      listenOnly: p.audioTrackPublications.size === 0,
     };
   };
 
@@ -177,11 +180,16 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
 
   const joinVoice = useCallback(
     async (cid: string, opts?: { video?: boolean }) => {
+      // Guard against a rapid double-join: a second call would `new Room()` again
+      // and orphan the first (WS socket + E2EE worker + mic all leaked).
+      if (roomRef.current || callState !== "idle") return;
       channelRef.current = cid;
       setChannelId(cid);
       setCallState("joining");
       // Announce presence over the gateway (drives the member-list "in voice" + Join).
-      cbRef.current.sendJoin(cid, false, opts?.video ?? false);
+      // LiveKit always publishes a mic on join (setMicrophoneEnabled(true) below), so
+      // the SFU engine never joins listen-only.
+      cbRef.current.sendJoin(cid, false, opts?.video ?? false, false);
       try {
         const { token: lkToken, url } = await api.getLiveKitToken(tokenRef.current, cid);
         // Lazy-load the SDK so it stays out of the main bundle (fetched on first join).
@@ -230,11 +238,15 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
           if (recips.length) void distributeMyVoiceKey(cid, recips);
         }
       } catch (e) {
+        // A failure after room.connect() leaves a partially-connected room that reset()
+        // doesn't touch — disconnect it so we don't leak the socket + media.
+        void roomRef.current?.disconnect();
+        roomRef.current = null;
         reset();
         throw e;
       }
     },
-    [refresh, refreshLocal, reset, ensureMyVoiceKey, distributeMyVoiceKey, evictVoiceKey]
+    [callState, refresh, refreshLocal, reset, ensureMyVoiceKey, distributeMyVoiceKey, evictVoiceKey]
   );
 
   const hangUp = useCallback(() => {
@@ -253,7 +265,8 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       cid,
       !room.localParticipant.isMicrophoneEnabled,
       room.localParticipant.isCameraEnabled,
-      room.localParticipant.isScreenShareEnabled
+      room.localParticipant.isScreenShareEnabled,
+      false
     );
   }, []);
 

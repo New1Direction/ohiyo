@@ -61,11 +61,12 @@ export function extractSample(report: RTCStatsReport): RawSample {
         }
         break;
       case "remote-inbound-rtp": {
-        // The peer's RR about OUR uplink — authoritative send-side loss/jitter.
+        // The peer's RR about OUR uplink — authoritative send-side loss/jitter. This
+        // send-side loss is surfaced via fractionLost; it must NOT be folded into
+        // packetsLost (which pairs with the receive-side packetsReceived to derive the
+        // inbound loss ratio — mixing the two inflates that ratio).
         const fl = num(r.fractionLost);
         if (fl !== undefined) fractionLost = fractionLost == null ? fl : Math.max(fractionLost, fl);
-        const pl = num(r.packetsLost);
-        if (pl !== undefined) packetsLost += pl;
         const j = num(r.jitter);
         if (j !== undefined) jitterSecMax = jitterSecMax == null ? j : Math.max(jitterSecMax, j);
         const rtt = num(r.roundTripTime);
@@ -76,6 +77,7 @@ export function extractSample(report: RTCStatsReport): RawSample {
         if (!r.isRemote) {
           bytesReceived += num(r.bytesReceived) ?? 0;
           packetsReceived += num(r.packetsReceived) ?? 0;
+          // Receive-side loss only — diffSamples pairs this with packetsReceived.
           const pl = num(r.packetsLost);
           if (pl !== undefined) packetsLost += Math.max(0, pl);
           const j = num(r.jitter);

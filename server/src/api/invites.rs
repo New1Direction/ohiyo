@@ -18,6 +18,11 @@ use crate::{
 const CODE_CHARS: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
 const CODE_LEN: usize = 8;
 
+/// Per-user invite create/redeem throttle: 20 per minute (generous for humans,
+/// blunts code churn and brute-force redemption).
+const INVITE_RATE_MAX: usize = 20;
+const INVITE_RATE_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+
 fn gen_code() -> String {
     let mut rng = rand::thread_rng();
     (0..CODE_LEN)
@@ -77,6 +82,17 @@ pub async fn create_invite(
     State(state): State<AppState>,
     Json(body): Json<CreateInviteBody>,
 ) -> Result<Json<InviteInfo>, (StatusCode, String)> {
+    // Cap invite creation so a single account can't churn out codes.
+    if !state.rate.check(
+        &format!("invite-create:{}", auth.0),
+        INVITE_RATE_MAX,
+        INVITE_RATE_WINDOW,
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "you're creating invites too fast".into(),
+        ));
+    }
     if !is_member(&state, &server_id, &auth.0).await? {
         return Err((
             StatusCode::FORBIDDEN,
@@ -193,6 +209,17 @@ pub async fn redeem_invite(
     Path(code): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<ServerWithChannels>, (StatusCode, String)> {
+    // Cap redemption attempts so codes can't be brute-forced / churned by one account.
+    if !state.rate.check(
+        &format!("invite-redeem:{}", auth.0),
+        INVITE_RATE_MAX,
+        INVITE_RATE_WINDOW,
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "you're redeeming invites too fast".into(),
+        ));
+    }
     let inv = lookup_alive_invite(&state, &code).await?;
 
     if crate::api::servers::is_banned(&state, &inv.server_id, &auth.0).await {

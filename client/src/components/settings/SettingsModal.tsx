@@ -15,6 +15,7 @@ import {
   THEME_VAR_GROUPS,
 } from "../../themes";
 import { isValidHex } from "../../lib/color";
+import { safeHttpUrl } from "../../lib/url";
 import { PROFILE_PATTERNS, PROFILE_VIBES, ProfileCardView, type ProfileCardData } from "../ProfileCardView";
 import type { PluginManager } from "../../plugins/registry";
 import { isDesktop } from "../../lib/desktop";
@@ -22,6 +23,7 @@ import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauri
 import { generateRecoveryCode, encryptBackup, decryptBackup, type BackupBlob } from "../../lib/recovery";
 import {
   ACCENT_PRESETS,
+  APPEARANCE_CHANGED_EVENT,
   applyActiveAppearance,
   applyDensity,
   applyFontScale,
@@ -59,25 +61,64 @@ type Props = {
   onCurrentUserUpdate?: (user: PublicUser) => void;
 };
 
+const SETTINGS_FOCUSABLE =
+  'button:not([disabled]), input:not([disabled]), textarea, select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+
 export function SettingsModal({ currentUser, pluginManager, token, servers, initialTab, onClose, onToast, onCurrentUserUpdate }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "appearance");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Keep onClose current without re-running the focus-management effect.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
-  function handleKey(e: React.KeyboardEvent) {
-    if (e.key === "Escape") onClose();
+  // Accessible dialog behavior: focus the first control on open, close on Escape,
+  // and hand focus back to whatever was focused before, on close.
+  useEffect(() => {
+    const returnTo = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLElement>(SETTINGS_FOCUSABLE)?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onCloseRef.current();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      returnTo?.focus?.();
+    };
+  }, []);
+
+  // Trap Tab focus inside the dialog so keyboard users can't tab behind the scrim.
+  function trapTab(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab") return;
+    const nodes = dialogRef.current?.querySelectorAll<HTMLElement>(SETTINGS_FOCUSABLE);
+    if (!nodes || !nodes.length) return;
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- dismiss scrim; Escape handled via onKeyDown, container focusable via tabIndex
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- dismiss scrim; Escape handled via the keydown effect above
     <div
       className="fixed inset-0 z-50 flex items-stretch"
       style={{ background: "rgba(0,0,0,0.7)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-      onKeyDown={handleKey}
-      tabIndex={-1}
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- focus-trap dialog container; keyboard handled via onKeyDown, dialog semantics on role="dialog" */}
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="kc-settings-dialog-title"
         className="flex h-full w-full overflow-hidden"
         style={{ background: "var(--bg-channel)" }}
+        onKeyDown={trapTab}
       >
         {/* Settings sidebar */}
         <aside className="kc-settings-sidebar" aria-label="Settings sections">
@@ -85,7 +126,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, init
             <div className="kc-settings-sidebar__mark" aria-hidden="true">OH</div>
             <div>
               <div className="kc-settings-sidebar__eyebrow">Settings</div>
-              <div className="kc-settings-sidebar__title">Make Ohiyo yours</div>
+              <h2 id="kc-settings-dialog-title" className="kc-settings-sidebar__title">Make Ohiyo yours</h2>
             </div>
           </div>
 
@@ -229,6 +270,25 @@ function AppearanceTab({
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftVars, setDraftVars] = useState<ThemeVar>(() => ({ ...currentTheme.vars }));
+
+  // Local state is seeded once at mount. When another device's appearance arrives via
+  // pullAppearance (or any other code applies a change), the DOM updates but these
+  // controls would show stale values and re-push them. Re-seed from the persisted source
+  // on APPEARANCE_CHANGED_EVENT so the controls follow. Skip while the editor is open so
+  // a live preview doesn't get clobbered mid-edit.
+  useEffect(() => {
+    const onAppearanceChanged = () => {
+      if (editing) return;
+      setCurrentTheme(loadTheme());
+      setCustomThemes(getCustomThemes());
+      setAccentVal(getActiveAccent());
+      setAccentOverride(loadAccent() !== null);
+      setDensityVal(loadDensity());
+      setFontScaleVal(loadFontScale());
+    };
+    window.addEventListener(APPEARANCE_CHANGED_EVENT, onAppearanceChanged);
+    return () => window.removeEventListener(APPEARANCE_CHANGED_EVENT, onAppearanceChanged);
+  }, [editing]);
 
   function openEditor() {
     setDraftVars({ ...currentTheme.vars });
@@ -927,6 +987,7 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
+      if (!res.ok) throw new Error(await res.text());
       const data = await res.json() as Array<{ id: string }>;
       const fileId = data[0]?.id;
       if (!fileId) throw new Error("Upload failed");
@@ -1049,7 +1110,9 @@ function cleanSongs(songs: ProfileSong[]): ProfileSong[] {
     .map((s) => ({
       title: s.title.trim(),
       artist: s.artist?.trim() || null,
-      url: s.url?.trim() || null,
+      // Reject non-http(s) schemes (e.g. javascript:) at the input boundary so a
+      // crafted URL never reaches the rendered profile link.
+      url: safeHttpUrl(s.url?.trim()) ?? null,
     }))
     .filter((s) => s.title)
     .slice(0, 3);

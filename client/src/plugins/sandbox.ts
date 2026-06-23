@@ -58,6 +58,10 @@ const BOOTSTRAP = `
   self.kikkacord = {
     definePlugin: function (def) {
       if (!def || !def.id || !def.name) { post("error", "Plugin must have id and name"); return; }
+      // The id is used as a localStorage key prefix (\`plugin:<id>:\`) on the host,
+      // so allowlist it to safe chars — otherwise a crafted id could collide with
+      // another plugin's store or escape the namespace.
+      if (!/^[A-Za-z0-9._-]+$/.test(String(def.id))) { post("error", "Plugin id must match ^[A-Za-z0-9._-]+$"); return; }
       manifest = {
         id: String(def.id), name: String(def.name),
         description: String(def.description || ""), version: String(def.version || "0.0.0"),
@@ -93,7 +97,7 @@ const BOOTSTRAP = `
     }
     try { Object.defineProperty(self, name, { value: undefined, writable: false, configurable: false }); } catch (e) {}
   }
-  var kill = ["fetch","XMLHttpRequest","WebSocket","EventSource","importScripts","Worker","SharedWorker","Request","Response","caches","indexedDB"];
+  var kill = ["fetch","XMLHttpRequest","WebSocket","EventSource","importScripts","Worker","SharedWorker","Request","Response","caches","indexedDB","BroadcastChannel","RTCPeerConnection","WebTransport"];
   for (var i = 0; i < kill.length; i++) { nuke(kill[i]); }
   try { if (self.navigator) self.navigator.sendBeacon = undefined; } catch (e) {}
   function safe(fn, arg) { if (typeof fn === "function") { try { return fn(arg); } catch (e) { post("error", String((e && e.message) || e)); } } }
@@ -133,12 +137,25 @@ function sanitizeEvent(event: PluginEventName, data: unknown): unknown {
   }
 }
 
-/** Remove CSS exfiltration vectors (external url()/@import) — the one channel a
- *  networkless worker could still abuse via the host applying its CSS. */
+/** Remove CSS exfiltration / code-execution vectors — the one channel a
+ *  networkless worker (or even a "trusted" custom-CSS plugin) could still abuse
+ *  via the host applying its CSS. We do NOT try to tell "safe" url()s apart:
+ *  even `url(data:...)` and same-origin/relative `url()` are exfiltration or
+ *  request-forgery vectors, so EVERY url(...) is neutralized. We also strip any
+ *  remaining @import, legacy IE `expression(...)`, and Gecko `-moz-binding`. */
 export function sanitizePluginCss(css: string): string {
+  if (typeof css !== "string") return "";
   return css
+    // Any @import (url or string form) — drop the whole at-rule up to ; or EOL.
     .replace(/@import[^;]*;?/gi, "")
-    .replace(/url\(\s*['"]?\s*(?:https?:)?\/\/[^)]*\)/gi, "none");
+    // Every url(...) regardless of scheme (http(s), //, data:, blob:, relative).
+    .replace(/url\(\s*(?:'[^']*'|"[^"]*"|[^)]*)\)/gi, "none")
+    // A bare `url(` with no closing paren (truncated/obfuscated) — neutralize too.
+    .replace(/url\s*\(/gi, "none(")
+    // IE expression() — arbitrary JS in legacy engines.
+    .replace(/expression\s*\(/gi, "void(")
+    // Gecko XBL binding — can load remote bindings / scripts.
+    .replace(/-moz-binding\b/gi, "-x-disabled-binding");
 }
 
 export class SandboxHost {
@@ -149,8 +166,10 @@ export class SandboxHost {
   private rejectManifest!: (e: Error) => void;
   private toastTimes: number[] = [];
   private terminated = false;
+  private opts: SandboxOptions;
 
-  constructor(source: string, private opts: SandboxOptions) {
+  constructor(source: string, opts: SandboxOptions) {
+    this.opts = opts;
     const blob = new Blob([BOOTSTRAP, "\n", source], { type: "text/javascript" });
     const url = URL.createObjectURL(blob);
     this.worker = new Worker(url);

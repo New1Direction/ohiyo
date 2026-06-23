@@ -51,10 +51,23 @@ pub struct CreateEmojiBody {
 }
 
 pub async fn list_emojis(
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(server_id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ServerEmoji>>, (StatusCode, String)> {
+    // Members only — otherwise any user could enumerate any server's emoji.
+    let is_member: Option<(String,)> =
+        sqlx::query_as("SELECT user_id FROM server_members WHERE server_id = ? AND user_id = ?")
+            .bind(&server_id)
+            .bind(&auth.0)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+
+    if is_member.is_none() {
+        return Err((StatusCode::FORBIDDEN, "Not a member of this server".into()));
+    }
+
     let rows: Vec<EmojiRow> = sqlx::query_as(
         "SELECT id, server_id, name, url, created_by, created_at
          FROM server_emojis WHERE server_id = ? ORDER BY name",
@@ -109,7 +122,7 @@ pub async fn create_emoji(
         .map_err(crate::api::error::internal)?;
 
     let _path = file_url.ok_or_else(|| (StatusCode::NOT_FOUND, "File not found".into()))?;
-    let url = format!("/files/{}", body.file_id);
+    let url = crate::signed_file_path(&body.file_id);
 
     let id = new_id();
     let now = now_unix();
@@ -163,11 +176,18 @@ pub async fn delete_emoji(
             .map_err(crate::api::error::internal)?;
 
     let (creator,) = row.ok_or_else(|| (StatusCode::NOT_FOUND, "Emoji not found".into()))?;
+    // The creator may always delete their own emoji; a moderator with MANAGE_ROLES or
+    // MANAGE_SERVER may also remove anyone's (e.g. a kicked member's leftover emoji).
     if creator != auth.0 {
-        return Err((
-            StatusCode::FORBIDDEN,
-            "Only the creator can delete this emoji".into(),
-        ));
+        use crate::api::roles::{has_perm, perm};
+        let is_mod = has_perm(&state, &server_id, &auth.0, perm::MANAGE_ROLES).await
+            || has_perm(&state, &server_id, &auth.0, perm::MANAGE_SERVER).await;
+        if !is_mod {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Only the creator or a moderator can delete this emoji".into(),
+            ));
+        }
     }
 
     sqlx::query("DELETE FROM server_emojis WHERE id = ?")

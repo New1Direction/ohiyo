@@ -89,6 +89,30 @@ encrypted `key_backups` blobs. Losing it is unrecoverable, so back it up.
 
 > A daily snapshot can lose up to 24h of messages; Litestream closes that gap.
 
+### Signed file URLs (`OHIYO_REQUIRE_SIGNED_FILES`) — optional
+
+The `/files/{id}` route is unauthenticated (avatars, icons, and attachments load via
+plain `<img src>`, which can't send an auth header). As defense-in-depth, every file
+URL the server emits now carries an HMAC capability signature — `/files/{id}?s=<sig>`,
+where `sig` is derived from `JWT_SECRET` and the file id. **Enforcement is OFF by
+default**, so this changes nothing unless you opt in:
+
+```bash
+fly secrets set OHIYO_REQUIRE_SIGNED_FILES=true   # "1" also works; unset/anything else = off
+```
+
+When on, `serve_file` rejects any request whose `?s=` signature doesn't match (returning
+404 so it never reveals whether an id exists). When off, the `s` param is ignored and
+serving is byte-for-byte unchanged.
+
+> **Caveat — re-save existing assets before enabling.** Signing is store-time, so URLs
+> are signed *as they are written*. Message attachments and new uploads are signed going
+> forward automatically. But avatars, server icons, and banners set **before** you flip
+> the flag hold a bare `/files/{id}` URL with no signature — they will 404 under
+> enforcement until re-saved (re-upload / re-pick the avatar, icon, or banner). Only
+> turn this on once you're prepared for that, or accept that pre-upgrade profile/icon
+> images need a one-time re-save.
+
 ---
 
 ## 2. Voice (TURN) — for calls across the internet

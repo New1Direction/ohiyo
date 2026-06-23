@@ -179,6 +179,20 @@ pub async fn vote_poll(
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
 
+    // The poll's message must live in the channel the access check ran against. Without
+    // this, a user with access to one channel could pass a `message_id` from a channel
+    // they can't see and vote on its poll (IDOR) — mirrors the guard in toggle_reaction.
+    let in_channel: Option<(i64,)> =
+        sqlx::query_as("SELECT 1 FROM messages WHERE id = ? AND channel_id = ?")
+            .bind(&message_id)
+            .bind(&channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    if in_channel.is_none() {
+        return Err((StatusCode::NOT_FOUND, "poll not found".into()));
+    }
+
     let poll: Option<(i64, Option<i64>)> =
         sqlx::query_as("SELECT multi, closes_at FROM polls WHERE message_id = ?")
             .bind(&message_id)

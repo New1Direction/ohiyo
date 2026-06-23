@@ -335,6 +335,9 @@ pub enum GatewayEvent {
         muted: bool,
         video: bool,
         screen: bool,
+        /// True when the participant joined with no microphone (receive-only).
+        #[serde(rename = "listenOnly", default)]
+        listen_only: bool,
     },
     /// Sent to a user when they join a voice channel: the peers already present.
     /// The joiner initiates WebRTC offers to each of these peers.
@@ -366,6 +369,9 @@ pub struct VoicePeer {
     pub muted: bool,
     pub video: bool,
     pub screen: bool,
+    /// True when the peer joined with no microphone (receive-only).
+    #[serde(rename = "listenOnly", default)]
+    pub listen_only: bool,
 }
 
 // ── Client → server events (parsed in the gateway inbound loop) ────────────────
@@ -380,6 +386,9 @@ pub enum ClientEvent {
         muted: bool,
         #[serde(default)]
         video: bool,
+        /// True when the client has no microphone and joins receive-only.
+        #[serde(default)]
+        listen_only: bool,
     },
     /// Leave a voice channel.
     LeaveVoice { channel_id: String },
@@ -389,6 +398,9 @@ pub enum ClientEvent {
         muted: bool,
         video: bool,
         screen: bool,
+        /// True when the client is participating receive-only (no microphone).
+        #[serde(default)]
+        listen_only: bool,
     },
     /// Relay a WebRTC offer/answer/ICE candidate to another peer.
     Signal {
@@ -444,6 +456,11 @@ pub struct ServerWithChannels {
 pub struct Claims {
     pub sub: String, // user id
     pub exp: usize,
+    /// Token generation counter, copied from `users.token_version` at mint time.
+    /// Bumping the user's version is how "log out everywhere" / revocation works.
+    /// `default` keeps tokens minted before this field existed (version 0) valid.
+    #[serde(default)]
+    pub token_version: i64,
 }
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -467,7 +484,12 @@ pub struct HostedInstance {
     pub region: String,
     pub tier: String,
     pub status: String,
+    // Internal Fly infra IDs — populated from the DB (sqlx::FromRow) but never serialized
+    // to clients: machine_id feeds the `fly-replay` routing header, so disclosing it is an
+    // infrastructure-targeting risk. `default` keeps any JSON round-trip valid.
+    #[serde(skip_serializing, default)]
     pub machine_id: Option<String>,
+    #[serde(skip_serializing, default)]
     pub volume_id: Option<String>,
     pub public_url: Option<String>,
     pub error: Option<String>,

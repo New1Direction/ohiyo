@@ -9,7 +9,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auth::{create_token, hash_password, jwt_secret, verify_password},
+    auth::{create_token, hash_password, jwt_secret, verify_password, AuthUser},
     types::{new_id, now_unix, PublicUser, User},
     AppState,
 };
@@ -119,7 +119,8 @@ pub async fn register(
     };
 
     let secret = jwt_secret();
-    let token = create_token(&id, &secret).map_err(crate::api::error::internal)?;
+    // A freshly created user starts at token_version 0 (the column default).
+    let token = create_token(&id, 0, &secret).map_err(crate::api::error::internal)?;
 
     Ok(Json(AuthResponse {
         token,
@@ -153,12 +154,45 @@ pub async fn login(
     }
 
     let secret = jwt_secret();
-    let token = create_token(&user.id, &secret).map_err(crate::api::error::internal)?;
+    let token_version = current_token_version(&state, &user.id).await?;
+    let token =
+        create_token(&user.id, token_version, &secret).map_err(crate::api::error::internal)?;
 
     Ok(Json(AuthResponse {
         token,
         user: user.into(),
     }))
+}
+
+/// Read a user's current token generation counter (stamped into newly minted tokens).
+/// A DB error is propagated, NOT swallowed: silently returning 0 on a fault would mint a
+/// version-0 token that "log out everywhere" could never revoke. A missing row → 0 (the
+/// column default) is fine for an existing user.
+async fn current_token_version(
+    state: &AppState,
+    user_id: &str,
+) -> Result<i64, (StatusCode, String)> {
+    let v: Option<i64> = sqlx::query_scalar("SELECT token_version FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    Ok(v.unwrap_or(0))
+}
+
+/// POST /auth/logout-everywhere — bump the user's token_version, invalidating every
+/// JWT minted before now. The client should discard its token and re-authenticate.
+/// (Also the hook a future password-change endpoint calls to force re-login.)
+pub async fn logout_everywhere(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    sqlx::query("UPDATE users SET token_version = token_version + 1 WHERE id = ?")
+        .bind(&auth.0)
+        .execute(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ── Device linking (QR / one-time code) ─────────────────────────────────────────
@@ -285,7 +319,8 @@ pub async fn link_complete(
         .await
         .map_err(|_| invalid())?;
     let secret = jwt_secret();
-    let token = create_token(&user.id, &secret).map_err(|e| {
+    let token_version = current_token_version(&state, &user.id).await?;
+    let token = create_token(&user.id, token_version, &secret).map_err(|e| {
         tracing::error!(error = %e, "token error in link_complete");
         (
             StatusCode::INTERNAL_SERVER_ERROR,

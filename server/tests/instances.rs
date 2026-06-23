@@ -21,10 +21,18 @@ async fn create_then_list_and_get_instance() {
     assert_eq!(inst["status"], "healthy");
     assert_eq!(inst["tier"], "free");
     assert!(inst["public_url"].as_str().unwrap().ends_with(".ohiyo.gg"));
-    assert!(inst["machine_id"]
-        .as_str()
-        .unwrap()
-        .starts_with("fake-machine-"));
+    // machine_id/volume_id are intentionally NOT serialized in the API response (internal
+    // Fly infra ids — see #[serde(skip_serializing)] on HostedInstance). The "healthy"
+    // status above already proves a machine was provisioned; assert the ids are absent so
+    // this test stays a guard against re-leaking them.
+    assert!(
+        inst["machine_id"].is_null(),
+        "machine_id must not be exposed to clients"
+    );
+    assert!(
+        inst["volume_id"].is_null(),
+        "volume_id must not be exposed to clients"
+    );
 
     let id = inst["id"].as_str().unwrap().to_owned();
 
