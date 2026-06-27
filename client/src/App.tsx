@@ -54,6 +54,7 @@ import {
   setGroupEpoch,
 } from "./lib/senderKeys";
 import { formatDuration } from "./lib/disappearing";
+import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { initVaultBackend } from "./lib/tauriVault";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
@@ -1270,8 +1271,9 @@ function MainApp({
             continue;
           }
           const pt = await groupDecrypt(channelId, m.author.id, m.content);
-          if (pt !== null) cachePlaintext(m.id, pt);
-          out.push({ ...m, content: pt ?? "🔒 Encrypted message", _encrypted: true });
+          const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
+          if (plain !== null) cachePlaintext(m.id, plain);
+          out.push({ ...m, content: plain ?? "🔒 Encrypted message", _encrypted: true });
         } else if (isSignalCiphertext(m.content)) {
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
@@ -1279,11 +1281,13 @@ function MainApp({
             continue;
           }
           const pt = peerId ? await decryptFrom(peerId, m.content) : null;
-          if (pt !== null) cachePlaintext(m.id, pt);
-          out.push({ ...m, content: pt ?? "🔒 Encrypted message", _encrypted: true });
+          const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
+          if (plain !== null) cachePlaintext(m.id, plain);
+          out.push({ ...m, content: plain ?? "🔒 Encrypted message", _encrypted: true });
         } else if (isEncrypted(m.content)) {
           const pt = legacyKey ? await decryptMessage(legacyKey, m.content) : null;
-          out.push({ ...m, content: pt ?? "🔒 Encrypted message", _encrypted: true });
+          const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
+          out.push({ ...m, content: plain ?? "🔒 Encrypted message", _encrypted: true });
         } else {
           out.push(m);
         }
@@ -1358,7 +1362,7 @@ function MainApp({
             // Group: encrypt once with our sender key (every member decrypts the same
             // ciphertext). Ensure our key is distributed first (idempotent).
             await distributeMySenderKey(cid);
-            const g = await groupEncrypt(cid, content);
+            const g = await groupEncrypt(cid, padMessagePlaintext(content));
             if (g) wire = g;
           } else {
             // 1:1: require a forward-secret Signal session. We no longer fall back to
@@ -1366,7 +1370,7 @@ function MainApp({
             // plaintext. If there's no session yet, abort so the message stays
             // retryable once the peer publishes prekeys.
             const peerId = dmPeerId(cid);
-            const sig = peerId ? await encryptFor(token, peerId, content) : null;
+            const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(content)) : null;
             if (!sig) {
               toast("Can't send encrypted yet — your friend needs to open Ohiyo once to set up encryption.");
               throw new Error("no-signal-session");
@@ -1407,12 +1411,12 @@ function MainApp({
         let wire = send.content;
         if (send.content && e2eChannelsRef.current.has(msg.channel_id)) {
           // A group sender key exists only for group channels (else null → 1:1 path).
-          const g = await groupEncrypt(msg.channel_id, send.content);
+          const g = await groupEncrypt(msg.channel_id, padMessagePlaintext(send.content));
           if (g) {
             wire = g;
           } else {
             const peerId = dmPeerId(msg.channel_id);
-            const sig = peerId ? await encryptFor(token, peerId, send.content) : null;
+            const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(send.content)) : null;
             if (!sig) throw new Error("no-signal-session"); // stays failed/retryable
             wire = sig;
           }
@@ -1483,11 +1487,11 @@ function MainApp({
       if (content && e2eChannelsRef.current.has(cid)) {
         if (ch?.channel_type === "group_dm") {
           await distributeMySenderKey(cid);
-          const g = await groupEncrypt(cid, content);
+          const g = await groupEncrypt(cid, padMessagePlaintext(content));
           if (g) wire = g;
         } else {
           const peerId = dmPeerId(cid);
-          const sig = peerId ? await encryptFor(token, peerId, content) : null;
+          const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(content)) : null;
           if (!sig) {
             toast("Can't edit encrypted yet — your friend needs to open Ohiyo once to set up encryption.");
             return;

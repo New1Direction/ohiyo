@@ -77,6 +77,19 @@ try {
   await pageA.waitForSelector(`text=${reply}`, { timeout: 10000 });
   log("B replied (mutual encryption, no toggle) and A DECRYPTED it ✓");
 
+  // ── Padding proof: two different short plaintext lengths in the same padding bucket
+  //    should decrypt normally. Exact bucket sizing is unit-tested at the plaintext
+  //    wrapper layer; Signal's outer envelope can still vary by protocol header/device fanout. ──
+  const padOne = `p-${u}`;
+  const padTwo = `pad-${u}`;
+  await composer.fill(padOne);
+  await composer.press("Enter");
+  await pageB.waitForSelector(`text=${padOne}`, { timeout: 10000 });
+  await composer.fill(padTwo);
+  await composer.press("Enter");
+  await pageB.waitForSelector(`text=${padTwo}`, { timeout: 10000 });
+  log("A sent two padded encrypted messages; B decrypted both ✓");
+
   // ── A reloads: own sent message + B's reply both survive (forward-secrecy cache).
   //    The Double Ratchet can't re-decrypt either, so this proves the local cache. ──
   await pageA.reload({ waitUntil: "domcontentloaded" });
@@ -85,6 +98,8 @@ try {
   await pageA.click('button:has-text("Direct Message")');
   await pageA.waitForSelector(`text=${secret}`, { timeout: 10000 });
   await pageA.waitForSelector(`text=${reply}`, { timeout: 10000 });
+  await pageA.waitForSelector(`text=${padOne}`, { timeout: 10000 });
+  await pageA.waitForSelector(`text=${padTwo}`, { timeout: 10000 });
   log("A reloaded → own message + reply both still readable (forward-secrecy cache) ✓");
 
   // ── PROOF: the server stored only CIPHERTEXT (it cannot read the message) ──
@@ -98,16 +113,22 @@ try {
     await fetch(`${API}/channels/${dmId}/messages`, { headers: { Authorization: `Bearer ${tokenA}` } })
   ).json();
   const stored = msgs[msgs.length - 1]?.content ?? "";
-  if (stored.includes(secret)) throw new Error(`server stored PLAINTEXT! content="${stored}"`);
+  if (stored.includes(secret) || stored.includes(reply) || stored.includes(padOne) || stored.includes(padTwo)) {
+    throw new Error(`server stored PLAINTEXT! content="${stored}"`);
+  }
   // Both users publish Signal prekeys on login, so the flow uses the forward-secret
   // multi-device Signal envelope (`sig2.`). `sig1.` is the older single-device format
   // and `v1.` the legacy static scheme — both kept only as fallbacks.
   if (!/^(sig2|sig1|v1)\./.test(stored)) throw new Error(`server content is not our ciphertext envelope: "${stored}"`);
   if (!/^sig2\./.test(stored)) console.warn(`  ⚠ stored as "${stored.slice(0, 6)}…" — expected multi-device sig2.`);
-  log(`server stores ciphertext only: "${stored.slice(0, 30)}…" (NOT the plaintext) ✓`);
+  const lastTwo = msgs.slice(-2).map((m) => String(m.content ?? ""));
+  if (lastTwo.length !== 2 || lastTwo.some((m) => !m.startsWith("sig2."))) {
+    throw new Error(`padding proof messages were not sig2 envelopes: ${JSON.stringify(lastTwo)}`);
+  }
+  log(`server stores ciphertext only; padded messages stayed opaque sig2 envelopes (${lastTwo.map((m) => m.length).join("/")} chars) ✓`);
 
   console.log(
-    `\n✅ E2E DM FLOW PASSED (one-click toggle → ${/^sig2\./.test(stored) ? "Signal forward-secret multi-device" : "legacy"} encrypt → peer decrypts; server sees only ciphertext)`
+    `\n✅ E2E DM FLOW PASSED (one-click toggle → ${/^sig2\./.test(stored) ? "Signal forward-secret multi-device" : "legacy"} encrypt → padded peer decrypts; server sees only ciphertext)`
   );
 } catch (err) {
   failed = true;
