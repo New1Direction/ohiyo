@@ -279,7 +279,7 @@ These are tracked follow-ups, not blockers for a first test build:
       web build to untrusted origins.
 - [ ] **Proxy IPs.** Behind Fly, parse `X-Forwarded-For` so auth rate-limiting
       keys on the real client IP, not the proxy.
-- [ ] **Privacy policy + Terms of Service.** Required by app stores and by users
-      before they trust a social app with their chats.
+- [x] **Privacy policy + Terms of Service.** Landing pages live in `site/privacy.html`
+      and `site/terms.html`, with footer links and sitemap coverage.
 - [ ] **Load test** to replace the dev-machine benchmark numbers on the
       comparison page with production figures.

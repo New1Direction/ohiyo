@@ -1,0 +1,5 @@
+Contact: https://github.com/New1Direction/ohiyo/security/advisories/new
+Preferred-Languages: en
+Canonical: https://ohiyo.gg/.well-known/security.txt
+Policy: https://github.com/New1Direction/ohiyo/security/policy
+Expires: 2027-06-27T00:00:00Z

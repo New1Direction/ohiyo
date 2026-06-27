@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy — Ohiyo</title>
+<meta name="description" content="Ohiyo privacy policy: what we collect, what is end-to-end encrypted, and how hosted data is handled." />
+<meta name="theme-color" content="#10100f" />
+<link rel="icon" href="kikka.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="bg"></div><div class="grain"></div>
+<nav id="nav"><div class="wrap">
+  <a class="brand" href="/" style="text-decoration:none;color:inherit"><img src="kikka.svg" alt="" /> o<span class="hi">Hi</span>Yo</a>
+  <div class="nav-links">
+    <a class="l" href="/#features">Features</a>
+    <a class="l" href="/#security">Security</a>
+    <a class="l" href="/#download">Download</a>
+    <a class="btn ghost sm" href="https://app.ohiyo.gg" rel="noopener">Open app →</a>
+  </div>
+</div></nav>
+
+<main class="legal wrap">
+  <p class="eyebrow">Privacy</p>
+  <h1>Privacy Policy</h1>
+  <p class="legal-updated">Effective June 27, 2026</p>
+  <p>Ohiyo is built around a simple promise: the hosted server should not be able to read your private messages. This policy explains what the official hosted service at <b>ohiyo.gg</b>, <b>app.ohiyo.gg</b>, and <b>ohiyo.fly.dev</b> handles. If you self-host Ohiyo, your host controls its own data practices.</p>
+
+  <h2>What we collect</h2>
+  <ul>
+    <li><b>Account data:</b> username, display name, password hash, avatar/profile details, linked-device records, sessions, roles, server membership, invites, preferences, and similar app state.</li>
+    <li><b>Encrypted content:</b> message ciphertext, encrypted group/key-backup blobs, file metadata, uploaded files/attachments, emoji, server icons, and other content needed to deliver the service.</li>
+    <li><b>Operational data:</b> IP-derived rate-limit keys, request metadata, logs, crash/error details, abuse-prevention signals, and infrastructure metrics needed to run and secure the service.</li>
+    <li><b>Discord import data:</b> if you use Discord import, uploaded/staged import archives and mapped metadata are processed to perform the import. Bot tokens and import internals are treated as private operational data.</li>
+  </ul>
+
+  <h2>What we cannot read by design</h2>
+  <p>Ohiyo uses end-to-end encryption for private message content. The hosted server stores and relays ciphertext; it does not receive the plaintext for encrypted DMs/groups/calls. Some metadata remains necessary to operate the product, such as usernames, server/channel membership, timestamps, routing information, file records, and moderation/admin state.</p>
+
+  <h2>How we use data</h2>
+  <ul>
+    <li>Provide accounts, servers, messaging, calls, uploads, search/indexing when enabled, Discord import, and Instant Servers.</li>
+    <li>Secure the service, prevent abuse, debug failures, enforce limits, and maintain backups.</li>
+    <li>Communicate service-critical updates or respond to support/security reports.</li>
+  </ul>
+  <p>We do not run advertising, sell personal data, or add third-party analytics trackers to the landing page.</p>
+
+  <h2>Backups and retention</h2>
+  <p>The hosted production database and uploads are stored on Fly.io infrastructure with volume snapshots enabled. Some data may remain in backups for a limited period even after it is changed or removed from the live service. Ephemeral logs and staged import files may be retained only as needed for operations, safety, debugging, or legal requirements.</p>
+
+  <h2>Your choices</h2>
+  <ul>
+    <li>You can use the web app, desktop app, or self-host your own Ohiyo server.</li>
+    <li>You can use built-in security features such as linked-device management, logout everywhere, local key vault controls, recovery-key backup deletion, disappearing messages, and the dead-man switch where available.</li>
+    <li>For hosted-service data questions or deletion requests that are not exposed in the app, open a private security/contact thread through the GitHub repository.</li>
+  </ul>
+
+  <h2>Third-party providers</h2>
+  <p>Ohiyo currently relies on infrastructure providers such as GitHub, Cloudflare, Fly.io, and Apple/GitHub release tooling. Their processing is governed by their own terms and policies.</p>
+
+  <h2>Changes</h2>
+  <p>We may update this policy as the service moves from launch to broader availability. Material changes will be reflected on this page.</p>
+</main>
+
+<footer><div class="wrap">
+  <div class="brand"><img src="kikka.svg" alt="" style="width:24px" /> o<span class="hi" style="color:var(--coral)">Hi</span>Yo</div>
+  <div class="f-links">
+    <a href="/">Home</a>
+    <a href="privacy.html">Privacy</a>
+    <a href="terms.html">Terms</a>
+    <a href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">GitHub</a>
+  </div>
+  <div>oh, hi · ohiyo.gg · free &amp; open · built in Rust + React + Tauri</div>
+</div></footer>
+<script src="app.js"></script>
+</body>
+</html>

@@ -222,6 +222,16 @@ footer a { color: var(--warm); text-decoration: none; }
 footer a:hover { color: var(--coral); }
 footer .f-links { display: flex; gap: 1.3rem; flex-wrap: wrap; }
 
+/* ── legal pages ─────────────────────────────────────────────────────────── */
+.legal { max-width: 860px; padding-top: clamp(3.4rem, 8vw, 6rem); padding-bottom: clamp(4rem, 9vw, 7rem); }
+.legal h1 { font-family: var(--disp); font-weight: 650; font-size: clamp(2.4rem, 7vw, 4.6rem); line-height: 1; letter-spacing: -.04em; margin: .8rem 0 .4rem; }
+.legal h2 { font-family: var(--ui); font-size: clamp(1.25rem, 2.4vw, 1.65rem); line-height: 1.2; letter-spacing: -.02em; margin-top: 2.2rem; }
+.legal p, .legal li { color: var(--warm); font-size: 1rem; }
+.legal b { color: var(--cream); }
+.legal a { color: var(--coral); }
+.legal ul { margin: .9rem 0 0 1.2rem; display: grid; gap: .55rem; }
+.legal-updated { color: var(--muted); font-family: var(--mono); font-size: .86rem !important; margin-bottom: 1.5rem; }
+
 /* ── scroll reveal ───────────────────────────────────────────────────────── */
 .reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
 .reveal.in { opacity: 1; transform: none; }

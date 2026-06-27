@@ -97,8 +97,11 @@ add a Cloudflare `CNAME api → <fly-app>.fly.dev`, `fly certs add api.ohiyo.gg`
 
 | Piece | State |
 |---|---|
-| Landing page (`site/`) | ✅ built — deploy via step 2 |
-| Instant Servers control plane | ✅ built + tested — wire via step 3 |
-| Domain `ohiyo.gg` | ✅ owned (Porkbun) |
-| Cloudflare DNS + Pages | ⏳ **[you]** — step 1–2 |
-| Fly instances app + wildcard DNS | ⏳ **[you]** — step 3 |
+| Landing page (`site/`) | ✅ live at `https://ohiyo.gg` via GitHub Pages; `www` redirects/resolves to the same Pages host |
+| Browser sign-up client (`client/`) | ✅ live at `https://app.ohiyo.gg` via Cloudflare Pages, pointed at the production backend |
+| Backend API | ✅ live at `https://ohiyo.fly.dev`; `https://api.ohiyo.gg/healthz` also answers `ok` |
+| Domain `ohiyo.gg` | ✅ owned and DNS is wired for apex, `www`, `app`, `api`, and wildcard community subdomains |
+| Instant Servers control plane | ✅ Fly provisioning secrets are deployed and wildcard `*.ohiyo.gg` reaches the main router; unknown subdomains 404 with `no Ohiyo server lives here yet` |
+| Fly instances app | ✅ `ohiyo-instances` app exists; real per-community machine creation still needs an authenticated production smoke before advertising broadly |
+| Backups | ✅ Fly volume snapshots enabled with 30-day retention; Litestream continuous backup remains optional/not configured |
+| Desktop public release | ⚠️ Linux assets are public; macOS downloads remain paused until Apple Developer ID signing/notarization secrets are added |
