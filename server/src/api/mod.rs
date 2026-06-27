@@ -87,7 +87,10 @@ pub fn router() -> Router<AppState> {
             "/instances",
             get(instances::list_instances).post(instances::create_instance),
         )
-        .route("/instances/{id}", get(instances::get_instance))
+        .route(
+            "/instances/{id}",
+            get(instances::get_instance).delete(instances::delete_instance),
+        )
         // Discord import (local/admin Discrawl archive path; env-gated)
         .route(
             "/imports/discord/capability",

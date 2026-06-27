@@ -72,3 +72,14 @@ pub async fn get_instance(
     .ok_or((StatusCode::NOT_FOUND, "instance not found".to_string()))?;
     Ok(Json(inst))
 }
+
+/// DELETE /api/v1/instances/{id} — destroy one of the caller's instances and remove it
+/// from the routing registry.
+pub async fn delete_instance(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    provision::delete_instance(&state.db, state.provisioner.as_ref(), &auth.0, &id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}

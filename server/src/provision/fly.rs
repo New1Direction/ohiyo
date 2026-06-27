@@ -180,9 +180,32 @@ impl MachineProvisioner for FlyProvisioner {
             .send()
             .await
             .map_err(|e| ProvisionError::Upstream(e.to_string()))?;
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(ProvisionError::NotFound);
+        }
         if !res.status().is_success() {
             return Err(ProvisionError::Upstream(format!(
                 "fly delete returned {}",
+                res.status()
+            )));
+        }
+        Ok(())
+    }
+
+    async fn destroy_volume(&self, volume_id: &str) -> Result<(), ProvisionError> {
+        let res = self
+            .client
+            .delete(format!("{}/volumes/{volume_id}", self.base()))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|e| ProvisionError::Upstream(e.to_string()))?;
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(ProvisionError::NotFound);
+        }
+        if !res.status().is_success() {
+            return Err(ProvisionError::Upstream(format!(
+                "fly volume delete returned {}",
                 res.status()
             )));
         }

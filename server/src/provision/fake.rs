@@ -42,6 +42,10 @@ impl MachineProvisioner for FakeProvisioner {
         self.machines.lock().unwrap().remove(machine_id);
         Ok(())
     }
+
+    async fn destroy_volume(&self, _volume_id: &str) -> Result<(), ProvisionError> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -69,6 +73,7 @@ mod tests {
             MachineState::Started
         );
         p.destroy(&m.machine_id).await.unwrap();
+        p.destroy_volume(&m.volume_id).await.unwrap();
         assert_eq!(p.status(&m.machine_id).await, Err(ProvisionError::NotFound));
     }
 }

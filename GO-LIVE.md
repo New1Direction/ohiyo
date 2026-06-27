@@ -78,8 +78,12 @@ the moment `FLY_API_TOKEN` is present.
    FLY_PRIMARY_REGION=iad                   # optional, defaults to iad
    ```
    `build_state` now constructs `FlyProvisioner` instead of the fake.
-5. **Smoke test:** `POST /api/v1/instances` (authenticated) → confirm a real machine boots,
-   `/healthz` passes, and `https://<subdomain>.ohiyo.gg` answers.
+5. **Smoke test:** run `scripts/instant-server-prod-smoke.sh` (defaults to
+   `https://api.ohiyo.gg/api/v1`). It registers a temporary user, creates an
+   authenticated instance, waits for `https://<subdomain>.ohiyo.gg/healthz`, and
+   deletes the instance afterward. Or manually: `POST /api/v1/instances`
+   (authenticated) → confirm a real machine boots, `/healthz` passes, and
+   `https://<subdomain>.ohiyo.gg` answers.
 
 > Per-instance volumes are created automatically by the provisioner (3 GiB, for the SQLite
 > DB + uploads). Free-tier cap is 3 instances/user, rate-limited to 5 provisions/user/hour.
@@ -102,6 +106,6 @@ add a Cloudflare `CNAME api → <fly-app>.fly.dev`, `fly certs add api.ohiyo.gg`
 | Backend API | ✅ live at `https://ohiyo.fly.dev`; `https://api.ohiyo.gg/healthz` also answers `ok` |
 | Domain `ohiyo.gg` | ✅ owned and DNS is wired for apex, `www`, `app`, `api`, and wildcard community subdomains |
 | Instant Servers control plane | ✅ Fly provisioning secrets are deployed and wildcard `*.ohiyo.gg` reaches the main router; unknown subdomains 404 with `no Ohiyo server lives here yet` |
-| Fly instances app | ✅ `ohiyo-instances` app exists; real per-community machine creation still needs an authenticated production smoke before advertising broadly |
+| Fly instances app | ✅ `ohiyo-instances` app exists; real per-community machine creation/deletion has an owner-scoped API path for production smoke testing |
 | Backups | ✅ Fly volume snapshots enabled with 30-day retention; Litestream continuous backup remains optional/not configured |
 | Desktop public release | ⚠️ Linux assets are public; macOS downloads remain paused until Apple Developer ID signing/notarization secrets are added |

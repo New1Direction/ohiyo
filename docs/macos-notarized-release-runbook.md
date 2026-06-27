@@ -40,7 +40,19 @@ The entire single-line contents of `apple-certificate-base64.txt` goes into
 
 ## Set GitHub Actions secrets
 
-Use GitHub UI or `gh secret set`. Do not paste secrets into chat.
+Use GitHub UI, the helper script, or `gh secret set`. Do not paste secrets into chat.
+
+Helper script:
+
+```bash
+scripts/setup-apple-signing-secrets.sh \
+  --p12 /path/to/DeveloperIDApplication.p12 \
+  --identity "Developer ID Application: Your Name or Company (TEAMID)" \
+  --apple-id you@example.com \
+  --team-id TEAMID
+```
+
+Manual `gh` commands:
 
 ```bash
 gh secret set APPLE_CERTIFICATE < apple-certificate-base64.txt
@@ -56,6 +68,8 @@ Optional if Apple asks for provider disambiguation:
 ```bash
 gh secret set APPLE_PROVIDER_SHORT_NAME
 ```
+
+The Release workflow forwards `APPLE_PROVIDER_SHORT_NAME` to Tauri when present.
 
 ## Build the notarized release
 

@@ -86,6 +86,68 @@ async fn free_tier_cap_is_enforced() {
 }
 
 #[tokio::test]
+async fn owner_can_delete_instance() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("alice", "supersecret123").await;
+
+    let res = srv
+        .post_json_auth(
+            "/api/v1/instances",
+            &alice.token,
+            json!({ "name": "Temporary" }),
+        )
+        .await;
+    assert_eq!(res.status(), 200);
+    let inst: Value = res.json().await.unwrap();
+    let id = inst["id"].as_str().unwrap();
+
+    let deleted = srv
+        .delete_auth(&format!("/api/v1/instances/{id}"), &alice.token)
+        .await;
+    assert_eq!(deleted.status(), 204);
+
+    let got = srv
+        .get_auth(&format!("/api/v1/instances/{id}"), &alice.token)
+        .await;
+    assert_eq!(got.status(), 404);
+
+    let list: Value = srv
+        .get_auth("/api/v1/instances", &alice.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(list.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn other_user_cannot_delete_my_instance() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("alice", "supersecret123").await;
+    let bob = srv.register("bob", "supersecret123").await;
+
+    let res = srv
+        .post_json_auth(
+            "/api/v1/instances",
+            &alice.token,
+            json!({ "name": "Alice HQ" }),
+        )
+        .await;
+    let inst: Value = res.json().await.unwrap();
+    let id = inst["id"].as_str().unwrap();
+
+    let res = srv
+        .delete_auth(&format!("/api/v1/instances/{id}"), &bob.token)
+        .await;
+    assert_eq!(res.status(), 404);
+
+    let still_there = srv
+        .get_auth(&format!("/api/v1/instances/{id}"), &alice.token)
+        .await;
+    assert_eq!(still_there.status(), 200);
+}
+
+#[tokio::test]
 async fn other_user_cannot_read_my_instance() {
     let srv = TestServer::start().await;
     let alice = srv.register("alice", "supersecret123").await;

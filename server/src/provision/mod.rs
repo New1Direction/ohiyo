@@ -51,6 +51,7 @@ pub trait MachineProvisioner: Send + Sync {
     async fn provision(&self, req: ProvisionRequest) -> Result<ProvisionedMachine, ProvisionError>;
     async fn status(&self, machine_id: &str) -> Result<MachineState, ProvisionError>;
     async fn destroy(&self, machine_id: &str) -> Result<(), ProvisionError>;
+    async fn destroy_volume(&self, volume_id: &str) -> Result<(), ProvisionError>;
 }
 
 /// Max instances a single owner may hold on the free tier (cost-honest cap).
@@ -207,6 +208,47 @@ pub async fn create_instance(
     Ok(inst)
 }
 
+/// Destroy a caller-owned instance and its Fly volume, then remove the registry row. Cloud
+/// `NotFound` is treated as success so cleanup is idempotent after partial failures.
+pub async fn delete_instance(
+    db: &sqlx::SqlitePool,
+    provisioner: &dyn MachineProvisioner,
+    owner_id: &str,
+    id: &str,
+) -> Result<(), (StatusCode, String)> {
+    let inst = sqlx::query_as::<_, HostedInstance>(
+        "SELECT * FROM hosted_instances WHERE id = ? AND owner_id = ?",
+    )
+    .bind(id)
+    .bind(owner_id)
+    .fetch_optional(db)
+    .await
+    .map_err(crate::api::error::internal)?
+    .ok_or((StatusCode::NOT_FOUND, "instance not found".to_string()))?;
+
+    if let Some(machine_id) = inst.machine_id.as_deref().filter(|s| !s.is_empty()) {
+        match provisioner.destroy(machine_id).await {
+            Ok(()) | Err(ProvisionError::NotFound) => {}
+            Err(e) => return Err((StatusCode::BAD_GATEWAY, e.to_string())),
+        }
+    }
+
+    if let Some(volume_id) = inst.volume_id.as_deref().filter(|s| !s.is_empty()) {
+        match provisioner.destroy_volume(volume_id).await {
+            Ok(()) | Err(ProvisionError::NotFound) => {}
+            Err(e) => return Err((StatusCode::BAD_GATEWAY, e.to_string())),
+        }
+    }
+
+    sqlx::query("DELETE FROM hosted_instances WHERE id = ? AND owner_id = ?")
+        .bind(id)
+        .bind(owner_id)
+        .execute(db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod create_tests {
     use super::*;
@@ -228,6 +270,9 @@ mod create_tests {
             Err(ProvisionError::NotFound)
         }
         async fn destroy(&self, _id: &str) -> Result<(), ProvisionError> {
+            Ok(())
+        }
+        async fn destroy_volume(&self, _id: &str) -> Result<(), ProvisionError> {
             Ok(())
         }
     }
@@ -318,5 +363,24 @@ mod create_tests {
         // Now genuinely at the cap (3 healthy); the next is rejected.
         let err = create_instance(&db, &ok, "u1", "over").await.unwrap_err();
         assert_eq!(err.0, StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn delete_instance_removes_row_and_frees_fake_machine() {
+        let db = test_db().await;
+        let p = FakeProvisioner::default();
+        let inst = create_instance(&db, &p, "u1", "temporary").await.unwrap();
+        let machine_id = inst.machine_id.clone().unwrap();
+        assert_eq!(p.status(&machine_id).await.unwrap(), MachineState::Started);
+
+        delete_instance(&db, &p, "u1", &inst.id).await.unwrap();
+
+        assert_eq!(p.status(&machine_id).await, Err(ProvisionError::NotFound));
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM hosted_instances WHERE id = ?")
+            .bind(&inst.id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
     }
 }

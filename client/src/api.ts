@@ -412,6 +412,8 @@ export const api = {
   listInstances: (token: string) => request<HostedInstance[]>("/instances", {}, token),
   getInstance: (id: string, token: string) =>
     request<HostedInstance>(`/instances/${id}`, {}, token),
+  deleteInstance: (id: string, token: string) =>
+    request<void>(`/instances/${id}`, { method: "DELETE" }, token),
 
   // Discord import — local/admin Discrawl archive path, gated server-side by
   // OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT=1.
