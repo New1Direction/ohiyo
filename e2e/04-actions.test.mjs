@@ -70,7 +70,8 @@ try {
   await composer.fill("delete this one");
   await composer.press("Enter");
   await pageA.waitForSelector("text=delete this one", { timeout: 8000 });
-  const dgroup = pageA.locator("[data-message-id]", { hasText: "delete this one" });
+  const dgroup = pageA.locator('[data-message-id]:not([data-message-id^="temp-"])', { hasText: "delete this one" });
+  await dgroup.waitFor({ state: "visible", timeout: 8000 });
   await dgroup.hover();
   await dgroup.getByRole("button", { name: "Delete message" }).first().click();
   // inline confirm should appear (Delete / Cancel)
