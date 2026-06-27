@@ -1,13 +1,9 @@
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /client
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    labels:
-      - dependencies
-      - javascript
+  # npm updates are intentionally disabled for launch. GitHub's Dependabot runner
+  # currently injects a GitHub Packages registry credential for this repo and
+  # fails without an .npmrc/scope. Re-enable once the npm registry config is
+  # explicit.
   - package-ecosystem: cargo
     directory: /server
     schedule:
