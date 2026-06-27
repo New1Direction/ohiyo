@@ -19,7 +19,7 @@ try {
         id: "isolation-probe", name: "Probe", version: "1.0.0",
         onLoad: function () {
           var proto = Object.getPrototypeOf(self) || {};
-          var r = {
+          var checks = {
             fetch: typeof fetch, XMLHttpRequest: typeof XMLHttpRequest,
             WebSocket: typeof WebSocket, importScripts: typeof importScripts,
             Worker: typeof Worker, document: typeof document,
@@ -32,7 +32,9 @@ try {
             sendBeacon: (self.navigator && typeof self.navigator.sendBeacon),
             protoFetch: typeof proto.fetch, protoWebSocket: typeof proto.WebSocket,
           };
-          kikkacord.toast("probe:" + JSON.stringify(r), "info");
+          var reachable = [];
+          for (var k in checks) { if (checks[k] !== "undefined") reachable.push(k + ":" + checks[k]); }
+          kikkacord.toast("probe:" + JSON.stringify(reachable), "info");
         },
         onMessage: function (m) {
           kikkacord.toast("msg:" + m.content + "|avatar:" + (m.author && m.author.avatar_url), "success");
@@ -61,15 +63,9 @@ try {
 
   const probe = result.toasts.find((t) => t.startsWith("probe:"));
   if (!probe) throw new Error("plugin onLoad never ran");
-  const globals = JSON.parse(probe.slice("probe:".length));
-  for (const k of [
-    "fetch", "XMLHttpRequest", "WebSocket", "importScripts", "Worker", "document",
-    "window", "localStorage", "indexedDB",
-    "BroadcastChannel", "RTCPeerConnection", "WebTransport", "EventSource",
-    "SharedWorker", "Request", "Response", "caches", "sendBeacon",
-    "protoFetch", "protoWebSocket",
-  ]) {
-    if (globals[k] !== "undefined") throw new Error(`SECURITY: '${k}' reachable inside sandbox (got ${globals[k]})`);
+  const reachableGlobals = JSON.parse(probe.slice("probe:".length));
+  if (reachableGlobals.length) {
+    throw new Error(`SECURITY: globals reachable inside sandbox: ${reachableGlobals.join(", ")}`);
   }
   log("no DOM · no network · no storage reachable from sandbox (incl. prototype chain) ✓");
 

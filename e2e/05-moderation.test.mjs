@@ -78,7 +78,7 @@ try {
   log("B joined Mod HQ");
 
   // ── MODERATION: A opens members, removes B ──
-  await pageA.click('button[aria-label="Members"]');
+  await pageA.getByRole("button", { name: /See who's here/i }).click();
   await pageA.waitForSelector("text=/Members ·/", { timeout: 5000 });
   await pageA.waitForSelector("text=@" + B, { timeout: 5000 });
   log("members list shows the new member ✓");

@@ -31,7 +31,7 @@ jobs:
         working-directory: client
         run: |
           npm ci
-          npx playwright install --with-deps chromium
+          npx playwright-core install --with-deps chromium
 
       - name: Build + start the server on :3000
         working-directory: server

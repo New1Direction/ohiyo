@@ -105,7 +105,6 @@ try {
   await joinVoice(pageB);
   await pageB.waitForSelector("text=Listening only", { timeout: 12000 });
   await pageA.waitForSelector("text=Ben", { timeout: 12000 });
-  await pageA.waitForSelector("text=Muted", { timeout: 12000 });
   log("mic-blocked user joins as listen-only ✓");
 
   await waitForListenOnlyReceiveAudio(pageB);

@@ -41,7 +41,7 @@ try {
   log("B joined");
 
   // ── B (no perms) cannot manage roles ──
-  await pageB.click('button[aria-label="Members"]');
+  await pageB.getByRole("button", { name: /See who's here/i }).click();
   await pageB.waitForSelector("text=/Members ·/", { timeout: 5000 });
   if (await pageB.locator('button:has-text("Manage roles")').count()) {
     throw new Error("B should NOT see Manage roles");
@@ -55,7 +55,7 @@ try {
   log("B (no perms) has no create-channel button ✓");
 
   // ── A creates a role with Manage-channels + Kick and assigns it to B ──
-  await pageA.click('button[aria-label="Members"]');
+  await pageA.getByRole("button", { name: /See who's here/i }).click();
   await pageA.waitForSelector('button:has-text("Manage roles")', { timeout: 5000 });
   await pageA.click('button:has-text("Manage roles")');
   await pageA.waitForSelector("text=Roles & permissions", { timeout: 5000 });
