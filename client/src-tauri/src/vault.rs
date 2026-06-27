@@ -23,16 +23,16 @@ const VAULT_FILE: &str = "kc-vault.bin";
 ///   kc:sig:        Signal session/identity state
 ///   kc:sk:         group sender keys
 ///   kc:e2e-keypair the (legacy) ECDH keypair — exact key, no suffix
-///   kc:e2e-pt:     E2E plaintext cache
+///   kc:e2e-pt:     E2E plaintext cache entries
+///   kc:e2e-pt-index E2E plaintext cache FIFO index (exact key)
 ///   kc:tok:        token storage
 ///   kc:outbox      unsent-message outbox (holds optimistic plaintext)
 const ALLOWED_KEY_PREFIXES: &[&str] = &["kc:sig:", "kc:sk:", "kc:e2e-pt:", "kc:tok:", "kc:outbox"];
-const ALLOWED_EXACT_KEYS: &[&str] = &["kc:e2e-keypair"];
+const ALLOWED_EXACT_KEYS: &[&str] = &["kc:e2e-keypair", "kc:e2e-pt-index"];
 
 /// True when `key` belongs to a known vault namespace.
 fn is_allowed_key(key: &str) -> bool {
-    ALLOWED_EXACT_KEYS.contains(&key)
-        || ALLOWED_KEY_PREFIXES.iter().any(|p| key.starts_with(p))
+    ALLOWED_EXACT_KEYS.contains(&key) || ALLOWED_KEY_PREFIXES.iter().any(|p| key.starts_with(p))
 }
 
 pub struct VaultState {
@@ -148,5 +148,28 @@ pub fn vault_burn(state: State<VaultState>) {
     let _ = std::fs::remove_file(&state.path);
     if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT) {
         let _ = entry.delete_credential();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_allowed_key;
+
+    #[test]
+    fn vault_allowlist_includes_sensitive_cache_and_token_namespaces() {
+        assert!(is_allowed_key("kc:sig:identityKey"));
+        assert!(is_allowed_key("kc:sk:own:group"));
+        assert!(is_allowed_key("kc:e2e-keypair"));
+        assert!(is_allowed_key("kc:e2e-pt:message-id"));
+        assert!(is_allowed_key("kc:e2e-pt-index"));
+        assert!(is_allowed_key("kc:tok:home-id"));
+        assert!(is_allowed_key("kc:outbox"));
+    }
+
+    #[test]
+    fn vault_allowlist_rejects_unrelated_webview_storage() {
+        assert!(!is_allowed_key("theme"));
+        assert!(!is_allowed_key("kc:e2e-pt-index:evil-suffix"));
+        assert!(!is_allowed_key("kc:profile-cache"));
     }
 }

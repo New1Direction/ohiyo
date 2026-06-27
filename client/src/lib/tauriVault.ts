@@ -23,9 +23,10 @@ import { setHomesTokenStore } from "./homes";
 
 // localStorage namespaces that hold sensitive material → moved into the vault. Covers
 // Signal (kc:sig:), group sender keys (kc:sk:), the legacy ECDH keypair, per-home
-// session tokens (kc:tok:), and decrypted forward-secret message plaintext (kc:e2e-pt:).
-// kc:tok: and kc:e2e-pt: are accepted by the Rust vault_set allowlist (CONTRACT B).
-const KEY_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair", "kc:tok:", "kc:e2e-pt:", "kc:outbox"];
+// session tokens (kc:tok:), decrypted forward-secret message plaintext (kc:e2e-pt:),
+// and the plaintext-cache FIFO index (kc:e2e-pt-index).
+// kc:tok:, kc:e2e-pt:, and kc:e2e-pt-index are accepted by the Rust vault_set allowlist (CONTRACT B).
+const KEY_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair", "kc:tok:", "kc:e2e-pt:", "kc:e2e-pt-index", "kc:outbox"];
 
 // Subset included in an encrypted RECOVERY backup: cryptographic key material + the
 // forward-secret plaintext cache (otherwise-unrecoverable history). Deliberately EXCLUDES
