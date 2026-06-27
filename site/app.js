@@ -12,10 +12,10 @@
   // Defaults in HTML work without JS; this upgrades them to the latest release assets
   // and points the hero button at the best installer for this device.
   const latestReleaseApi = "https://api.github.com/repos/New1Direction/ohiyo/releases/latest";
-  // Public Mac downloads must be Developer ID signed + notarized. Until the
-  // release pipeline has Apple secrets, do not silently upgrade Mac cards to a
-  // scary Gatekeeper DMG from GitHub.
-  const macDownloadsTrusted = false;
+  // Mac desktop builds are available as beta DMGs. They are ad-hoc signed but
+  // not Apple-notarized yet, so the page copy must keep the Gatekeeper warning
+  // clear until Developer ID notarization is complete.
+  const macDownloadsAvailable = true;
   const downloadCards = [...document.querySelectorAll("[data-download-os]")];
   const primaryDownloads = [...document.querySelectorAll(".download-primary")];
   const platform = navigator.platform.toLowerCase();
@@ -28,11 +28,7 @@
     primaryDownloads.forEach((btn) => {
       // Mac browsers do not reliably expose Intel vs Apple Silicon, so send Mac
       // visitors to the simple chooser instead of risking the wrong installer.
-      if (platform.includes("mac") && !macDownloadsTrusted) {
-        btn.href = "https://app.ohiyo.gg";
-        btn.textContent = "Open in browser while Mac app is verified →";
-        btn.removeAttribute("download");
-      } else if (platform.includes("mac")) {
+      if (platform.includes("mac") && macDownloadsAvailable) {
         btn.href = "#download";
         btn.textContent = "Choose Mac download";
         btn.removeAttribute("download");
@@ -57,8 +53,8 @@
       const assets = release.assets;
       const pick = (test) => assets.find((asset) => test(asset.name))?.browser_download_url;
       const urls = {
-        "mac-arm": macDownloadsTrusted ? pick((name) => /aarch64\.dmg$/i.test(name)) : null,
-        "mac-intel": macDownloadsTrusted ? pick((name) => /x64\.dmg$/i.test(name)) : null,
+        "mac-arm": macDownloadsAvailable ? pick((name) => /aarch64\.dmg$/i.test(name)) : null,
+        "mac-intel": macDownloadsAvailable ? pick((name) => /x64\.dmg$/i.test(name)) : null,
         linux: pick((name) => /amd64\.AppImage$/i.test(name)),
       };
       downloadCards.forEach((card) => {

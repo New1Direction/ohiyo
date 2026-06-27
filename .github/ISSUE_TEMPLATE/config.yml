@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/New1Direction/ohiyo/security/advisories/new
+    about: Please report security issues privately.
+  - name: Try Ohiyo in the browser
+    url: https://app.ohiyo.gg
+    about: Use the hosted public beta.

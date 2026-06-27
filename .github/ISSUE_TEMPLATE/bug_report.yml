@@ -1,0 +1,62 @@
+name: Bug report
+description: Report something broken in Ohiyo
+title: "fix: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. If this is security-sensitive, **do not file a public issue** — use GitHub Private Vulnerability Reporting instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What broke? What did you expect to happen?
+      placeholder: A clear, concise description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Give exact steps, commands, or screenshots if useful.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Browser app
+        - Desktop app — macOS
+        - Desktop app — Linux
+        - Server / API
+        - Voice / video / screen share
+        - End-to-end encryption
+        - Plugins
+        - Discord import
+        - Instant Servers
+        - Landing site / docs
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: v0.2.0, commit SHA, or app URL
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, browser, device, backend URL, self-hosted/Fly/etc.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Drag in screenshots or paste logs. Remove secrets/tokens first.
+      render: shell

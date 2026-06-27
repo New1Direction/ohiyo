@@ -67,6 +67,9 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 
 .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.skip-link { position: fixed; left: 1rem; top: 1rem; z-index: 200; transform: translateY(-160%); padding: .7rem 1rem; border-radius: 999px; background: var(--cream); color: #081016; font-weight: 800; text-decoration: none; transition: transform .2s var(--ease); }
+.skip-link:focus { transform: translateY(0); }
 .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .serif-i { font-family: var(--disp); font-style: normal; font-weight: 700; letter-spacing: -0.04em; }
 
@@ -139,8 +142,10 @@ h2 { font-family: var(--disp); font-weight: 600; font-size: clamp(2rem, 4.4vw, 3
 .download-card small { display: block; color: var(--muted); font-size: .82rem; line-height: 1.35; margin-top: .2rem; }
 .download-card strong { color: var(--coral); font-size: .86rem; white-space: nowrap; }
 .download-card.web strong { color: var(--emerald); }
-.download-note { color: var(--muted); font-size: .9rem; margin-top: 1rem; }
+.download-note { color: var(--muted); font-size: 1rem; line-height: 1.55; margin-top: 1rem; }
 .download-note b { color: var(--warm); }
+.download-note a { color: var(--blue); font-weight: 700; text-decoration: none; }
+.download-note a:hover { text-decoration: underline; }
 @media (max-width: 780px) { .download-grid { grid-template-columns: 1fr; } .download-card { grid-template-columns: auto 1fr; } .download-card strong { grid-column: 2; } }
 @media (max-width: 460px) { .dl-title { align-items: flex-start; flex-direction: column; gap: .32rem; } }
 
@@ -232,11 +237,11 @@ footer .f-links { display: flex; gap: 1.3rem; flex-wrap: wrap; }
 .legal ul { margin: .9rem 0 0 1.2rem; display: grid; gap: .55rem; }
 .legal-updated { color: var(--muted); font-family: var(--mono); font-size: .86rem !important; margin-bottom: 1.5rem; }
 
-/* ── scroll reveal ───────────────────────────────────────────────────────── */
-.reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
-.reveal.in { opacity: 1; transform: none; }
+/* ── launch-safe reveal hooks ──────────────────────────────────────────────
+   Content stays visible by default. JS may add `.in`, but launch pages should
+   never depend on scroll-triggered animation to reveal core information. */
+.reveal, .reveal.in { opacity: 1; transform: none; transition: none; }
 @media (prefers-reduced-motion: reduce) {
-  .reveal { opacity: 1; transform: none; transition: none; }
   .hero .logo, .final .logo { animation: none; }
 }
 

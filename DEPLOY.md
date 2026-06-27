@@ -194,14 +194,14 @@ paths private on the server/deployment only.
 
 ## 5. Code signing & auto-update (the "later" path)
 
-Installers can build with **ad-hoc macOS signing** for private QA when Apple
-Developer ID secrets are missing. That keeps downloaded `.dmg` files structurally
-valid and avoids the worst "app is damaged" failure, but normal users will still
-see Apple's scary "could not verify Ohiyo is free of malware" Gatekeeper warning.
+Installers can build with **ad-hoc macOS signing** when Apple Developer ID
+secrets are missing. That keeps downloaded `.dmg` files structurally valid and
+avoids the worst "app is damaged" failure, but normal users may still see Apple's
+"could not verify Ohiyo is free of malware" Gatekeeper warning.
 
-Public `v*` tag releases now refuse to build macOS assets unless Developer ID
-signing + notarization secrets are present. Use the ad-hoc fallback only through
-manual `workflow_dispatch` for private QA. For customer downloads, use official
+For the beta, `v*` tag releases can publish ad-hoc-signed Mac DMGs as long as the
+site and release notes clearly say they are **not Apple-notarized yet** and may
+require Finder → right-click → Open. For a smooth customer download, use official
 signing:
 
 ### macOS notarization
@@ -216,9 +216,8 @@ signing:
    - `APPLE_TEAM_ID` — Apple Developer Team ID
 3. Push a `v*` tag or run the Release workflow manually. CI switches to Developer
    ID signing + notarization automatically when all six secrets are present.
-4. Before publishing the GitHub Release or re-enabling Mac download buttons on the
-   website, download the `.dmg` on a clean Mac and confirm it opens without the
-   "Apple could not verify" warning.
+4. Before claiming the Mac download is Apple verified, download the `.dmg` on a
+   clean Mac and confirm it opens without the "Apple could not verify" warning.
 
 ### Windows signing
 Obtain a code-signing certificate (OV/EV) and set the `tauri.conf.json`
@@ -251,7 +250,8 @@ Obtain a code-signing certificate (OV/EV) and set the `tauri.conf.json`
 `.github/workflows/release.yml` builds the macOS (Apple Silicon + Intel) and Linux
 installers on every `v*` tag (or via manual dispatch) and attaches them to a
 **draft** GitHub Release. macOS has two explicit CI paths: Developer ID signed +
-notarized when all Apple secrets are present, otherwise ad-hoc signed fallback:
+notarized when all Apple secrets are present, otherwise ad-hoc-signed Mac beta
+fallback:
 
 | Secret | Purpose |
 |--------|---------|

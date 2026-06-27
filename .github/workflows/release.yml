@@ -1,11 +1,11 @@
 name: Release
 
 # Build the desktop installers on every version tag (and on manual dispatch), and
-# attach them to a DRAFT GitHub Release. macOS builds are ad-hoc signed by default
-# (required so downloaded Apple Silicon apps are not reported as damaged). When the
-# signing secrets below are present the macOS build is Developer ID signed + notarized
-# and the updater artifacts are produced. See
-# DEPLOY.md §4 for how to obtain and set the certificates.
+# attach them to a DRAFT GitHub Release. macOS builds prefer Developer ID signing
+# + notarization when Apple secrets are present. Without those secrets, the
+# workflow still produces ad-hoc-signed Mac beta DMGs; users may need Finder →
+# right-click → Open until notarization is added. See DEPLOY.md §4 for the
+# notarized path.
 on:
   push:
     tags: ["v*"]
@@ -60,11 +60,10 @@ jobs:
         working-directory: client
         run: npm ci
 
-      - name: Require Apple notarization for public macOS tag releases
-        if: matrix.platform == 'macos-latest' && github.event_name == 'push' && env.HAS_APPLE_SIGNING != 'true'
+      - name: Warn when macOS notarization is unavailable
+        if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING != 'true'
         run: |
-          echo "::error::Refusing to build a public macOS release without Developer ID signing + notarization. Set APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID, then re-run the release. Use workflow_dispatch only for private ad-hoc QA builds."
-          exit 1
+          echo "::warning::Apple Developer ID signing/notarization secrets are missing. Building ad-hoc-signed Mac beta DMGs; Gatekeeper may require Finder → right-click → Open. Set APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID for smooth public Mac installs."
 
       - name: Enable macOS Developer ID signing
         if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING == 'true'
@@ -123,8 +122,8 @@ jobs:
             spctl -a -vvv -t install "$dmg"
           done
 
-      - name: Build desktop installers (macOS ad-hoc fallback for private QA only)
-        if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING != 'true' && github.event_name == 'workflow_dispatch'
+      - name: Build desktop installers (macOS ad-hoc beta fallback)
+        if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING != 'true'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

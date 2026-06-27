@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest an improvement or new capability
+title: "feat: "
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / user need
+      description: What user problem would this solve?
+      placeholder: "As a..., I want..., so that..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What should Ohiyo do?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Browser app
+        - Desktop app
+        - Server / API
+        - Voice / video / screen share
+        - End-to-end encryption
+        - Plugins
+        - Discord import
+        - Instant Servers
+        - Landing site / docs
+        - Developer experience
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context

@@ -1,8 +1,9 @@
 # Ohiyo macOS notarized release runbook
 
-macOS customers must never be asked to bypass Gatekeeper. Ad-hoc signing is only
-for private QA. Public Mac downloads require Developer ID signing + Apple
-notarization.
+The smooth public Mac path is Developer ID signing + Apple notarization. During
+beta, Ohiyo may also ship ad-hoc-signed Mac DMGs with clear copy that users may
+need Finder → right-click → Open. Do not describe those beta DMGs as Apple
+verified.
 
 ## What the user warning means
 
@@ -10,8 +11,8 @@ If macOS says:
 
 > Apple could not verify “Ohiyo” is free of malware that may harm your Mac or compromise your privacy.
 
-then the app is not notarized by Apple. It may still download and run with a
-right-click/Open bypass, but it is not acceptable for customers.
+then the app is not notarized by Apple. It may still download and run with a Finder → right-click → Open bypass, but it
+is not the final polished customer experience.
 
 ## Required Apple assets
 
@@ -102,7 +103,10 @@ The GitHub Release is a draft. Before publishing it:
 5. Only then flip `macDownloadsTrusted` in `site/app.js` to `true`, restore direct
    Mac download copy if desired, deploy the landing site, and publish the release.
 
-## Emergency policy
+## Beta policy
 
-If notarization fails or Apple secrets are missing, keep Mac desktop downloads
-paused and route users to `https://app.ohiyo.gg`.
+If notarization fails or Apple secrets are missing, Mac desktop downloads may be
+published only as clearly labeled **Mac beta** artifacts. Site/release copy must
+say the build is not Apple-notarized yet and may require Finder → right-click →
+Open. Keep `https://app.ohiyo.gg` as the primary fallback until Developer ID
+notarization validates cleanly.

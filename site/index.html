@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 <div class="bg"></div><div class="grain"></div>
 <div class="motes" aria-hidden="true">
   <span class="mote" style="left:7%;width:6px;height:6px;animation-duration:15s;animation-delay:0s"></span>
@@ -65,21 +66,22 @@
   </div>
 </div></header>
 
+<main id="main">
 <!-- DOWNLOAD -->
 <section id="download"><div class="wrap">
   <span class="eyebrow reveal">Get Ohiyo</span>
   <h2 class="reveal">Download <span class="serif-i grad">Ohiyo.</span></h2>
-  <p class="lede reveal">Use Ohiyo in your browser today. Mac desktop downloads are paused for public users while we finish Apple verification, so nobody gets a scary Gatekeeper warning.</p>
+  <p class="lede reveal">Use Ohiyo in your browser today, or install the Mac beta. The Mac build is signed but not Apple-notarized yet, so macOS may ask you to right-click → Open the first time.</p>
   <div class="download-grid reveal">
-    <a class="download-card recommended" data-download-os="mac-arm" href="https://app.ohiyo.gg" rel="noopener">
+    <a class="download-card recommended" data-download-os="mac-arm" href="https://github.com/New1Direction/ohiyo/releases/latest/download/Ohiyo_0.2.0_aarch64.dmg">
       <span class="dl-logo" aria-hidden="true"><img src="assets/icons/apple.svg" alt="" /></span>
-      <span class="dl-copy"><span class="dl-title"><b>Mac — Apple Silicon</b><em>Verification pending</em></span><small>M1 / M2 / M3 / M4 · use browser until the notarized app is live</small></span>
-      <strong>Open browser app</strong>
+      <span class="dl-copy"><span class="dl-title"><b>Mac — Apple Silicon</b><em>Beta</em></span><small>M1 / M2 / M3 / M4 · not Apple-notarized yet</small></span>
+      <strong>Download DMG</strong>
     </a>
-    <a class="download-card" data-download-os="mac-intel" href="https://app.ohiyo.gg" rel="noopener">
+    <a class="download-card" data-download-os="mac-intel" href="https://github.com/New1Direction/ohiyo/releases/latest/download/Ohiyo_0.2.0_x64.dmg">
       <span class="dl-logo" aria-hidden="true"><img src="assets/icons/apple.svg" alt="" /></span>
-      <span class="dl-copy"><span class="dl-title"><b>Mac — Intel</b></span><small>Older Macs · use browser until the notarized app is live</small></span>
-      <strong>Open browser app</strong>
+      <span class="dl-copy"><span class="dl-title"><b>Mac — Intel</b><em>Beta</em></span><small>Older Macs · not Apple-notarized yet</small></span>
+      <strong>Download DMG</strong>
     </a>
     <a class="download-card" data-download-os="linux" href="https://github.com/New1Direction/ohiyo/releases/latest/download/Ohiyo_0.2.0_amd64.AppImage">
       <span class="dl-logo" aria-hidden="true"><img src="assets/icons/linux.svg" alt="" /></span>
@@ -92,7 +94,7 @@
       <strong>Open app</strong>
     </a>
   </div>
-  <p class="download-note reveal"><b>Why no Mac installer button today?</b> Apple verification is not complete yet. We are not going to make normal people bypass a malware warning. Windows desktop builds are coming; use the browser app today.</p>
+  <p class="download-note reveal"><b>Mac beta note:</b> Apple notarization is still pending. If macOS blocks the app, open Finder, right-click Ohiyo, choose <b>Open</b>, then confirm. Browser access stays available at <a href="https://app.ohiyo.gg" rel="noopener">app.ohiyo.gg</a>.</p>
 </div></section>
 
 <!-- INSTANT SERVERS -->
@@ -182,7 +184,7 @@
   <h2 class="reveal">oHiYo <span style="color:var(--muted);font-family:var(--ui);font-weight:600;font-size:.6em">vs</span> Discord</h2>
   <div class="table-wrap reveal">
     <table class="cmp">
-      <thead><tr><th></th><th class="us">Ohiyo</th><th>Discord</th></tr></thead>
+      <thead><tr><th scope="col"><span class="sr-only">Feature</span></th><th scope="col" class="us">Ohiyo</th><th scope="col">Discord</th></tr></thead>
       <tbody>
         <tr><td>End-to-end encrypted DMs &amp; groups</td><td class="us-col"><span class="yes">✓</span> Signal Protocol</td><td class="them-col"><span class="no">✕</span> plaintext on servers</td></tr>
         <tr><td>The full feature set</td><td class="us-col"><span class="yes">✓</span> everything free</td><td class="them-col"><span class="no">✕</span> Nitro subscription</td></tr>
@@ -219,6 +221,7 @@
     <a class="btn ghost download-primary" href="#download">Download the app</a>
   </div>
 </div></section>
+</main>
 
 <footer><div class="wrap">
   <div class="brand"><img src="kikka.svg" alt="" style="width:24px" /> o<span class="hi" style="color:var(--coral)">Hi</span>Yo</div>
