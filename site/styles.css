@@ -88,13 +88,13 @@ nav .wrap { display: flex; align-items: center; justify-content: space-between; 
 
 /* ── buttons ─────────────────────────────────────────────────────────────── */
 .btn { display: inline-flex; align-items: center; gap: .5rem; padding: .82rem 1.4rem; border-radius: 999px;
-  font-family: var(--ui); font-weight: 650; font-size: .95rem; text-decoration: none; cursor: pointer; border: 1px solid transparent;
+  font-family: var(--ui); font-weight: 650; font-size: 1rem; text-decoration: none; cursor: pointer; border: 1px solid transparent;
   transition: transform .25s var(--ease), box-shadow .3s, border-color .25s, background .25s; }
 .btn.solid { background: var(--grad); color: #091014; box-shadow: var(--glow); }
 .btn.solid:hover { transform: translateY(-2px); box-shadow: 0 0 78px -10px rgba(98, 176, 220, .76); }
 .btn.ghost { background: rgba(255, 255, 255, .03); color: var(--cream); border-color: var(--line); }
 .btn.ghost:hover { transform: translateY(-2px); border-color: var(--coral); }
-.btn.sm { padding: .55rem 1.05rem; font-size: .88rem; }
+.btn.sm { padding: .6rem 1.08rem; font-size: .95rem; }
 .btn:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; }
 
 /* ── section scaffolding ─────────────────────────────────────────────────── */
@@ -139,8 +139,8 @@ h2 { font-family: var(--disp); font-weight: 600; font-size: clamp(2rem, 4.4vw, 3
 .dl-title { display: flex; align-items: center; gap: .55rem; min-width: 0; }
 .dl-title em { border: 1px solid rgba(98,176,220,.30); border-radius: 999px; padding: .13rem .45rem; color: var(--coral); background: rgba(98,176,220,.09); font-style: normal; font-size: .68rem; font-weight: 750; white-space: nowrap; }
 .download-card b { display: block; font-size: 1rem; line-height: 1.2; }
-.download-card small { display: block; color: var(--muted); font-size: .82rem; line-height: 1.35; margin-top: .2rem; }
-.download-card strong { color: var(--coral); font-size: .86rem; white-space: nowrap; }
+.download-card small { display: block; color: var(--muted); font-size: .95rem; line-height: 1.4; margin-top: .2rem; }
+.download-card strong { color: var(--coral); font-size: .95rem; white-space: nowrap; }
 .download-card.web strong { color: var(--emerald); }
 .download-note { color: var(--muted); font-size: 1rem; line-height: 1.55; margin-top: 1rem; }
 .download-note b { color: var(--warm); }
@@ -160,9 +160,9 @@ h2 { font-family: var(--disp); font-weight: 600; font-size: clamp(2rem, 4.4vw, 3
 .cmp-card:hover { transform: translateY(-4px); }
 .cmp-head { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; margin-bottom: 1rem; }
 .cmp-head h3 { font-family: var(--ui); font-weight: 700; font-size: 1.1rem; }
-.cmp-head .price { font-size: .82rem; color: var(--muted); font-weight: 600; }
+.cmp-head .price { font-size: .95rem; color: var(--muted); font-weight: 600; }
 .cmp-card.us .price { color: var(--coral); }
-.cmp-card p { color: var(--warm); font-size: .98rem; }
+.cmp-card p { color: var(--warm); font-size: 1rem; }
 .cmp-card b { color: var(--cream); }
 .punch { font-family: var(--disp); font-weight: 500; font-size: clamp(1.2rem, 2.6vw, 1.7rem); line-height: 1.4;
   color: var(--cream); max-width: 60ch; margin-top: 2rem; }
@@ -174,7 +174,7 @@ h2 { font-family: var(--disp); font-weight: 600; font-size: clamp(2rem, 4.4vw, 3
 .tile:hover { transform: translateY(-4px); border-color: rgba(98, 176, 220, .4); }
 .tile .ic { font-size: 1.5rem; }
 .tile h3 { font-family: var(--ui); font-weight: 700; font-size: 1.08rem; }
-.tile p { color: var(--warm); font-size: .92rem; }
+.tile p { color: var(--warm); font-size: 1rem; }
 .tile .tag { margin-top: auto; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--emerald); }
 .t-2x2 { grid-column: span 3; grid-row: span 2; }
 .t-2w { grid-column: span 4; }
@@ -192,13 +192,13 @@ h2 { font-family: var(--disp); font-weight: 600; font-size: clamp(2rem, 4.4vw, 3
 .node:hover { border-color: rgba(98, 176, 220, .4); transform: translateX(4px); }
 .node .k { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--coral); font-weight: 700; }
 .node b { display: block; margin: .15rem 0 .2rem; font-size: 1rem; }
-.node p { color: var(--muted); font-size: .86rem; }
-.sec-note { margin-top: 1.4rem; color: var(--warm); font-size: .96rem; }
+.node p { color: var(--muted); font-size: .95rem; }
+.sec-note { margin-top: 1.4rem; color: var(--warm); font-size: 1rem; }
 .sec-note b { color: var(--cream); }
 
 /* ── compare table ───────────────────────────────────────────────────────── */
 .table-wrap { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; margin-top: 2rem; }
-table.cmp { width: 100%; border-collapse: collapse; font-size: .95rem; }
+table.cmp { width: 100%; border-collapse: collapse; font-size: 1rem; }
 table.cmp th, table.cmp td { padding: .95rem 1.2rem; text-align: left; border-bottom: 1px solid var(--line-soft); }
 table.cmp thead th { background: rgba(255, 255, 255, .04); font-weight: 700; font-size: .86rem; }
 table.cmp thead th.us { color: var(--coral); }
@@ -222,7 +222,7 @@ table.cmp tr:last-child td { border-bottom: 0; }
 
 /* ── footer ──────────────────────────────────────────────────────────────── */
 footer { border-top: 1px solid var(--line); padding: 2.6rem 0; }
-footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; color: var(--muted); font-size: .88rem; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; color: var(--muted); font-size: .95rem; }
 footer a { color: var(--warm); text-decoration: none; }
 footer a:hover { color: var(--coral); }
 footer .f-links { display: flex; gap: 1.3rem; flex-wrap: wrap; }
