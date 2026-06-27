@@ -4,6 +4,7 @@ import { useDropzone } from "react-dropzone";
 import { VariableSizeList as List } from "react-window";
 import type { AttachmentMeta, Embed, Message, Channel, ReactionGroup, ServerEmoji, PublicUser } from "../api";
 import type { WatchSession } from "../gateway";
+import { isEncryptedAttachment, type EncryptedAttachmentMeta } from "../lib/encryptedPayload";
 import type { TrustState } from "../lib/identityTrust";
 import { WatchParty } from "./WatchParty";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -144,7 +145,7 @@ type Props = {
   token: string;
   pluginManager: PluginManager;
   serverEmojis: ServerEmoji[];
-  onSend: (content: string, attachmentIds?: string[], replyTo?: string | null) => void;
+  onSend: (content: string, attachmentIds?: string[], replyTo?: string | null, encryptedAttachments?: EncryptedAttachmentMeta[]) => void;
   onRetry?: (msg: Message) => void;
   onDiscardFailed?: (id: string) => void;
   onToast: (text: string, type?: "info" | "success" | "error") => void;
@@ -253,7 +254,43 @@ type UploadedFile = {
   size_bytes: number;
   width?: number | null;
   height?: number | null;
+  encrypted?: EncryptedAttachmentMeta["encrypted"];
+  previewUrl?: string;
 };
+
+function b64Url(bytes: Uint8Array): string {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function unb64Url(s: string): Uint8Array {
+  const padded = s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4);
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+}
+
+async function encryptAttachmentFile(file: File): Promise<{ blob: Blob; encrypted: EncryptedAttachmentMeta["encrypted"] }> {
+  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+  const rawKey = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plain = await file.arrayBuffer();
+  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
+  return {
+    blob: new Blob([cipher], { type: "application/octet-stream" }),
+    encrypted: {
+      alg: "AES-256-GCM",
+      key: b64Url(rawKey),
+      iv: b64Url(iv),
+      cipher_size_bytes: cipher.byteLength,
+    },
+  };
+}
+
+async function decryptAttachmentBytes(att: EncryptedAttachmentMeta, encryptedBytes: ArrayBuffer): Promise<Blob> {
+  const key = await crypto.subtle.importKey("raw", unb64Url(att.encrypted.key), { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64Url(att.encrypted.iv) }, key, encryptedBytes);
+  return new Blob([plain], { type: att.content_type || "application/octet-stream" });
+}
 
 export function ChatPane({
   channel,
@@ -695,7 +732,19 @@ export function ChatPane({
       if (!transformed && pendingFiles.length === 0) return;
       if (!channel) return;
       forceBottomRef.current = true; // always follow your own message to the bottom
-      onSend(transformed, pendingFiles.map((f) => f.id), replyTarget?.id ?? null);
+      const encryptedAttachments = pendingFiles
+        .filter((f): f is UploadedFile & { encrypted: EncryptedAttachmentMeta["encrypted"] } => Boolean(f.encrypted))
+        .map((f): EncryptedAttachmentMeta => ({
+          id: f.id,
+          url: f.url,
+          filename: f.filename,
+          content_type: f.content_type,
+          size_bytes: f.size_bytes,
+          width: f.width ?? null,
+          height: f.height ?? null,
+          encrypted: f.encrypted,
+        }));
+      onSend(transformed, pendingFiles.map((f) => f.id), replyTarget?.id ?? null, encryptedAttachments.length ? encryptedAttachments : undefined);
       setInput("");
       draftsRef.current[channel.id] = "";
       persistDraft(channel.id, ""); // sent → no lingering draft
@@ -722,7 +771,11 @@ export function ChatPane({
       const results: UploadedFile[] = [];
       for (const file of acceptedFiles) {
         const formData = new FormData();
-        formData.append("file", file);
+        const encryptedUpload = e2eEnabled ? await encryptAttachmentFile(file) : null;
+        const uploadFile = encryptedUpload
+          ? new File([encryptedUpload.blob], "encrypted.bin", { type: "application/octet-stream" })
+          : file;
+        formData.append("file", uploadFile);
 
         try {
           const xhr = new XMLHttpRequest();
@@ -740,7 +793,22 @@ export function ChatPane({
             xhr.onload = () => {
               if (xhr.status < 300) {
                 const data = JSON.parse(xhr.responseText) as UploadedFile[];
-                results.push(...data);
+                if (encryptedUpload) {
+                  results.push(
+                    ...data.map((item) => ({
+                      ...item,
+                      filename: file.name,
+                      content_type: file.type || "application/octet-stream",
+                      size_bytes: file.size,
+                      width: null,
+                      height: null,
+                      encrypted: encryptedUpload.encrypted,
+                      previewUrl: URL.createObjectURL(file),
+                    }))
+                  );
+                } else {
+                  results.push(...data);
+                }
                 resolve();
               } else {
                 reject(new Error(`Upload failed: ${xhr.status}`));
@@ -766,7 +834,7 @@ export function ChatPane({
       setPendingFiles((prev) => [...prev, ...results]);
       setUploading(false);
     },
-    [token, onToast]
+    [token, onToast, e2eEnabled]
   );
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
@@ -2457,7 +2525,7 @@ function assetUrl(url: string): string {
 }
 
 function PendingAttachmentPreview({ file, onRemove }: { file: UploadedFile; onRemove: () => void }) {
-  const url = assetUrl(file.url ?? `/files/${file.id}`);
+  const url = file.previewUrl ?? assetUrl(file.url ?? `/files/${file.id}`);
   const isImage = file.content_type.startsWith("image/");
   const isVideo = file.content_type.startsWith("video/");
   const d = isImage && file.width && file.height ? fitImg(file.width, file.height, 180, 120) : null;
@@ -2499,6 +2567,7 @@ function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
   return (
     <div className="mt-1 flex flex-wrap gap-2">
       {attachments.map((att) => {
+        if (isEncryptedAttachment(att)) return <EncryptedAttachmentItem key={att.id} att={att} />;
         const url = assetUrl(att.url ?? `/files/${att.id}`);
         if (att.content_type.startsWith("image/")) {
           const d = att.width && att.height ? fitImg(att.width, att.height, 400, 300) : null;
@@ -2573,6 +2642,81 @@ function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
         );
       })}
     </div>
+  );
+}
+
+function EncryptedAttachmentItem({ att }: { att: EncryptedAttachmentMeta }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    let objectUrl: string | null = null;
+    const source = assetUrl(att.url ?? `/files/${att.id}`);
+    fetch(source)
+      .then((r) => {
+        if (!r.ok) throw new Error("download failed");
+        return r.arrayBuffer();
+      })
+      .then((bytes) => decryptAttachmentBytes(att, bytes))
+      .then((blob) => {
+        if (!alive) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => alive && setError(true));
+    return () => {
+      alive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [att]);
+
+  if (error) {
+    return (
+      <div className="link-preview" style={{ padding: "6px 10px", color: "var(--danger)" }}>
+        🔒 Couldn&apos;t decrypt {att.filename}
+      </div>
+    );
+  }
+  if (!url) {
+    return (
+      <div className="link-preview" style={{ padding: "6px 10px", color: "var(--text-muted)" }}>
+        🔒 Decrypting {att.filename}…
+      </div>
+    );
+  }
+  if (att.content_type.startsWith("image/")) {
+    const d = att.width && att.height ? fitImg(att.width, att.height, 400, 300) : null;
+    return (
+      <a href={url} download={att.filename} style={{ display: "block" }}>
+        <div className="kc-img-frame" style={d ? { width: d.w, height: d.h } : { maxWidth: 400 }}>
+          <img className="kc-img" src={url} alt={att.filename} loading="lazy" width={d?.w} height={d?.h} style={d ? undefined : { maxWidth: 400, maxHeight: 300 }} />
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>🔒 {att.filename} · {formatBytes(att.size_bytes)}</div>
+      </a>
+    );
+  }
+  if (att.content_type.startsWith("video/")) {
+    return (
+      <div>
+        <video src={url} controls playsInline preload="none" style={{ width: "min(360px, 100%)", maxHeight: 240, borderRadius: 10, display: "block", background: "var(--bg-input)", objectFit: "contain" }} />
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>🔒 {att.filename} · {formatBytes(att.size_bytes)}</div>
+      </div>
+    );
+  }
+  if (att.content_type.startsWith("audio/")) {
+    return (
+      <div>
+        <audio src={url} controls preload="none" style={{ maxWidth: 300 }} />
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>🔒 {att.filename} · {formatBytes(att.size_bytes)}</div>
+      </div>
+    );
+  }
+  return (
+    <a href={url} download={att.filename} className="link-preview" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, background: "var(--bg-input)", fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>
+      🔒 {fileIcon(att.content_type)} {att.filename}
+      <span style={{ color: "var(--text-muted)" }}>{formatBytes(att.size_bytes)}</span>
+    </a>
   );
 }
 

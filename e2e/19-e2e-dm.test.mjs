@@ -1,3 +1,6 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { currentToken, launchBrowser, register, shot, log, uniq } from "./harness.mjs";
 
 // End-to-end encrypted DMs: A toggles encryption, sends a secret. B decrypts it.
@@ -90,6 +93,20 @@ try {
   await pageB.waitForSelector(`text=${padTwo}`, { timeout: 10000 });
   log("A sent two padded encrypted messages; B decrypted both ✓");
 
+  // ── Private attachment relay: A encrypts bytes client-side before upload. The peer
+  //    sees the real filename after decrypt; the server only sees encrypted.bin. ──
+  const privateName = `private-note-${u}.txt`;
+  const privatePath = join(tmpdir(), privateName);
+  writeFileSync(privatePath, `private attachment ${u}`);
+  const chooser = pageA.waitForEvent("filechooser");
+  await pageA.click('button[aria-label="Attach a file"]');
+  await (await chooser).setFiles(privatePath);
+  await pageA.waitForSelector(`text=${privateName}`, { timeout: 10000 });
+  await composer.fill(`file-${u}`);
+  await composer.press("Enter");
+  await pageB.waitForSelector(`text=${privateName}`, { timeout: 15000 });
+  log("A sent a private encrypted attachment; B decrypted the manifest ✓");
+
   // ── A reloads: own sent message + B's reply both survive (forward-secrecy cache).
   //    The Double Ratchet can't re-decrypt either, so this proves the local cache. ──
   await pageA.reload({ waitUntil: "domcontentloaded" });
@@ -100,6 +117,7 @@ try {
   await pageA.waitForSelector(`text=${reply}`, { timeout: 10000 });
   await pageA.waitForSelector(`text=${padOne}`, { timeout: 10000 });
   await pageA.waitForSelector(`text=${padTwo}`, { timeout: 10000 });
+  await pageA.waitForSelector(`text=${privateName}`, { timeout: 15000 });
   log("A reloaded → own message + reply both still readable (forward-secrecy cache) ✓");
 
   // ── PROOF: the server stored only CIPHERTEXT (it cannot read the message) ──
@@ -113,7 +131,7 @@ try {
     await fetch(`${API}/channels/${dmId}/messages`, { headers: { Authorization: `Bearer ${tokenA}` } })
   ).json();
   const stored = msgs[msgs.length - 1]?.content ?? "";
-  if (stored.includes(secret) || stored.includes(reply) || stored.includes(padOne) || stored.includes(padTwo)) {
+  if (stored.includes(secret) || stored.includes(reply) || stored.includes(padOne) || stored.includes(padTwo) || stored.includes(privateName)) {
     throw new Error(`server stored PLAINTEXT! content="${stored}"`);
   }
   // Both users publish Signal prekeys on login, so the flow uses the forward-secret
@@ -125,7 +143,19 @@ try {
   if (lastTwo.length !== 2 || lastTwo.some((m) => !m.startsWith("sig2."))) {
     throw new Error(`padding proof messages were not sig2 envelopes: ${JSON.stringify(lastTwo)}`);
   }
-  log(`server stores ciphertext only; padded messages stayed opaque sig2 envelopes (${lastTwo.map((m) => m.length).join("/")} chars) ✓`);
+  const privateAttachmentMsg = msgs.find((m) =>
+    String(m.content ?? "").startsWith("sig2.") &&
+    JSON.stringify(m.attachments ?? []).includes("encrypted.bin")
+  );
+  if (!privateAttachmentMsg) throw new Error("no generic encrypted attachment metadata found on server");
+  const serverAttachment = privateAttachmentMsg.attachments?.[0];
+  if (serverAttachment?.filename !== "encrypted.bin" || serverAttachment?.content_type !== "application/octet-stream") {
+    throw new Error(`server saw private attachment metadata: ${JSON.stringify(serverAttachment)}`);
+  }
+  if (JSON.stringify(privateAttachmentMsg).includes(privateName)) {
+    throw new Error("server response leaked original private attachment filename");
+  }
+  log(`server stores ciphertext only; padded messages stayed opaque sig2 envelopes (${lastTwo.map((m) => m.length).join("/")} chars), attachment metadata generic ✓`);
 
   console.log(
     `\n✅ E2E DM FLOW PASSED (one-click toggle → ${/^sig2\./.test(stored) ? "Signal forward-secret multi-device" : "legacy"} encrypt → padded peer decrypts; server sees only ciphertext)`

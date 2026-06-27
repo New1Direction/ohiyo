@@ -99,6 +99,13 @@ export type AttachmentMeta = {
    * older servers — callers fall back to `/files/<id>`.
    */
   url?: string;
+  /** Present only after decrypting an E2EE message carrying a private attachment. */
+  encrypted?: {
+    alg: "AES-256-GCM";
+    key: string;
+    iv: string;
+    cipher_size_bytes: number;
+  };
 };
 
 export type ReplyPreview = {
@@ -147,7 +154,7 @@ export type Message = {
   _state?: "pending" | "failed";
   /** Client-only: this message was decrypted from an E2E ciphertext for display. */
   _encrypted?: boolean;
-  _send?: { content: string; attachmentIds?: string[]; replyTo?: string | null };
+  _send?: { content: string; attachmentIds?: string[]; replyTo?: string | null; encryptedAttachments?: AttachmentMeta[] };
 };
 
 /** One participant's read cursor in a channel (drives Delivered/Seen receipts). */

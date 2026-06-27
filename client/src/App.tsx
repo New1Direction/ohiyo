@@ -54,6 +54,7 @@ import {
   setGroupEpoch,
 } from "./lib/senderKeys";
 import { formatDuration } from "./lib/disappearing";
+import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { initVaultBackend } from "./lib/tauriVault";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
@@ -361,6 +362,16 @@ function MainApp({
   const gatewayRef = useRef<Gateway | null>(null);
   const privacyModeRef = useRef(privacyMode);
   privacyModeRef.current = privacyMode;
+
+  function messageFromDecryptedPlaintext(message: Message, plain: string): Message {
+    const unpacked = unpackEncryptedMessagePlaintext(plain);
+    return {
+      ...message,
+      content: unpacked.text,
+      attachments: unpacked.attachments ?? message.attachments,
+      _encrypted: true,
+    };
+  }
 
   /** Set or clear my rich-presence activity; the server echoes it back to update UI. */
   function updateActivity(activity: Activity | null) {
@@ -1267,27 +1278,27 @@ function MainApp({
           // Group sender-key message — decrypt from the message author's sender key.
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
-            out.push({ ...m, content: cached, _encrypted: true });
+            out.push(messageFromDecryptedPlaintext(m, cached));
             continue;
           }
           const pt = await groupDecrypt(channelId, m.author.id, m.content);
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
           if (plain !== null) cachePlaintext(m.id, plain);
-          out.push({ ...m, content: plain ?? "🔒 Encrypted message", _encrypted: true });
+          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "🔒 Encrypted message", _encrypted: true });
         } else if (isSignalCiphertext(m.content)) {
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
-            out.push({ ...m, content: cached, _encrypted: true });
+            out.push(messageFromDecryptedPlaintext(m, cached));
             continue;
           }
           const pt = peerId ? await decryptFrom(peerId, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
           if (plain !== null) cachePlaintext(m.id, plain);
-          out.push({ ...m, content: plain ?? "🔒 Encrypted message", _encrypted: true });
+          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "🔒 Encrypted message", _encrypted: true });
         } else if (isEncrypted(m.content)) {
           const pt = legacyKey ? await decryptMessage(legacyKey, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
-          out.push({ ...m, content: plain ?? "🔒 Encrypted message", _encrypted: true });
+          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "🔒 Encrypted message", _encrypted: true });
         } else {
           out.push(m);
         }
@@ -1325,7 +1336,7 @@ function MainApp({
   );
 
   const handleSend = useCallback(
-    async (content: string, attachmentIds?: string[], replyTo?: string | null) => {
+    async (content: string, attachmentIds?: string[], replyTo?: string | null, encryptedAttachments?: EncryptedAttachmentMeta[]) => {
       if (!selectedChannelRef.current) return;
       // Ask for notification permission on the first send — a clear user gesture.
       // Works for both native (Tauri) and web notifications.
@@ -1344,10 +1355,10 @@ function MainApp({
           content,
           created_at: Math.floor(Date.now() / 1000),
           edited_at: null,
-          attachments: null,
+          attachments: encryptedAttachments?.length ? encryptedAttachments : null,
           reactions: [],
           _state: "pending",
-          _send: { content, attachmentIds, replyTo },
+          _send: { content, attachmentIds, replyTo, encryptedAttachments },
         };
         setMessages((prev) => [...prev, optimistic]);
         addToOutbox(optimistic); // persisted so it survives a switch/reload/offline
@@ -1356,13 +1367,14 @@ function MainApp({
         const cid = selectedChannelRef.current!.id;
         const isGroup = selectedChannelRef.current!.channel_type === "group_dm";
         let wire = content;
+        const privatePlaintext = packEncryptedMessagePlaintext(content, encryptedAttachments);
         // E2E: encrypt on this device before it leaves — the server only sees ciphertext.
-        if (content && e2eChannelsRef.current.has(cid)) {
+        if ((content || encryptedAttachments?.length) && e2eChannelsRef.current.has(cid)) {
           if (isGroup) {
             // Group: encrypt once with our sender key (every member decrypts the same
             // ciphertext). Ensure our key is distributed first (idempotent).
             await distributeMySenderKey(cid);
-            const g = await groupEncrypt(cid, padMessagePlaintext(content));
+            const g = await groupEncrypt(cid, padMessagePlaintext(privatePlaintext));
             if (g) wire = g;
           } else {
             // 1:1: require a forward-secret Signal session. We no longer fall back to
@@ -1370,7 +1382,7 @@ function MainApp({
             // plaintext. If there's no session yet, abort so the message stays
             // retryable once the peer publishes prekeys.
             const peerId = dmPeerId(cid);
-            const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(content)) : null;
+            const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(privatePlaintext)) : null;
             if (!sig) {
               toast("Can't send encrypted yet — your friend needs to open Ohiyo once to set up encryption.");
               throw new Error("no-signal-session");
@@ -1382,11 +1394,11 @@ function MainApp({
         // Forward secrecy: we can't decrypt our own outgoing ciphertext later (1:1
         // ratchet or group sender key), so cache the plaintext by the real message id.
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
-          cachePlaintext(created.id, content);
+          cachePlaintext(created.id, privatePlaintext);
           // If the gateway echo already rendered this as a placeholder (it can't
           // self-decrypt), patch it back to plaintext now.
           setMessages((prev) =>
-            prev.map((m) => (m.id === created.id ? { ...m, content, _encrypted: true } : m))
+            prev.map((m) => (m.id === created.id ? { ...m, content, attachments: encryptedAttachments ?? m.attachments, _encrypted: true } : m))
           );
         }
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -1409,23 +1421,24 @@ function MainApp({
       setOutboxState(msg.id, "pending");
       try {
         let wire = send.content;
-        if (send.content && e2eChannelsRef.current.has(msg.channel_id)) {
+        const privatePlaintext = packEncryptedMessagePlaintext(send.content, send.encryptedAttachments as EncryptedAttachmentMeta[] | undefined);
+        if ((send.content || send.encryptedAttachments?.length) && e2eChannelsRef.current.has(msg.channel_id)) {
           // A group sender key exists only for group channels (else null → 1:1 path).
-          const g = await groupEncrypt(msg.channel_id, padMessagePlaintext(send.content));
+          const g = await groupEncrypt(msg.channel_id, padMessagePlaintext(privatePlaintext));
           if (g) {
             wire = g;
           } else {
             const peerId = dmPeerId(msg.channel_id);
-            const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(send.content)) : null;
+            const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(privatePlaintext)) : null;
             if (!sig) throw new Error("no-signal-session"); // stays failed/retryable
             wire = sig;
           }
         }
         const created = await api.sendMessage(token, msg.channel_id, wire, send.attachmentIds, send.replyTo ?? null);
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
-          cachePlaintext(created.id, send.content);
+          cachePlaintext(created.id, privatePlaintext);
           setMessages((prev) =>
-            prev.map((m) => (m.id === created.id ? { ...m, content: send.content, _encrypted: true } : m))
+            prev.map((m) => (m.id === created.id ? { ...m, content: send.content, attachments: send.encryptedAttachments ?? m.attachments, _encrypted: true } : m))
           );
         }
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
