@@ -11,7 +11,10 @@ _Last checked: 2026-06-27_
 - Production backend exposes current v0.2 routes; auth-gated routes return `401` instead of stale `404`.
 - Latest `main` CI and E2E runs are green.
 - Fly app `ohiyo` is running one healthy machine with 30-day volume snapshot retention.
+- Backend image `registry.fly.io/ohiyo:deployment-01KW4G8KMFM0C6YBXMXB1CVSTD` is deployed.
+- Current `registry.fly.io/ohiyo-instances:latest` image has been pushed for newly provisioned community machines.
 - Fly provisioning secrets for Instant Servers are deployed and wildcard `*.ohiyo.gg` reaches the router.
+- Authenticated Instant Server production smoke passed: a temporary instance at `https://launch-smoke-01b801.ohiyo.gg/healthz` returned `ok`, then `DELETE /api/v1/instances/{id}` removed its machine/volume/registry row and the subdomain returned the expected router 404.
 - Landing site has Privacy, Terms, robots.txt, sitemap.xml, and security.txt.
 
 ## Not blocking web launch
@@ -27,9 +30,7 @@ _Last checked: 2026-06-27_
 3. Flip `macDownloadsTrusted` in `site/app.js` to `true` only after verification.
 4. Re-enable direct Mac download copy on the landing page.
 
-## Before broadly advertising Instant Servers
+## Instant Servers smoke procedure
 
-1. Run an authenticated production smoke for `POST /api/v1/instances`.
-2. Confirm a real `ohiyo-instances` machine boots healthy.
-3. Confirm `https://<subdomain>.ohiyo.gg/healthz` routes through Fly replay to that machine.
-4. Confirm cleanup/suspend/delete behavior on the provisioned machine and volume.
+- Use `scripts/instant-server-prod-smoke.sh` to register a temporary smoke user, create an instance, wait for `https://<subdomain>.ohiyo.gg/healthz`, and delete the instance afterward.
+- Existing long-lived demo machine: `founders-hall-99de3e` is still running in `ohiyo-instances` and answers health through the wildcard router.
