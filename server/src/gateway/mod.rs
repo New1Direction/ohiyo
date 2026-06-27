@@ -104,12 +104,13 @@ fn privacy_enabled(state: &AppState, user_id: &str) -> bool {
 }
 
 async fn load_persisted_privacy_mode(state: &AppState, user_id: &str) -> bool {
-    let row: Option<(String,)> = sqlx::query_as("SELECT prefs_json FROM user_prefs WHERE user_id = ?")
-        .bind(user_id)
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten();
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT prefs_json FROM user_prefs WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
     row.and_then(|(s,)| serde_json::from_str::<serde_json::Value>(&s).ok())
         .and_then(|v| v.pointer("/privacy/metadataMode").and_then(|b| b.as_bool()))
         .unwrap_or(false)
