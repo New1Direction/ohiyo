@@ -25,9 +25,14 @@ try {
   await composer.fill("a keepsake worth forwarding");
   await composer.press("Enter");
   await page.waitForSelector("text=a keepsake worth forwarding", { timeout: 8000 });
+  await page.waitForFunction(() => {
+    return [...document.querySelectorAll("[data-message-id]")].some(
+      (el) => !el.getAttribute("data-message-id")?.startsWith("temp-") && el.textContent?.includes("a keepsake worth forwarding")
+    );
+  }, null, { timeout: 8000 });
 
   // ── forward it to #archive ──
-  const fwdMsg = page.locator('[data-message-id]', { hasText: "a keepsake worth forwarding" });
+  const fwdMsg = page.locator('[data-message-id]:not([data-message-id^="temp-"])', { hasText: "a keepsake worth forwarding" });
   await fwdMsg.hover();
   await fwdMsg.getByRole("button", { name: "Forward message" }).first().click();
   await page.waitForSelector("text=↪ Forward", { timeout: 5000 });

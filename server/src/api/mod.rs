@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod channels;
 pub mod discord_import;
+pub mod dm_links;
 pub mod embeds;
 pub mod emoji;
 pub mod error;
@@ -62,6 +63,16 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me/dms", get(users::list_dms))
         .route("/users/@me/dms", post(users::open_dm))
         .route("/users/@me/group-dms", post(users::open_group_dm))
+        .route(
+            "/users/@me/dm-links",
+            post(dm_links::create_private_dm_link),
+        )
+        .route(
+            "/dm-links/{token}",
+            get(dm_links::preview_private_dm_link)
+                .post(dm_links::redeem_private_dm_link)
+                .delete(dm_links::revoke_private_dm_link),
+        )
         .route(
             "/channels/{channel_id}/recipients",
             get(users::list_recipients).post(users::add_recipient),

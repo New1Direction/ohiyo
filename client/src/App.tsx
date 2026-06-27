@@ -19,6 +19,8 @@ import { CreateServerModal } from "./components/CreateServerModal";
 import { DiscordImportModal } from "./components/DiscordImportModal";
 import { InviteAccept } from "./components/InviteAccept";
 import { InviteModal } from "./components/InviteModal";
+import { PrivateDmLinkAccept } from "./components/PrivateDmLinkAccept";
+import { PrivateDmLinkModal } from "./components/PrivateDmLinkModal";
 import { FindPeopleModal } from "./components/FindPeopleModal";
 import { SearchModal } from "./components/SearchModal";
 import { MembersModal } from "./components/MembersModal";
@@ -284,6 +286,7 @@ function MainApp({
   const [showCreateServer, setShowCreateServer] = useState(false);
   const [showDiscordImport, setShowDiscordImport] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
+  const [showPrivateDmLink, setShowPrivateDmLink] = useState(false);
   const [showFindPeople, setShowFindPeople] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
@@ -298,6 +301,9 @@ function MainApp({
   const [dmUsers, setDmUsers] = useState<Record<string, PublicUser>>({});
   const [inviteCode, setInviteCode] = useState<string | null>(
     () => new URLSearchParams(window.location.search).get("invite")
+  );
+  const [privateDmToken, setPrivateDmToken] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get("dm")
   );
   // Seeded per-account from `kc:welcomed:<userId>` once we know who logged in (in the
   // Ready handler) — so a different account on a shared device isn't treated as welcomed.
@@ -1644,10 +1650,27 @@ function MainApp({
     setInviteCode(null);
   }
 
+  function clearPrivateDmParam() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("dm");
+    window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    setPrivateDmToken(null);
+  }
+
   function handleInviteJoin(server: ServerWithChannels) {
     enterServer(server);
     clearInviteParam();
     toast(`You're in — welcome to ${server.name}! 🎉`, "success");
+  }
+
+  function handlePrivateDmAccepted(channel: Channel, creator: PublicUser) {
+    setDms((prev) => (prev.find((d) => d.id === channel.id) ? prev : [channel, ...prev]));
+    setDmUsers((prev) => ({ ...prev, [channel.id]: creator }));
+    setSelectedServerId(null);
+    markWelcomed();
+    clearPrivateDmParam();
+    void handleSelectChannel(channel);
+    toast(`Private DM opened with ${creator.display_name}`, "success");
   }
 
   // ── Direct messages ─────────────────────────────────────────────────────────
@@ -1743,6 +1766,19 @@ function MainApp({
     );
   }
 
+  // Arrived via a one-time private DM link → token-gated preview + single-use redeem.
+  if (privateDmToken) {
+    return (
+      <PrivateDmLinkAccept
+        token={token}
+        linkToken={privateDmToken}
+        currentUserId={currentUser.id}
+        onAccepted={handlePrivateDmAccepted}
+        onDismiss={clearPrivateDmParam}
+      />
+    );
+  }
+
   // First run (or no servers yet) → a welcome that turns into one obvious action.
   if (servers.length === 0 && !welcomed) {
     return (
@@ -1818,6 +1854,7 @@ function MainApp({
             onCreateChannel={handleCreateChannel}
             onSetServerIcon={handleSetServerIcon}
             onInvite={() => setShowInvite(true)}
+            onCreatePrivateDmLink={() => setShowPrivateDmLink(true)}
             onFindPeople={() => setShowFindPeople(true)}
             onOpenEvents={() => setShowEvents(true)}
             onLogout={onLogout}
@@ -1971,6 +2008,16 @@ function MainApp({
           serverName={selectedServer.name}
           serverIconUrl={selectedServer.icon_url}
           onClose={() => setShowInvite(false)}
+        />
+      )}
+
+      {/* One-time private DM link + QR modal */}
+      {showPrivateDmLink && currentUser && (
+        <PrivateDmLinkModal
+          token={token}
+          currentUser={currentUser}
+          onToast={toast}
+          onClose={() => setShowPrivateDmLink(false)}
         />
       )}
 

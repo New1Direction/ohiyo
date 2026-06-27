@@ -175,6 +175,22 @@ export type FriendItem = {
   updated_at: number;
 };
 
+export type PrivateDmLinkInfo = {
+  token: string;
+  expires_at: number;
+};
+
+export type PrivateDmLinkPreview = {
+  creator: PublicUser;
+  created_at: number;
+  expires_at: number;
+};
+
+export type PrivateDmLinkRedeemed = {
+  channel: Channel;
+  creator: PublicUser;
+};
+
 export type ProfileTheme = {
   vibe?: "sunset" | "ocean" | "forest" | "grape" | "mono" | "custom";
   accent?: string;
@@ -853,6 +869,21 @@ export const api = {
   redeemInvite: (token: string, code: string) =>
     request<ServerWithChannels>(`/invites/${encodeURIComponent(code)}`, { method: "POST" }, token),
 
+  createPrivateDmLink: (token: string, expiresInSecs?: number | null) =>
+    request<PrivateDmLinkInfo>("/users/@me/dm-links", {
+      method: "POST",
+      body: JSON.stringify({ expires_in_secs: expiresInSecs ?? null }),
+    }, token),
+
+  previewPrivateDmLink: (token: string, linkToken: string) =>
+    request<PrivateDmLinkPreview>(`/dm-links/${encodeURIComponent(linkToken)}`, {}, token),
+
+  redeemPrivateDmLink: (token: string, linkToken: string) =>
+    request<PrivateDmLinkRedeemed>(`/dm-links/${encodeURIComponent(linkToken)}`, { method: "POST" }, token),
+
+  revokePrivateDmLink: (token: string, linkToken: string) =>
+    request<void>(`/dm-links/${encodeURIComponent(linkToken)}`, { method: "DELETE" }, token),
+
   searchUsers: (token: string, q: string) =>
     request<PublicUser[]>(`/users/search?q=${encodeURIComponent(q)}`, {}, token),
 };
@@ -860,4 +891,9 @@ export const api = {
 /** Build a shareable invite URL from a code (current origin + ?invite=). */
 export function inviteUrl(code: string): string {
   return `${window.location.origin}/?invite=${encodeURIComponent(code)}`;
+}
+
+/** Build a one-time private-DM URL from a bearer token. */
+export function privateDmUrl(token: string): string {
+  return `${window.location.origin}/?dm=${encodeURIComponent(token)}`;
 }

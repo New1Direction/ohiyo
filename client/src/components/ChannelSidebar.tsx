@@ -28,6 +28,7 @@ type Props = {
   onCreateChannel: (name: string) => void;
   onSetServerIcon?: (serverId: string, file: File) => void | Promise<void>;
   onInvite?: () => void;
+  onCreatePrivateDmLink?: () => void;
   onFindPeople?: () => void;
   onOpenEvents?: () => void;
   onLogout: () => void;
@@ -93,6 +94,7 @@ export function ChannelSidebar({
   onCreateChannel,
   onSetServerIcon,
   onInvite,
+  onCreatePrivateDmLink,
   onFindPeople,
   onOpenEvents,
   onLogout,
@@ -448,18 +450,32 @@ export function ChannelSidebar({
               style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}
             >
               <span>Direct Messages</span>
-              {onFindPeople && (
-                <button
-                  type="button"
-                  onClick={onFindPeople}
-                  className="kc-interactive text-lg leading-none"
-                  style={{ color: "var(--text-muted)" }}
-                  title="Find people"
-                  aria-label="Find people"
-                >
-                  +
-                </button>
-              )}
+              <span className="flex items-center gap-2">
+                {onCreatePrivateDmLink && (
+                  <button
+                    type="button"
+                    onClick={onCreatePrivateDmLink}
+                    className="kc-interactive text-base leading-none"
+                    style={{ color: "var(--text-muted)" }}
+                    title="Create one-time private DM link"
+                    aria-label="Create one-time private DM link"
+                  >
+                    ⛓
+                  </button>
+                )}
+                {onFindPeople && (
+                  <button
+                    type="button"
+                    onClick={onFindPeople}
+                    className="kc-interactive text-lg leading-none"
+                    style={{ color: "var(--text-muted)" }}
+                    title="Find people"
+                    aria-label="Find people"
+                  >
+                    +
+                  </button>
+                )}
+              </span>
             </div>
 
             {dms.length === 0 ? (
