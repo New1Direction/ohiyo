@@ -427,6 +427,12 @@ pub enum ClientEvent {
         #[serde(default)]
         idle: bool,
     },
+    /// Toggle metadata privacy for this account's live gateway sessions. When enabled,
+    /// the server suppresses peer-visible presence/activity, typing, and Seen receipts.
+    SetPrivacyMode {
+        #[serde(default)]
+        enabled: bool,
+    },
     /// Watch-party controls: set a video, play/pause/seek, or stop.
     WatchControl {
         channel_id: String,

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex, RwLock},
     time::{Duration, Instant},
 };
@@ -84,7 +84,44 @@ pub fn new_activities() -> Activities {
 pub type IdleSet = Arc<RwLock<std::collections::HashSet<String>>>;
 
 pub fn new_idle_set() -> IdleSet {
-    Arc::new(RwLock::new(std::collections::HashSet::new()))
+    Arc::new(RwLock::new(HashSet::new()))
+}
+
+// Users with metadata Privacy Mode enabled. This mirrors the persisted prefs blob at
+// gateway-connect time and can be updated live via SetPrivacyMode.
+pub type PrivacyUsers = Arc<RwLock<HashSet<String>>>;
+
+pub fn new_privacy_users() -> PrivacyUsers {
+    Arc::new(RwLock::new(HashSet::new()))
+}
+
+fn privacy_enabled(state: &AppState, user_id: &str) -> bool {
+    state
+        .privacy
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(user_id)
+}
+
+async fn load_persisted_privacy_mode(state: &AppState, user_id: &str) -> bool {
+    let row: Option<(String,)> = sqlx::query_as("SELECT prefs_json FROM user_prefs WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
+    row.and_then(|(s,)| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.pointer("/privacy/metadataMode").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
+fn set_privacy_mode(state: &AppState, user_id: &str, enabled: bool) {
+    let mut private = state.privacy.write().unwrap_or_else(|e| e.into_inner());
+    if enabled {
+        private.insert(user_id.to_string());
+    } else {
+        private.remove(user_id);
+    }
 }
 
 // Map channel_id → active watch-party session (synced video). Ephemeral.
@@ -277,10 +314,15 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     // Connecting counts as activity → refresh the dead-man's-switch liveness clock.
     crate::api::users::touch_active(&state.db, &user_id).await;
 
+    // Load persisted Privacy Mode before the first presence fan-out. Otherwise a
+    // privacy-mode user would briefly flash online on every reconnect.
+    let persisted_privacy = load_persisted_privacy_mode(&state, &user_id).await;
+    set_privacy_mode(&state, &user_id, persisted_privacy);
+
     // Load our own public profile once for voice events.
     let me = load_public_user(&state, &user_id).await;
 
-    // Announce presence to the people who can see us.
+    // Announce presence to the people who can see us, unless Privacy Mode hides it.
     broadcast_presence(&state, &user_id, true).await;
 
     let (mut ws_tx, mut ws_rx) = socket.split();
@@ -562,6 +604,9 @@ async fn handle_client_event(
         }
 
         ClientEvent::Typing { channel_id } => {
+            if privacy_enabled(state, user_id) {
+                return;
+            }
             let Some(me) = me else { return };
             // Authorize before broadcasting: a user kicked/removed (or never a member)
             // must not be able to forge typing indicators in channels they can't see.
@@ -637,6 +682,9 @@ async fn handle_client_event(
         }
 
         ClientEvent::SetActivity { activity } => {
+            if privacy_enabled(state, user_id) && activity.is_some() {
+                return;
+            }
             let sanitized = activity.and_then(|a| a.sanitized());
             {
                 let mut acts = state.activities.write().unwrap_or_else(|e| e.into_inner());
@@ -653,6 +701,9 @@ async fn handle_client_event(
         }
 
         ClientEvent::SetPresence { idle } => {
+            if privacy_enabled(state, user_id) {
+                return;
+            }
             let changed = {
                 let mut set = state.idle.write().unwrap_or_else(|e| e.into_inner());
                 if idle {
@@ -663,6 +714,31 @@ async fn handle_client_event(
             };
             if changed {
                 broadcast_presence(state, user_id, true).await; // re-broadcast online/idle
+            }
+        }
+
+        ClientEvent::SetPrivacyMode { enabled } => {
+            let was_enabled = privacy_enabled(state, user_id);
+            if enabled == was_enabled {
+                return;
+            }
+            set_privacy_mode(state, user_id, enabled);
+            if enabled {
+                state
+                    .activities
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(user_id);
+                state
+                    .idle
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(user_id);
+                // Appear offline to peers while Privacy Mode is active.
+                broadcast_presence(state, user_id, false).await;
+            } else {
+                // Re-appear online when the user explicitly leaves Privacy Mode.
+                broadcast_presence(state, user_id, true).await;
             }
         }
 
@@ -737,7 +813,7 @@ async fn handle_ack(state: &AppState, user_id: &str, channel_id: &str, message_i
             .ok()
             .flatten()
             .flatten();
-    if server_id.is_none() {
+    if server_id.is_none() && !privacy_enabled(state, user_id) {
         broadcast_to_channel(
             state,
             channel_id,
@@ -857,6 +933,9 @@ async fn presence_audience(state: &AppState, user_id: &str) -> Vec<String> {
 }
 
 async fn broadcast_presence(state: &AppState, user_id: &str, online: bool) {
+    if online && privacy_enabled(state, user_id) {
+        return;
+    }
     let status = presence_status(state, user_id, online);
     let activity = if online {
         state
@@ -896,7 +975,7 @@ async fn send_presence_snapshot(
     let acts = state.activities.read().unwrap_or_else(|e| e.into_inner());
     let idle = state.idle.read().unwrap_or_else(|e| e.into_inner());
     for uid in audience {
-        if uid == user_id || !sessions.contains_key(&uid) {
+        if uid == user_id || !sessions.contains_key(&uid) || privacy_enabled(state, &uid) {
             continue;
         }
         let status = if idle.contains(&uid) {

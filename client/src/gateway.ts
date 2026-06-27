@@ -59,6 +59,7 @@ export type ClientEvent =
   | { t: "Ack"; d: { channel_id: string; message_id: string } }
   | { t: "SetActivity"; d: { activity: Activity | null } }
   | { t: "SetPresence"; d: { idle: boolean } }
+  | { t: "SetPrivacyMode"; d: { enabled: boolean } }
   | { t: "WatchControl"; d: { channel_id: string; action: string; url?: string | null; position?: number | null } }
   | { t: "Heartbeat" };
 

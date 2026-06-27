@@ -36,6 +36,7 @@ import {
 import { type Density, DENSITIES, FONT_SCALES } from "../../lib/density";
 import { pushAppearance } from "../../lib/appearanceSync";
 import { LinkedDevices } from "./LinkedDevices";
+import type { PrivacyPrefs } from "../../lib/privacyPrefs";
 
 export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
 
@@ -58,13 +59,15 @@ type Props = {
   initialTab?: Tab;
   onClose: () => void;
   onToast: (text: string, type?: "info" | "success" | "error") => void;
+  privacyPrefs: PrivacyPrefs;
+  onPrivacyPrefsChange: (prefs: PrivacyPrefs) => void | Promise<void>;
   onCurrentUserUpdate?: (user: PublicUser) => void;
 };
 
 const SETTINGS_FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), textarea, select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
-export function SettingsModal({ currentUser, pluginManager, token, servers, initialTab, onClose, onToast, onCurrentUserUpdate }: Props) {
+export function SettingsModal({ currentUser, pluginManager, token, servers, initialTab, onClose, onToast, privacyPrefs, onPrivacyPrefsChange, onCurrentUserUpdate }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "appearance");
   const dialogRef = useRef<HTMLDivElement>(null);
   // Keep onClose current without re-running the focus-management effect.
@@ -184,7 +187,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, init
           {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} onCurrentUserUpdate={onCurrentUserUpdate} />}
           {tab === "profile" && <ProfileTab token={token} onToast={onToast} />}
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
-          {tab === "security" && <SecurityTab token={token} onToast={onToast} />}
+          {tab === "security" && <SecurityTab token={token} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} />}
           {tab === "emoji" && <EmojiTab token={token} servers={servers} onToast={onToast} />}
         </div>
       </div>
@@ -1569,9 +1572,13 @@ const DEADMAN_PRESETS: { label: string; seconds: number | null }[] = [
 function SecurityTab({
   token,
   onToast,
+  privacyPrefs,
+  onPrivacyPrefsChange,
 }: {
   token: string;
   onToast: (t: string, type?: "info" | "success" | "error") => void;
+  privacyPrefs: PrivacyPrefs;
+  onPrivacyPrefsChange: (prefs: PrivacyPrefs) => void | Promise<void>;
 }) {
   const [seconds, setSeconds] = useState<number | null>(null);
   const [scope, setScope] = useState<"history" | "keys">("history");
@@ -1668,6 +1675,49 @@ function SecurityTab({
 
       {/* Linked devices — see + revoke your registered Signal devices */}
       <LinkedDevices token={token} onToast={onToast} />
+
+      {/* Privacy Mode — immediate metadata reduction without changing how chat works. */}
+      <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              🥷 Privacy Mode
+            </div>
+            <p className="mt-1 max-w-2xl text-xs" style={{ color: "var(--text-muted)" }}>
+              Hide live behavioral metadata while keeping Ohiyo easy: no typing pings, no visible online/idle/activity,
+              and no peer-visible “Seen” receipts. Messages, unread badges, and calls still work — joining a voice room
+              still reveals you to that room.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={privacyPrefs.metadataMode}
+            onClick={() => void onPrivacyPrefsChange({ ...privacyPrefs, metadataMode: !privacyPrefs.metadataMode })}
+            className="kc-interactive rounded-full px-4 py-2 text-sm font-bold"
+            style={{
+              background: privacyPrefs.metadataMode ? "var(--accent)" : "var(--bg-input)",
+              color: privacyPrefs.metadataMode ? "#fff" : "var(--text-secondary)",
+              border: `1px solid ${privacyPrefs.metadataMode ? "var(--accent)" : "var(--bg-hover)"}`,
+            }}
+          >
+            {privacyPrefs.metadataMode ? "On" : "Off"}
+          </button>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {[
+            ["No typing leaks", "Ohiyo stops telling rooms when you are composing."],
+            ["Invisible presence", "Others will not get online/idle/activity updates for you."],
+            ["Quiet receipts", "Your reads still clear your unread count, but peers do not get Seen updates."],
+            ["Device synced", "The preference is stored in your account prefs and follows new sessions."],
+          ].map(([title, body]) => (
+            <div key={title} className="rounded-md px-3 py-2" style={{ background: "var(--bg-input)", border: "1px solid var(--bg-hover)" }}>
+              <div className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>{title}</div>
+              <div className="mt-0.5 text-xs" style={{ color: "var(--text-muted)" }}>{body}</div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Backup & recovery (recovery-code model) */}
       <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>

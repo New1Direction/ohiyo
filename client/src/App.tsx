@@ -58,6 +58,13 @@ import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
 import { applyActiveAppearance, setAccent } from "./lib/appearance";
 import { pullAppearance, pushAppearance } from "./lib/appearanceSync";
+import {
+  loadLocalPrivacyPrefs,
+  mergePrivacyIntoPrefs,
+  readPrivacyPrefs,
+  saveLocalPrivacyPrefs,
+  type PrivacyPrefs,
+} from "./lib/privacyPrefs";
 import { useToast } from "./hooks/useToast";
 import {
   loadActiveHomeId,
@@ -301,6 +308,8 @@ function MainApp({
   // Delivered/Seen indicator in DMs.
   const [receipts, setReceipts] = useState<Record<string, Record<string, number>>>({});
   const [myStatus, setMyStatus] = useState<string | null>(null);
+  const [privacyPrefs, setPrivacyPrefs] = useState<PrivacyPrefs>(loadLocalPrivacyPrefs);
+  const privacyMode = privacyPrefs.metadataMode;
   const typing = useTyping(currentUser?.id ?? "");
   const [connStatus, setConnStatus] = useState<ConnectionStatus>("connecting");
 
@@ -343,10 +352,36 @@ function MainApp({
   const dmPeerRef = useRef<Map<string, string>>(new Map()); // channelId → peer userId (learned from messages)
   const serversRef = useRef<ServerWithChannels[]>([]);
   const gatewayRef = useRef<Gateway | null>(null);
+  const privacyModeRef = useRef(privacyMode);
+  privacyModeRef.current = privacyMode;
 
   /** Set or clear my rich-presence activity; the server echoes it back to update UI. */
   function updateActivity(activity: Activity | null) {
+    if (privacyModeRef.current && activity) return;
     gatewayRef.current?.send({ t: "SetActivity", d: { activity } });
+  }
+
+  async function updatePrivacyPrefs(next: PrivacyPrefs) {
+    setPrivacyPrefs(next);
+    saveLocalPrivacyPrefs(next);
+    gatewayRef.current?.send({ t: "SetPrivacyMode", d: { enabled: next.metadataMode } });
+    if (next.metadataMode) {
+      setActivities((prev) => {
+        const mine = currentUserRef.current?.id;
+        if (!mine || !prev.has(mine)) return prev;
+        const copy = new Map(prev);
+        copy.delete(mine);
+        return copy;
+      });
+      gatewayRef.current?.send({ t: "SetActivity", d: { activity: null } });
+    }
+    try {
+      const prefs = await api.getPrefs(token);
+      await api.setPrefs(token, mergePrivacyIntoPrefs(prefs, next));
+      toast(next.metadataMode ? "Privacy Mode on" : "Privacy Mode off", "success");
+    } catch {
+      toast("Privacy Mode saved on this device; server sync will retry next time.", "info");
+    }
   }
 
   /** Drive the watch party in the current channel (set/play/pause/seek/stop). */
@@ -377,6 +412,13 @@ function MainApp({
   // friends "📺 Watching …" automatically (cleared when the party ends).
   const watchActivityRef = useRef(false);
   useEffect(() => {
+    if (privacyMode) {
+      if (watchActivityRef.current) {
+        watchActivityRef.current = false;
+        updateActivity(null);
+      }
+      return;
+    }
     if (watchSession && !watchActivityRef.current) {
       watchActivityRef.current = true;
       const label = /youtu\.?be/.test(watchSession.url) ? "YouTube" : "a video";
@@ -385,7 +427,7 @@ function MainApp({
       watchActivityRef.current = false;
       updateActivity(null);
     }
-  }, [watchSession]);
+  }, [watchSession, privacyMode]);
 
   // Publish this device's E2E public key once we're signed in (idempotent upsert).
   useEffect(() => {
@@ -501,6 +543,24 @@ function MainApp({
     window.__kikkacordUser = currentUser;
   }, [currentUser]);
 
+  // Load our saved privacy prefs once we're known. Local prefs seed first paint;
+  // server prefs win after login so Privacy Mode follows the account across devices.
+  useEffect(() => {
+    if (!currentUser) return;
+    let alive = true;
+    api.getPrefs(token)
+      .then((prefs) => {
+        if (!alive) return;
+        const privacy = readPrivacyPrefs(prefs);
+        setPrivacyPrefs(privacy);
+        saveLocalPrivacyPrefs(privacy);
+        gatewayRef.current?.send({ t: "SetPrivacyMode", d: { enabled: privacy.metadataMode } });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on the user identity (id), not every currentUser object change
+  }, [currentUser?.id, token]);
+
   // Load our saved custom status once we're known.
   useEffect(() => {
     if (!currentUser) return;
@@ -564,7 +624,7 @@ function MainApp({
   // Idle detection: no input for 5 minutes (or the tab hidden) → tell the server we're
   // idle so peers see an amber dot; any activity flips us back to online.
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || privacyMode) return;
     const IDLE_MS = 5 * 60 * 1000;
     let idle = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -589,7 +649,7 @@ function MainApp({
       document.removeEventListener("visibilitychange", onVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- key on user identity; sends via the gateway ref
-  }, [currentUser?.id]);
+  }, [currentUser?.id, privacyMode]);
 
   // Learn a group's current rekey epoch from the server. If it advanced past our own
   // sender key, setGroupEpoch rotates us to a fresh key — then re-fan it to the
@@ -607,6 +667,7 @@ function MainApp({
   function handleGatewayEvent(event: GatewayEvent) {
     switch (event.t) {
       case "Ready":
+        gatewayRef.current?.send({ t: "SetPrivacyMode", d: { enabled: privacyModeRef.current } });
         setCurrentUser(event.d.user);
         setServers(event.d.servers);
         setDms(event.d.dms);
@@ -883,6 +944,7 @@ function MainApp({
       }
 
       case "ReadReceipt": {
+        if (privacyModeRef.current) break;
         const { channel_id, user_id, last_read_at } = event.d;
         setReceipts((prev) => {
           const chan = prev[channel_id] ?? {};
@@ -925,6 +987,7 @@ function MainApp({
       }
 
       case "TypingStart":
+        if (privacyModeRef.current) break;
         // Filter our own echo via the always-current ref (handler is registered once).
         if (event.d.user_id !== currentUserRef.current?.id) {
           typing.onTypingStart(event.d.channel_id, event.d.user);
@@ -1073,14 +1136,16 @@ function MainApp({
       // Re-attach any unsent/failed messages queued for this channel.
       const queued = outboxForChannel(channel.id);
       setMessages(queued.length ? [...shown, ...queued] : shown);
-      // Opening the channel marks it read on the server (drives the read cursor).
+      // Opening the channel marks it read on the server (drives our unread state).
+      // In Privacy Mode the server still stores my read cursor for my UX, but it
+      // suppresses peer-visible "Seen" receipts.
       sendAck(channel.id, lastRealMessageId(msgs));
       // For DMs, hydrate existing Delivered/Seen state; live updates then arrive
-      // via the ReadReceipt gateway event.
-      if (!channel.server_id) {
+      // via the ReadReceipt gateway event. Privacy Mode hides this live metadata UI.
+      if (!channel.server_id && !privacyModeRef.current) {
         api.listReads(token, channel.id)
           .then((cursors) => {
-            if (selectedChannelRef.current?.id !== channel.id) return;
+            if (selectedChannelRef.current?.id !== channel.id || privacyModeRef.current) return;
             setReceipts((prev) => ({
               ...prev,
               [channel.id]: Object.fromEntries(cursors.map((c) => [c.user_id, c.last_read_at])),
@@ -1523,6 +1588,7 @@ function MainApp({
 
   // Notify the channel that we're typing (ChatPane throttles the calls).
   function sendTyping() {
+    if (privacyModeRef.current) return;
     if (selectedChannelRef.current) {
       gatewayRef.current?.send({ t: "Typing", d: { channel_id: selectedChannelRef.current.id } });
     }
@@ -1742,8 +1808,8 @@ function MainApp({
             mentionChannels={mentions}
             myStatus={myStatus}
             onSetStatus={handleSetStatus}
-            myActivity={currentUser ? activities.get(currentUser.id) ?? null : null}
-            onSetActivity={updateActivity}
+            myActivity={!privacyMode && currentUser ? activities.get(currentUser.id) ?? null : null}
+            onSetActivity={privacyMode ? undefined : updateActivity}
             canManageChannels={can(myPerms, PERM.MANAGE_CHANNELS)}
             canManageServer={can(myPerms, PERM.MANAGE_SERVER)}
             onOpenCategories={() => setShowCategories(true)}
@@ -1790,8 +1856,8 @@ function MainApp({
         isLoading={isLoadingMessages}
         onOpenNav={() => setMobileNavOpen(true)}
         onSaveRecovery={() => { setSettingsTab("security"); setShowSettings(true); }}
-        typingUsers={typing.typingIn(selectedChannel?.id ?? "")}
-        onTyping={sendTyping}
+        typingUsers={privacyMode ? [] : typing.typingIn(selectedChannel?.id ?? "")}
+        onTyping={privacyMode ? undefined : sendTyping}
         onEditMessage={handleEditMessage}
         onDeleteMessage={handleDeleteMessage}
         onPinMessage={handlePinMessage}
@@ -1804,7 +1870,7 @@ function MainApp({
         onlineUserIds={onlineUsers}
         activityNotices={selectedChannel ? chatActivityNotices.filter((notice) => notice.channelId === selectedChannel.id) : []}
         currentUsername={currentUser.username}
-        receipts={selectedChannel ? receipts[selectedChannel.id] : undefined}
+        receipts={!privacyMode && selectedChannel ? receipts[selectedChannel.id] : undefined}
         watchSession={watchSession}
         onWatchControl={sendWatchControl}
         e2eEnabled={selectedChannel ? e2eChannels.has(selectedChannel.id) : false}
@@ -2010,6 +2076,8 @@ function MainApp({
           token={token}
           servers={servers}
           initialTab={settingsTab}
+          privacyPrefs={privacyPrefs}
+          onPrivacyPrefsChange={updatePrivacyPrefs}
           onClose={() => { setShowSettings(false); setSettingsTab("appearance"); }}
           onToast={toast}
           onCurrentUserUpdate={handleCurrentUserUpdate}

@@ -26,7 +26,7 @@ use axum::{
     routing::get,
     Router,
 };
-use gateway::{SessionMap, TypingCooldowns, VoiceRooms};
+use gateway::{PrivacyUsers, SessionMap, TypingCooldowns, VoiceRooms};
 use rand::Rng;
 use ratelimit::RateLimiter;
 use sqlx::SqlitePool;
@@ -50,6 +50,9 @@ pub struct AppState {
     pub activities: gateway::Activities,
     /// Connected users currently idle (no input) → drives the idle presence dot.
     pub idle: gateway::IdleSet,
+    /// Users in metadata Privacy Mode. While present, peer-visible presence/activity,
+    /// typing indicators, and Seen receipts are suppressed for that user.
+    pub privacy: PrivacyUsers,
     /// Live watch-party sessions: channel_id → synced video state.
     pub watch: gateway::WatchSessions,
     /// Cloud orchestrator for Instant Servers — fake in tests/dev, Fly Machines in prod.
@@ -78,6 +81,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         tickets: gateway::new_ws_tickets(),
         activities: gateway::new_activities(),
         idle: gateway::new_idle_set(),
+        privacy: gateway::new_privacy_users(),
         watch: gateway::new_watch_sessions(),
         provisioner,
     }
