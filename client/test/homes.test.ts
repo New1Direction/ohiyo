@@ -35,6 +35,12 @@ test("normalizeHomeUrl accepts bare hosts and strips paths", () => {
   assert.equal(normalizeHomeUrl(""), "http://localhost:3000");
 });
 
+test("normalizeHomeUrl supports local and onion custom homes", () => {
+  assert.equal(normalizeHomeUrl("http://127.0.0.1:3000/api/v1"), "http://127.0.0.1:3000");
+  assert.equal(normalizeHomeUrl("http://ohiyoprivateexample.onion/invite"), "http://ohiyoprivateexample.onion");
+  assert.equal(homeIdForUrl("http://ohiyoprivateexample.onion"), "ohiyoprivateexample.onion");
+});
+
 test("upsertHome adds newest first and preserves existing token", () => {
   const homes: OhiyoHome[] = [{ id: homeIdForUrl("https://a.test"), name: "A", url: "https://a.test", token: "tok" }];
   const updated = upsertHome(homes, { url: "https://a.test/path", name: "Renamed" });

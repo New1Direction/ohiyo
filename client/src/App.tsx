@@ -207,7 +207,7 @@ function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClos
     try {
       onAdd(trimmed);
     } catch {
-      setError("That does not look like an Ohiyo home link. Paste the full https:// address and try again.");
+      setError("That does not look like an Ohiyo home link. Paste https:// for normal homes, http://localhost for local homes, or http://…onion in Tor Browser.");
     }
   }
 
@@ -220,7 +220,9 @@ function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClos
         Add an Ohiyo home
       </h2>
       <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-        Paste the invite or home link you were given. Most people only need the default home already selected.
+        Paste the invite or home link you were given. Custom homes let you use a self-hosted relay; Tor users can add an
+        <code className="mx-1 rounded px-1" style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }}>http://…onion</code>
+        home from Tor Browser. Desktop-wide SOCKS proxy routing still depends on the OS/network layer.
       </p>
       <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -228,7 +230,7 @@ function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClos
           <input
             value={url}
             onChange={(e) => { setUrl(e.target.value); setError(null); }}
-            placeholder="https://your-ohiyo-home.example"
+            placeholder="https://your-ohiyo-home.example or http://yourhome.onion"
             aria-label="Ohiyo home link"
             autoComplete="url"
             className="kc-field px-3.5 py-3 text-sm outline-none"
