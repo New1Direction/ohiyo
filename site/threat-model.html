@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy Threat Model — Ohiyo</title>
+<meta name="description" content="Ohiyo's public privacy threat model: what end-to-end encryption protects, what metadata remains, and how Privacy Mode, private links, padding, encrypted attachments, local cache encryption, and custom homes reduce exposure." />
+<meta name="theme-color" content="#10100f" />
+<link rel="icon" href="kikka.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="bg"></div><div class="grain"></div>
+<nav id="nav"><div class="wrap">
+  <a class="brand" href="/" style="text-decoration:none;color:inherit"><img src="kikka.svg" alt="" /> o<span class="hi">Hi</span>Yo</a>
+  <div class="nav-links">
+    <a class="l" href="/#features">Features</a>
+    <a class="l" href="/#security">Security</a>
+    <a class="l" href="privacy.html">Privacy</a>
+    <a class="btn ghost sm" href="https://app.ohiyo.gg" rel="noopener">Open app →</a>
+  </div>
+</div></nav>
+
+<main id="main" class="legal wrap threat-model">
+  <p class="eyebrow">Privacy</p>
+  <h1>Ohiyo Privacy Threat Model</h1>
+  <p class="legal-updated">Effective June 27, 2026</p>
+  <p>Ohiyo is trying to be easier than SimpleX and more private than Discord. That means being clear about the line: Ohiyo protects private content with end-to-end encryption, but a Discord-like social app still creates metadata. This page says what we defend, what we do not defend yet, and what tradeoffs remain.</p>
+
+  <div class="threat-callout">
+    <b>Short version:</b> Ohiyo's hosted server should not be able to read encrypted DMs, encrypted groups, encrypted calls, or encrypted private attachments. It can still see account, routing, membership, timing, IP/network, abuse-prevention, and voice-room participation metadata needed to make the app work.
+  </div>
+
+  <h2>Assets we are protecting</h2>
+  <ul>
+    <li><b>Message and call content:</b> plaintext text, edits, private file names/types, private attachment bytes, and media frames in encrypted conversations/calls.</li>
+    <li><b>Conversation safety:</b> identity-key changes should be visible instead of silent, and removed group members should not read future messages.</li>
+    <li><b>Behavioral privacy:</b> typing, read status, presence, activity, and attachment metadata should be reduced when you opt into privacy features.</li>
+    <li><b>Device-local secrets:</b> desktop caches and key material should live behind the native encrypted vault where the desktop app can use it.</li>
+  </ul>
+
+  <h2>Threat actors we design against</h2>
+  <div class="threat-grid">
+    <div><h3>The hosted Ohiyo server</h3><p>The official server relays ciphertext and operates accounts, homes, invites, uploads, and calls. It should not receive plaintext for encrypted private content.</p></div>
+    <div><h3>Network observers</h3><p>TLS protects normal web traffic in transit. Custom homes and Tor Browser/.onion homes can reduce which server sees your IP, but traffic timing and volume can still leak.</p></div>
+    <div><h3>Curious or malicious members</h3><p>Members can screenshot, copy, record, forward, or reveal content they can legitimately see. E2EE cannot stop a recipient from disclosing plaintext.</p></div>
+    <div><h3>Stolen or compromised devices</h3><p>Local encryption helps, but malware, an unlocked session, browser extensions, or a compromised OS can read what your client can read.</p></div>
+  </div>
+
+  <h2>Current privacy protections</h2>
+  <div class="table-wrap threat-table-wrap" tabindex="0" aria-label="Current privacy protections table">
+    <table class="cmp threat-table">
+      <thead><tr><th scope="col">Area</th><th scope="col" class="us">What Ohiyo does now</th><th scope="col">Remaining metadata</th></tr></thead>
+      <tbody>
+        <tr><td>DMs and private groups</td><td class="us-col">Signal-style end-to-end encryption for plaintext content, with identity-change warnings and group rekeying.</td><td class="them-col">Participants, account IDs, home/server routing, message timestamps, ciphertext sizes, and delivery state still exist.</td></tr>
+        <tr><td>Privacy Mode</td><td class="us-col">Suppresses typing indicators, online/idle/activity presence, watch presence, and peer-visible DM seen receipts.</td><td class="them-col">Messages still route through the server; joining a voice room still reveals participation to that room.</td></tr>
+        <tr><td>Private DM links</td><td class="us-col">One-time high-entropy links/QR codes; server stores scoped token digests, not raw tokens; creator can revoke.</td><td class="them-col">After redemption, both accounts are connected by a normal DM relationship.</td></tr>
+        <tr><td>Message padding</td><td class="us-col">Encrypted plaintext is padded into bounded buckets so small text length differences are harder to infer.</td><td class="them-col">Large messages, send timing, recipient set, and total traffic patterns are not hidden.</td></tr>
+        <tr><td>Private attachments</td><td class="us-col">In encrypted chats, dropped files are encrypted client-side; server sees generic encrypted blobs instead of real file names/types.</td><td class="them-col">Uploader, destination, upload time, retention, and encrypted blob byte size are still visible to the relay.</td></tr>
+        <tr><td>Desktop cache</td><td class="us-col">Sensitive desktop cache namespaces are routed through the Tauri encrypted vault allowlist.</td><td class="them-col">The web app remains constrained by browser storage. A compromised unlocked device can still expose visible content.</td></tr>
+        <tr><td>Custom homes and Tor</td><td class="us-col">You can add a self-hosted/custom Ohiyo home. Tor users can add an <code>http://…onion</code> home from Tor Browser.</td><td class="them-col">The desktop app does not yet provide a built-in SOCKS/Tor proxy switch; OS or browser routing still matters.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>What the hosted service can still know</h2>
+  <ul>
+    <li><b>Account metadata:</b> username/display name, password hash, sessions, linked devices, preferences, roles, server membership, and moderation state.</li>
+    <li><b>Routing metadata:</b> which account/device/channel/home needs a message, the time a message is sent or fetched, and ciphertext/file sizes.</li>
+    <li><b>Social graph metadata:</b> server membership, channels, DMs after they are created, one-time link redemption results, and invite/role relationships.</li>
+    <li><b>Voice metadata:</b> voice rooms require routing. Other room participants can know you joined, and relay infrastructure can see connection metadata even if media is encrypted.</li>
+    <li><b>Operational metadata:</b> IP-derived rate-limit keys, request logs, crash/error details, abuse-prevention signals, backups, and infrastructure metrics.</li>
+  </ul>
+
+  <h2>What Ohiyo does not currently promise</h2>
+  <ul>
+    <li><b>No anonymity guarantee:</b> Ohiyo accounts and communities are designed for convenience, not anonymous-by-default communication.</li>
+    <li><b>No SimpleX-level metadata isolation:</b> Ohiyo does not yet use pairwise per-contact queue IDs, separate relay queues for every relationship, or default Tor routing.</li>
+    <li><b>No protection from endpoints:</b> if your device, browser, OS, or recipient is compromised, encrypted content can be captured after decryption.</li>
+    <li><b>No independent audit yet:</b> the code is open source and tested, but this launch build has not completed a third-party cryptography/security audit.</li>
+    <li><b>No invisibility in calls:</b> calls work in Privacy Mode, but joining a voice room still reveals participation to that room.</li>
+  </ul>
+
+  <h2>Comparison: Discord-like ease vs. SimpleX-style privacy</h2>
+  <p>SimpleX is stronger when your top priority is metadata minimization: no stable global user ID, pairwise queues, private routing, padding, proxy/Tor support, and local-only profiles. Ohiyo intentionally keeps Discord-like affordances — servers, channels, searchability inside your community, multi-device convenience, browser access, voice/video/screen-share, and one-tap onboarding. Those features create metadata. Ohiyo's approach is to keep the easy product while adding opt-in privacy layers that reduce the loudest leaks.</p>
+
+  <h2>Roadmap</h2>
+  <ul>
+    <li>Paranoid/private DM mode with stronger contact isolation and shorter server retention.</li>
+    <li>More uniform traffic padding and batching where it does not make chat feel broken.</li>
+    <li>Built-in desktop proxy/Tor configuration instead of relying only on browser/OS routing.</li>
+    <li>More local-first encrypted storage and clearer data export/deletion controls.</li>
+    <li>Reproducible build notes, external audit prep, and a living protocol/security whitepaper.</li>
+  </ul>
+
+  <h2>How to choose the right mode</h2>
+  <ul>
+    <li><b>Everyday privacy:</b> use the hosted web app or desktop app, enable Privacy Mode when you do not want presence/typing/read signals, and verify safety numbers for sensitive contacts.</li>
+    <li><b>Community ownership:</b> self-host or choose a trusted custom home so your group controls the server and data-retention policy.</li>
+    <li><b>Network privacy:</b> use Tor Browser with an onion Ohiyo home when hiding your IP from the home matters. Do not assume the desktop app is Tor-routed unless your OS/network is configured for it.</li>
+    <li><b>High-risk anonymity:</b> use a tool designed around metadata minimization from the ground up, such as SimpleX, until Ohiyo's paranoid mode exists.</li>
+  </ul>
+
+  <p class="legal-updated">This threat model is a living document. If code and this page disagree, the code wins and this page should be fixed.</p>
+</main>
+
+<footer><div class="wrap">
+  <div class="brand"><img src="kikka.svg" alt="" style="width:24px" /> o<span class="hi" style="color:var(--coral)">Hi</span>Yo</div>
+  <div class="f-links">
+    <a href="/">Home</a>
+    <a href="privacy.html">Privacy</a>
+    <a href="threat-model.html">Threat model</a>
+    <a href="terms.html">Terms</a>
+    <a href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">GitHub</a>
+  </div>
+  <div>oh, hi · ohiyo.gg · free &amp; open · built in Rust + React + Tauri</div>
+</div></footer>
+<script src="app.js"></script>
+</body>
+</html>

@@ -236,6 +236,17 @@ footer .f-links { display: flex; gap: 1.3rem; flex-wrap: wrap; }
 .legal a { color: var(--coral); }
 .legal ul { margin: .9rem 0 0 1.2rem; display: grid; gap: .55rem; }
 .legal-updated { color: var(--muted); font-family: var(--mono); font-size: .86rem !important; margin-bottom: 1.5rem; }
+.legal code { font-family: var(--mono); color: var(--amber); background: rgba(0, 0, 0, .28); border: 1px solid var(--line-soft); border-radius: 8px; padding: .08rem .32rem; }
+.threat-callout { margin: 1.6rem 0 2rem; padding: 1.15rem 1.25rem; border: 1px solid rgba(98,176,220,.38); border-radius: var(--r); color: var(--warm); background: linear-gradient(150deg, rgba(98,176,220,.13), rgba(255,255,255,.025)); box-shadow: var(--shadow); }
+.threat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 1.2rem 0 0; }
+.threat-grid > div { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 1rem 1.1rem; background: rgba(255,255,255,.025); }
+.threat-grid h3 { font-size: 1rem; margin-bottom: .35rem; }
+.threat-grid p { color: var(--muted); font-size: .96rem; }
+.threat-model p, .threat-model li { font-size: 1.05rem; }
+.threat-table-wrap { margin-top: 1rem; overflow-x: auto; }
+.threat-table { min-width: 760px; }
+.threat-table td:first-child { font-weight: 700; color: var(--cream) !important; }
+@media (max-width: 720px) { .threat-grid { grid-template-columns: 1fr; } }
 
 /* ── launch-safe reveal hooks ──────────────────────────────────────────────
    Content stays visible by default. JS may add `.in`, but launch pages should
