@@ -516,7 +516,7 @@ version = "0.2.0"
 dependencies = [
  "keyring",
  "kikka-vault",
- "rand 0.8.6",
+ "rand 0.9.4",
  "serde",
  "serde_json",
  "tauri",

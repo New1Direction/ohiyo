@@ -26,7 +26,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Locked-RAM E2E key vault (vendored dazai/goodnight) + OS-keychain master key.
 kikka-vault = { path = "crates/vault" }
-rand = "0.8"
+rand = "0.9"
 
 # Single-instance focuses the existing window on a second launch (and carries
 # ohiyo:// deep links into the running app on Windows/Linux). Desktop only.
