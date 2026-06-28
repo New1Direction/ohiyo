@@ -48,6 +48,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 - **Discord migration landing wedge:** the public landing page now advertises
   "Move your Discord community in one link" and routes admins to the app plus the
   migration guide.
+- **Recovery backup v2:** personal recovery now writes a future-continuous, keys-only
+  v2 backup envelope with per-entry device provenance, recovery-secret-derived blinded
+  coverage handles, legacy v1 restore support, calmer protection-first copy, and
+  first-class undecryptable-message states instead of a fake retry loop.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the

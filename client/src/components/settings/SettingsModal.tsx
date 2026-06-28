@@ -21,7 +21,7 @@ import type { PluginManager } from "../../plugins/registry";
 import { ensureNotificationPermission, isDesktop } from "../../lib/desktop";
 import { canUseWebPush, enableContentFreeWebPush } from "../../lib/push";
 import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauriVault";
-import { generateRecoveryCode, encryptBackup, decryptBackup, type BackupBlob } from "../../lib/recovery";
+import { generateRecoveryCode, encryptBackup, decryptBackup, backupSummary, type BackupBlob, type BackupSummary } from "../../lib/recovery";
 import {
   ACCENT_PRESETS,
   APPEARANCE_CHANGED_EVENT,
@@ -1703,6 +1703,7 @@ function SecurityTab({
   const [confirmBurn, setConfirmBurn] = useState(false);
   // Backup & recovery (recovery-code model).
   const [hasBackup, setHasBackup] = useState<boolean | null>(null);
+  const [backupInfo, setBackupInfo] = useState<BackupSummary | null>(null);
   const [newCode, setNewCode] = useState<string | null>(null);
   const [restoreInput, setRestoreInput] = useState("");
   const [backupBusy, setBackupBusy] = useState(false);
@@ -1720,8 +1721,14 @@ function SecurityTab({
   useEffect(() => {
     api
       .getKeyBackup(token)
-      .then(() => setHasBackup(true))
-      .catch(() => setHasBackup(false)); // 404 = no backup yet
+      .then((blob) => {
+        setHasBackup(true);
+        setBackupInfo(backupSummary(blob));
+      })
+      .catch(() => {
+        setHasBackup(false);
+        setBackupInfo(null);
+      }); // 404 = no backup yet
   }, [token]);
 
   async function createBackup() {
@@ -1733,6 +1740,7 @@ function SecurityTab({
       await api.putKeyBackup(token, blob as unknown as Record<string, unknown>);
       setNewCode(code);
       setHasBackup(true);
+      setBackupInfo(backupSummary(blob));
     } catch {
       onToast("Couldn't create backup", "error");
     } finally {
@@ -1747,6 +1755,7 @@ function SecurityTab({
       const blob = (await api.getKeyBackup(token)) as unknown as BackupBlob;
       const material = await decryptBackup(restoreInput, blob);
       await importKeyMaterial(material);
+      sessionStorage.setItem("ohiyo:recovery-restored-at", String(Date.now()));
       onToast("Keys restored — reloading…", "success");
       setTimeout(() => window.location.reload(), 1200);
     } catch {
@@ -1759,6 +1768,7 @@ function SecurityTab({
     try {
       await api.deleteKeyBackup(token);
       setHasBackup(false);
+      setBackupInfo(null);
       setNewCode(null);
       onToast("Backup deleted", "success");
     } catch {
@@ -1837,14 +1847,22 @@ function SecurityTab({
         </div>
       </div>
 
-      {/* Backup & recovery (recovery-code model) */}
+      {/* Backup & recovery (recovery-code model).
+          UX rule: protection first, caveats second. A wall of crypto warnings makes people
+          skip backup entirely, which is strictly worse than an honest keys-only snapshot. */}
       <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
-        <div className="mb-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-          🔑 Backup &amp; recovery
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+            🔑 Personal recovery
+          </div>
+          {backupInfo?.updated_at && (
+            <span className="rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: "var(--bg-input)", color: "var(--green)" }}>
+              Last backup {new Date(backupInfo.updated_at * 1000).toLocaleDateString()}
+            </span>
+          )}
         </div>
         <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-          Save an encrypted backup of your keys so you can restore your messages on a new device. It&apos;s
-          locked with a recovery code only you hold — the server never sees your code or your keys.
+          Back up your encryption keys now so a recovery code can help this account read messages on a new device. Ohiyo can store the backup, but only your recovery code can open it.
         </p>
 
         {newCode ? (
@@ -1862,8 +1880,7 @@ function SecurityTab({
               {newCode}
             </code>
             <p className="mt-2 text-xs" style={{ color: "var(--text-secondary)" }}>
-              ⚠️ Write this down and keep it safe. It&apos;s the <strong>only</strong> way to recover your
-              messages if you lose this device — we can&apos;t reset it for you.
+              ⚠️ Write this down and keep it safe. It can restore your encryption identity and keys. Anyone with it may be able to restore this encrypted state; we can&apos;t reset it for you.
             </p>
             <div className="mt-2 flex gap-2">
               <button
@@ -1895,11 +1912,11 @@ function SecurityTab({
               className="rounded px-3 py-1.5 text-sm font-semibold"
               style={{ background: "var(--accent)", color: "#fff", opacity: backupBusy ? 0.6 : 1 }}
             >
-              {hasBackup ? "Create a new recovery code" : "Create recovery code"}
+              {hasBackup ? "Back up keys again" : "Back up my keys now"}
             </button>
             {hasBackup && (
               <>
-                <span className="text-xs" style={{ color: "var(--green)" }}>✓ Backup saved</span>
+                <span className="text-xs" style={{ color: "var(--green)" }}>✓ Keys-only snapshot saved{backupInfo?.entry_count ? ` · ${backupInfo.entry_count} entries` : ""}</span>
                 <button
                   type="button"
                   onClick={deleteBackup}
@@ -1912,6 +1929,15 @@ function SecurityTab({
             )}
           </div>
         )}
+
+        <details className="mb-3 rounded-md p-3 text-xs" style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "1px solid var(--bg-hover)" }}>
+          <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-primary)" }}>What this protects</summary>
+          <div className="mt-2 grid gap-1.5">
+            <p>This is a <strong>keys-only snapshot</strong>: it protects key material present when you press the button. Run it again after important activity until continuous backup ships.</p>
+            <p>Ohiyo does not include your decrypted plaintext cache by default. That stronger history recovery mode would store user-encrypted plaintext on the server and needs an explicit advanced opt-in.</p>
+            <p>Backup coverage handles are blinded with your recovery secret. The server stores opaque handles, not clear room ids or per-room activity timestamps.</p>
+          </div>
+        </details>
 
         {/* Restore */}
         <div className="border-t pt-3" style={{ borderColor: "var(--bg-hover)" }}>

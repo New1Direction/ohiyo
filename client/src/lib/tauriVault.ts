@@ -28,12 +28,17 @@ import { setHomesTokenStore } from "./homes";
 // kc:tok:, kc:e2e-pt:, and kc:e2e-pt-index are accepted by the Rust vault_set allowlist (CONTRACT B).
 const KEY_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair", "kc:tok:", "kc:e2e-pt:", "kc:e2e-pt-index", "kc:outbox"];
 
-// Subset included in an encrypted RECOVERY backup: cryptographic key material + the
-// forward-secret plaintext cache (otherwise-unrecoverable history). Deliberately EXCLUDES
-// the session token (kc:tok:) and the transient send outbox (kc:outbox) — neither is key
-// material, both have their own lifecycle, and a long-lived offline backup that leaked them
-// would hand an attacker a ready-to-use session alongside the keys.
-const EXPORT_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair", "kc:e2e-pt:"];
+// Subset included in the DEFAULT encrypted RECOVERY backup: keys only. Deliberately
+// excludes session tokens, transient outbox, and decrypted plaintext cache. The plaintext
+// cache (`kc:e2e-pt:`) may make more old messages readable after device loss, but uploading
+// it — even zero-knowledge encrypted — changes Ohiyo's threat model from "server never
+// stores plaintext" to "server stores user-encrypted plaintext backups." That needs an
+// explicit advanced opt-in, not a default that rode in with key recovery.
+const EXPORT_PREFIXES = ["kc:sig:", "kc:sk:", "kc:e2e-keypair"];
+// Restore accepts the older plaintext-cache namespace for legacy backups that already
+// contain it. New backups do NOT export this namespace by default; accepting it on import
+// avoids stranding users who saved a zero-knowledge backup before the keys-only split.
+const IMPORT_PREFIXES = [...EXPORT_PREFIXES, "kc:e2e-pt:"];
 
 let mirror: Map<string, string> | null = null;
 
@@ -138,7 +143,7 @@ export function exportKeyMaterial(): Record<string, string> {
  */
 export async function importKeyMaterial(material: Record<string, string>): Promise<void> {
   for (const [k, v] of Object.entries(material)) {
-    if (!EXPORT_PREFIXES.some((p) => k.startsWith(p))) continue;
+    if (!IMPORT_PREFIXES.some((p) => k.startsWith(p))) continue;
     if (isDesktop() && mirror) {
       mirror.set(k, v);
       await invoke("vault_set", { key: k, value: v });

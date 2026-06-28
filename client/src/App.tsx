@@ -1355,6 +1355,7 @@ function MainApp({
         if (peer) dmPeerRef.current.set(channelId, peer);
       }
       const peerId = dmPeerId(channelId);
+      const decryptState = sessionStorage.getItem("ohiyo:recovery-restored-at") ? "restore_failed" as const : "unknown" as const;
       // Legacy static key only fetched if any v1 messages are present.
       const legacyKey = msgs.some((m) => isEncrypted(m.content)) ? await getDmKey(channelId) : null;
       // Sequential: the Double Ratchet requires in-order processing of new messages.
@@ -1370,7 +1371,7 @@ function MainApp({
           const pt = await groupDecrypt(channelId, m.author.id, m.content);
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
           if (plain !== null) cachePlaintext(m.id, plain);
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "🔒 Encrypted message", _encrypted: true });
+          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptState });
         } else if (isSignalCiphertext(m.content)) {
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
@@ -1380,11 +1381,11 @@ function MainApp({
           const pt = peerId ? await decryptFrom(peerId, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
           if (plain !== null) cachePlaintext(m.id, plain);
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "🔒 Encrypted message", _encrypted: true });
+          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptState });
         } else if (isEncrypted(m.content)) {
           const pt = legacyKey ? await decryptMessage(legacyKey, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "🔒 Encrypted message", _encrypted: true });
+          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptState });
         } else {
           out.push(m);
         }

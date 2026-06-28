@@ -154,6 +154,8 @@ export type Message = {
   _state?: "pending" | "failed";
   /** Client-only: this message was decrypted from an E2E ciphertext for display. */
   _encrypted?: boolean;
+  /** Client-only: E2E ciphertext exists, but this device lacks the key/plaintext cache. */
+  _decryptState?: "unknown" | "restore_failed";
   _send?: { content: string; attachmentIds?: string[]; replyTo?: string | null; encryptedAttachments?: AttachmentMeta[] };
 };
 
