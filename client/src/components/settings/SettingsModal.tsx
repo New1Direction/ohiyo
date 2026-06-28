@@ -1916,7 +1916,9 @@ function SecurityTab({
             </button>
             {hasBackup && (
               <>
-                <span className="text-xs" style={{ color: "var(--green)" }}>✓ Keys-only snapshot saved{backupInfo?.entry_count ? ` · ${backupInfo.entry_count} entries` : ""}</span>
+                <span className="text-xs" style={{ color: backupInfo?.version === 1 ? "var(--warning)" : "var(--green)" }}>
+                  {backupInfo?.version === 1 ? "Older backup saved — refresh to replace it with keys-only v2" : `✓ Keys-only snapshot saved${backupInfo?.entry_count ? ` · ${backupInfo.entry_count} entries` : ""}`}
+                </span>
                 <button
                   type="button"
                   onClick={deleteBackup}
@@ -1934,6 +1936,7 @@ function SecurityTab({
           <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-primary)" }}>What this protects</summary>
           <div className="mt-2 grid gap-1.5">
             <p>This is a <strong>keys-only snapshot</strong>: it protects key material present when you press the button. Run it again after important activity until continuous backup ships.</p>
+            <p>If you have an older v1 backup, pressing the backup button replaces the single server-stored backup blob with a v2 keys-only snapshot; old backup blobs are not kept alongside the replacement.</p>
             <p>Ohiyo does not include your decrypted plaintext cache by default. That stronger history recovery mode would store user-encrypted plaintext on the server and needs an explicit advanced opt-in.</p>
             <p>Backup coverage handles are blinded with your recovery secret. The server stores opaque handles, not clear room ids or per-room activity timestamps.</p>
           </div>

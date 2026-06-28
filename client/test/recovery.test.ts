@@ -11,6 +11,7 @@ import {
   encryptBackup,
   decryptBackup,
   backupSummary,
+  backupCoversSenderKey,
   type BackupBlobV1,
 } from "../src/lib/recovery.ts";
 
@@ -57,6 +58,33 @@ test("v2 public manifest exposes coverage, not clear room ids or key material", 
   assert.equal(summary.version, 2);
   assert.equal(summary.room_count, 1);
   assert.equal(summary.key_count, 1);
+});
+
+test("coverage checks are recovery-secret gated, not server-enumerable", async () => {
+  const code = generateRecoveryCode();
+  const blob = await encryptBackup(code, MATERIAL);
+  assert.equal(await backupCoversSenderKey(code, blob, "group1", 2, 123), "covered");
+  assert.equal(await backupCoversSenderKey(generateRecoveryCode(), blob, "group1", 2, 123), "not_covered");
+  assert.equal(await backupCoversSenderKey(code, blob, "group1", 3, 123), "not_covered");
+
+  // Server vantage: it knows the room id, plausible epochs/key ids, and public salt,
+  // but not the recovery-derived blind key. HMACing those low-entropy candidates under
+  // server-known guesses must not reproduce the manifest handles.
+  const enc = new TextEncoder();
+  async function hmacWithRawKey(raw: string, label: string): Promise<string> {
+    const key = await crypto.subtle.importKey("raw", enc.encode(raw), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const sig = await crypto.subtle.sign("HMAC", key, enc.encode(label));
+    return Buffer.from(new Uint8Array(sig)).toString("base64");
+  }
+  const publicGuesses = ["public", blob.salt, "account-id", "group1", "42"];
+  const labels = ["room:group1", "grp1:group1:2:123"];
+  for (const guess of publicGuesses) {
+    for (const label of labels) {
+      const forged = await hmacWithRawKey(guess, label);
+      assert.ok(!blob.public_manifest.room_blinds.includes(forged));
+      assert.ok(!blob.public_manifest.key_blinds.includes(forged));
+    }
+  }
 });
 
 test("a differently-formatted but equal code still decrypts", async () => {

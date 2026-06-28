@@ -273,3 +273,28 @@ export function backupSummary(blob: BackupBlob | Record<string, unknown>): Backu
   }
   return { version: 1, updated_at: null, entry_count: null, room_count: null, key_count: null };
 }
+
+export type CoverageCheck = "covered" | "not_covered" | "unavailable";
+
+/**
+ * Check whether a v2 backup manifest appears to cover a group sender key.
+ *
+ * This intentionally requires the recovery code. The server issued room ids and can
+ * enumerate epoch/key-id candidates, so a server-readable blind key would make the
+ * manifest de-blindable. Fresh-device classification is therefore recovery-secret-gated:
+ * account auth alone is not enough to learn coverage.
+ */
+export async function backupCoversSenderKey(
+  code: string,
+  blob: BackupBlob | Record<string, unknown>,
+  roomId: string,
+  epoch: number | null,
+  keyId: string | number,
+): Promise<CoverageCheck> {
+  if ((blob as BackupBlobV2).v !== 2) return "unavailable";
+  const backup = blob as BackupBlobV2;
+  const salt = new Uint8Array(b64d(backup.salt));
+  const { blindKey } = await deriveV2Secrets(code, salt);
+  const blind = await hmacBlind(blindKey, `grp1:${roomId}:${epoch ?? "?"}:${String(keyId)}`);
+  return backup.public_manifest.key_blinds.includes(blind) ? "covered" : "not_covered";
+}
