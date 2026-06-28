@@ -146,6 +146,12 @@ h2 { font-family: var(--disp); font-weight: 600; font-size: clamp(2rem, 4.4vw, 3
 .download-note b { color: var(--warm); }
 .download-note a { color: var(--blue); font-weight: 700; text-decoration: none; }
 .download-note a:hover { text-decoration: underline; }
+.mac-faq { display: grid; gap: .7rem; margin-top: 1.1rem; }
+.mac-faq details { border: 1px solid var(--line); border-radius: 1rem; background: rgba(255,255,255,.035); padding: .85rem 1rem; }
+.mac-faq summary { cursor: pointer; color: var(--cream); font-weight: 800; }
+.mac-faq p { margin: .55rem 0 0; color: var(--muted); line-height: 1.55; }
+.mac-faq a { color: var(--blue); font-weight: 800; text-decoration: none; }
+.mac-faq a:hover { text-decoration: underline; }
 @media (max-width: 780px) { .download-grid { grid-template-columns: 1fr; } .download-card { grid-template-columns: auto 1fr; } .download-card strong { grid-column: 2; } }
 @media (max-width: 460px) { .dl-title { align-items: flex-start; flex-direction: column; gap: .32rem; } }
 
