@@ -78,12 +78,12 @@ fn load_or_create_master() -> [u8; 32] {
             }
         }
         let mut k = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut k);
+        rand::rng().fill_bytes(&mut k);
         let _ = entry.set_password(&to_hex(&k));
         return k;
     }
     let mut k = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut k);
+    rand::rng().fill_bytes(&mut k);
     k
 }
 
