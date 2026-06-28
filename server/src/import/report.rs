@@ -11,7 +11,12 @@ pub struct ImportReport {
     pub messages: u32,
     pub reactions: u32,
     pub attachments: u32,
-    /// Role names recreated name+color only — the operator must set permissions.
+    #[serde(default)]
+    pub emojis: u32,
+    #[serde(default)]
+    pub permission_overwrites: u32,
+    /// Role names recreated with best-effort server-level permissions; review if source
+    /// had bits/overwrites that Ohiyo cannot enforce yet.
     pub roles_needing_review: Vec<String>,
     /// Human-readable notes for anything not faithfully representable in Ohiyo.
     pub parked: Vec<String>,

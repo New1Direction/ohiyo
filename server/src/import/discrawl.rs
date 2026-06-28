@@ -161,6 +161,7 @@ pub async fn read_source_guild_from_pool(
         icon_url,
         authors,
         roles,
+        emojis: vec![],
         categories,
         channels,
     })
@@ -221,6 +222,8 @@ async fn read_roles_from_mentions(db: &SqlitePool, guild_id: &str) -> Result<Vec
             discord_id: row.get("target_id"),
             name: row.get("name"),
             color: None,
+            permissions: None,
+            position: 0,
         })
         .collect())
 }
@@ -283,6 +286,7 @@ async fn read_channels(
             topic: row.try_get("topic").ok(),
             position: row.get("position"),
             category_discord_id: category_for_channel(&row, &kind),
+            permission_overwrites: vec![],
             messages,
         });
     }

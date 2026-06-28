@@ -33,6 +33,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 - **Reliability foundation:** added a public status page/API, hosted-community cost model,
   backup-restore drill script, status/alert check script, gateway/message load-smoke script,
   and reliability runbooks for backups, observability, alerting, and load testing.
+- **One-command Discord template migration:** added an owner-authenticated template import
+  endpoint and CLI script that reconstructs category/channel hierarchy, roles, best-effort
+  permissions, overwrite snapshots, server icons, and custom emoji assets.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the

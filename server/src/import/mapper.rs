@@ -4,7 +4,10 @@
 use anyhow::Result;
 use sqlx::SqlitePool;
 
-use super::model::{SourceAuthor, SourceCategory, SourceChannel, SourceMessage, SourceRole};
+use super::model::{
+    SourceAuthor, SourceCategory, SourceChannel, SourceMessage, SourcePermissionOverwrite,
+    SourceRole,
+};
 use super::{lookup_map, record_map};
 use crate::types::{new_id, now_unix};
 
@@ -156,7 +159,10 @@ pub async fn map_reaction(
     Ok(())
 }
 
-/// Map a Discord role to an Ohiyo role with NO permissions (see task rationale).
+/// Map a Discord role to an Ohiyo role, preserving the role identifier in the import
+/// provenance table and translating Discord's broad server permissions to the Ohiyo
+/// permissions that already exist. Channel-specific allow/deny matrices are stored
+/// separately for review/replay because Ohiyo does not yet enforce them.
 pub async fn map_role(
     db: &SqlitePool,
     import_id: &str,
@@ -167,19 +173,135 @@ pub async fn map_role(
         return Ok(id);
     }
     let id = new_id();
+    let permissions = map_discord_permissions(r.permissions.as_deref());
     sqlx::query(
         "INSERT INTO roles (id, server_id, name, color, permissions, position, created_at)
-         VALUES (?,?,?,?,0,0,?)",
+         VALUES (?,?,?,?,?,?,?)",
     )
     .bind(&id)
     .bind(server_id)
     .bind(&r.name)
     .bind(&r.color)
+    .bind(permissions)
+    .bind(r.position)
     .bind(now_unix())
     .execute(db)
     .await?;
     record_map(db, import_id, "role", &r.discord_id, &id).await?;
+    record_asset_map(
+        db,
+        import_id,
+        "role",
+        &r.discord_id,
+        Some(&r.name),
+        Some(&id),
+        None,
+        "mapped",
+        r.permissions.as_deref(),
+    )
+    .await?;
     Ok(id)
+}
+
+/// Translate Discord permission bits to the closest Ohiyo server-level equivalents.
+pub fn map_discord_permissions(bits: Option<&str>) -> i64 {
+    let Some(raw) = bits else { return 0 };
+    let Ok(discord) = raw.parse::<u128>() else {
+        return 0;
+    };
+    const DISCORD_KICK_MEMBERS: u128 = 1 << 1;
+    const DISCORD_BAN_MEMBERS: u128 = 1 << 2;
+    const DISCORD_ADMINISTRATOR: u128 = 1 << 3;
+    const DISCORD_MANAGE_CHANNELS: u128 = 1 << 4;
+    const DISCORD_MANAGE_GUILD: u128 = 1 << 5;
+    const DISCORD_MANAGE_MESSAGES: u128 = 1 << 13;
+    const DISCORD_MANAGE_ROLES: u128 = 1 << 28;
+
+    if discord & DISCORD_ADMINISTRATOR != 0 {
+        return crate::api::roles::perm::ALL;
+    }
+
+    let mut out = 0;
+    if discord & DISCORD_MANAGE_CHANNELS != 0 {
+        out |= crate::api::roles::perm::MANAGE_CHANNELS;
+    }
+    if discord & DISCORD_MANAGE_MESSAGES != 0 {
+        out |= crate::api::roles::perm::MANAGE_MESSAGES;
+    }
+    if discord & DISCORD_KICK_MEMBERS != 0 {
+        out |= crate::api::roles::perm::KICK_MEMBERS;
+    }
+    if discord & DISCORD_BAN_MEMBERS != 0 {
+        out |= crate::api::roles::perm::BAN_MEMBERS;
+    }
+    if discord & DISCORD_MANAGE_ROLES != 0 {
+        out |= crate::api::roles::perm::MANAGE_ROLES;
+    }
+    if discord & DISCORD_MANAGE_GUILD != 0 {
+        out |= crate::api::roles::perm::MANAGE_SERVER;
+    }
+    out
+}
+
+pub async fn record_permission_overwrite(
+    db: &SqlitePool,
+    import_id: &str,
+    channel: &SourceChannel,
+    overwrite: &SourcePermissionOverwrite,
+) -> Result<()> {
+    let target_type = match overwrite.target_type.as_str() {
+        "role" | "member" => overwrite.target_type.as_str(),
+        _ => "unknown",
+    };
+    sqlx::query(
+        "INSERT OR IGNORE INTO discord_import_permission_overwrites
+         (import_id, channel_discord_id, channel_name, target_discord_id, target_type,
+          target_name, allow, deny, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)",
+    )
+    .bind(import_id)
+    .bind(&channel.discord_id)
+    .bind(&channel.name)
+    .bind(&overwrite.target_discord_id)
+    .bind(target_type)
+    .bind(&overwrite.target_name)
+    .bind(&overwrite.allow)
+    .bind(&overwrite.deny)
+    .bind(now_unix())
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn record_asset_map(
+    db: &SqlitePool,
+    import_id: &str,
+    asset_type: &str,
+    discord_id: &str,
+    name: Option<&str>,
+    ohiyo_id: Option<&str>,
+    source_url: Option<&str>,
+    status: &str,
+    note: Option<&str>,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT OR REPLACE INTO discord_import_asset_map
+         (import_id, asset_type, discord_id, name, ohiyo_id, source_url, status, note, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)",
+    )
+    .bind(import_id)
+    .bind(asset_type)
+    .bind(discord_id)
+    .bind(name)
+    .bind(ohiyo_id)
+    .bind(source_url)
+    .bind(status)
+    .bind(note)
+    .bind(now_unix())
+    .execute(db)
+    .await?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -204,6 +326,7 @@ mod tests {
             topic: None,
             position: 0,
             category_discord_id: None,
+            permission_overwrites: vec![],
             messages: vec![],
         }
     }
@@ -407,21 +530,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn role_imports_with_zero_permissions() {
+    async fn role_imports_mapped_permissions() {
         let db = test_db().await;
         let import_id = create_import(&db, "u1", "g", "s1").await.unwrap();
         let r = SourceRole {
             discord_id: "r-1".into(),
             name: "Mod".into(),
             color: Some("#f50".into()),
+            permissions: Some(((1u128 << 1) | (1u128 << 4) | (1u128 << 28)).to_string()),
+            position: 7,
         };
         let rid = map_role(&db, &import_id, "s1", &r).await.unwrap();
-        let perms: i64 = sqlx::query_scalar("SELECT permissions FROM roles WHERE id = ?")
-            .bind(&rid)
-            .fetch_one(&db)
-            .await
-            .unwrap();
-        assert_eq!(perms, 0);
+        let (perms, position): (i64, i64) =
+            sqlx::query_as("SELECT permissions, position FROM roles WHERE id = ?")
+                .bind(&rid)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(
+            perms,
+            crate::api::roles::perm::KICK_MEMBERS
+                | crate::api::roles::perm::MANAGE_CHANNELS
+                | crate::api::roles::perm::MANAGE_ROLES
+        );
+        assert_eq!(position, 7);
     }
 
     #[tokio::test]
@@ -432,6 +564,8 @@ mod tests {
             discord_id: "r-1".into(),
             name: "Mod".into(),
             color: Some("#f50".into()),
+            permissions: None,
+            position: 0,
         };
         let a = map_role(&db, &import_id, "s1", &r).await.unwrap();
         let b = map_role(&db, &import_id, "s1", &r).await.unwrap();

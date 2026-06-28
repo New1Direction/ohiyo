@@ -4,7 +4,9 @@
 //! idempotent and resumable via the `discord_import_map` provenance table, keyed by
 //! the source Discord snowflake.
 
+pub mod assets;
 pub mod attachments;
+pub mod discord_template;
 pub mod discrawl;
 pub mod mapper;
 pub mod model;
@@ -13,7 +15,7 @@ pub mod report;
 use anyhow::Result;
 use sqlx::SqlitePool;
 
-use model::{within_window, ImportOptions, SourceGuild};
+use model::{within_window, ImportOptions, SourceEmoji, SourceGuild};
 use report::ImportReport;
 
 use crate::types::{new_id, now_unix};
@@ -138,6 +140,8 @@ pub async fn run_import_into(
 ) -> Result<ImportReport> {
     let mut report = ImportReport::default();
 
+    ingest_server_icon(db, import_id, server_id, owner_id, guild).await?;
+
     for author in &guild.authors {
         mapper::map_author(db, import_id, author).await?;
         report.authors += 1;
@@ -145,7 +149,20 @@ pub async fn run_import_into(
 
     for role in &guild.roles {
         mapper::map_role(db, import_id, server_id, role).await?;
-        report.flag_role_review(&role.name);
+        if role.permissions.is_some() {
+            report.flag_role_review(&role.name);
+        }
+    }
+
+    for emoji in &guild.emojis {
+        if ingest_emoji(db, import_id, server_id, owner_id, emoji)
+            .await
+            .is_ok()
+        {
+            report.emojis += 1;
+        } else {
+            report.note_parked(&format!("emoji :{}: could not be imported", emoji.name));
+        }
     }
 
     for category in &guild.categories {
@@ -156,6 +173,10 @@ pub async fn run_import_into(
     for channel in &guild.channels {
         let channel_id = mapper::map_channel(db, import_id, server_id, channel).await?;
         report.channels += 1;
+        for overwrite in &channel.permission_overwrites {
+            mapper::record_permission_overwrite(db, import_id, channel, overwrite).await?;
+            report.permission_overwrites += 1;
+        }
 
         for message in &channel.messages {
             if !within_window(message.created_at, opts.history, now) {
@@ -209,6 +230,124 @@ pub async fn run_import_into(
 
     set_status(db, import_id, "complete").await?;
     Ok(report)
+}
+
+async fn ingest_server_icon(
+    db: &SqlitePool,
+    import_id: &str,
+    server_id: &str,
+    owner_id: &str,
+    guild: &SourceGuild,
+) -> Result<()> {
+    let Some(url) = guild.icon_url.as_deref().filter(|s| s.starts_with("http")) else {
+        return Ok(());
+    };
+    match assets::download_image_to_file(db, owner_id, url, "discord-server-icon").await {
+        Ok(asset) => {
+            let icon_url = crate::signed_file_url(&crate::public_base_url(), &asset.file_id);
+            sqlx::query("UPDATE servers SET icon_url = ? WHERE id = ?")
+                .bind(&icon_url)
+                .bind(server_id)
+                .execute(db)
+                .await?;
+            mapper::record_asset_map(
+                db,
+                import_id,
+                "server_icon",
+                &guild.discord_id,
+                Some(&guild.name),
+                Some(&asset.file_id),
+                Some(url),
+                "imported",
+                Some(&asset.content_type),
+            )
+            .await?;
+        }
+        Err(e) => {
+            mapper::record_asset_map(
+                db,
+                import_id,
+                "server_icon",
+                &guild.discord_id,
+                Some(&guild.name),
+                None,
+                Some(url),
+                "failed",
+                Some(&e.to_string()),
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn ingest_emoji(
+    db: &SqlitePool,
+    import_id: &str,
+    server_id: &str,
+    owner_id: &str,
+    emoji: &SourceEmoji,
+) -> Result<()> {
+    let Some(url) = emoji.image_url.as_deref() else {
+        mapper::record_asset_map(
+            db,
+            import_id,
+            "emoji",
+            &emoji.discord_id,
+            Some(&emoji.name),
+            None,
+            None,
+            "missing_url",
+            None,
+        )
+        .await?;
+        anyhow::bail!("emoji image URL missing");
+    };
+    let asset =
+        assets::download_image_to_file(db, owner_id, url, &format!("{}.png", emoji.name)).await?;
+    let emoji_id = new_id();
+    let emoji_name = sanitize_emoji_name(&emoji.name);
+    let emoji_url = crate::signed_file_path(&asset.file_id);
+    sqlx::query(
+        "INSERT OR IGNORE INTO server_emojis (id, server_id, name, file_id, url, created_by, created_at)
+         VALUES (?,?,?,?,?,?,?)",
+    )
+    .bind(&emoji_id)
+    .bind(server_id)
+    .bind(&emoji_name)
+    .bind(&asset.file_id)
+    .bind(&emoji_url)
+    .bind(owner_id)
+    .bind(now_unix())
+    .execute(db)
+    .await?;
+    mapper::record_asset_map(
+        db,
+        import_id,
+        "emoji",
+        &emoji.discord_id,
+        Some(&emoji_name),
+        Some(&emoji_id),
+        Some(url),
+        "imported",
+        Some(&asset.content_type),
+    )
+    .await?;
+    Ok(())
+}
+
+fn sanitize_emoji_name(name: &str) -> String {
+    let mut out: String = name
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .take(32)
+        .collect();
+    if out.len() < 2 {
+        out = "emoji".to_owned();
+    }
+    out
 }
 
 #[cfg(test)]
@@ -302,7 +441,10 @@ mod tests {
                 discord_id: "r-1".into(),
                 name: "Mod".into(),
                 color: None,
+                permissions: Some((1u128 << 4).to_string()),
+                position: 1,
             }],
+            emojis: vec![],
             categories: vec![SourceCategory {
                 discord_id: "c-1".into(),
                 name: "Text".into(),
@@ -315,6 +457,13 @@ mod tests {
                 topic: None,
                 position: 0,
                 category_discord_id: Some("c-1".into()),
+                permission_overwrites: vec![SourcePermissionOverwrite {
+                    target_discord_id: "r-1".into(),
+                    target_type: "role".into(),
+                    target_name: Some("Mod".into()),
+                    allow: "1024".into(),
+                    deny: "0".into(),
+                }],
                 messages: vec![SourceMessage {
                     discord_id: "m-1".into(),
                     author_discord_id: "d-1".into(),
@@ -343,6 +492,7 @@ mod tests {
         assert_eq!(report.channels, 1);
         assert_eq!(report.messages, 1);
         assert_eq!(report.reactions, 1);
+        assert_eq!(report.permission_overwrites, 1);
         assert_eq!(report.roles_needing_review, vec!["Mod"]);
 
         let msg_count: i64 = sqlx::query_scalar(

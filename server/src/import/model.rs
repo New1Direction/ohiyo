@@ -16,6 +16,30 @@ pub struct SourceRole {
     pub discord_id: String,
     pub name: String,
     pub color: Option<String>,
+    /// Source permission bitfield, as Discord's API decimal string when available.
+    #[serde(default)]
+    pub permissions: Option<String>,
+    #[serde(default)]
+    pub position: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceEmoji {
+    pub discord_id: String,
+    pub name: String,
+    pub image_url: Option<String>,
+    #[serde(default)]
+    pub animated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourcePermissionOverwrite {
+    pub target_discord_id: String,
+    /// "role", "member", or "unknown".
+    pub target_type: String,
+    pub target_name: Option<String>,
+    pub allow: String,
+    pub deny: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +58,8 @@ pub struct SourceChannel {
     pub topic: Option<String>,
     pub position: i64,
     pub category_discord_id: Option<String>,
+    #[serde(default)]
+    pub permission_overwrites: Vec<SourcePermissionOverwrite>,
     /// Messages in CHRONOLOGICAL (oldest-first) order, so reply targets are mapped
     /// before the messages that quote them.
     pub messages: Vec<SourceMessage>,
@@ -76,6 +102,8 @@ pub struct SourceGuild {
     pub icon_url: Option<String>,
     pub authors: Vec<SourceAuthor>,
     pub roles: Vec<SourceRole>,
+    #[serde(default)]
+    pub emojis: Vec<SourceEmoji>,
     pub categories: Vec<SourceCategory>,
     pub channels: Vec<SourceChannel>,
 }

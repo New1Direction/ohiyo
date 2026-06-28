@@ -80,6 +80,13 @@ pub struct ManagedDiscordImportBody {
     pub history: Option<HistoryWindow>,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct DiscordTemplateImportBody {
+    /// Discord template code or URL, e.g. `abc123`, `https://discord.new/abc123`,
+    /// or `https://discord.com/template/abc123`.
+    pub template: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ManagedDiscordImportJobState {
@@ -378,6 +385,39 @@ async fn run_managed_discord_import_inner(
     )
     .await;
     Ok(DiscrawlImportResponse { server, report })
+}
+
+pub async fn run_discord_template_import(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<DiscordTemplateImportBody>,
+) -> Result<Json<DiscrawlImportResponse>, (StatusCode, String)> {
+    let guild = import::discord_template::fetch_template_source(&body.template)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Discord template import failed: {e}"),
+            )
+        })?;
+    let (server_id, report) = import::run_import(
+        &state.db,
+        &auth.0,
+        &guild,
+        ImportOptions {
+            history: HistoryWindow::All,
+        },
+    )
+    .await
+    .map_err(crate::api::error::internal)?;
+    let server = crate::api::servers::fetch_full(&server_id, &state).await?;
+    broadcast_to_server(
+        &state,
+        &server.server.id,
+        &GatewayEvent::ServerCreate(server.clone()),
+    )
+    .await;
+    Ok(Json(DiscrawlImportResponse { server, report }))
 }
 
 pub async fn preview_discrawl_import(

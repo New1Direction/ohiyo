@@ -39,6 +39,10 @@ holds ciphertext, with export ownership and self-host always one click away.
   export anytime, or graduate to your own box, or self-host for **$0**; all for less than
   one Discord Nitro. *(Phase 1 shipped — control plane + provisioning; design + plan in
   [`docs/superpowers/`](docs/superpowers/).)*
+- **One-command Discord template migration** — give Ohiyo a Discord Server Template
+  link and it reconstructs categories, channels, roles, best-effort permission bits,
+  overwrite snapshots, server icon, and custom emoji assets. See
+  [`docs/discord-template-migration.md`](docs/discord-template-migration.md).
 - **Text** — servers, channels, threads-of-thought, DMs, reactions, edits/deletes,
   attachments, **read receipts / delivered state** on DMs.
 - **Voice & video** — WebRTC voice, video, and screen-share, with Discord-like live
