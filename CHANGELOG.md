@@ -42,6 +42,12 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 - **Permission matrix audit:** imported Discord overwrite rows now have an owner/mod-only
   review API and in-app 1-2-3 audit view with exact allow/deny bitfields, decoded flags,
   manual-review reasons, asset provenance, and a safe invite checklist.
+- **Grandma-readable migration review:** permission rows now include plain-English verdicts
+  such as likely-private, read-only, can-see-and-chat, voice-room access, or powerful
+  channel control, with a simple "do this before inviting" instruction.
+- **Discord migration landing wedge:** the public landing page now advertises
+  "Move your Discord community in one link" and routes admins to the app plus the
+  migration guide.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the

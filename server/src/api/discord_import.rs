@@ -146,6 +146,10 @@ pub struct DiscordPermissionOverwriteReview {
     pub deny_flags: Vec<String>,
     pub manual_review: bool,
     pub review_reason: String,
+    pub verdict_title: String,
+    pub verdict_summary: String,
+    pub admin_action: String,
+    pub risk_level: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -530,12 +534,22 @@ pub async fn get_discord_import_review(
             let allow_flags = decode_discord_permission_bits(&allow);
             let deny_flags = decode_discord_permission_bits(&deny);
             let manual_review = !allow_flags.is_empty() || !deny_flags.is_empty();
+            let channel_name: String = row.get("channel_name");
+            let target_type: String = row.get("target_type");
+            let target_name: Option<String> = row.try_get("target_name").ok();
+            let verdict = summarize_permission_overwrite(
+                &channel_name,
+                &target_type,
+                target_name.as_deref(),
+                &allow_flags,
+                &deny_flags,
+            );
             DiscordPermissionOverwriteReview {
                 channel_discord_id: row.get("channel_discord_id"),
-                channel_name: row.get("channel_name"),
+                channel_name,
                 target_discord_id: row.get("target_discord_id"),
-                target_type: row.get("target_type"),
-                target_name: row.try_get("target_name").ok(),
+                target_type,
+                target_name,
                 allow,
                 deny,
                 review_reason: if manual_review {
@@ -546,6 +560,10 @@ pub async fn get_discord_import_review(
                 manual_review,
                 allow_flags,
                 deny_flags,
+                verdict_title: verdict.title,
+                verdict_summary: verdict.summary,
+                admin_action: verdict.admin_action,
+                risk_level: verdict.risk_level,
             }
         })
         .collect();
@@ -610,6 +628,139 @@ fn permission_review_checklist(manual_review_count: usize, asset_count: usize) -
         ));
     }
     checklist
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PermissionVerdict {
+    title: String,
+    summary: String,
+    admin_action: String,
+    risk_level: String,
+}
+
+fn summarize_permission_overwrite(
+    channel_name: &str,
+    target_type: &str,
+    target_name: Option<&str>,
+    allow_flags: &[String],
+    deny_flags: &[String],
+) -> PermissionVerdict {
+    let target = target_name
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(match target_type {
+            "member" => "this person",
+            "role" => "this role",
+            _ => "this target",
+        });
+    let channel = format!("#{channel_name}");
+    let allows = |flag: &str| allow_flags.iter().any(|value| value == flag);
+    let denies = |flag: &str| deny_flags.iter().any(|value| value == flag);
+    let powerful = [
+        "Administrator",
+        "Manage Roles",
+        "Manage Channels",
+        "Manage Server",
+        "Manage Messages",
+        "Manage Threads",
+        "Manage Webhooks",
+        "Moderate Members",
+    ]
+    .iter()
+    .any(|flag| allows(flag));
+
+    if allow_flags.is_empty() && deny_flags.is_empty() {
+        return PermissionVerdict {
+            title: "No special channel rule".to_owned(),
+            summary: format!(
+                "Discord did not add a special allow or block for {target} in {channel}."
+            ),
+            admin_action: "A quick role check is enough.".to_owned(),
+            risk_level: "ok".to_owned(),
+        };
+    }
+
+    if powerful {
+        return PermissionVerdict {
+            title: "Powerful channel control".to_owned(),
+            summary: format!(
+                "{target} may be able to moderate or change settings inside {channel}."
+            ),
+            admin_action: "Only keep this if the target is a trusted admin or moderator."
+                .to_owned(),
+            risk_level: "sensitive".to_owned(),
+        };
+    }
+
+    if denies("View Channel") {
+        return PermissionVerdict {
+            title: "Likely private from this target".to_owned(),
+            summary: format!("{target} was blocked from seeing {channel} in Discord."),
+            admin_action:
+                "Make sure this channel is still hidden from the same people before inviting."
+                    .to_owned(),
+            risk_level: "sensitive".to_owned(),
+        };
+    }
+
+    if allows("View Channel") && denies("Send Messages") {
+        return PermissionVerdict {
+            title: "Read-only channel".to_owned(),
+            summary: format!(
+                "{target} can see {channel}, but Discord blocked them from posting there."
+            ),
+            admin_action: "Good for announcement rooms; confirm only trusted roles can post."
+                .to_owned(),
+            risk_level: "check".to_owned(),
+        };
+    }
+
+    if allows("View Channel") && allows("Send Messages") {
+        return PermissionVerdict {
+            title: "Can see and chat".to_owned(),
+            summary: format!("{target} can enter {channel} and send messages."),
+            admin_action:
+                "Looks normal for public or member rooms; confirm it is not meant to be private."
+                    .to_owned(),
+            risk_level: "check".to_owned(),
+        };
+    }
+
+    if denies("Send Messages") {
+        return PermissionVerdict {
+            title: "Cannot post here".to_owned(),
+            summary: format!("{target} is blocked from sending messages in {channel}."),
+            admin_action: "Confirm this is meant to be muted/read-only for that role or person."
+                .to_owned(),
+            risk_level: "check".to_owned(),
+        };
+    }
+
+    if allows("Connect") || allows("Speak") || denies("Connect") || denies("Speak") {
+        return PermissionVerdict {
+            title: "Voice-room access rule".to_owned(),
+            summary: format!("Discord had a voice access rule for {target} in {channel}."),
+            admin_action: "Check who can join and speak before sending invites.".to_owned(),
+            risk_level: "check".to_owned(),
+        };
+    }
+
+    let allowed = if allow_flags.is_empty() {
+        String::new()
+    } else {
+        format!(" Allowed: {}.", allow_flags.join(", "))
+    };
+    let denied = if deny_flags.is_empty() {
+        String::new()
+    } else {
+        format!(" Blocked: {}.", deny_flags.join(", "))
+    };
+    PermissionVerdict {
+        title: "Custom channel exception".to_owned(),
+        summary: format!("Discord had a custom rule for {target} in {channel}.{allowed}{denied}"),
+        admin_action: "Review this row and keep it only if it matches the old channel intent."
+            .to_owned(),
+        risk_level: "check".to_owned(),
+    }
 }
 
 fn decode_discord_permission_bits(raw: &str) -> Vec<String> {
@@ -1243,6 +1394,40 @@ mod tests {
         // Cleanup.
         tokio::fs::remove_file(&valid).await.ok();
         tokio::fs::remove_file(&secret).await.ok();
+    }
+
+    #[test]
+    fn human_permission_verdicts_explain_common_cases() {
+        let verdict = summarize_permission_overwrite(
+            "announcements",
+            "role",
+            Some("@everyone"),
+            &["View Channel".to_owned()],
+            &["Send Messages".to_owned()],
+        );
+        assert_eq!(verdict.title, "Read-only channel");
+        assert!(verdict.summary.contains("can see #announcements"));
+        assert_eq!(verdict.risk_level, "check");
+
+        let hidden = summarize_permission_overwrite(
+            "staff",
+            "role",
+            Some("@everyone"),
+            &[],
+            &["View Channel".to_owned()],
+        );
+        assert_eq!(hidden.title, "Likely private from this target");
+        assert_eq!(hidden.risk_level, "sensitive");
+
+        let power = summarize_permission_overwrite(
+            "mods",
+            "role",
+            Some("Mods"),
+            &["Manage Roles".to_owned()],
+            &[],
+        );
+        assert_eq!(power.title, "Powerful channel control");
+        assert_eq!(power.risk_level, "sensitive");
     }
 
     #[test]

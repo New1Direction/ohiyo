@@ -125,6 +125,31 @@ h2 { font-family: var(--disp); font-weight: 600; font-size: clamp(2rem, 4.4vw, 3
 .trust span { display: inline-flex; align-items: center; gap: .4rem; }
 .trust b { color: var(--emerald); }
 
+/* ── Discord migration wedge ────────────────────────────────────────────── */
+.migration { padding-top: clamp(2.5rem, 5vw, 4rem); }
+.migrate-shell { display: grid; grid-template-columns: minmax(0, .96fr) minmax(340px, 1.04fr); gap: 1.2rem; align-items: stretch; border: 1px solid rgba(98,176,220,.34); border-radius: var(--r-lg); padding: clamp(1.2rem, 3vw, 2rem); background: radial-gradient(620px 260px at 82% 0%, rgba(98,176,220,.18), transparent 62%), linear-gradient(145deg, rgba(255,255,255,.055), rgba(255,255,255,.014)); box-shadow: var(--shadow); overflow: hidden; }
+.migrate-copy { display: flex; flex-direction: column; justify-content: center; min-height: 360px; }
+.migrate-copy h2 { max-width: 11ch; }
+.migrate-actions { display: flex; gap: .8rem; flex-wrap: wrap; margin-top: 1.6rem; }
+.migrate-panel { position: relative; border: 1px solid var(--line); border-radius: 24px; padding: 1rem; background: linear-gradient(160deg, rgba(8,12,14,.82), rgba(34,33,31,.72)); overflow: hidden; }
+.migrate-panel::before { content: ""; position: absolute; inset: auto -24% -28% 18%; height: 210px; background: radial-gradient(circle, rgba(98,176,220,.30), transparent 66%); filter: blur(10px); pointer-events: none; }
+.migrate-bar { position: relative; z-index: 1; display: flex; align-items: center; gap: .45rem; color: var(--muted); font-family: var(--mono); font-size: .74rem; letter-spacing: .08em; text-transform: uppercase; }
+.migrate-bar span { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.18); }
+.migrate-bar span:first-child { background: var(--coral); }
+.migrate-bar b { margin-left: auto; font-weight: 800; color: var(--warm); }
+.migrate-input { position: relative; z-index: 1; margin-top: 1rem; border: 1px solid rgba(98,176,220,.34); border-radius: 16px; padding: .9rem 1rem; background: rgba(0,0,0,.24); color: var(--cream); font-family: var(--mono); font-size: clamp(.82rem, 1.5vw, 1rem); overflow-wrap: anywhere; box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+.migrate-steps { position: relative; z-index: 1; display: grid; gap: .72rem; margin-top: 1rem; }
+.migrate-steps div { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: .75rem; border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: .85rem; background: rgba(255,255,255,.035); }
+.migrate-steps strong { grid-row: 1 / span 2; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: rgba(98,176,220,.16); color: var(--coral); font-family: var(--mono); }
+.migrate-steps b { color: var(--cream); font-size: .98rem; }
+.migrate-steps small { color: var(--muted); font-size: .88rem; line-height: 1.45; }
+.migrate-verdict { position: relative; z-index: 1; margin-top: 1rem; border: 1px solid rgba(216,222,230,.18); border-radius: 18px; padding: 1rem; background: linear-gradient(145deg, rgba(98,176,220,.12), rgba(255,255,255,.035)); }
+.migrate-verdict span { display: inline-flex; border-radius: 999px; padding: .22rem .55rem; background: rgba(216,222,230,.10); color: var(--silver); font-family: var(--mono); font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.migrate-verdict b { display: block; margin-top: .55rem; font-size: 1.02rem; color: var(--cream); }
+.migrate-verdict p { margin-top: .25rem; color: var(--warm); font-size: 1rem; line-height: 1.55; }
+@media (max-width: 860px) { .migrate-shell { grid-template-columns: 1fr; } .migrate-copy { min-height: 0; } .migrate-copy h2 { max-width: 13ch; } }
+@media (max-width: 460px) { .migrate-shell { padding: 1rem; } .migrate-panel { padding: .8rem; } .migrate-actions .btn { width: 100%; justify-content: center; } }
+
 /* ── download ───────────────────────────────────────────────────────────── */
 .download-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 2rem; }
 .download-card { position: relative; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1rem; border: 1px solid var(--line); border-radius: var(--r); padding: 1.08rem 1.15rem; background: linear-gradient(160deg, rgba(255,255,255,.052), rgba(255,255,255,.014)); color: var(--cream); text-decoration: none; overflow: hidden; transition: transform .25s var(--ease), border-color .25s, background .25s, box-shadow .25s; }

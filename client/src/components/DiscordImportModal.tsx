@@ -768,7 +768,7 @@ function PermissionReviewCard({ report, review, reviewError }: { report: ImportR
         <div>
           <div className="font-bold" style={{ color: "var(--text-primary)" }}>1-2-3 permission audit</div>
           <p className="mt-1 text-xs leading-5" style={{ color: "var(--text-muted)" }}>
-            You are the controller here: Ohiyo shows exact Discord allow/deny bits, explains what needs manual review, and keeps the invite step gated by human confirmation.
+            Grandma mode first, raw audit second: Ohiyo translates Discord rules into plain English, then keeps the exact allow/deny bits underneath for power users.
           </p>
         </div>
         <span className="rounded-full px-2 py-1 text-[11px] font-bold uppercase tracking-wide" style={{ background: clean ? "color-mix(in oklch, var(--green, #22c55e) 18%, transparent)" : "color-mix(in oklch, var(--gold, #f59e0b) 18%, transparent)", color: clean ? "var(--green, #22c55e)" : "var(--gold, #f59e0b)" }}>
@@ -777,7 +777,7 @@ function PermissionReviewCard({ report, review, reviewError }: { report: ImportR
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
         <ReviewStep title="1. Roles" copy={roles.length ? `${roles.slice(0, 3).join(", ")}${roles.length > 3 ? "…" : ""}` : "No flagged role permissions."} />
-        <ReviewStep title="2. Channels" copy={overwriteCount ? `${overwriteCount.toLocaleString()} exact allow/deny row(s).` : "No channel overwrite bits found."} />
+        <ReviewStep title="2. Channels" copy={overwriteCount ? `${overwriteCount.toLocaleString()} plain-English verdict(s) + exact bits.` : "No channel overwrite bits found."} />
         <ReviewStep title="3. Invite" copy="Invite only after visibility matches Discord." />
       </div>
 
@@ -801,16 +801,19 @@ function PermissionReviewCard({ report, review, reviewError }: { report: ImportR
             </ol>
           </div>
           {firstRows.length > 0 ? (
-            <div className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--bg-input)" }}>
-              <div className="grid grid-cols-[1fr_1fr] gap-0 border-b px-3 py-2 text-[11px] font-bold uppercase tracking-wide sm:grid-cols-[1.1fr_.9fr_1fr_1fr]" style={{ borderColor: "var(--bg-input)", color: "var(--text-muted)", background: "color-mix(in oklch, var(--text-primary) 4%, transparent)" }}>
-                <span>Channel</span><span>Target</span><span className="hidden sm:block">Allow</span><span className="hidden sm:block">Deny</span>
-              </div>
-              {firstRows.map((row) => <OverwriteRow key={`${row.channel_discord_id}:${row.target_type}:${row.target_discord_id}`} row={row} />)}
-              {overwrites.length > firstRows.length && (
-                <div className="px-3 py-2 text-xs" style={{ color: "var(--text-muted)", background: "color-mix(in oklch, var(--text-primary) 3%, transparent)" }}>
-                  Showing first {firstRows.length}; {overwrites.length - firstRows.length} more preserved in the audit API.
+            <div className="space-y-3">
+              <PlainEnglishSnapshot rows={firstRows} />
+              <div className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--bg-input)" }}>
+                <div className="grid grid-cols-[1fr_1fr] gap-0 border-b px-3 py-2 text-[11px] font-bold uppercase tracking-wide sm:grid-cols-[1.1fr_.9fr_1fr_1fr]" style={{ borderColor: "var(--bg-input)", color: "var(--text-muted)", background: "color-mix(in oklch, var(--text-primary) 4%, transparent)" }}>
+                  <span>Channel</span><span>Target</span><span className="hidden sm:block">Allow</span><span className="hidden sm:block">Deny</span>
                 </div>
-              )}
+                {firstRows.map((row) => <OverwriteRow key={`${row.channel_discord_id}:${row.target_type}:${row.target_discord_id}`} row={row} />)}
+                {overwrites.length > firstRows.length && (
+                  <div className="px-3 py-2 text-xs" style={{ color: "var(--text-muted)", background: "color-mix(in oklch, var(--text-primary) 3%, transparent)" }}>
+                    Showing first {firstRows.length}; {overwrites.length - firstRows.length} more preserved in the audit API.
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="rounded-xl p-3 text-xs" style={{ background: "color-mix(in oklch, var(--green, #22c55e) 10%, transparent)", color: "var(--text-muted)" }}>
@@ -838,6 +841,29 @@ function PermissionReviewCard({ report, review, reviewError }: { report: ImportR
   );
 }
 
+function PlainEnglishSnapshot({ rows }: { rows: DiscordPermissionOverwriteReview[] }) {
+  const important = [...rows].sort((a, b) => riskRank(b.risk_level) - riskRank(a.risk_level)).slice(0, 3);
+  return (
+    <div className="rounded-xl p-3 text-xs" style={{ background: "linear-gradient(145deg, color-mix(in oklch, var(--accent) 8%, transparent), color-mix(in oklch, var(--text-primary) 4%, transparent))", color: "var(--text-muted)" }}>
+      <div className="font-bold" style={{ color: "var(--text-primary)" }}>Plain-English verdicts</div>
+      <div className="mt-2 grid gap-2">
+        {important.map((row) => (
+          <div key={`${row.channel_discord_id}:${row.target_type}:${row.target_discord_id}:plain`} className="rounded-lg p-2" style={{ background: "color-mix(in oklch, var(--bg-base) 68%, transparent)" }}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold" style={{ color: "var(--text-primary)" }}>#{row.channel_name}</span>
+              <span>→ {row.target_name ?? row.target_discord_id}</span>
+              <RiskBadge risk={row.risk_level} />
+            </div>
+            <div className="mt-1 font-bold" style={{ color: "var(--text-primary)" }}>{row.verdict_title}</div>
+            <div className="mt-0.5">{row.verdict_summary}</div>
+            <div className="mt-1" style={{ color: "var(--text-primary)" }}>Do this: {row.admin_action}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function OverwriteRow({ row }: { row: DiscordPermissionOverwriteReview }) {
   return (
     <div className="grid grid-cols-[1fr_1fr] gap-0 border-b px-3 py-3 text-xs sm:grid-cols-[1.1fr_.9fr_1fr_1fr]" style={{ borderColor: "var(--bg-input)", color: "var(--text-muted)" }}>
@@ -851,11 +877,33 @@ function OverwriteRow({ row }: { row: DiscordPermissionOverwriteReview }) {
       </div>
       <BitCell label="Allow" raw={row.allow} flags={row.allow_flags} positive />
       <BitCell label="Deny" raw={row.deny} flags={row.deny_flags} />
-      <div className="col-span-2 mt-2 rounded-lg px-2 py-1 sm:col-span-4" style={{ background: row.manual_review ? "color-mix(in oklch, var(--gold, #f59e0b) 10%, transparent)" : "color-mix(in oklch, var(--green, #22c55e) 8%, transparent)", color: "var(--text-muted)" }}>
-        {row.manual_review ? "Manual review: " : "OK: "}{row.review_reason}
+      <div className="col-span-2 mt-2 rounded-lg px-2 py-2 sm:col-span-4" style={{ background: row.risk_level === "sensitive" ? "color-mix(in oklch, var(--gold, #f59e0b) 12%, transparent)" : row.manual_review ? "color-mix(in oklch, var(--accent) 8%, transparent)" : "color-mix(in oklch, var(--green, #22c55e) 8%, transparent)", color: "var(--text-muted)" }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <RiskBadge risk={row.risk_level} />
+          <span className="font-bold" style={{ color: "var(--text-primary)" }}>{row.verdict_title}</span>
+        </div>
+        <div className="mt-1">{row.verdict_summary}</div>
+        <div className="mt-1" style={{ color: "var(--text-primary)" }}>Do this: {row.admin_action}</div>
+        <div className="mt-1 text-[11px]">Raw audit note: {row.review_reason}</div>
       </div>
     </div>
   );
+}
+
+function RiskBadge({ risk }: { risk: string }) {
+  const sensitive = risk === "sensitive";
+  const ok = risk === "ok";
+  return (
+    <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: sensitive ? "color-mix(in oklch, var(--gold, #f59e0b) 18%, transparent)" : ok ? "color-mix(in oklch, var(--green, #22c55e) 16%, transparent)" : "color-mix(in oklch, var(--accent) 13%, transparent)", color: sensitive ? "var(--gold, #f59e0b)" : ok ? "var(--green, #22c55e)" : "var(--accent)" }}>
+      {sensitive ? "check before invite" : ok ? "looks simple" : "confirm"}
+    </span>
+  );
+}
+
+function riskRank(risk: string): number {
+  if (risk === "sensitive") return 3;
+  if (risk === "check") return 2;
+  return 1;
 }
 
 function BitCell({ label, raw, flags, positive = false }: { label: string; raw: string; flags: string[]; positive?: boolean }) {

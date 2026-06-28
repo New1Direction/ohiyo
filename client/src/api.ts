@@ -360,6 +360,10 @@ export type DiscordPermissionOverwriteReview = {
   deny_flags: string[];
   manual_review: boolean;
   review_reason: string;
+  verdict_title: string;
+  verdict_summary: string;
+  admin_action: string;
+  risk_level: "ok" | "check" | "sensitive" | string;
 };
 
 export type DiscordImportAssetReview = {
