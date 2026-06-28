@@ -1984,6 +1984,7 @@ function MainApp({
             onSetStatus={handleSetStatus}
             myActivity={!privacyMode && currentUser ? activities.get(currentUser.id) ?? null : null}
             onSetActivity={privacyMode ? undefined : updateActivity}
+            privacyMode={privacyMode}
             canManageChannels={can(myPerms, PERM.MANAGE_CHANNELS)}
             canManageServer={can(myPerms, PERM.MANAGE_SERVER)}
             onOpenCategories={() => setShowCategories(true)}

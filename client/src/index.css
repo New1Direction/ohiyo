@@ -1445,6 +1445,21 @@ button:disabled,
   color: var(--text-muted);
   font-weight: 650;
 }
+.kc-privacy-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  margin-top: 0.15rem;
+  padding: 0.16rem 0.45rem;
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
 .kc-empty-dm-card {
   padding: 1rem;
   border: 1px solid color-mix(in oklch, var(--text-primary) 7%, transparent);

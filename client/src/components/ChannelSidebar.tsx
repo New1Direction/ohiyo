@@ -31,6 +31,7 @@ type Props = {
   onSetStatus?: (status: string) => void;
   myActivity?: Activity | null;
   onSetActivity?: (activity: Activity | null) => void;
+  privacyMode?: boolean;
   canManageChannels?: boolean;
   canManageServer?: boolean;
   onOpenCategories?: () => void;
@@ -98,6 +99,7 @@ export function ChannelSidebar({
   onSetStatus,
   myActivity,
   onSetActivity,
+  privacyMode,
   canManageChannels,
   canManageServer,
   onOpenCategories,
@@ -628,7 +630,12 @@ export function ChannelSidebar({
                 {myStatus || (selfOnline ? "Set a status" : STATUS_META[connStatus].label)}
               </button>
             )}
-            {onSetActivity && <ActivityComposer activity={myActivity ?? null} onSet={onSetActivity} />}
+            {privacyMode ? (
+              <div className="kc-privacy-mode-badge" title="Privacy Mode is on: presence, typing, activity, and peer-visible seen receipts are hidden.">
+                <span aria-hidden="true">👻</span>
+                Privacy Mode
+              </div>
+            ) : onSetActivity ? <ActivityComposer activity={myActivity ?? null} onSet={onSetActivity} /> : null}
           </div>
           <div className="kc-user-actions flex flex-shrink-0 items-center gap-1">
             <button type="button" onClick={onOpenSettings} aria-label="Settings" className="kc-sidebar-action kc-interactive flex h-8 w-8 items-center justify-center rounded-full text-base" style={{ color: "var(--text-muted)", background: "transparent", border: "none" }} title="Settings (Ctrl+,)"><Icon name="settings" size={16} /></button>
