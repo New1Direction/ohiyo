@@ -125,22 +125,28 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
           </button>
         </div>
 
-        <form onSubmit={create} className="grid gap-3 rounded-3xl p-4 sm:grid-cols-[1fr_auto]" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}>
-          <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-            Create managed server
+        <form onSubmit={create} className="rounded-3xl p-4" style={{ background: "linear-gradient(145deg, color-mix(in oklch, var(--accent) 7%, var(--bg-elevated)), var(--bg-elevated))", border: "1px solid color-mix(in oklch, var(--accent) 18%, var(--border-subtle))" }}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Create managed server</div>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--text-muted)" }}>Your first home gets a private <code className="rounded px-1" style={{ background: "var(--bg-input)" }}>*.ohiyo.gg</code> URL.</p>
+            </div>
+            <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: "color-mix(in oklch, var(--bg-input) 84%, transparent)", color: freeCount >= 3 ? "var(--danger)" : "var(--text-muted)" }}>{freeCount}/3 free used</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <label className="sr-only" htmlFor="instant-server-name">Community name</label>
             <input
+              id="instant-server-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={64}
               placeholder="Community name"
-              className="kc-field px-3.5 py-3 text-sm outline-none"
+              className="kc-field min-h-12 px-3.5 py-3 text-sm outline-none"
             />
-          </label>
-          <div className="flex flex-col justify-end gap-1">
-            <button type="submit" disabled={!name.trim() || busy === "create"} className="kc-cta rounded-full px-5 py-3 text-sm" style={{ opacity: name.trim() && busy !== "create" ? 1 : 0.6 }}>
-              {busy === "create" ? "Creating…" : "Create free server"}
+            <button type="submit" disabled={!name.trim() || busy === "create"} className="kc-cta inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold shadow-lg sm:min-w-[190px]" style={{ opacity: name.trim() && busy !== "create" ? 1 : 0.58 }}>
+              {busy === "create" && <span className="h-2 w-2 rounded-full" style={{ background: "currentColor", animation: "kc-pulse-dot 900ms ease-in-out infinite" }} />}
+              {busy === "create" ? "Creating home…" : "Create free server →"}
             </button>
-            <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{freeCount}/3 free managed servers used</span>
           </div>
         </form>
 
