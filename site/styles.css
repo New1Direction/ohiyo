@@ -142,7 +142,7 @@ h2 { font-family: var(--disp); font-weight: 600; font-size: clamp(2rem, 4.4vw, 3
 .download-card small { display: block; color: var(--muted); font-size: 1rem; line-height: 1.4; margin-top: .2rem; }
 .download-card strong { color: var(--coral); font-size: 1rem; white-space: nowrap; }
 .download-card.web strong { color: var(--emerald); }
-.download-note { color: var(--muted); font-size: 1rem; line-height: 1.55; margin-top: 1rem; max-width: 78ch; }
+.download-note { color: var(--muted); font-size: 1rem; line-height: 1.55; margin-top: 1rem; max-width: 70ch; }
 .download-note b { color: var(--warm); }
 .download-note a { color: var(--blue); font-weight: 700; text-decoration: none; }
 .download-note a:hover { text-decoration: underline; }
