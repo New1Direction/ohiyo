@@ -22,6 +22,7 @@ pub mod reliability;
 pub mod roles;
 pub mod saved;
 pub mod search;
+pub mod server_pack;
 pub mod servers;
 pub mod signal;
 pub mod users;
@@ -106,6 +107,8 @@ pub fn router() -> Router<AppState> {
         // Public reliability/status endpoints. Content-free; no secrets or user content.
         .route("/reliability/status", get(reliability::status_summary))
         .route("/reliability/cost-model", get(reliability::cost_model))
+        // Instance-local raw export: SQLite snapshot + uploads + signed manifest.
+        .route("/server-pack/export", get(server_pack::export_server_pack))
         // Instant Servers (control plane) — provision a dedicated Ohiyo instance
         .route(
             "/instances",

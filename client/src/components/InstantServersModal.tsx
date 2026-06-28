@@ -204,6 +204,12 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
               </div>
               <button type="button" onClick={() => setGuide(null)} className="kc-interactive rounded-full px-3 py-1 text-xs" style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none" }}>Close</button>
             </div>
+            {guide.guide.raw_data_export_url && (
+              <div className="mt-3 rounded-2xl p-3 text-xs leading-5" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
+                Raw Server Pack endpoint: <code style={{ color: "var(--text-primary)" }}>{guide.guide.raw_data_export_url}</code><br />
+                Sign in on that home as the owner before downloading. It restores infrastructure + ciphertext, not everyone’s readable history.
+              </div>
+            )}
             <pre className="mt-3 overflow-x-auto rounded-2xl p-3 text-xs" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}>{guide.guide.one_liner}</pre>
             <ol className="mt-3 grid gap-1 pl-5 text-sm" style={{ color: "var(--text-muted)", listStyle: "decimal" }}>
               {guide.guide.steps.map((step) => <li key={step}>{step}</li>)}

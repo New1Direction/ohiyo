@@ -140,8 +140,12 @@ async fn owner_can_sleep_wake_export_graduate_and_open_billing() {
         .json()
         .await
         .unwrap();
-    assert_eq!(export["version"], 1);
+    assert_eq!(export["version"], 2);
     assert_eq!(export["instance"]["id"], id);
+    assert!(export["self_host"]["raw_data_export_url"]
+        .as_str()
+        .unwrap()
+        .ends_with("/api/v1/server-pack/export"));
     assert!(export["self_host"]["one_liner"]
         .as_str()
         .unwrap()

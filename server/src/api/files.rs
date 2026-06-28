@@ -18,6 +18,17 @@ use crate::{
 
 const UPLOAD_DIR: &str = "uploads";
 
+/// Upload blob root. Defaults to `uploads` under the process working directory
+/// (`/data/uploads` in the Docker image because WORKDIR=/data). Tests and operators can
+/// override it without changing DB paths via `OHIYO_UPLOAD_DIR`.
+pub(crate) fn upload_dir() -> PathBuf {
+    std::env::var("OHIYO_UPLOAD_DIR")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(UPLOAD_DIR))
+}
+
 /// Default per-user cumulative upload cap (bytes). Overridable via
 /// `MAX_UPLOAD_BYTES_PER_USER` so operators can size it to their volume — it stops a
 /// single account from exhausting the shared disk and breaking the DB for everyone.
@@ -79,7 +90,8 @@ pub async fn upload_file(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Json<Vec<FileInfo>>, (StatusCode, String)> {
-    tokio::fs::create_dir_all(UPLOAD_DIR)
+    let upload_root = upload_dir();
+    tokio::fs::create_dir_all(&upload_root)
         .await
         .map_err(crate::api::error::internal)?;
 
@@ -110,7 +122,7 @@ pub async fn upload_file(
             .to_owned();
 
         // Stream field bytes through SHA-256 hasher to a temp file.
-        let tmp_path = PathBuf::from(UPLOAD_DIR).join(format!("tmp-{}", new_id()));
+        let tmp_path = upload_root.join(format!("tmp-{}", new_id()));
         let mut tmp_file = tokio::fs::File::create(&tmp_path)
             .await
             .map_err(crate::api::error::internal)?;
@@ -170,7 +182,7 @@ pub async fn upload_file(
             (id, path, w, h)
         } else {
             let file_id = new_id();
-            let final_path = PathBuf::from(UPLOAD_DIR)
+            let final_path = upload_root
                 .join(&sha256[..2])
                 .join(&sha256[2..4])
                 .join(&sha256);

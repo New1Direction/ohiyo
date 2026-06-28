@@ -81,7 +81,8 @@ impl FlyProvisioner {
                     "JWT_SECRET": req.jwt_secret,
                     "PUBLIC_BASE_URL": req.public_url,
                     "DATABASE_URL": "sqlite:/data/ohiyo.db",
-                    "BIND_ADDR": "0.0.0.0:3000"
+                    "BIND_ADDR": "0.0.0.0:3000",
+                    "OHIYO_SERVER_PACK_EXPORT": "1"
                 },
                 "services": [{
                     "ports": [

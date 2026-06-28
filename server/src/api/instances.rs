@@ -34,6 +34,7 @@ pub struct BillingCheckout {
 pub struct SelfHostGuide {
     pub docker_image: String,
     pub export_url: String,
+    pub raw_data_export_url: Option<String>,
     pub one_liner: String,
     pub steps: Vec<String>,
 }
@@ -68,15 +69,20 @@ fn self_host_guide(inst: &HostedInstance) -> SelfHostGuide {
     let image = std::env::var("FLY_IMAGE")
         .unwrap_or_else(|_| "registry.fly.io/ohiyo-instances:latest".into());
     let export_url = format!("/api/v1/instances/{}/export", inst.id);
+    let raw_data_export_url = inst
+        .public_url
+        .as_ref()
+        .map(|url| format!("{}/api/v1/server-pack/export", url.trim_end_matches('/')));
     SelfHostGuide {
         docker_image: image.clone(),
         export_url,
+        raw_data_export_url,
         one_liner: format!(
             "docker run -d --name ohiyo -p 3000:3000 -v ohiyo-data:/data -e JWT_SECRET=$(openssl rand -hex 32) -e PUBLIC_BASE_URL=https://YOUR_DOMAIN {image}"
         ),
         steps: vec![
             "Download this ownership pack and keep it with your backups.".into(),
-            "Download the raw encrypted server database/uploads from the hosted instance when raw export is enabled.".into(),
+            "From the hosted home, download the raw Server Pack export: SQLite snapshot + uploads + signed manifest.".into(),
             "Run the Docker image on your own VM with a persistent /data volume.".into(),
             "Point your domain at the VM, set PUBLIC_BASE_URL, then add it as an Ohiyo home in the app.".into(),
             "Keep the managed instance sleeping or delete it after you verify the self-host works.".into(),
@@ -172,9 +178,9 @@ pub async fn set_tier(
     Ok(Json(inst))
 }
 
-/// GET /api/v1/instances/{id}/export — portable ownership pack. It intentionally
-/// contains registry/self-host metadata only; raw encrypted DB/upload export is a follow-up
-/// hosted-instance endpoint so the control plane never mounts user data volumes.
+/// GET /api/v1/instances/{id}/export — portable ownership pack. The raw encrypted
+/// DB/upload export is produced by the hosted instance itself at /server-pack/export so
+/// the control plane never mounts user data volumes.
 pub async fn export_instance(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -183,10 +189,10 @@ pub async fn export_instance(
     let inst = load_owner_instance(&state, &auth.0, &id).await?;
     let guide = self_host_guide(&inst);
     Ok(Json(InstanceExport {
-        version: 1,
+        version: 2,
         generated_at: crate::types::now_unix(),
         instance: inst,
-        data_note: "This MVP exports a portable ownership pack immediately. Raw encrypted DB/uploads stay on the managed instance until the raw export worker is enabled; Ohiyo still cannot read plaintext because messages and private files are E2E encrypted.".into(),
+        data_note: "This ownership pack is control-plane metadata plus self-host instructions. The raw Server Pack is downloaded from the hosted home itself and contains SQLite/uploads ciphertext, not users' recovery codes or everyone’s readable history.".into(),
         self_host: guide,
         billing_note: "Free managed servers can sleep. Paid managed servers are intended to be always-on after checkout/manual activation.".into(),
     }))

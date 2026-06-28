@@ -420,6 +420,7 @@ export interface HostedInstance {
 export type SelfHostGuide = {
   docker_image: string;
   export_url: string;
+  raw_data_export_url?: string | null;
   one_liner: string;
   steps: string[];
 };
