@@ -2,23 +2,31 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Channel, ServerWithChannels } from "../api";
 
+export type CommandAction = {
+  id: string;
+  label: string;
+  sub: string;
+  icon: string;
+  run: () => void;
+};
+
 type Result = {
   id: string;
   label: string;
   sub: string;
   icon: string;
   serverIconUrl?: string | null;
-  channel: Channel;
-};
+} & ({ kind: "channel"; channel: Channel } | { kind: "action"; run: () => void });
 
 type Props = {
   servers: ServerWithChannels[];
   dms: Channel[];
+  actions?: CommandAction[];
   onSelectChannel: (channel: Channel) => void;
   onClose: () => void;
 };
 
-export function CommandPalette({ servers, dms, onSelectChannel, onClose }: Props) {
+export function CommandPalette({ servers, dms, actions = [], onSelectChannel, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +43,7 @@ export function CommandPalette({ servers, dms, onSelectChannel, onClose }: Props
       label: ch.name === "dm" ? "Direct Message" : ch.name,
       sub: "DM",
       icon: "👤",
+      kind: "channel" as const,
       channel: ch,
     })),
     ...servers.flatMap((s) =>
@@ -44,24 +53,28 @@ export function CommandPalette({ servers, dms, onSelectChannel, onClose }: Props
         sub: s.name,
         icon: ch.channel_type === "voice" ? "🔊" : "#",
         serverIconUrl: s.icon_url,
+        kind: "channel" as const,
         channel: ch,
       }))
     ),
   ];
 
+  const allActions: Result[] = actions.map((action) => ({ ...action, kind: "action" as const }));
+  const searchable = [...allActions, ...allChannels];
   const q = query.toLowerCase().trim();
   const results = q
-    ? allChannels.filter(
+    ? searchable.filter(
         (r) =>
           r.label.toLowerCase().includes(q) ||
           r.sub.toLowerCase().includes(q)
       )
-    : allChannels.slice(0, 10);
+    : searchable.slice(0, 10);
 
   const clampedIdx = Math.min(activeIdx, Math.max(0, results.length - 1));
 
   function select(r: Result) {
-    onSelectChannel(r.channel);
+    if (r.kind === "action") r.run();
+    else onSelectChannel(r.channel);
     onClose();
   }
 
@@ -130,7 +143,7 @@ export function CommandPalette({ servers, dms, onSelectChannel, onClose }: Props
             value={query}
             onChange={(e) => { setQuery(e.target.value); setActiveIdx(0); }}
             onKeyDown={handleKey}
-            placeholder="Jump to channel or DM…"
+            placeholder="Jump to channel, DM, or action…"
             role="combobox"
             aria-expanded={results.length > 0}
             aria-controls="kc-cmd-list"
@@ -177,7 +190,7 @@ export function CommandPalette({ servers, dms, onSelectChannel, onClose }: Props
                 fontSize: 13,
               }}
             >
-              No channels match "{query}"
+              No channels or actions match "{query}"
             </div>
           ) : (
             results.map((r, i) => (
@@ -261,7 +274,7 @@ export function CommandPalette({ servers, dms, onSelectChannel, onClose }: Props
           }}
         >
           <span><kbd style={{ marginRight: 4, padding: "1px 4px", borderRadius: 3, border: "1px solid var(--bg-hover)", background: "var(--bg-input)" }}>↑↓</kbd>navigate</span>
-          <span><kbd style={{ marginRight: 4, padding: "1px 4px", borderRadius: 3, border: "1px solid var(--bg-hover)", background: "var(--bg-input)" }}>↵</kbd>jump</span>
+          <span><kbd style={{ marginRight: 4, padding: "1px 4px", borderRadius: 3, border: "1px solid var(--bg-hover)", background: "var(--bg-input)" }}>↵</kbd>open / run</span>
           <span><kbd style={{ marginRight: 4, padding: "1px 4px", borderRadius: 3, border: "1px solid var(--bg-hover)", background: "var(--bg-input)" }}>Esc</kbd>close</span>
         </div>
       </div>

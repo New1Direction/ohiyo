@@ -9,7 +9,7 @@ import { ChannelSidebar } from "./components/ChannelSidebar";
 import { ChatPane, type ChatActivityNotice } from "./components/ChatPane";
 import { ToastStack } from "./components/ToastStack";
 import { SettingsModal, type Tab } from "./components/settings/SettingsModal";
-import { CommandPalette } from "./components/CommandPalette";
+import { CommandPalette, type CommandAction } from "./components/CommandPalette";
 import { CallOverlay } from "./components/CallOverlay";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BootSplash } from "./components/BootSplash";
@@ -1881,6 +1881,46 @@ function MainApp({
     return next;
   }, [currentUser, voiceParticipantsByChannel, webrtc.channelId, webrtc.participants, webrtc.self]);
 
+  const commandActions: CommandAction[] = [
+    {
+      id: "action-private-dm-link",
+      label: "Create private DM link",
+      sub: "One-time link or QR for a private thread",
+      icon: "⛓",
+      run: () => setShowPrivateDmLink(true),
+    },
+    {
+      id: "action-privacy-mode",
+      label: privacyMode ? "Turn Privacy Mode off" : "Turn Privacy Mode on",
+      sub: privacyMode ? "Restore presence, typing, activity, and seen receipts" : "Hide presence, typing, activity, and seen receipts",
+      icon: privacyMode ? "👁" : "👻",
+      run: () => void updatePrivacyPrefs({ ...privacyPrefs, metadataMode: !privacyMode }),
+    },
+  ];
+  let liveVoiceTarget: { channel: Channel; names: string } | null = null;
+  for (const server of servers) {
+    if (liveVoiceTarget) break;
+    for (const channel of server.channels) {
+      if (channel.channel_type !== "voice" || channel.id === webrtc.channelId) continue;
+      const members = (sidebarVoiceParticipants.get(channel.id) ?? []).filter((p) => p.user_id !== currentUser?.id);
+      if (!members.length) continue;
+      liveVoiceTarget = {
+        channel,
+        names: members.slice(0, 2).map((p) => p.user.display_name || p.user.username).join(", ") + (members.length > 2 ? ` +${members.length - 2}` : ""),
+      };
+      break;
+    }
+  }
+  if (liveVoiceTarget) {
+    commandActions.push({
+      id: `action-join-live-voice-${liveVoiceTarget.channel.id}`,
+      label: `Join ${liveVoiceTarget.names}`,
+      sub: `Live in #${liveVoiceTarget.channel.name}`,
+      icon: "🔊",
+      run: () => handleJoinVoice(liveVoiceTarget.channel),
+    });
+  }
+
   // ⚠️ All hooks must be declared ABOVE this line — the early returns below are
   // conditional, so any hook placed after them would violate the Rules of Hooks.
 
@@ -2114,6 +2154,7 @@ function MainApp({
         <CommandPalette
           servers={servers}
           dms={dms}
+          actions={commandActions}
           onSelectChannel={handleSelectChannel}
           onClose={() => setShowCommandPalette(false)}
         />
