@@ -39,9 +39,10 @@ with export and self-host always one click away.
   [`docs/superpowers/`](docs/superpowers/).)*
 - **Text** — servers, channels, threads-of-thought, DMs, reactions, edits/deletes,
   attachments, **read receipts / delivered state** on DMs.
-- **Voice & video** — WebRTC voice, video, and screen-share. Peer-to-peer with STUN on
-  LAN; optional coturn (`infra/coturn/`) for symmetric-NAT users, or an optional LiveKit
-  SFU (`infra/livekit/`) for larger rooms.
+- **Voice & video** — WebRTC voice, video, and screen-share, with a Discord-like
+  pre-join roster so you can see who is already in a voice room before hopping in.
+  Peer-to-peer with STUN on LAN; optional coturn (`infra/coturn/`) for symmetric-NAT
+  users, or an optional LiveKit SFU (`infra/livekit/`) for larger rooms.
 - **Plugins** — arbitrary third-party plugins run in a **genuinely isolated Web
   Worker sandbox**: no network, no DOM, no token access, even via the prototype
   chain. See `client/src/plugins/`.

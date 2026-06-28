@@ -11,7 +11,18 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Voice pre-join roster:** voice channels now show who is already in the call before
+  you join, including a live count and compact participant preview.
+
+### Changed
+- Voice state join/leave/mute/video metadata now reaches everyone who can access the
+  channel so the sidebar updates live; WebRTC signaling and voice encryption keys remain
+  restricted to actual call participants.
+
+### Fixed
+- Production call smoke tests now skip the dev-only low-level peer-connection inspector
+  while still verifying the live roster/UI behavior.
 
 ## [0.2.0] — 2026-06-22
 

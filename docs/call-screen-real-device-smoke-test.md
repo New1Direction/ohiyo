@@ -50,21 +50,22 @@ commands.
 | # | Step | Expected result | Pass |
 |---|------|-----------------|------|
 | 1 | A joins General voice | A sees cozy Solo voice card, no giant empty slab | ☐ |
-| 2 | B joins same voice room | Both see 2-person Voice room and each other's names | ☐ |
-| 3 | Mic A→B | B clearly hears A within ~1s | ☐ |
-| 4 | Mic B→A | A clearly hears B within ~1s | ☐ |
-| 5 | A mutes | B sees A muted quickly; B no longer hears A | ☐ |
-| 6 | A unmutes | B sees unmuted; B hears A again | ☐ |
-| 7 | A turns camera on | Both switch to Video room; B sees A camera | ☐ |
-| 8 | A turns camera off | Both return to voice/media state cleanly | ☐ |
-| 9 | A starts screen share using Sharp/default | Screen picker opens; B sees A's screen sharply | ☐ |
-| 10 | Text-detail check | B can read small browser/app text from A's shared screen | ☐ |
-| 11 | Motion check | A scrolls/moves window; B sees smooth enough motion | ☐ |
-| 12 | Late join while sharing | B leaves call, A keeps sharing, B rejoins and sees active share | ☐ |
-| 13 | Stop sharing | Both return to Voice room, no frozen screen tile | ☐ |
-| 14 | Output picker | If browser supports it, changing output device routes audio correctly | ☐ |
-| 15 | Minimize/open | Minimized call card works and reopens without breaking media | ☐ |
-| 16 | Leave cleanup | A leaves; B returns to Solo voice; no ghost participant | ☐ |
+| 2 | Before B joins | B sees Ada listed under the voice channel with a live count | ☐ |
+| 3 | B joins same voice room | Both see 2-person Voice room and each other's names | ☐ |
+| 4 | Mic A→B | B clearly hears A within ~1s | ☐ |
+| 5 | Mic B→A | A clearly hears B within ~1s | ☐ |
+| 6 | A mutes | B sees A muted quickly; B no longer hears A | ☐ |
+| 7 | A unmutes | B sees unmuted; B hears A again | ☐ |
+| 8 | A turns camera on | Both switch to Video room; B sees A camera | ☐ |
+| 9 | A turns camera off | Both return to voice/media state cleanly | ☐ |
+| 10 | A starts screen share using Sharp/default | Screen picker opens; B sees A's screen sharply | ☐ |
+| 11 | Text-detail check | B can read small browser/app text from A's shared screen | ☐ |
+| 12 | Motion check | A scrolls/moves window; B sees smooth enough motion | ☐ |
+| 13 | Late join while sharing | B leaves call, A keeps sharing, B rejoins and sees active share | ☐ |
+| 14 | Stop sharing | Both return to Voice room, no frozen screen tile | ☐ |
+| 15 | Output picker | If browser supports it, changing output device routes audio correctly | ☐ |
+| 16 | Minimize/open | Minimized call card works and reopens without breaking media | ☐ |
+| 17 | Leave cleanup | A leaves; B returns to Solo voice; no ghost participant | ☐ |
 
 ## Screen-share quality bar
 
@@ -100,10 +101,9 @@ Final verdict: PASS / FAIL
 
 ## Current automated baseline
 
-As of commit `de8ca58`, automated validation passed:
+As of commit `b60aaaf`, automated validation passed:
 
-- Client typecheck/lint/build
-- Server cargo test
-- Full e2e suite: 24/24 passing
-- `e2e/23-call-smoke.test.mjs`
-- `e2e/24-screen-share-smoke.test.mjs`
+- Client typecheck/lint/unit
+- Server cargo fmt/check/test
+- `e2e/23-call-smoke.test.mjs` locally and against production
+- Production voice roster smoke: B sees Ada in voice before joining
