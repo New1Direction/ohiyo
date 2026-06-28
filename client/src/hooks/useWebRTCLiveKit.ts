@@ -179,17 +179,17 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
   }, []);
 
   const joinVoice = useCallback(
-    async (cid: string, opts?: { video?: boolean }) => {
+    async (cid: string, opts?: { video?: boolean; muted?: boolean }) => {
       // Guard against a rapid double-join: a second call would `new Room()` again
       // and orphan the first (WS socket + E2EE worker + mic all leaked).
       if (roomRef.current || callState !== "idle") return;
       channelRef.current = cid;
       setChannelId(cid);
       setCallState("joining");
+      const joinMuted = opts?.muted ?? false;
       // Announce presence over the gateway (drives the member-list "in voice" + Join).
-      // LiveKit always publishes a mic on join (setMicrophoneEnabled(true) below), so
-      // the SFU engine never joins listen-only.
-      cbRef.current.sendJoin(cid, false, opts?.video ?? false, false);
+      // LiveKit can start muted; the user can unmute later without leaving the room.
+      cbRef.current.sendJoin(cid, joinMuted, opts?.video ?? false, false);
       try {
         const { token: lkToken, url } = await api.getLiveKitToken(tokenRef.current, cid);
         // Lazy-load the SDK so it stays out of the main bundle (fetched on first join).
@@ -227,7 +227,7 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
           .on(RoomEvent.Disconnected, reset);
         await room.connect(url, lkToken);
         if (E2EE_ENABLED) await room.setE2EEEnabled(true);
-        await room.localParticipant.setMicrophoneEnabled(true);
+        await room.localParticipant.setMicrophoneEnabled(!joinMuted);
         if (opts?.video) await room.localParticipant.setCameraEnabled(true);
         refresh();
         refreshLocal();

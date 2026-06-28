@@ -49,10 +49,12 @@ async function joinInvite(page, invite, username, displayName) {
 }
 
 async function joinVoice(page) {
-  const join = page.locator('button[title="Join voice"]').first();
+  const join = page.locator('button[title*="Join"], button[title*="Click to preview"]').first();
   await join.waitFor({ state: "visible", timeout: 10000 });
   await join.click();
-  await page.waitForSelector("text=LIVE", { timeout: 10000 });
+  const previewJoin = page.locator('.kc-voice-join-preview button:has-text("Join")').first();
+  if (await previewJoin.isVisible().catch(() => false)) await previewJoin.click();
+  await page.locator(".kc-call-live-pill").waitFor({ state: "visible", timeout: 10000 });
 }
 
 async function waitForPeerConnection(page) {
@@ -128,7 +130,7 @@ try {
   log("minimize/open works ✓");
 
   await pageA.click('button[aria-label="Leave call"]');
-  await pageA.waitForSelector("text=LIVE", { state: "detached", timeout: 10000 });
+  await pageA.locator(".kc-call-live-pill").waitFor({ state: "detached", timeout: 10000 });
   await pageB.waitForSelector("text=Solo voice", { timeout: 12000 });
   log("leave cleans up A and returns B to solo voice ✓");
 

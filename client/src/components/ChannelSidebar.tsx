@@ -35,7 +35,7 @@ type Props = {
   canManageServer?: boolean;
   onOpenCategories?: () => void;
   onSelectChannel: (channel: Channel) => void;
-  onJoinVoice: (channel: Channel) => void;
+  onJoinVoice: (channel: Channel, opts?: { muted?: boolean; video?: boolean }) => void;
   onCreateChannel: (name: string) => void;
   onSetServerIcon?: (serverId: string, file: File) => void | Promise<void>;
   onInvite?: () => void;
@@ -447,7 +447,7 @@ export function ChannelSidebar({
                       active={active}
                       participants={participants}
                       participantCount={active ? Math.max(voiceParticipantCount, participants.length) : participants.length}
-                      onJoin={() => onJoinVoice(ch)}
+                      onJoin={(opts) => onJoinVoice(ch, opts)}
                     />
                   );
                 })}
@@ -788,7 +788,7 @@ function VoiceChannelRow({
   active: boolean;
   participantCount: number;
   participants: VoiceSidebarParticipant[];
-  onJoin: () => void;
+  onJoin: (opts?: { muted?: boolean; video?: boolean }) => void;
 }) {
   const displayName = /^general(?:\s+voice)?$/i.test(name.trim()) ? "Voice" : name;
   const hasParticipants = participantCount > 0;
@@ -810,14 +810,22 @@ function VoiceChannelRow({
   const title = active
     ? `You're in ${displayName}`
     : hasParticipants
-      ? `${previewNames}${overflowCount ? ` +${overflowCount} more` : ""} in ${displayName}. Click to join.`
+      ? `${previewNames}${overflowCount ? ` +${overflowCount} more` : ""} in ${displayName}. Click to preview before joining.`
       : `Join ${displayName}`;
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const joinNow = (opts?: { muted?: boolean; video?: boolean }) => {
+    setPreviewOpen(false);
+    onJoin(opts);
+  };
 
   return (
     <div className="kc-voice-channel" data-testid="voice-channel-row">
       <button
         type="button"
-        onClick={onJoin}
+        onClick={() => {
+          if (!active && hasParticipants) setPreviewOpen((v) => !v);
+          else joinNow();
+        }}
         className="kc-voice-row kc-interactive mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-2 px-2.5 py-1.5 text-sm"
         style={{
           borderRadius: "var(--radius-md)", border: "none",
@@ -849,6 +857,19 @@ function VoiceChannelRow({
         )}
         {!active && <span className="kc-voice-join text-xs font-semibold" style={{ color: "var(--accent)" }}>{joinLabel}</span>}
       </button>
+      {previewOpen && !active && hasParticipants && (
+        <div className="kc-voice-join-preview mx-3 mb-1 mt-1" role="group" aria-label={`Join ${displayName} preview`}>
+          <div className="kc-voice-join-preview__title">Ready to join?</div>
+          <div className="kc-voice-join-preview__copy">
+            {previewNames}{overflowCount ? ` +${overflowCount} more` : ""} {participantCount === 1 ? "is" : "are"} already inside. Camera starts off.
+          </div>
+          <div className="kc-voice-join-preview__actions">
+            <button type="button" className="kc-voice-preview-btn kc-voice-preview-btn--primary" onClick={() => joinNow({ muted: false, video: false })}>Join</button>
+            <button type="button" className="kc-voice-preview-btn" onClick={() => joinNow({ muted: true, video: false })}>Join muted</button>
+            <button type="button" className="kc-voice-preview-btn kc-voice-preview-btn--ghost" onClick={() => setPreviewOpen(false)} aria-label="Close join preview">Cancel</button>
+          </div>
+        </div>
+      )}
       {participants.length > 0 && (
         <div className="kc-voice-participants mx-3 mb-1 mt-0.5" aria-label={`People in ${displayName}`}>
           {participants.slice(0, 6).map((p) => {

@@ -393,7 +393,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   }, [acquireMicStream]);
 
   // ── Public actions ────────────────────────────────────────────────────────
-  const joinVoice = useCallback(async (cid: string, opts?: { video?: boolean }) => {
+  const joinVoice = useCallback(async (cid: string, opts?: { video?: boolean; muted?: boolean }) => {
     if (channelRef.current) return;
     setCallState("joining");
     try {
@@ -407,15 +407,18 @@ export function useWebRTC(cb: WebRTCCallbacks) {
         return FALLBACK_ICE;
       });
       const wantVideo = opts?.video ?? false;
+      const joinMuted = opts?.muted ?? false;
       const { stream, hasMic } = await acquireLocalMedia(wantVideo);
+      for (const track of stream.getAudioTracks()) track.enabled = !joinMuted;
       localStreamRef.current = stream;
       setLocalStream(stream);
       channelRef.current = cid;
       setChannelId(cid);
       const startVideo = wantVideo && hasRealCameraRef.current;
       const listenOnly = !hasMic;
-      setSelf({ muted: listenOnly, video: startVideo, screen: false, listenOnly });
-      cbRef.current.sendJoin(cid, listenOnly, startVideo, listenOnly);
+      const muted = listenOnly || joinMuted;
+      setSelf({ muted, video: startVideo, screen: false, listenOnly });
+      cbRef.current.sendJoin(cid, muted, startVideo, listenOnly);
       setCallState("connected");
     } catch (err) {
       localStreamRef.current?.getTracks().forEach((t) => t.stop());

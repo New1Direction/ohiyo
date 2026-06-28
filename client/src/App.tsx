@@ -1806,10 +1806,10 @@ function MainApp({
     }
   }
 
-  function handleJoinVoice(channel: Channel) {
+  function handleJoinVoice(channel: Channel, opts?: { muted?: boolean; video?: boolean }) {
     setMobileNavOpen(false);
     if (webrtc.channelId === channel.id) return;
-    webrtc.joinVoice(channel.id, { video: false }).catch((err) =>
+    webrtc.joinVoice(channel.id, { video: opts?.video ?? false, muted: opts?.muted ?? false }).catch((err) =>
       toast(`Couldn't join the call: ${err instanceof Error ? err.message : err}`, "error")
     );
   }
