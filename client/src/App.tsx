@@ -1725,6 +1725,31 @@ function MainApp({
     setPrivateDmToken(null);
   }
 
+  function handleOpenSharedLink(raw: string): boolean {
+    const value = raw.trim();
+    if (!value) return false;
+    try {
+      const url = new URL(value, window.location.origin);
+      const invite = url.searchParams.get("invite") || (url.pathname.match(/\/invite\/([^/?#]+)/)?.[1] ?? null);
+      const dm = url.searchParams.get("dm") || (url.pathname.match(/\/dm\/([^/?#]+)/)?.[1] ?? null);
+      if (invite) {
+        setInviteCode(invite);
+        return true;
+      }
+      if (dm) {
+        setPrivateDmToken(dm);
+        return true;
+      }
+    } catch {
+      // Fall through to the lightweight raw-token checks below.
+    }
+    if (/^[a-zA-Z0-9_-]{8,}$/.test(value)) {
+      setInviteCode(value);
+      return true;
+    }
+    return false;
+  }
+
   function handleInviteJoin(server: ServerWithChannels) {
     enterServer(server);
     clearInviteParam();
@@ -1896,6 +1921,7 @@ function MainApp({
         displayName={currentUser.display_name}
         onCreate={createServerAndEnter}
         onSkip={markWelcomed}
+        onOpenSharedLink={handleOpenSharedLink}
         onPickAccent={(hex) => {
           setAccent(hex);
           pushAppearance(token);

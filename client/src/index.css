@@ -880,6 +880,53 @@ button:disabled,
   color: color-mix(in oklch, var(--text-secondary) 90%, var(--accent));
   font-weight: 650;
 }
+.ohiyo-link-entry-card {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 7%, transparent);
+  border-radius: var(--radius-xl);
+  background: color-mix(in oklch, var(--text-primary) 3%, var(--bg-channel));
+  text-align: left;
+}
+.ohiyo-link-entry-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.ohiyo-link-entry-copy strong {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 800;
+}
+.ohiyo-link-entry-copy span,
+.ohiyo-link-entry-actions {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.ohiyo-link-entry-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.ohiyo-link-entry-actions {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  justify-content: center;
+}
+.ohiyo-link-entry-actions button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 750;
+}
+.ohiyo-link-entry-error {
+  color: var(--danger);
+  font-size: var(--text-xs);
+  font-weight: 650;
+}
 .ohiyo-accent-section {
   padding: 0.15rem 0.35rem 0;
 }
@@ -915,6 +962,7 @@ button:disabled,
   line-height: 1.35;
 }
 @media (max-width: 640px) {
+  .ohiyo-link-entry-row { flex-direction: column; }
   .ohiyo-setup-notes { grid-template-columns: 1fr; gap: 0.5rem; }
   .ohiyo-setup-note { border-left-color: transparent; text-align: center; }
 }

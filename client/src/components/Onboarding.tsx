@@ -7,6 +7,8 @@ type Props = {
   /** Creates the first server and drops the user into it. Throws on failure. */
   onCreate: (name: string) => Promise<void>;
   onSkip: () => void;
+  /** Opens an invite or one-time private DM link pasted during onboarding. */
+  onOpenSharedLink?: (value: string) => boolean;
   /** Apply (and sync) a personal accent picked during onboarding. */
   onPickAccent?: (hex: string) => void;
 };
@@ -23,12 +25,15 @@ const VALUE_BULLETS: { title: string; body: string }[] = [
  * First-run welcome. Turns the empty-app cliff into one obvious action:
  * name your space and you're instantly inside a live channel.
  */
-export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Props) {
+export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, onPickAccent }: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [sharedLink, setSharedLink] = useState("");
+  const [linkError, setLinkError] = useState("");
   const [accent, setAccentSel] = useState<string>(getActiveAccent);
   const inputRef = useRef<HTMLInputElement>(null);
+  const linkInputRef = useRef<HTMLInputElement>(null);
   const spotlightRef = useRef<HTMLDivElement>(null);
   const pointerRef = useRef({ x: 0, y: 0, frame: 0 });
 
@@ -78,6 +83,19 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't set that up — try again.");
       setBusy(false);
+    }
+  }
+
+  function handleSharedLinkSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLinkError("");
+    if (!sharedLink.trim()) {
+      linkInputRef.current?.focus();
+      return;
+    }
+    if (!onOpenSharedLink?.(sharedLink)) {
+      setLinkError("Paste an Ohiyo invite link or one-time private DM link.");
+      linkInputRef.current?.focus();
     }
   }
 
@@ -196,6 +214,36 @@ export function Onboarding({ displayName, onCreate, onSkip, onPickAccent }: Prop
             )}
           </form>
         </div>
+
+        {/* Existing link path: don't make invited users create a throwaway space first. */}
+        {onOpenSharedLink && (
+          <form onSubmit={handleSharedLinkSubmit} className="ohiyo-link-entry-card mt-4 w-full" aria-label="Open an existing Ohiyo link">
+            <div className="ohiyo-link-entry-copy">
+              <strong>Already have a link?</strong>
+              <span>Join a space invite or open a private DM link.</span>
+            </div>
+            <div className="ohiyo-link-entry-row">
+              <input
+                ref={linkInputRef}
+                value={sharedLink}
+                onChange={(e) => { setSharedLink(e.target.value); if (linkError) setLinkError(""); }}
+                placeholder="Paste invite or private DM link"
+                className="kc-field flex-1 px-3.5 py-2.5 text-sm outline-none"
+                autoComplete="url"
+                aria-label="Ohiyo invite or private DM link"
+              />
+              <button type="submit" className="kc-interactive rounded-full px-4 py-2 text-sm font-bold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)" }}>
+                Open link
+              </button>
+            </div>
+            <div className="ohiyo-link-entry-actions">
+              <button type="button" onClick={() => linkInputRef.current?.focus()} className="kc-interactive">Use invite</button>
+              <span aria-hidden="true">·</span>
+              <button type="button" onClick={() => linkInputRef.current?.focus()} className="kc-interactive">Open private DM</button>
+            </div>
+            {linkError && <div role="alert" className="ohiyo-link-entry-error">{linkError}</div>}
+          </form>
+        )}
 
         {/* Make it yours — pick an accent right away (recolors this screen live) */}
         {onPickAccent && (
