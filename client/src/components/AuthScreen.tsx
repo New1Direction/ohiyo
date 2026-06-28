@@ -200,7 +200,7 @@ export function AuthScreen({ home, onAuth }: Props) {
             >
               {mode === "login" ? "Welcome back" : mode === "register" ? "Join Ohiyo" : "Link this device"}
             </h1>
-            <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+            <p className="mt-1 text-base" style={{ color: "var(--text-secondary)" }}>
               {mode === "login"
                 ? "Good to see you again."
                 : mode === "register"
@@ -249,7 +249,7 @@ export function AuthScreen({ home, onAuth }: Props) {
               required
               minLength={MIN_USERNAME}
               maxLength={MAX_USERNAME}
-              className="kc-field px-3.5 py-3 text-sm outline-none"
+              className="kc-field px-3.5 py-3 text-base outline-none"
             />
             {showUsernameHint && (
               <p className="mt-1 px-1 text-xs" aria-live="polite" style={{ color: "var(--text-muted)" }}>
@@ -272,7 +272,7 @@ export function AuthScreen({ home, onAuth }: Props) {
               autoComplete="nickname"
               data-no-native-autocomplete="true"
               maxLength={48}
-              className="kc-field px-3.5 py-3 text-sm outline-none"
+              className="kc-field px-3.5 py-3 text-base outline-none"
             />
           )}
 
@@ -293,7 +293,7 @@ export function AuthScreen({ home, onAuth }: Props) {
                 data-no-native-autocomplete="true"
                 required
                 minLength={MIN_PASSWORD}
-                className="kc-field px-3.5 py-3 pr-11 text-sm outline-none"
+                className="kc-field px-3.5 py-3 pr-11 text-base outline-none"
               />
               <button
                 type="button"
@@ -338,7 +338,7 @@ export function AuthScreen({ home, onAuth }: Props) {
             type="submit"
             disabled={!canSubmit}
             aria-busy={loading}
-            className="kc-cta mt-1 flex items-center justify-center gap-2 py-3 text-sm"
+            className="kc-cta mt-1 flex items-center justify-center gap-2 py-3 text-base"
             style={{ opacity: canSubmit ? 1 : 0.65, cursor: canSubmit ? "pointer" : "default" }}
           >
             {loading ? (
@@ -389,7 +389,7 @@ export function AuthScreen({ home, onAuth }: Props) {
             <button
               type="submit"
               disabled={loading || linkCode.replace(/[^a-zA-Z0-9]/g, "").length < 8}
-              className="kc-cta mt-1 flex items-center justify-center gap-2 py-3 text-sm"
+              className="kc-cta mt-1 flex items-center justify-center gap-2 py-3 text-base"
               style={{
                 opacity: loading || linkCode.replace(/[^a-zA-Z0-9]/g, "").length < 8 ? 0.65 : 1,
                 cursor: loading ? "default" : "pointer",
@@ -404,14 +404,14 @@ export function AuthScreen({ home, onAuth }: Props) {
                 "Link this device"
               )}
             </button>
-            <p className="text-center text-xs" style={{ color: "var(--text-muted)" }}>
+            <p className="text-center text-base leading-relaxed" style={{ color: "var(--text-muted)" }}>
               On your other device: <strong>Settings → Privacy &amp; Security → Link a device</strong>.
             </p>
           </form>
         )}
         </div>
 
-        <p className="mt-5 text-center text-xs" style={{ color: "var(--text-muted)" }}>
+        <p className="mt-5 text-center text-base leading-relaxed" style={{ color: "var(--text-muted)" }}>
           {mode === "login" ? (
             <>
               New to Ohiyo?{" "}
@@ -446,12 +446,12 @@ export function AuthScreen({ home, onAuth }: Props) {
           )}
         </p>
 
-        <p className="ohiyo-trust-text mt-4 text-center text-xs" aria-label="End-to-end encrypted. No ads. No tracking. Yours.">
+        <p className="ohiyo-trust-text mt-4 text-center text-base leading-relaxed" aria-label="End-to-end encrypted. No ads. No tracking. Yours.">
           <span className="ohiyo-trust-primary">End-to-end encrypted</span>
           <span className="ohiyo-trust-secondary">No ads · No tracking · Yours</span>
         </p>
       </div>
-      <p key={factIndex} className="ohiyo-auth-fact mt-4 text-center text-xs" aria-live="off">
+      <p key={factIndex} className="ohiyo-auth-fact mt-4 text-center text-base leading-relaxed" aria-live="off">
         {AUTH_FACTS[factIndex]}
       </p>
       </div>
