@@ -38,7 +38,7 @@ function wsOriginFrom(httpOrigin: string | undefined): string | null {
 // MUST be delivered as a real HTTP response header by the web server / CDN that
 // serves index.html. Setting response headers is not this file's job.
 function buildCsp(serverUrl: string | undefined): string {
-  const connect = new Set<string>(["'self'"]);
+  const connect = new Set<string>(["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"]);
   if (serverUrl) {
     try {
       const u = new URL(serverUrl);

@@ -201,6 +201,8 @@ h2 { font-family: var(--disp); font-weight: 600; font-size: clamp(2rem, 4.4vw, 3
 .node p { color: var(--muted); font-size: .95rem; }
 .sec-note { margin-top: 1.4rem; color: var(--warm); font-size: 1rem; }
 .sec-note b { color: var(--cream); }
+.sec-note a { color: var(--blue); font-weight: 800; text-decoration: none; }
+.sec-note a:hover { text-decoration: underline; }
 
 /* ── compare table ───────────────────────────────────────────────────────── */
 .table-wrap { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; margin-top: 2rem; }
