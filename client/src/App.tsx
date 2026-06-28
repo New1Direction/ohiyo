@@ -47,10 +47,12 @@ import {
   type TrustState,
 } from "./lib/identityTrust";
 import { cachePlaintext, getCachedPlaintext, removeCachedPlaintext } from "./lib/e2eCache";
+import { coverageForMessage, recordMissingSenderKey } from "./lib/recoveryCoverage";
 import {
   groupEncrypt,
   groupDecrypt,
   isGroupCiphertext,
+  parseGroupCiphertextHeader,
   buildDistribution,
   installDistribution,
   setGroupEpoch,
@@ -1355,7 +1357,12 @@ function MainApp({
         if (peer) dmPeerRef.current.set(channelId, peer);
       }
       const peerId = dmPeerId(channelId);
-      const decryptState = sessionStorage.getItem("ohiyo:recovery-restored-at") ? "restore_failed" as const : "unknown" as const;
+      const decryptStateFor = (messageId: string): "unknown" | "not_covered" | "restore_failed" => {
+        const coverage = coverageForMessage(messageId);
+        if (coverage === "not_covered") return "not_covered";
+        if (sessionStorage.getItem("ohiyo:recovery-restored-at")) return "restore_failed";
+        return "unknown";
+      };
       // Legacy static key only fetched if any v1 messages are present.
       const legacyKey = msgs.some((m) => isEncrypted(m.content)) ? await getDmKey(channelId) : null;
       // Sequential: the Double Ratchet requires in-order processing of new messages.
@@ -1371,7 +1378,13 @@ function MainApp({
           const pt = await groupDecrypt(channelId, m.author.id, m.content);
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
           if (plain !== null) cachePlaintext(m.id, plain);
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptState });
+          if (plain === null) {
+            const header = parseGroupCiphertextHeader(m.content);
+            if (header) {
+              recordMissingSenderKey({ message_id: m.id, room_id: channelId, epoch: header.epoch, key_id: String(header.keyId) });
+            }
+          }
+          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
         } else if (isSignalCiphertext(m.content)) {
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
@@ -1381,11 +1394,11 @@ function MainApp({
           const pt = peerId ? await decryptFrom(peerId, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
           if (plain !== null) cachePlaintext(m.id, plain);
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptState });
+          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
         } else if (isEncrypted(m.content)) {
           const pt = legacyKey ? await decryptMessage(legacyKey, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptState });
+          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
         } else {
           out.push(m);
         }

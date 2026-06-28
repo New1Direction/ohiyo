@@ -14,6 +14,19 @@ import {
   backupCoversSenderKey,
   type BackupBlobV1,
 } from "../src/lib/recovery.ts";
+import { coverageForMessage, missingSenderKeys, recordMissingSenderKey, saveCoverageResults } from "../src/lib/recoveryCoverage.ts";
+
+function installSessionStorage() {
+  const store = new Map<string, string>();
+  globalThis.sessionStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => { store.set(key, value); },
+    removeItem: (key: string) => { store.delete(key); },
+    clear: () => { store.clear(); },
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() { return store.size; },
+  } as Storage;
+}
 
 const MATERIAL = {
   "kc:sig:identityKey": JSON.stringify({ t: "kp", pub: "AAA", priv: "BBB" }),
@@ -98,6 +111,15 @@ test("a differently-formatted but equal code still decrypts", async () => {
 test("a wrong code fails to decrypt (does not silently return garbage)", async () => {
   const blob = await encryptBackup(generateRecoveryCode(), MATERIAL);
   await assert.rejects(() => decryptBackup(generateRecoveryCode(), blob));
+});
+
+test("missing-key coverage ledger records and classifies messages", () => {
+  installSessionStorage();
+  recordMissingSenderKey({ message_id: "m1", room_id: "group1", epoch: 2, key_id: "123" });
+  assert.equal(missingSenderKeys().length, 1);
+  saveCoverageResults({ m1: "not_covered" });
+  assert.equal(coverageForMessage("m1"), "not_covered");
+  assert.equal(coverageForMessage("m2"), null);
 });
 
 test("v1 flat backups remain readable", async () => {

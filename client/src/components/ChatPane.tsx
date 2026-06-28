@@ -2009,24 +2009,27 @@ function CustomEmoji({ emoji }: { emoji: ServerEmoji }) {
   );
 }
 
-function UndecryptableMessage({ state, onOpenRecovery }: { state: "unknown" | "restore_failed"; onOpenRecovery?: () => void }) {
+function UndecryptableMessage({ state, onOpenRecovery }: { state: "unknown" | "not_covered" | "restore_failed"; onOpenRecovery?: () => void }) {
   const restoredButFailed = state === "restore_failed";
+  const notCovered = state === "not_covered";
   return (
     <div className="mt-1 max-w-md rounded-2xl border p-3 text-xs" style={{ background: "color-mix(in oklch, var(--accent) 7%, var(--bg-elevated))", borderColor: "color-mix(in oklch, var(--accent) 22%, var(--bg-hover))", color: "var(--text-muted)" }}>
       <div className="font-bold" style={{ color: "var(--text-primary)" }}>
-        {restoredButFailed ? "This message still can’t be decrypted" : "This message needs keys this device doesn’t have"}
+        {notCovered ? "This old message was not in your recovery backup" : restoredButFailed ? "This message still can’t be decrypted" : "This message needs keys this device doesn’t have"}
       </div>
       <p className="mt-1 leading-5">
-        {restoredButFailed
-          ? "A recovery backup was restored, but this specific message still could not be read. The key may be incomplete, from a different device state, or already deleted by forward secrecy before backup."
-          : "If you made a recovery backup, open Personal recovery to check it. If the key was never backed up, forward secrecy means Ohiyo cannot recreate it later."}
+        {notCovered
+          ? "After checking your recovery manifest, this message’s key was not covered. Forward secrecy may have deleted it before backup, so Ohiyo cannot recreate it later."
+          : restoredButFailed
+            ? "A recovery backup was restored, but this specific message still could not be read. The key may be incomplete, from a different device state, or already deleted by forward secrecy before backup."
+            : "If you made a recovery backup, open Personal recovery to check it. If the key was never backed up, forward secrecy means Ohiyo cannot recreate it later."}
       </p>
-      {!restoredButFailed && onOpenRecovery && (
+      {!restoredButFailed && !notCovered && onOpenRecovery && (
         <button type="button" onClick={onOpenRecovery} className="kc-interactive mt-2 rounded-full px-3 py-1.5 text-xs font-bold" style={{ background: "var(--accent)", color: "#fff", border: "none" }}>
           Open recovery
         </button>
       )}
-      {/* No retry button in the terminal state: forward-secrecy-deleted keys are
+      {/* No retry button in terminal states: forward-secrecy-deleted keys are
           unrecoverable by construction. A retry affordance here would train users to
           mash a button that can only fail, turning a privacy guarantee into a bug. */}
     </div>

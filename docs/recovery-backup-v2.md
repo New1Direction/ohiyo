@@ -46,15 +46,15 @@ Some messages are unrecoverable by construction: forward secrecy may have delete
 
 The UI may offer recovery before coverage is known. After a recovery attempt still fails, it renders a terminal explanation with no fake retry loop.
 
-## Deferred restore-read obligation
+## Restore-read manifest consumption
 
-Restore-read must consume the v2 manifest instead of permanently leaving all failed decrypts in the generic “open recovery” state.
+Restore-read consumes the v2 manifest after the user enters their recovery code. This is intentional: coverage cannot be checked from account auth alone because the blind key is recovery-derived.
 
-The target states are:
+Current states:
 
-1. **Checking / recovery-code needed** — coverage cannot be checked until the user enters the recovery code because the blind key is recovery-derived.
-2. **Recoverable** — manifest check says the needed key appears covered; show restore action.
-3. **Not covered / gone** — manifest check proves the key is absent; no restore CTA.
-4. **Restored but still unreadable** — manifest promised coverage, restore ran, decrypt still failed; show terminal explanation and optional report/learn-more affordance.
+1. **Recovery-code needed** — before code entry, failed decrypts can only offer Personal recovery because the client cannot classify coverage yet.
+2. **Covered in preview** — the restore preview checks locally recorded missing group sender-key ids against the manifest and reports how many appear covered.
+3. **Not covered / gone** — preview persists not-covered results; after reload, those messages render without a restore button.
+4. **Restored but still unreadable** — manifest promised coverage or coverage was unknown, restore ran, decrypt still failed; show terminal explanation and no fake retry loop.
 
-The restore preview should be built from the manifest after recovery-code entry: backup updated time, entry count, approximate covered room/key counts, and any version warnings.
+Current limitation: coverage preview only classifies missing group sender-key messages observed in this browser session. Signal 1:1 sessions and messages not yet seen remain generic until later restore-read work adds durable per-message recovery metadata.

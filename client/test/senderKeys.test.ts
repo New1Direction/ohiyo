@@ -12,6 +12,7 @@ import {
   installDistribution,
   groupEncrypt,
   groupDecrypt,
+  parseGroupCiphertextHeader,
   getGroupEpoch,
   setGroupEpoch,
 } from "../src/lib/senderKeys.ts";
@@ -41,6 +42,9 @@ test("round-trips a group message within an epoch", async () => {
   use(a);
   const wire = await groupEncrypt(G, "hello group");
   assert.ok(wire?.startsWith("grp1."));
+  const header = parseGroupCiphertextHeader(wire!);
+  assert.equal(header?.epoch, 0);
+  assert.equal(typeof header?.keyId, "number");
   use(b);
   assert.equal(await groupDecrypt(G, ALICE, wire!), "hello group");
 });

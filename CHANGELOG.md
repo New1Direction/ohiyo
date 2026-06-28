@@ -50,9 +50,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   migration guide.
 - **Recovery backup v2:** personal recovery now writes a future-continuous, keys-only
   v2 backup envelope with per-entry device provenance, recovery-secret-derived blinded
-  coverage handles, legacy v1 restore support, a v1 refresh nudge, durable design notes,
-  calmer protection-first copy, and first-class undecryptable-message states instead of
-  a fake retry loop.
+  coverage handles, manifest-consuming restore preview, legacy v1 restore support, a v1
+  refresh nudge, durable design notes, calmer protection-first copy, and first-class
+  undecryptable-message states instead of a fake retry loop.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the

@@ -21,7 +21,8 @@ import type { PluginManager } from "../../plugins/registry";
 import { ensureNotificationPermission, isDesktop } from "../../lib/desktop";
 import { canUseWebPush, enableContentFreeWebPush } from "../../lib/push";
 import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauriVault";
-import { generateRecoveryCode, encryptBackup, decryptBackup, backupSummary, type BackupBlob, type BackupSummary } from "../../lib/recovery";
+import { generateRecoveryCode, encryptBackup, decryptBackup, backupSummary, backupCoversSenderKey, type BackupBlob, type BackupSummary, type CoverageCheck } from "../../lib/recovery";
+import { missingSenderKeys, saveCoverageResults } from "../../lib/recoveryCoverage";
 import {
   ACCENT_PRESETS,
   APPEARANCE_CHANGED_EVENT,
@@ -1687,6 +1688,16 @@ const DEADMAN_PRESETS: { label: string; seconds: number | null }[] = [
   { label: "90 days", seconds: 90 * DAY },
 ];
 
+type RestorePreview = {
+  version: number;
+  updated_at: number | null;
+  entry_count: number | null;
+  covered: number;
+  not_covered: number;
+  unavailable: number;
+  checked_messages: number;
+};
+
 function SecurityTab({
   token,
   onToast,
@@ -1706,6 +1717,8 @@ function SecurityTab({
   const [backupInfo, setBackupInfo] = useState<BackupSummary | null>(null);
   const [newCode, setNewCode] = useState<string | null>(null);
   const [restoreInput, setRestoreInput] = useState("");
+  const [restorePreview, setRestorePreview] = useState<RestorePreview | null>(null);
+  const [previewCode, setPreviewCode] = useState("");
   const [backupBusy, setBackupBusy] = useState(false);
 
   useEffect(() => {
@@ -1748,12 +1761,53 @@ function SecurityTab({
     }
   }
 
-  async function restoreBackup() {
-    if (!restoreInput.trim()) return;
+  async function previewRestore() {
+    const code = restoreInput.trim();
+    if (!code) return;
     setBackupBusy(true);
     try {
       const blob = (await api.getKeyBackup(token)) as unknown as BackupBlob;
-      const material = await decryptBackup(restoreInput, blob);
+      // Validate the recovery code before promising coverage. The public manifest is only
+      // meaningful with the recovery-derived blind key; account auth alone cannot classify.
+      await decryptBackup(code, blob);
+      const summary = backupSummary(blob);
+      const missing = missingSenderKeys();
+      const results: Record<string, CoverageCheck> = {};
+      for (const item of missing) {
+        results[item.message_id] = await backupCoversSenderKey(code, blob, item.room_id, item.epoch, item.key_id);
+      }
+      saveCoverageResults(results);
+      const values = Object.values(results);
+      setRestorePreview({
+        version: summary.version,
+        updated_at: summary.updated_at,
+        entry_count: summary.entry_count,
+        covered: values.filter((value) => value === "covered").length,
+        not_covered: values.filter((value) => value === "not_covered").length,
+        unavailable: values.filter((value) => value === "unavailable").length,
+        checked_messages: values.length,
+      });
+      setPreviewCode(code);
+    } catch {
+      setRestorePreview(null);
+      setPreviewCode("");
+      onToast("That code didn't match the backup", "error");
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
+  async function restoreBackup() {
+    const code = restoreInput.trim();
+    if (!code) return;
+    if (!restorePreview || previewCode !== code) {
+      await previewRestore();
+      return;
+    }
+    setBackupBusy(true);
+    try {
+      const blob = (await api.getKeyBackup(token)) as unknown as BackupBlob;
+      const material = await decryptBackup(code, blob);
       await importKeyMaterial(material);
       sessionStorage.setItem("ohiyo:recovery-restored-at", String(Date.now()));
       onToast("Keys restored — reloading…", "success");
@@ -1950,7 +2004,7 @@ function SecurityTab({
           <div className="flex flex-wrap gap-2">
             <input
               value={restoreInput}
-              onChange={(e) => setRestoreInput(e.target.value)}
+              onChange={(e) => { setRestoreInput(e.target.value); setRestorePreview(null); setPreviewCode(""); }}
               placeholder="Paste your recovery code"
               aria-label="Recovery code"
               className="flex-1 rounded px-3 py-2 text-sm outline-none font-mono"
@@ -1958,7 +2012,7 @@ function SecurityTab({
             />
             <button
               type="button"
-              onClick={restoreBackup}
+              onClick={restorePreview && previewCode === restoreInput.trim() ? restoreBackup : previewRestore}
               disabled={backupBusy || !restoreInput.trim()}
               className="kc-interactive rounded px-3 py-2 text-sm font-semibold"
               style={{
@@ -1968,9 +2022,23 @@ function SecurityTab({
                 opacity: backupBusy || !restoreInput.trim() ? 0.6 : 1,
               }}
             >
-              Restore
+              {restorePreview && previewCode === restoreInput.trim() ? "Restore keys" : "Check backup"}
             </button>
           </div>
+          {restorePreview && previewCode === restoreInput.trim() && (
+            <div className="mt-3 rounded-md p-3 text-xs" style={{ background: "color-mix(in oklch, var(--accent) 8%, transparent)", border: "1px solid color-mix(in oklch, var(--accent) 26%, transparent)", color: "var(--text-muted)" }}>
+              <div className="font-semibold" style={{ color: "var(--text-primary)" }}>Recovery preview</div>
+              <div className="mt-1 grid gap-1">
+                <div>Backup format v{restorePreview.version}{restorePreview.updated_at ? ` · updated ${new Date(restorePreview.updated_at * 1000).toLocaleDateString()}` : ""}{restorePreview.entry_count ? ` · ${restorePreview.entry_count} entries` : ""}</div>
+                {restorePreview.checked_messages > 0 ? (
+                  <div>{restorePreview.covered} message key(s) appear covered; {restorePreview.not_covered} not covered; {restorePreview.unavailable} unavailable.</div>
+                ) : (
+                  <div>No missing group-message keys have been seen in this browser session yet. Restore can still install your backed-up keys.</div>
+                )}
+                {restorePreview.not_covered > 0 && <div>Messages marked not covered will not show a restore button after reload.</div>}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

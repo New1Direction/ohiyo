@@ -98,6 +98,23 @@ export function isGroupCiphertext(s: string): boolean {
   return s.startsWith("grp1.");
 }
 
+export type GroupCiphertextHeader = { keyId: number; iteration: number; epoch: number | null };
+
+/** Parse non-secret sender-key envelope metadata for recovery coverage checks.
+ * This does not decrypt message content. It only extracts key id / epoch so a client
+ * that has entered its recovery code can ask the blinded manifest whether restore can
+ * help. */
+export function parseGroupCiphertextHeader(wire: string): GroupCiphertextHeader | null {
+  if (!wire.startsWith("grp1.")) return null;
+  try {
+    const env = JSON.parse(td.decode(unb64(wire.slice(5)))) as { kid?: unknown; it?: unknown; ep?: unknown };
+    if (typeof env.kid !== "number" || typeof env.it !== "number") return null;
+    return { keyId: env.kid, iteration: env.it, epoch: typeof env.ep === "number" ? env.ep : null };
+  } catch {
+    return null;
+  }
+}
+
 // ── Group epoch (membership generation) ─────────────────────────────────────────
 /** The latest epoch we've learned for a group (from the server). Defaults to 0. */
 export function getGroupEpoch(groupId: string): number {
