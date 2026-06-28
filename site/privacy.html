@@ -36,6 +36,7 @@
     <li><b>Account data:</b> username, display name, password hash, avatar/profile details, linked-device records, sessions, roles, server membership, invites, preferences, and similar app state.</li>
     <li><b>Encrypted content:</b> message ciphertext, encrypted group/key-backup blobs, file metadata, uploaded files/attachments, emoji, server icons, and other content needed to deliver the service.</li>
     <li><b>Operational data:</b> IP-derived rate-limit keys, request metadata, logs, crash/error details, abuse-prevention signals, and infrastructure metrics needed to run and secure the service.</li>
+    <li><b>Push notification data:</b> if you enable push, the relay stores device endpoints/tokens, recipient ids, platform type, and delivery timestamps. Push payloads are content-free: they should say only that activity exists, not message text, filenames, channel names, invite codes, or E2E keys.</li>
     <li><b>Discord import data:</b> if you use Discord import, uploaded/staged import archives and mapped metadata are processed to perform the import. Bot tokens and import internals are treated as private operational data.</li>
   </ul>
 
@@ -44,7 +45,7 @@
 
   <h2>How we use data</h2>
   <ul>
-    <li>Provide accounts, servers, messaging, calls, uploads, search/indexing when enabled, Discord import, and Instant Servers.</li>
+    <li>Provide accounts, servers, messaging, calls, uploads, search/indexing when enabled, Discord import, Instant Servers, and content-free notifications for sleeping servers.</li>
     <li>Secure the service, prevent abuse, debug failures, enforce limits, and maintain backups.</li>
     <li>Communicate service-critical updates or respond to support/security reports.</li>
   </ul>

@@ -73,6 +73,7 @@
     <li><b>Routing metadata:</b> which account/device/channel/home needs a message, the time a message is sent or fetched, and ciphertext/file sizes.</li>
     <li><b>Social graph metadata:</b> server membership, channels, DMs after they are created, one-time link redemption results, and invite/role relationships.</li>
     <li><b>Voice metadata:</b> voice rooms require routing. Other room participants can know you joined, and relay infrastructure can see connection metadata even if media is encrypted.</li>
+    <li><b>Push metadata:</b> content-free push for sleeping servers can reveal device endpoint/token, recipient id, platform, and delivery time to the relay/APNs/FCM/Web Push provider. Payloads should not contain message text, channel names, filenames, or keys.</li>
     <li><b>Operational metadata:</b> IP-derived rate-limit keys, request logs, crash/error details, abuse-prevention signals, backups, and infrastructure metrics.</li>
   </ul>
 

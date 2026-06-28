@@ -27,6 +27,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   ownership-pack export, self-host graduation instructions, delete, and paid-tier billing
   handoff; backend lifecycle endpoints now support sleep, wake, export, graduate, and tier
   state with owner-scoped tests.
+- **Push/mobile foundation:** added PWA manifest/service worker, Settings → Notifications,
+  content-free push-device registration and relay queue APIs, offline-recipient enqueue on
+  message send, notification privacy copy, and an APNs/FCM runbook for native mobile.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the

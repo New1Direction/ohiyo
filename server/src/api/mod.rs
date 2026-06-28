@@ -16,6 +16,7 @@ pub mod messages;
 pub mod og;
 pub mod polls;
 pub mod profile;
+pub mod push;
 pub mod reactions;
 pub mod roles;
 pub mod saved;
@@ -93,6 +94,14 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me/key-backup", get(profile::get_key_backup))
         .route("/users/@me/key-backup", put(profile::put_key_backup))
         .route("/users/@me/key-backup", delete(profile::delete_key_backup))
+        // Content-free push relay. Payloads intentionally carry no message content.
+        .route("/push/config", get(push::config))
+        .route(
+            "/push/devices",
+            get(push::list_devices).put(push::register_device),
+        )
+        .route("/push/devices/{id}", delete(push::delete_device))
+        .route("/push/relay/content-free", post(push::relay_content_free))
         // Instant Servers (control plane) — provision a dedicated Ohiyo instance
         .route(
             "/instances",

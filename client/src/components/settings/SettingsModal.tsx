@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import type { ProfileSong, ProfileTheme, PublicUser, ServerEmoji, ServerWithChannels } from "../../api";
+import { useState, useEffect, useRef, useCallback } from "react";
+import type { ProfileSong, ProfileTheme, PublicUser, PushDevice, ServerEmoji, ServerWithChannels } from "../../api";
 import { api, getApiBase, getFileBase } from "../../api";
 import type { Theme, ThemeVar } from "../../themes";
 import {
@@ -18,7 +18,8 @@ import { isValidHex } from "../../lib/color";
 import { safeHttpUrl } from "../../lib/url";
 import { PROFILE_PATTERNS, PROFILE_VIBES, ProfileCardView, type ProfileCardData } from "../ProfileCardView";
 import type { PluginManager } from "../../plugins/registry";
-import { isDesktop } from "../../lib/desktop";
+import { ensureNotificationPermission, isDesktop } from "../../lib/desktop";
+import { canUseWebPush, enableContentFreeWebPush } from "../../lib/push";
 import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauriVault";
 import { generateRecoveryCode, encryptBackup, decryptBackup, type BackupBlob } from "../../lib/recovery";
 import {
@@ -38,13 +39,14 @@ import { pushAppearance } from "../../lib/appearanceSync";
 import { LinkedDevices } from "./LinkedDevices";
 import type { PrivacyPrefs } from "../../lib/privacyPrefs";
 
-export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security";
+export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security" | "notifications";
 
 const SETTINGS_TABS: Array<{ id: Tab; label: string; description: string }> = [
   { id: "account", label: "Account", description: "Login and basics" },
   { id: "profile", label: "Profile", description: "How people see you" },
   { id: "social", label: "Social links", description: "Your places online" },
   { id: "security", label: "Privacy & security", description: "Keys and safety" },
+  { id: "notifications", label: "Notifications", description: "Mobile + PWA push" },
   { id: "appearance", label: "Appearance", description: "Colors and comfort" },
   { id: "plugins", label: "Plugins", description: "Extra powers" },
   { id: "emoji", label: "Custom emoji", description: "Server reactions" },
@@ -135,7 +137,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, init
 
           <nav className="kc-settings-nav" aria-label="Settings">
             <div className="kc-settings-nav__label">Personal</div>
-            {SETTINGS_TABS.slice(0, 4).map((item) => (
+            {SETTINGS_TABS.slice(0, 5).map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -152,7 +154,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, init
             ))}
 
             <div className="kc-settings-nav__label kc-settings-nav__label--spaced">Make it comfy</div>
-            {SETTINGS_TABS.slice(4).map((item) => (
+            {SETTINGS_TABS.slice(5).map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -188,6 +190,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, init
           {tab === "profile" && <ProfileTab token={token} onToast={onToast} />}
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
           {tab === "security" && <SecurityTab token={token} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} />}
+          {tab === "notifications" && <NotificationsTab token={token} onToast={onToast} />}
           {tab === "emoji" && <EmojiTab token={token} servers={servers} onToast={onToast} />}
         </div>
       </div>
@@ -1555,6 +1558,121 @@ function SocialTab({ token, onToast }: { token: string; onToast: (t: string, typ
       >
         Save Links
       </button>
+    </div>
+  );
+}
+
+// ── Notifications tab ────────────────────────────────────────────────────────
+
+function NotificationsTab({ token, onToast }: { token: string; onToast: (t: string, type?: "info" | "success" | "error") => void }) {
+  const [devices, setDevices] = useState<PushDevice[]>([]);
+  const [privacyNote, setPrivacyNote] = useState("Push notifications are content-free.");
+  const [serverPushEnabled, setServerPushEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [cfg, list] = await Promise.all([api.getPushConfig(), api.listPushDevices(token)]);
+      setPrivacyNote(cfg.privacy_note);
+      setServerPushEnabled(cfg.enabled);
+      setDevices(list);
+    } catch (err) {
+      console.warn("[ohiyo] couldn't load push settings", err);
+    }
+  }, [token]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  async function enableLocalNotifications() {
+    await ensureNotificationPermission();
+    onToast("Local notifications enabled for this device when Ohiyo is open.", "success");
+  }
+
+  async function enablePush() {
+    setBusy(true);
+    try {
+      await enableContentFreeWebPush(token);
+      await refresh();
+      onToast("Content-free push enabled for this PWA/browser.", "success");
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : "Couldn't enable push.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string) {
+    try {
+      await api.deletePushDevice(token, id);
+      setDevices((prev) => prev.filter((d) => d.id !== id));
+      onToast("Push device removed.", "success");
+    } catch {
+      onToast("Couldn't remove device.", "error");
+    }
+  }
+
+  return (
+    <div>
+      <h2 className="mb-1 text-xl font-bold">Notifications &amp; mobile</h2>
+      <p className="mb-6 max-w-3xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
+        Ohiyo push is designed for sleeping Instant Servers: the server wakes to accept ciphertext, then the always-on relay sends a generic nudge. Push payloads do not include message text, filenames, channel names, or E2E keys.
+      </p>
+
+      <div className="mb-6 grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
+          <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>📱 Mobile/PWA install</div>
+          <p className="mt-2 text-xs leading-5" style={{ color: "var(--text-muted)" }}>
+            On iPhone/Android, open Ohiyo in the browser menu and choose <b>Add to Home Screen</b>. The installed app gets standalone chrome, safe-area layout, and the Ohiyo service worker.
+          </p>
+        </div>
+        <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
+          <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>🔕 Privacy boundary</div>
+          <p className="mt-2 text-xs leading-5" style={{ color: "var(--text-muted)" }}>{privacyNote}</p>
+        </div>
+      </div>
+
+      <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Device notifications</div>
+            <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+              Local notifications work while Ohiyo is open. Server-backed PWA push needs a VAPID key on the relay.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={enableLocalNotifications} className="rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }}>
+              Enable local notifications
+            </button>
+            <button type="button" onClick={enablePush} disabled={!canUseWebPush() || !serverPushEnabled || busy} className="rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--accent)", color: "white", opacity: canUseWebPush() && serverPushEnabled && !busy ? 1 : 0.55 }}>
+              {busy ? "Enabling…" : "Enable content-free PWA push"}
+            </button>
+          </div>
+        </div>
+        {!serverPushEnabled && (
+          <p className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
+            Server-backed PWA push is not configured on this home yet. Set <code>OHIYO_WEB_PUSH_PUBLIC_KEY</code> and the dispatcher credentials to enable it; APNs/FCM native setup is documented for mobile builds.
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
+        <div className="mb-3 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Registered push devices</div>
+        {devices.length === 0 ? (
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>No server-backed push devices registered yet.</p>
+        ) : (
+          <div className="grid gap-2">
+            {devices.map((d) => (
+              <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2" style={{ background: "var(--bg-input)" }}>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{d.device_name || d.platform}</div>
+                  <div className="truncate text-[11px]" style={{ color: "var(--text-muted)", maxWidth: 420 }}>{d.platform} · {d.endpoint}</div>
+                </div>
+                <button type="button" onClick={() => void remove(d.id)} className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: "var(--bg-hover)", color: "var(--danger)" }}>Remove</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -130,6 +130,16 @@ impl TestServer {
             .expect("request sent")
     }
 
+    pub async fn put_json_auth(&self, path: &str, token: &str, body: Value) -> reqwest::Response {
+        self.client
+            .put(self.url(path))
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await
+            .expect("request sent")
+    }
+
     /// POST with a bearer token and no body (for handlers that take no body extractor).
     pub async fn post_empty_auth(&self, path: &str, token: &str) -> reqwest::Response {
         self.client
@@ -159,10 +169,33 @@ impl TestServer {
             .expect("request sent")
     }
 
+    pub async fn get(&self, path: &str) -> reqwest::Response {
+        self.client
+            .get(self.url(path))
+            .send()
+            .await
+            .expect("request sent")
+    }
+
     pub async fn get_auth(&self, path: &str, token: &str) -> reqwest::Response {
         self.client
             .get(self.url(path))
             .bearer_auth(token)
+            .send()
+            .await
+            .expect("request sent")
+    }
+
+    pub async fn post_json_bearer(
+        &self,
+        path: &str,
+        bearer: &str,
+        body: Value,
+    ) -> reqwest::Response {
+        self.client
+            .post(self.url(path))
+            .bearer_auth(bearer)
+            .json(&body)
             .send()
             .await
             .expect("request sent")

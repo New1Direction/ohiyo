@@ -394,6 +394,33 @@ export type BillingCheckout = {
   note: string;
 };
 
+export type PushConfig = {
+  enabled: boolean;
+  vapid_public_key: string | null;
+  privacy_note: string;
+};
+
+export type PushDevice = {
+  id: string;
+  user_id: string;
+  platform: "web" | "apns" | "fcm" | string;
+  endpoint: string;
+  p256dh: string | null;
+  auth: string | null;
+  device_name: string | null;
+  enabled: number;
+  created_at: number;
+  updated_at: number;
+};
+
+export type RegisterPushDeviceBody = {
+  platform: "web" | "apns" | "fcm";
+  endpoint: string;
+  p256dh?: string | null;
+  auth?: string | null;
+  device_name?: string | null;
+};
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -444,6 +471,14 @@ export const api = {
     request<AuthResponse>("/devices/link/complete", { method: "POST", body: JSON.stringify({ code }) }),
 
   me: (token: string) => request<PublicUser>("/users/@me", {}, token),
+
+  // Content-free push relay registration. Payloads carry no message text/channel names.
+  getPushConfig: () => request<PushConfig>("/push/config"),
+  listPushDevices: (token: string) => request<PushDevice[]>("/push/devices", {}, token),
+  registerPushDevice: (token: string, body: RegisterPushDeviceBody) =>
+    request<PushDevice>("/push/devices", { method: "PUT", body: JSON.stringify(body) }, token),
+  deletePushDevice: (token: string, id: string) =>
+    request<void>(`/push/devices/${id}`, { method: "DELETE" }, token),
 
   // Instant Servers (control plane) — provision/list/status of your own server instances.
   // The client can now switch to a provisioned instance at runtime; these bindings
