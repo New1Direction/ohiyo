@@ -30,6 +30,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 - **Push/mobile foundation:** added PWA manifest/service worker, Settings → Notifications,
   content-free push-device registration and relay queue APIs, offline-recipient enqueue on
   message send, notification privacy copy, and an APNs/FCM runbook for native mobile.
+- **Reliability foundation:** added a public status page/API, hosted-community cost model,
+  backup-restore drill script, status/alert check script, gateway/message load-smoke script,
+  and reliability runbooks for backups, observability, alerting, and load testing.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the

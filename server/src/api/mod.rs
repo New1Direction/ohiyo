@@ -18,6 +18,7 @@ pub mod polls;
 pub mod profile;
 pub mod push;
 pub mod reactions;
+pub mod reliability;
 pub mod roles;
 pub mod saved;
 pub mod search;
@@ -102,6 +103,9 @@ pub fn router() -> Router<AppState> {
         )
         .route("/push/devices/{id}", delete(push::delete_device))
         .route("/push/relay/content-free", post(push::relay_content_free))
+        // Public reliability/status endpoints. Content-free; no secrets or user content.
+        .route("/reliability/status", get(reliability::status_summary))
+        .route("/reliability/cost-model", get(reliability::cost_model))
         // Instant Servers (control plane) — provision a dedicated Ohiyo instance
         .route(
             "/instances",

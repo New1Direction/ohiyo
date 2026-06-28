@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Status — Ohiyo</title>
+<meta name="description" content="Ohiyo public status: app, API, gateway, voice, Instant Servers, and push relay health." />
+<meta name="theme-color" content="#10100f" />
+<link rel="icon" href="kikka.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<style>
+.status-grid{display:grid;gap:14px;margin:28px 0}.status-card{border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.045);border-radius:24px;padding:18px}.status-row{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.pill{border-radius:999px;padding:5px 10px;font:800 11px/1 var(--mono);text-transform:uppercase}.ok{background:rgba(66,211,146,.16);color:#70efb5}.bad{background:rgba(255,96,96,.16);color:#ff9b9b}.muted{color:var(--muted)}.status-code{white-space:pre-wrap;overflow:auto;border-radius:18px;padding:14px;background:rgba(0,0,0,.24);font:12px/1.6 var(--mono);color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="bg"></div><div class="grain"></div>
+<nav id="nav"><div class="wrap">
+  <a class="brand" href="/" style="text-decoration:none;color:inherit"><img src="kikka.svg" alt="" /> o<span class="hi">Hi</span>Yo</a>
+  <div class="nav-links">
+    <a class="l" href="/#features">Features</a>
+    <a class="l" href="/privacy.html">Privacy</a>
+    <a class="l" href="/status.html">Status</a>
+    <a class="btn ghost sm" href="https://app.ohiyo.gg" rel="noopener">Open app →</a>
+  </div>
+</div></nav>
+
+<main class="legal wrap">
+  <p class="eyebrow">Reliability</p>
+  <h1>Ohiyo Status</h1>
+  <p class="legal-updated" id="updated">Loading…</p>
+  <p>This page reads the public reliability endpoint. It exposes component health and counts only — no message content, secrets, user lists, or E2E keys.</p>
+
+  <div id="overall" class="status-card">Checking Ohiyo…</div>
+  <div id="components" class="status-grid"></div>
+
+  <h2>Public probes</h2>
+  <ul>
+    <li><a href="https://ohiyo.fly.dev/healthz">Backend healthz</a></li>
+    <li><a href="https://ohiyo.fly.dev/api/v1/reliability/status">Status JSON</a></li>
+    <li><a href="https://ohiyo.fly.dev/api/v1/reliability/cost-model">Hosted community cost model</a></li>
+  </ul>
+
+  <h2>Latest raw status</h2>
+  <pre id="raw" class="status-code">Loading…</pre>
+</main>
+
+<footer><div class="wrap">
+  <div class="brand"><img src="kikka.svg" alt="" style="width:24px" /> o<span class="hi" style="color:var(--coral)">Hi</span>Yo</div>
+  <div class="f-links">
+    <a href="/">Home</a>
+    <a href="privacy.html">Privacy</a>
+    <a href="threat-model.html">Threat model</a>
+    <a href="status.html">Status</a>
+    <a href="terms.html">Terms</a>
+    <a href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">GitHub</a>
+  </div>
+  <div>oh, hi · ohiyo.gg · free &amp; open · built in Rust + React + Tauri</div>
+</div></footer>
+<script>
+const endpoint = 'https://ohiyo.fly.dev/api/v1/reliability/status';
+const fmt = (ts) => new Date(ts * 1000).toLocaleString();
+async function loadStatus(){
+  const overall = document.getElementById('overall');
+  const components = document.getElementById('components');
+  const raw = document.getElementById('raw');
+  try {
+    const res = await fetch(endpoint, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    document.getElementById('updated').textContent = 'Updated ' + fmt(data.generated_at) + ' · uptime ' + data.uptime_seconds + 's';
+    overall.innerHTML = `<div class="status-row"><div><b>${data.ok ? 'All monitored systems operational' : 'Degraded service'}</b><div class="muted">Backend, gateway, voice, Instant Servers, and push relay summary.</div></div><span class="pill ${data.ok ? 'ok' : 'bad'}">${data.ok ? 'ok' : 'degraded'}</span></div>`;
+    components.innerHTML = data.components.map(c => `<div class="status-card"><div class="status-row"><div><b>${c.name.replaceAll('_',' ')}</b><div class="muted">${c.detail}</div></div><span class="pill ${c.status === 'ok' ? 'ok' : 'bad'}">${c.status}</span></div></div>`).join('');
+    raw.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    overall.innerHTML = `<div class="status-row"><b>Status check failed</b><span class="pill bad">down</span></div>`;
+    components.innerHTML = '';
+    raw.textContent = String(err);
+    document.getElementById('updated').textContent = 'Could not load status';
+  }
+}
+loadStatus();
+setInterval(loadStatus, 60000);
+</script>
+<script src="app.js"></script>
+</body>
+</html>

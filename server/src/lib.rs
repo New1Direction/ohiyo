@@ -57,6 +57,8 @@ pub struct AppState {
     pub watch: gateway::WatchSessions,
     /// Cloud orchestrator for Instant Servers — fake in tests/dev, Fly Machines in prod.
     pub provisioner: std::sync::Arc<dyn provision::MachineProvisioner>,
+    /// Unix timestamp when this process state was built; used for public status uptime.
+    pub started_at: i64,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
@@ -84,6 +86,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         privacy: gateway::new_privacy_users(),
         watch: gateway::new_watch_sessions(),
         provisioner,
+        started_at: types::now_unix(),
     }
 }
 
