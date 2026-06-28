@@ -166,6 +166,10 @@ pub fn router() -> Router<AppState> {
             "/imports/discord/template",
             post(discord_import::run_discord_template_import),
         )
+        .route(
+            "/imports/discord/servers/{server_id}/review",
+            get(discord_import::get_discord_import_review),
+        )
         // Servers
         .route("/servers", get(servers::list_servers))
         .route("/servers", post(servers::create_server))

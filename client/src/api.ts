@@ -348,6 +348,41 @@ export type DiscrawlImportResponse = {
   report: ImportReport;
 };
 
+export type DiscordPermissionOverwriteReview = {
+  channel_discord_id: string;
+  channel_name: string;
+  target_discord_id: string;
+  target_type: "role" | "member" | "unknown" | string;
+  target_name: string | null;
+  allow: string;
+  deny: string;
+  allow_flags: string[];
+  deny_flags: string[];
+  manual_review: boolean;
+  review_reason: string;
+};
+
+export type DiscordImportAssetReview = {
+  asset_type: string;
+  discord_id: string;
+  name: string | null;
+  ohiyo_id: string | null;
+  source_url: string | null;
+  status: string;
+  note: string | null;
+};
+
+export type DiscordImportReview = {
+  server_id: string;
+  import_id: string;
+  guild_id: string;
+  status: string;
+  manual_review_count: number;
+  overwrites: DiscordPermissionOverwriteReview[];
+  assets: DiscordImportAssetReview[];
+  checklist: string[];
+};
+
 export type ManagedDiscordImportJob = {
   id: string;
   state: "queued" | "running" | "succeeded" | "failed";
@@ -565,6 +600,8 @@ export const api = {
       { method: "POST", body: JSON.stringify({ template }) },
       token
     ),
+  getDiscordImportReview: (token: string, serverId: string) =>
+    request<DiscordImportReview>(`/imports/discord/servers/${serverId}/review`, {}, token),
 
   // Dead-man's switch (account-level inactivity wipe).
   getDeadman: (token: string) =>

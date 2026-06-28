@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -118,6 +119,44 @@ pub struct DiscrawlArchiveUploadResponse {
     pub db_path: String,
     pub filename: String,
     pub size_bytes: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DiscordImportReview {
+    pub server_id: String,
+    pub import_id: String,
+    pub guild_id: String,
+    pub status: String,
+    pub manual_review_count: usize,
+    pub overwrites: Vec<DiscordPermissionOverwriteReview>,
+    pub assets: Vec<DiscordImportAssetReview>,
+    pub checklist: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DiscordPermissionOverwriteReview {
+    pub channel_discord_id: String,
+    pub channel_name: String,
+    pub target_discord_id: String,
+    pub target_type: String,
+    pub target_name: Option<String>,
+    pub allow: String,
+    pub deny: String,
+    pub allow_flags: Vec<String>,
+    pub deny_flags: Vec<String>,
+    pub manual_review: bool,
+    pub review_reason: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DiscordImportAssetReview {
+    pub asset_type: String,
+    pub discord_id: String,
+    pub name: Option<String>,
+    pub ohiyo_id: Option<String>,
+    pub source_url: Option<String>,
+    pub status: String,
+    pub note: Option<String>,
 }
 
 pub async fn discrawl_import_capability(
@@ -419,6 +458,226 @@ pub async fn run_discord_template_import(
     .await;
     Ok(Json(DiscrawlImportResponse { server, report }))
 }
+
+pub async fn get_discord_import_review(
+    auth: AuthUser,
+    AxumPath(server_id): AxumPath<String>,
+    State(state): State<AppState>,
+) -> Result<Json<DiscordImportReview>, (StatusCode, String)> {
+    let owner_id: Option<String> = sqlx::query_scalar("SELECT owner_id FROM servers WHERE id = ?")
+        .bind(&server_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    let Some(owner_id) = owner_id else {
+        return Err((StatusCode::NOT_FOUND, "server not found".into()));
+    };
+    let can_review = owner_id == auth.0
+        || crate::api::roles::has_perm(
+            &state,
+            &server_id,
+            &auth.0,
+            crate::api::roles::perm::MANAGE_ROLES,
+        )
+        .await
+        || crate::api::roles::has_perm(
+            &state,
+            &server_id,
+            &auth.0,
+            crate::api::roles::perm::MANAGE_CHANNELS,
+        )
+        .await
+        || crate::api::roles::has_perm(
+            &state,
+            &server_id,
+            &auth.0,
+            crate::api::roles::perm::MANAGE_SERVER,
+        )
+        .await;
+    if !can_review {
+        return Err((StatusCode::FORBIDDEN, "you can't review this import".into()));
+    }
+
+    let import_row = sqlx::query(
+        "SELECT id, guild_id, status FROM discord_imports
+         WHERE server_id = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&server_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "import review not found".to_owned()))?;
+    let import_id: String = import_row.get("id");
+    let guild_id: String = import_row.get("guild_id");
+    let status: String = import_row.get("status");
+
+    let overwrite_rows = sqlx::query(
+        "SELECT channel_discord_id, channel_name, target_discord_id, target_type,
+                target_name, allow, deny
+         FROM discord_import_permission_overwrites
+         WHERE import_id = ?
+         ORDER BY channel_name, target_type, COALESCE(target_name, target_discord_id)",
+    )
+    .bind(&import_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+    let overwrites: Vec<DiscordPermissionOverwriteReview> = overwrite_rows
+        .into_iter()
+        .map(|row| {
+            let allow: String = row.get("allow");
+            let deny: String = row.get("deny");
+            let allow_flags = decode_discord_permission_bits(&allow);
+            let deny_flags = decode_discord_permission_bits(&deny);
+            let manual_review = !allow_flags.is_empty() || !deny_flags.is_empty();
+            DiscordPermissionOverwriteReview {
+                channel_discord_id: row.get("channel_discord_id"),
+                channel_name: row.get("channel_name"),
+                target_discord_id: row.get("target_discord_id"),
+                target_type: row.get("target_type"),
+                target_name: row.try_get("target_name").ok(),
+                allow,
+                deny,
+                review_reason: if manual_review {
+                    "Discord channel overwrite preserved; confirm equivalent Ohiyo visibility before inviting".to_owned()
+                } else {
+                    "No allow/deny bits set".to_owned()
+                },
+                manual_review,
+                allow_flags,
+                deny_flags,
+            }
+        })
+        .collect();
+
+    let asset_rows = sqlx::query(
+        "SELECT asset_type, discord_id, name, ohiyo_id, source_url, status, note
+         FROM discord_import_asset_map
+         WHERE import_id = ?
+         ORDER BY asset_type, name, discord_id",
+    )
+    .bind(&import_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+    let assets = asset_rows
+        .into_iter()
+        .map(|row| DiscordImportAssetReview {
+            asset_type: row.get("asset_type"),
+            discord_id: row.get("discord_id"),
+            name: row.try_get("name").ok(),
+            ohiyo_id: row.try_get("ohiyo_id").ok(),
+            source_url: row.try_get("source_url").ok(),
+            status: row.get("status"),
+            note: row.try_get("note").ok(),
+        })
+        .collect::<Vec<_>>();
+
+    let manual_review_count = overwrites.iter().filter(|row| row.manual_review).count();
+    Ok(Json(DiscordImportReview {
+        server_id,
+        import_id,
+        guild_id,
+        status,
+        manual_review_count,
+        checklist: permission_review_checklist(manual_review_count, assets.len()),
+        overwrites,
+        assets,
+    }))
+}
+
+fn permission_review_checklist(manual_review_count: usize, asset_count: usize) -> Vec<String> {
+    let mut checklist = vec![
+        "Open Roles and confirm admin/mod roles are assigned only to trusted people.".to_owned(),
+        "Open private or staff channels and verify who can see them before inviting members."
+            .to_owned(),
+        "Send a test invite only after channel visibility matches the source community.".to_owned(),
+    ];
+    if manual_review_count == 0 {
+        checklist.insert(
+            0,
+            "No Discord channel overwrite bits were found; role review should be quick.".to_owned(),
+        );
+    } else {
+        checklist.insert(
+            0,
+            format!("Review {manual_review_count} channel overwrite row(s) below."),
+        );
+    }
+    if asset_count > 0 {
+        checklist.push(format!(
+            "Confirm {asset_count} imported role/icon/emoji asset row(s) look familiar."
+        ));
+    }
+    checklist
+}
+
+fn decode_discord_permission_bits(raw: &str) -> Vec<String> {
+    let Ok(bits) = raw.parse::<u128>() else {
+        return vec![format!("Unparseable bits: {raw}")];
+    };
+    DISCORD_PERMISSION_FLAGS
+        .iter()
+        .filter_map(|(bit, label)| {
+            if bits & (1u128 << bit) != 0 {
+                Some((*label).to_owned())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+const DISCORD_PERMISSION_FLAGS: &[(u32, &str)] = &[
+    (0, "Create Invite"),
+    (1, "Kick Members"),
+    (2, "Ban Members"),
+    (3, "Administrator"),
+    (4, "Manage Channels"),
+    (5, "Manage Server"),
+    (6, "Add Reactions"),
+    (7, "View Audit Log"),
+    (8, "Priority Speaker"),
+    (9, "Stream"),
+    (10, "View Channel"),
+    (11, "Send Messages"),
+    (12, "Send TTS Messages"),
+    (13, "Manage Messages"),
+    (14, "Embed Links"),
+    (15, "Attach Files"),
+    (16, "Read Message History"),
+    (17, "Mention Everyone"),
+    (18, "Use External Emojis"),
+    (19, "View Server Insights"),
+    (20, "Connect"),
+    (21, "Speak"),
+    (22, "Mute Members"),
+    (23, "Deafen Members"),
+    (24, "Move Members"),
+    (25, "Use Voice Activity"),
+    (26, "Change Nickname"),
+    (27, "Manage Nicknames"),
+    (28, "Manage Roles"),
+    (29, "Manage Webhooks"),
+    (30, "Manage Expressions"),
+    (31, "Use Application Commands"),
+    (32, "Request to Speak"),
+    (33, "Manage Events"),
+    (34, "Manage Threads"),
+    (35, "Create Public Threads"),
+    (36, "Create Private Threads"),
+    (37, "Use External Stickers"),
+    (38, "Send Messages in Threads"),
+    (39, "Use Embedded Activities"),
+    (40, "Moderate Members"),
+    (42, "Use Soundboard"),
+    (43, "Create Expressions"),
+    (44, "Create Events"),
+    (45, "Use External Sounds"),
+    (46, "Send Voice Messages"),
+    (49, "Send Polls"),
+    (50, "Use External Apps"),
+];
 
 pub async fn preview_discrawl_import(
     _auth: AuthUser,
@@ -984,6 +1243,20 @@ mod tests {
         // Cleanup.
         tokio::fs::remove_file(&valid).await.ok();
         tokio::fs::remove_file(&secret).await.ok();
+    }
+
+    #[test]
+    fn decode_permission_bits_returns_exact_labels() {
+        let bits = ((1u128 << 10) | (1u128 << 11) | (1u128 << 28)).to_string();
+        assert_eq!(
+            decode_discord_permission_bits(&bits),
+            vec!["View Channel", "Send Messages", "Manage Roles"]
+        );
+        assert!(decode_discord_permission_bits("0").is_empty());
+        assert_eq!(
+            decode_discord_permission_bits("not-a-number"),
+            vec!["Unparseable bits: not-a-number"]
+        );
     }
 
     #[test]

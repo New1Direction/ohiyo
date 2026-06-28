@@ -3,6 +3,8 @@ import {
   api,
   type DiscordConnectInfo,
   type DiscordGuildInfo,
+  type DiscordImportReview,
+  type DiscordPermissionOverwriteReview,
   type DiscrawlImportCapability,
   type DiscrawlImportRequest,
   type DiscrawlImportResponse,
@@ -522,7 +524,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
 
         {busy === "import" && <ImportProgress stage={importStage} job={managedJob} />}
 
-        {result && <ResultCard result={result} />}
+        {result && <ResultCard result={result} token={token} />}
 
         {error && <div className="text-sm" style={{ color: "var(--danger, #ef4444)" }}>{error}</div>}
 
@@ -713,7 +715,24 @@ function ImportProgress({ stage, job }: { stage: number; job: ManagedDiscordImpo
   );
 }
 
-function ResultCard({ result }: { result: DiscrawlImportResponse }) {
+function ResultCard({ result, token }: { result: DiscrawlImportResponse; token: string }) {
+  const [review, setReview] = useState<DiscordImportReview | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setReview(null);
+    setReviewError(null);
+    api.getDiscordImportReview(token, result.server.id)
+      .then((next) => {
+        if (alive) setReview(next);
+      })
+      .catch((err) => {
+        if (alive) setReviewError(err instanceof Error ? err.message : String(err));
+      });
+    return () => { alive = false; };
+  }, [token, result.server.id]);
+
   return (
     <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: "var(--accent)", background: "color-mix(in oklch, var(--accent) 10%, var(--bg-elevated))", color: "var(--text-primary)" }}>
       <div className="text-sm font-bold">3. Import complete — review before inviting</div>
@@ -728,7 +747,7 @@ function ResultCard({ result }: { result: DiscrawlImportResponse }) {
         <Stat label="Role reviews" value={result.report.roles_needing_review.length} />
         <Stat label="Overwrites" value={result.report.permission_overwrites ?? 0} />
       </div>
-      <PermissionReviewCard report={result.report} />
+      <PermissionReviewCard report={result.report} review={review} reviewError={reviewError} />
       <ReportNotes report={result.report} />
       <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
         You are already in the imported space. Close this, check roles/channels, then invite people.
@@ -737,27 +756,118 @@ function ResultCard({ result }: { result: DiscrawlImportResponse }) {
   );
 }
 
-function PermissionReviewCard({ report }: { report: ImportReport }) {
+function PermissionReviewCard({ report, review, reviewError }: { report: ImportReport; review: DiscordImportReview | null; reviewError: string | null }) {
   const roles = report.roles_needing_review ?? [];
-  const overwrites = report.permission_overwrites ?? 0;
-  const clean = roles.length === 0 && overwrites === 0;
+  const overwrites = review?.overwrites ?? [];
+  const overwriteCount = review?.manual_review_count ?? report.permission_overwrites ?? 0;
+  const clean = roles.length === 0 && overwriteCount === 0;
+  const firstRows = overwrites.slice(0, 8);
   return (
     <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: clean ? "color-mix(in oklch, var(--green, #22c55e) 34%, var(--bg-input))" : "color-mix(in oklch, var(--gold, #f59e0b) 44%, var(--bg-input))", background: "color-mix(in oklch, var(--bg-base) 70%, transparent)" }}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="font-bold" style={{ color: "var(--text-primary)" }}>{clean ? "Permissions look simple" : "Permission review needed"}</div>
+          <div className="font-bold" style={{ color: "var(--text-primary)" }}>1-2-3 permission audit</div>
           <p className="mt-1 text-xs leading-5" style={{ color: "var(--text-muted)" }}>
-            Ohiyo mapped server-level role permissions where it has equivalents. Discord channel overwrites are preserved for review; do not invite the whole community until sensitive channels look right.
+            You are the controller here: Ohiyo shows exact Discord allow/deny bits, explains what needs manual review, and keeps the invite step gated by human confirmation.
           </p>
         </div>
         <span className="rounded-full px-2 py-1 text-[11px] font-bold uppercase tracking-wide" style={{ background: clean ? "color-mix(in oklch, var(--green, #22c55e) 18%, transparent)" : "color-mix(in oklch, var(--gold, #f59e0b) 18%, transparent)", color: clean ? "var(--green, #22c55e)" : "var(--gold, #f59e0b)" }}>
-          {clean ? "low risk" : "check first"}
+          {clean ? "low risk" : "manual review"}
         </span>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
         <ReviewStep title="1. Roles" copy={roles.length ? `${roles.slice(0, 3).join(", ")}${roles.length > 3 ? "…" : ""}` : "No flagged role permissions."} />
-        <ReviewStep title="2. Private channels" copy={overwrites ? `${overwrites.toLocaleString()} Discord overwrite snapshots preserved.` : "No channel overwrite snapshots."} />
-        <ReviewStep title="3. Invite" copy="Invite members only after checking role visibility." />
+        <ReviewStep title="2. Channels" copy={overwriteCount ? `${overwriteCount.toLocaleString()} exact allow/deny row(s).` : "No channel overwrite bits found."} />
+        <ReviewStep title="3. Invite" copy="Invite only after visibility matches Discord." />
+      </div>
+
+      {reviewError && (
+        <div className="mt-3 rounded-xl p-3 text-xs" style={{ background: "color-mix(in oklch, var(--danger, #ef4444) 10%, transparent)", color: "var(--danger, #ef4444)" }}>
+          Permission matrix could not load: {reviewError}
+        </div>
+      )}
+      {!review && !reviewError && overwriteCount > 0 && (
+        <div className="mt-3 rounded-xl p-3 text-xs" style={{ background: "color-mix(in oklch, var(--text-primary) 4%, transparent)", color: "var(--text-muted)" }}>
+          Loading exact allow/deny matrix…
+        </div>
+      )}
+
+      {review && (
+        <div className="mt-4 space-y-3">
+          <div className="rounded-xl p-3 text-xs" style={{ background: "color-mix(in oklch, var(--text-primary) 4%, transparent)", color: "var(--text-muted)" }}>
+            <div className="font-bold" style={{ color: "var(--text-primary)" }}>Safe invite checklist</div>
+            <ol className="mt-2 list-decimal space-y-1 pl-4">
+              {review.checklist.map((item) => <li key={item}>{item}</li>)}
+            </ol>
+          </div>
+          {firstRows.length > 0 ? (
+            <div className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--bg-input)" }}>
+              <div className="grid grid-cols-[1fr_1fr] gap-0 border-b px-3 py-2 text-[11px] font-bold uppercase tracking-wide sm:grid-cols-[1.1fr_.9fr_1fr_1fr]" style={{ borderColor: "var(--bg-input)", color: "var(--text-muted)", background: "color-mix(in oklch, var(--text-primary) 4%, transparent)" }}>
+                <span>Channel</span><span>Target</span><span className="hidden sm:block">Allow</span><span className="hidden sm:block">Deny</span>
+              </div>
+              {firstRows.map((row) => <OverwriteRow key={`${row.channel_discord_id}:${row.target_type}:${row.target_discord_id}`} row={row} />)}
+              {overwrites.length > firstRows.length && (
+                <div className="px-3 py-2 text-xs" style={{ color: "var(--text-muted)", background: "color-mix(in oklch, var(--text-primary) 3%, transparent)" }}>
+                  Showing first {firstRows.length}; {overwrites.length - firstRows.length} more preserved in the audit API.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-xl p-3 text-xs" style={{ background: "color-mix(in oklch, var(--green, #22c55e) 10%, transparent)", color: "var(--text-muted)" }}>
+              No channel-level overwrite matrix was found. Still review imported roles before inviting.
+            </div>
+          )}
+          {review.assets.length > 0 && (
+            <details className="rounded-xl p-3 text-xs" style={{ background: "color-mix(in oklch, var(--text-primary) 4%, transparent)", color: "var(--text-muted)" }}>
+              <summary className="cursor-pointer font-bold" style={{ color: "var(--text-primary)" }}>Imported assets and role identifiers ({review.assets.length})</summary>
+              <div className="mt-2 grid gap-1">
+                {review.assets.slice(0, 12).map((asset) => (
+                  <div key={`${asset.asset_type}:${asset.discord_id}`} className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold" style={{ color: "var(--text-primary)" }}>{asset.asset_type}</span>
+                    <span>{asset.name ?? asset.discord_id}</span>
+                    <span>→ {asset.status}</span>
+                    {asset.note && <span title={asset.note}>({asset.note.slice(0, 42)})</span>}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OverwriteRow({ row }: { row: DiscordPermissionOverwriteReview }) {
+  return (
+    <div className="grid grid-cols-[1fr_1fr] gap-0 border-b px-3 py-3 text-xs sm:grid-cols-[1.1fr_.9fr_1fr_1fr]" style={{ borderColor: "var(--bg-input)", color: "var(--text-muted)" }}>
+      <div>
+        <div className="font-bold" style={{ color: "var(--text-primary)" }}>#{row.channel_name}</div>
+        <div className="mt-0.5 font-mono text-[10px]">{row.channel_discord_id}</div>
+      </div>
+      <div>
+        <div className="font-bold" style={{ color: "var(--text-primary)" }}>{row.target_name ?? row.target_discord_id}</div>
+        <div className="mt-0.5 uppercase">{row.target_type}</div>
+      </div>
+      <BitCell label="Allow" raw={row.allow} flags={row.allow_flags} positive />
+      <BitCell label="Deny" raw={row.deny} flags={row.deny_flags} />
+      <div className="col-span-2 mt-2 rounded-lg px-2 py-1 sm:col-span-4" style={{ background: row.manual_review ? "color-mix(in oklch, var(--gold, #f59e0b) 10%, transparent)" : "color-mix(in oklch, var(--green, #22c55e) 8%, transparent)", color: "var(--text-muted)" }}>
+        {row.manual_review ? "Manual review: " : "OK: "}{row.review_reason}
+      </div>
+    </div>
+  );
+}
+
+function BitCell({ label, raw, flags, positive = false }: { label: string; raw: string; flags: string[]; positive?: boolean }) {
+  return (
+    <div className="col-span-2 mt-2 sm:col-span-1 sm:mt-0">
+      <div className="text-[10px] font-bold uppercase tracking-wide sm:hidden" style={{ color: "var(--text-muted)" }}>{label}</div>
+      <div className="font-mono text-[11px]" style={{ color: flags.length ? (positive ? "var(--green, #22c55e)" : "var(--danger, #ef4444)") : "var(--text-muted)" }}>{raw}</div>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {flags.length ? flags.slice(0, 5).map((flag) => (
+          <span key={flag} className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: positive ? "color-mix(in oklch, var(--green, #22c55e) 14%, transparent)" : "color-mix(in oklch, var(--danger, #ef4444) 12%, transparent)", color: positive ? "var(--green, #22c55e)" : "var(--danger, #ef4444)" }}>{flag}</span>
+        )) : <span>—</span>}
+        {flags.length > 5 && <span className="text-[10px]">+{flags.length - 5}</span>}
       </div>
     </div>
   );

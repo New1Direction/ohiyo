@@ -39,6 +39,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 - **In-app Discord template move-in:** the Discord import wizard now accepts a template
   link directly and shows a permission-review gate with mapped roles, overwrite counts,
   imported emoji/assets, and a clear “review before inviting” warning.
+- **Permission matrix audit:** imported Discord overwrite rows now have an owner/mod-only
+  review API and in-app 1-2-3 audit view with exact allow/deny bitfields, decoded flags,
+  manual-review reasons, asset provenance, and a safe invite checklist.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the
