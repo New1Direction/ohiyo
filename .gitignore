@@ -45,3 +45,6 @@ import-uploads/
 # ── Logs / coverage ───────────────────────────────────────────────────────────
 *.log
 coverage/
+
+# ── Local video/render workspaces ─────────────────────────────────────────────
+brag-output-*/
