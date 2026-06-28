@@ -792,6 +792,26 @@ function VoiceChannelRow({
 }) {
   const displayName = /^general(?:\s+voice)?$/i.test(name.trim()) ? "Voice" : name;
   const hasParticipants = participantCount > 0;
+  const participantNames = participants.map((p) => p.user.display_name || p.user.username);
+  const previewNames = participantNames.slice(0, 3).join(", ");
+  const overflowCount = Math.max(0, participantNames.length - 3);
+  const liveLabel = participantCount === 1 && participantNames[0]
+    ? `${participantNames[0]} is live`
+    : participantCount > 1
+      ? `${participantCount} people live`
+      : "";
+  const joinLabel = active
+    ? "In call"
+    : participantCount === 1 && participantNames[0]
+      ? `Join ${participantNames[0]}`
+      : participantCount > 1
+        ? "Join them"
+        : "Join";
+  const title = active
+    ? `You're in ${displayName}`
+    : hasParticipants
+      ? `${previewNames}${overflowCount ? ` +${overflowCount} more` : ""} in ${displayName}. Click to join.`
+      : `Join ${displayName}`;
 
   return (
     <div className="kc-voice-channel" data-testid="voice-channel-row">
@@ -806,11 +826,14 @@ function VoiceChannelRow({
           fontWeight: active || hasParticipants ? 650 : 400,
           boxShadow: active ? "inset 3px 0 0 var(--green)" : undefined,
         }}
-        title={active ? "You're in this call" : "Join voice"}
-        aria-label={hasParticipants ? `${displayName}, ${participantCount} ${participantCount === 1 ? "person" : "people"} in call, join voice` : `${displayName}, empty voice channel, join voice`}
+        title={title}
+        aria-label={hasParticipants ? `${displayName}, ${liveLabel}, ${joinLabel}` : `${displayName}, empty voice channel, join voice`}
       >
         <SpeakerIcon />
-        <span className="truncate flex-1 text-left">{displayName}</span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block truncate">{displayName}</span>
+          {hasParticipants && !active && <span className="kc-voice-live-copy block truncate">{liveLabel}</span>}
+        </span>
         {hasParticipants && (
           <span
             className="kc-voice-count flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold"
@@ -824,7 +847,7 @@ function VoiceChannelRow({
             {participantCount}
           </span>
         )}
-        {!active && <span className="kc-voice-join text-xs font-semibold" style={{ color: "var(--accent)" }}>Join</span>}
+        {!active && <span className="kc-voice-join text-xs font-semibold" style={{ color: "var(--accent)" }}>{joinLabel}</span>}
       </button>
       {participants.length > 0 && (
         <div className="kc-voice-participants mx-3 mb-1 mt-0.5" aria-label={`People in ${displayName}`}>

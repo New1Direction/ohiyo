@@ -1280,6 +1280,13 @@ button:disabled,
 .kc-voice-row [aria-hidden="true"] {
   opacity: 0.78;
 }
+.kc-voice-live-copy {
+  margin-top: 0.05rem;
+  color: var(--green);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.05;
+}
 .kc-voice-join {
   padding: 0.25rem 0.55rem;
   border-radius: 999px;
