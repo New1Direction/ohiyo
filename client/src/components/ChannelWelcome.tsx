@@ -63,12 +63,15 @@ export function ChannelWelcome({ channelName, isDM, userId, onSaveRecovery }: Pr
     }
   }, [showManifesto, userId]);
 
-  const title = isDM ? "Say hi 👋" : channelName ? `Welcome to #${channelName}!` : "This channel's all quiet";
+  const title = isDM ? "Start the private thread 👋" : channelName ? `Welcome to #${channelName}!` : "This channel's all quiet";
   const sub = isDM
-    ? "The very beginning of your conversation — end-to-end encrypted, so only the two of you can ever read it."
+    ? "Send the first encrypted message, drop a private file, or just say hi. The server only relays sealed envelopes."
     : channelName
-      ? `This is the start of the #${channelName} channel — say something to kick it off.`
-      : "Say something — it's a great place to start.";
+      ? `This is the start of #${channelName}. Say hi, share a file, or hop into voice when text is too slow.`
+      : "Say something, share a file, or start a call — it’s a great place to begin.";
+  const suggestions = isDM
+    ? ["Say hi", "Drop an encrypted file", "Verify safety number later"]
+    : ["Say hi", "Share a file", "Start voice from the sidebar"];
 
   async function copyShare() {
     try {
@@ -100,6 +103,9 @@ export function ChannelWelcome({ channelName, isDM, userId, onSaveRecovery }: Pr
       </div>
       <div className="text-sm" style={{ maxWidth: "46ch" }}>
         {sub}
+      </div>
+      <div className="kc-empty-suggestions" aria-label="Suggested first actions">
+        {suggestions.map((item) => <span key={item}>{item}</span>)}
       </div>
 
       {(showManifesto || (onSaveRecovery && showRecovery)) && (

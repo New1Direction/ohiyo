@@ -496,18 +496,32 @@ export function ChannelSidebar({
             </div>
 
             {dms.length === 0 ? (
-              <div className="px-4 py-6 text-center" style={{ color: "var(--text-muted)" }}>
-                <p className="text-xs">No conversations yet.</p>
-                {onFindPeople && (
-                  <button
-                    type="button"
-                    onClick={onFindPeople}
-                    className="kc-interactive mt-2 text-sm font-semibold"
-                    style={{ color: "var(--accent)" }}
-                  >
-                    Find people →
-                  </button>
-                )}
+              <div className="kc-empty-dm-card mx-3 my-4 text-center" style={{ color: "var(--text-muted)" }}>
+                <div className="kc-empty-dm-card__icon" aria-hidden>⛓</div>
+                <p className="text-sm font-bold" style={{ color: "var(--text-secondary)" }}>No conversations yet.</p>
+                <p className="mt-1 text-xs">Find someone by username or create a one-time private DM link.</p>
+                <div className="mt-3 flex flex-col gap-2">
+                  {onFindPeople && (
+                    <button
+                      type="button"
+                      onClick={onFindPeople}
+                      className="kc-interactive rounded-full px-3 py-2 text-sm font-semibold"
+                      style={{ background: "var(--accent)", color: "var(--bg-base)", border: "none" }}
+                    >
+                      Find people
+                    </button>
+                  )}
+                  {onCreatePrivateDmLink && (
+                    <button
+                      type="button"
+                      onClick={onCreatePrivateDmLink}
+                      className="kc-interactive rounded-full px-3 py-2 text-sm font-semibold"
+                      style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "1px solid color-mix(in oklch, var(--text-primary) 7%, transparent)" }}
+                    >
+                      Create private link
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <>
