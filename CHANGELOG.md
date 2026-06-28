@@ -14,11 +14,20 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ### Added
 - **Voice pre-join roster:** voice channels now show who is already in the call before
   you join, including a live count and compact participant preview.
+- **Call entry preview:** joining a non-empty voice room now opens a “Ready to join?”
+  panel with occupants, Join, Join muted, and Cancel.
+- **Privacy polish:** the sidebar now shows a Privacy Mode badge when metadata privacy
+  is enabled; encrypted attachment previews/messages show trust labels; empty channels,
+  empty DMs, onboarding link entry, and the command palette now guide users toward the
+  next private action.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the
   channel so the sidebar updates live; WebRTC signaling and voice encryption keys remain
   restricted to actual call participants.
+- The public download page now includes a Mac beta FAQ explaining the current
+  non-notarized Gatekeeper warning and recommending the browser app for the smoothest
+  first run today.
 
 ### Fixed
 - Production call smoke tests now skip the dev-only low-level peer-connection inspector
