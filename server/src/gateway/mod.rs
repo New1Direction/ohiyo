@@ -254,31 +254,6 @@ pub async fn broadcast_to_channel(state: &AppState, channel_id: &str, event: &Ga
     }
 }
 
-/// Broadcast to everyone currently in a voice channel, optionally skipping one user.
-fn broadcast_to_voice(
-    sessions: &SessionMap,
-    voice: &VoiceRooms,
-    channel_id: &str,
-    event: &GatewayEvent,
-    except: Option<&str>,
-) {
-    let rooms = voice.read().unwrap_or_else(|e| e.into_inner());
-    let Some(room) = rooms.get(channel_id) else {
-        return;
-    };
-    let map = sessions.read().unwrap_or_else(|e| e.into_inner());
-    for uid in room.keys() {
-        if Some(uid.as_str()) == except {
-            continue;
-        }
-        if let Some(conns) = map.get(uid) {
-            for tx in conns.values() {
-                let _ = tx.send(event.clone());
-            }
-        }
-    }
-}
-
 // ── WebSocket handler ─────────────────────────────────────────────────────────
 
 /// WebSocket upgrade handler — token is passed as `?token=...` because the
@@ -396,7 +371,7 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     send_task.abort();
 
     // Leave any voice channels we were in, notifying peers.
-    cleanup_voice(&state, &user_id, me.as_ref());
+    cleanup_voice(&state, &user_id, me.as_ref()).await;
 
     // Unregister THIS connection. Only when the user's last connection drops do we
     // clear activity + announce offline (otherwise closing one device flaps presence).
@@ -498,10 +473,12 @@ async fn handle_client_event(
                 },
             );
 
-            // Tell everyone else that we joined.
-            broadcast_to_voice(
-                &state.sessions,
-                &state.voice,
+            // Tell everyone who can see the channel that we're in voice, including
+            // people who have not joined yet so the sidebar can show the live roster.
+            // WebRTC signaling and voice E2EE keys remain restricted to people who
+            // are actually in `state.voice`.
+            broadcast_to_channel(
+                state,
                 &channel_id,
                 &GatewayEvent::VoiceState {
                     channel_id: channel_id.clone(),
@@ -513,12 +490,12 @@ async fn handle_client_event(
                     screen: false,
                     listen_only,
                 },
-                Some(user_id),
-            );
+            )
+            .await;
         }
 
         ClientEvent::LeaveVoice { channel_id } => {
-            leave_voice(state, user_id, me, &channel_id);
+            leave_voice(state, user_id, me, &channel_id).await;
         }
 
         ClientEvent::VoiceMeta {
@@ -547,9 +524,8 @@ async fn handle_client_event(
                     }
                 }
             }
-            broadcast_to_voice(
-                &state.sessions,
-                &state.voice,
+            broadcast_to_channel(
+                state,
                 &channel_id,
                 &GatewayEvent::VoiceState {
                     channel_id: channel_id.clone(),
@@ -561,8 +537,8 @@ async fn handle_client_event(
                     screen,
                     listen_only,
                 },
-                None,
-            );
+            )
+            .await;
         }
 
         ClientEvent::Signal {
@@ -829,8 +805,8 @@ async fn handle_ack(state: &AppState, user_id: &str, channel_id: &str, message_i
     }
 }
 
-/// Remove a user from one voice channel and notify the remaining peers.
-fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, channel_id: &str) {
+/// Remove a user from one voice channel and notify everyone who can see that channel.
+async fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, channel_id: &str) {
     let removed = {
         let mut rooms = state.voice.write().unwrap_or_else(|e| e.into_inner());
         if let Some(room) = rooms.get_mut(channel_id) {
@@ -847,9 +823,8 @@ fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, channel
         return;
     }
     if let Some(me) = me {
-        broadcast_to_voice(
-            &state.sessions,
-            &state.voice,
+        broadcast_to_channel(
+            state,
             channel_id,
             &GatewayEvent::VoiceState {
                 channel_id: channel_id.to_string(),
@@ -861,14 +836,13 @@ fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, channel
                 screen: false,
                 listen_only: false,
             },
-            // Don't echo the leave back to the departing user themselves.
-            Some(user_id),
-        );
+        )
+        .await;
     }
 }
 
 /// Remove a user from every voice channel on disconnect.
-fn cleanup_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>) {
+async fn cleanup_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>) {
     let channels: Vec<String> = {
         let rooms = state.voice.read().unwrap_or_else(|e| e.into_inner());
         rooms
@@ -878,7 +852,7 @@ fn cleanup_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>) {
             .collect()
     };
     for cid in channels {
-        leave_voice(state, user_id, me, &cid);
+        leave_voice(state, user_id, me, &cid).await;
     }
 }
 

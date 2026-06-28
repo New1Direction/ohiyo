@@ -1,5 +1,5 @@
 import "./index.css";
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, useSyncExternalStore, type FormEvent } from "react";
 import { api, getApiBase, setServerOrigin } from "./api";
 import { Gateway } from "./gateway";
 import { AuthScreen } from "./components/AuthScreen";
@@ -83,6 +83,15 @@ import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } fr
 import type { PluginAPI } from "./plugins/api";
 import type { GatewayEvent, ConnectionStatus, Activity, WatchSession } from "./gateway";
 
+type VoiceSidebarParticipant = {
+  user_id: string;
+  user: PublicUser;
+  muted: boolean;
+  video: boolean;
+  screen: boolean;
+  listenOnly: boolean;
+  isSelf?: boolean;
+};
 
 // Boot the theme + personal accent from localStorage immediately (warm first paint).
 applyActiveAppearance();
@@ -337,6 +346,7 @@ function MainApp({
   const [activities, setActivities] = useState<Map<string, Activity>>(new Map());
   const [watchSession, setWatchSession] = useState<WatchSession | null>(null);
   const [voiceMembers, setVoiceMembers] = useState<Map<string, string>>(new Map()); // userId → voice channelId
+  const [voiceParticipantsByChannel, setVoiceParticipantsByChannel] = useState<Map<string, Map<string, VoiceSidebarParticipant>>>(new Map());
   const [chatActivityNotices, setChatActivityNotices] = useState<Array<ChatActivityNotice & { channelId: string }>>([]);
   const [e2eChannels, setE2eChannels] = useState<Set<string>>(() => {
     try {
@@ -1032,6 +1042,22 @@ function MainApp({
 
       case "VoiceRoster":
         webrtcRef.current?.onRoster(event.d.channel_id, event.d.peers);
+        setVoiceParticipantsByChannel((prev) => {
+          const next = new Map(prev);
+          const existing = new Map(next.get(event.d.channel_id) ?? []);
+          for (const peer of event.d.peers) {
+            existing.set(peer.user_id, {
+              user_id: peer.user_id,
+              user: peer.user,
+              muted: peer.muted,
+              video: peer.video,
+              screen: peer.screen,
+              listenOnly: Boolean(peer.listenOnly),
+            });
+          }
+          next.set(event.d.channel_id, existing);
+          return next;
+        });
         break;
 
       case "VoiceSignal":
@@ -1051,6 +1077,29 @@ function MainApp({
           const next = new Map(prev);
           if (joined) next.set(user_id, channel_id);
           else if (next.get(user_id) === channel_id) next.delete(user_id);
+          return next;
+        });
+        setVoiceParticipantsByChannel((prev) => {
+          const next = new Map<string, Map<string, VoiceSidebarParticipant>>();
+          for (const [cid, members] of prev) {
+            const copy = new Map(members);
+            // A user can only be in one Ohiyo voice room at a time. Remove stale
+            // previews from any prior room before adding the fresh state below.
+            if (joined || cid === channel_id) copy.delete(user_id);
+            if (copy.size) next.set(cid, copy);
+          }
+          if (joined) {
+            const members = new Map(next.get(channel_id) ?? []);
+            members.set(user_id, {
+              user_id,
+              user: event.d.user,
+              muted: event.d.muted,
+              video: event.d.video,
+              screen: event.d.screen,
+              listenOnly: Boolean(event.d.listenOnly),
+            });
+            next.set(channel_id, members);
+          }
           return next;
         });
         break;
@@ -1765,6 +1814,48 @@ function MainApp({
     );
   }
 
+  const sidebarVoiceParticipants = useMemo(() => {
+    const next = new Map<string, VoiceSidebarParticipant[]>();
+    for (const [channelId, members] of voiceParticipantsByChannel) {
+      next.set(channelId, [...members.values()]);
+    }
+    if (webrtc.channelId) {
+      const active = new Map<string, VoiceSidebarParticipant>(
+        (next.get(webrtc.channelId) ?? []).map((p) => [p.user_id, p])
+      );
+      for (const peer of webrtc.participants) {
+        active.set(peer.user_id, {
+          user_id: peer.user_id,
+          user: peer.user,
+          muted: peer.muted,
+          video: peer.video,
+          screen: peer.screen,
+          listenOnly: Boolean(peer.listenOnly),
+        });
+      }
+      if (currentUser) {
+        active.set(currentUser.id, {
+          user_id: currentUser.id,
+          user: currentUser,
+          muted: webrtc.self.muted,
+          video: webrtc.self.video,
+          screen: webrtc.self.screen,
+          listenOnly: Boolean(webrtc.self.listenOnly),
+          isSelf: true,
+        });
+      }
+      next.set(webrtc.channelId, [...active.values()]);
+    }
+    for (const [channelId, members] of next) {
+      members.sort((a, b) => {
+        if (a.isSelf !== b.isSelf) return a.isSelf ? -1 : 1;
+        return (a.user.display_name || a.user.username).localeCompare(b.user.display_name || b.user.username);
+      });
+      next.set(channelId, members);
+    }
+    return next;
+  }, [currentUser, voiceParticipantsByChannel, webrtc.channelId, webrtc.participants, webrtc.self]);
+
   // ⚠️ All hooks must be declared ABOVE this line — the early returns below are
   // conditional, so any hook placed after them would violate the Rules of Hooks.
 
@@ -1822,6 +1913,7 @@ function MainApp({
     if (s.channels.some((c) => unread[c.id])) unreadServerIds.add(s.id);
   }
 
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       {/* Server + channel rails — a slide-in drawer on phones, fixed panes on desktop */}
@@ -1859,6 +1951,7 @@ function MainApp({
             idleUsers={idleUsers}
             activeVoiceChannelId={webrtc.channelId}
             voiceParticipantCount={webrtc.participants.length + (webrtc.channelId ? 1 : 0)}
+            voiceParticipantsByChannel={sidebarVoiceParticipants}
             unread={unread}
             mentionChannels={mentions}
             myStatus={myStatus}

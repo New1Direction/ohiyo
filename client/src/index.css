@@ -1290,6 +1290,58 @@ button:disabled,
   background: color-mix(in oklch, var(--accent) 16%, transparent);
   border-color: color-mix(in oklch, var(--accent) 28%, transparent);
 }
+.kc-voice-channel:has(.kc-voice-participants) .kc-voice-row {
+  margin-bottom: 0;
+}
+.kc-voice-participants {
+  display: grid;
+  gap: 0.15rem;
+  padding-left: 1.75rem;
+}
+.kc-voice-participant {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 1.45rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.2;
+}
+.kc-voice-participant:hover {
+  background: color-mix(in oklch, var(--text-primary) 4%, transparent);
+  color: var(--text-secondary);
+}
+.kc-voice-participant-avatar {
+  display: grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--text-secondary), var(--text-muted));
+  background-size: cover;
+  background-position: center;
+  color: var(--bg-sidebar);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+.kc-voice-participant-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kc-voice-participant-status {
+  color: var(--green);
+  font-size: 0.68rem;
+}
+.kc-voice-participant--more {
+  color: var(--text-muted);
+  font-weight: 650;
+}
 .kc-sidebar-hint {
   border-radius: var(--radius-lg);
   border: 1px solid color-mix(in oklch, var(--text-primary) 6%, transparent);

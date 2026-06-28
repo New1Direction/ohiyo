@@ -87,7 +87,8 @@ try {
   await joinVoice(pageA);
   await pageA.waitForSelector("text=Solo voice", { timeout: 10000 });
   await pageA.waitForSelector("text=You’re live in General", { timeout: 10000 });
-  log("A solo voice call renders cozy state ✓");
+  await pageB.locator('[data-testid="voice-channel-participant"]').filter({ hasText: "Ada" }).waitFor({ state: "visible", timeout: 12000 });
+  log("B sees Ada in voice before joining ✓");
 
   await joinVoice(pageB);
   await pageA.waitForSelector("text=2 people · Voice room", { timeout: 12000 });

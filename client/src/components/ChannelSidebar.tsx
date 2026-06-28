@@ -3,6 +3,16 @@ import { Icon } from "./Icon";
 import type { Channel, ServerWithChannels, PublicUser } from "../api";
 import type { ConnectionStatus, Activity } from "../gateway";
 
+type VoiceSidebarParticipant = {
+  user_id: string;
+  user: PublicUser;
+  muted: boolean;
+  video: boolean;
+  screen: boolean;
+  listenOnly: boolean;
+  isSelf?: boolean;
+};
+
 type Props = {
   server: ServerWithChannels | null;
   dms: Channel[];
@@ -14,6 +24,7 @@ type Props = {
   idleUsers?: Set<string>;
   activeVoiceChannelId: string | null;
   voiceParticipantCount: number;
+  voiceParticipantsByChannel?: Map<string, VoiceSidebarParticipant[]>;
   unread?: Record<string, number>;
   mentionChannels?: Set<string>;
   myStatus?: string | null;
@@ -80,6 +91,7 @@ export function ChannelSidebar({
   idleUsers,
   activeVoiceChannelId,
   voiceParticipantCount,
+  voiceParticipantsByChannel,
   unread,
   mentionChannels,
   myStatus,
@@ -425,15 +437,20 @@ export function ChannelSidebar({
                 >
                   Voice Channels
                 </div>
-                {voiceChannels.map((ch) => (
-                  <VoiceChannelRow
-                    key={ch.id}
-                    name={ch.name}
-                    active={activeVoiceChannelId === ch.id}
-                    participantCount={activeVoiceChannelId === ch.id ? voiceParticipantCount : 0}
-                    onJoin={() => onJoinVoice(ch)}
-                  />
-                ))}
+                {voiceChannels.map((ch) => {
+                  const active = activeVoiceChannelId === ch.id;
+                  const participants = voiceParticipantsByChannel?.get(ch.id) ?? [];
+                  return (
+                    <VoiceChannelRow
+                      key={ch.id}
+                      name={ch.name}
+                      active={active}
+                      participants={participants}
+                      participantCount={active ? Math.max(voiceParticipantCount, participants.length) : participants.length}
+                      onJoin={() => onJoinVoice(ch)}
+                    />
+                  );
+                })}
               </div>
             )}
 
@@ -765,42 +782,78 @@ function ChannelRow({
 }
 
 function VoiceChannelRow({
-  name, active, participantCount, onJoin,
+  name, active, participantCount, participants, onJoin,
 }: {
   name: string;
   active: boolean;
   participantCount: number;
+  participants: VoiceSidebarParticipant[];
   onJoin: () => void;
 }) {
   const displayName = /^general(?:\s+voice)?$/i.test(name.trim()) ? "Voice" : name;
+  const hasParticipants = participantCount > 0;
 
   return (
-    <button
-      type="button"
-      onClick={onJoin}
-      className="kc-voice-row kc-interactive mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-2 px-2.5 py-1.5 text-sm"
-      style={{
-        borderRadius: "var(--radius-md)", border: "none",
-        background: active ? "color-mix(in oklch, var(--green) 12%, transparent)" : "transparent",
-        color: active ? "var(--text-primary)" : "var(--text-muted)",
-        fontWeight: active ? 650 : 400,
-        boxShadow: active ? "inset 3px 0 0 var(--green)" : undefined,
-      }}
-      title={active ? "You're in this call" : "Join voice"}
-    >
-      <SpeakerIcon />
-      <span className="truncate flex-1 text-left">{displayName}</span>
-      {active ? (
-        <span
-          className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold"
-          style={{ background: "linear-gradient(135deg, var(--text-primary), var(--text-muted))", color: "var(--bg-base)", boxShadow: "0 0 0 1px color-mix(in oklch, var(--green) 32%, transparent)" }}
-        >
-          <span className="kc-pulse" style={{ width: 6, height: 6, background: "#fff" }} />
-          {participantCount}
-        </span>
-      ) : (
-        <span className="kc-voice-join text-xs font-semibold" style={{ color: "var(--accent)" }}>Join</span>
+    <div className="kc-voice-channel" data-testid="voice-channel-row">
+      <button
+        type="button"
+        onClick={onJoin}
+        className="kc-voice-row kc-interactive mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-2 px-2.5 py-1.5 text-sm"
+        style={{
+          borderRadius: "var(--radius-md)", border: "none",
+          background: active ? "color-mix(in oklch, var(--green) 12%, transparent)" : "transparent",
+          color: active ? "var(--text-primary)" : hasParticipants ? "var(--text-secondary)" : "var(--text-muted)",
+          fontWeight: active || hasParticipants ? 650 : 400,
+          boxShadow: active ? "inset 3px 0 0 var(--green)" : undefined,
+        }}
+        title={active ? "You're in this call" : "Join voice"}
+        aria-label={hasParticipants ? `${displayName}, ${participantCount} ${participantCount === 1 ? "person" : "people"} in call, join voice` : `${displayName}, empty voice channel, join voice`}
+      >
+        <SpeakerIcon />
+        <span className="truncate flex-1 text-left">{displayName}</span>
+        {hasParticipants && (
+          <span
+            className="kc-voice-count flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold"
+            style={{
+              background: active ? "linear-gradient(135deg, var(--text-primary), var(--text-muted))" : "color-mix(in oklch, var(--green) 16%, transparent)",
+              color: active ? "var(--bg-base)" : "var(--green)",
+              boxShadow: "0 0 0 1px color-mix(in oklch, var(--green) 28%, transparent)",
+            }}
+          >
+            <span className="kc-pulse" style={{ width: 6, height: 6, background: active ? "#fff" : "var(--green)" }} />
+            {participantCount}
+          </span>
+        )}
+        {!active && <span className="kc-voice-join text-xs font-semibold" style={{ color: "var(--accent)" }}>Join</span>}
+      </button>
+      {participants.length > 0 && (
+        <div className="kc-voice-participants mx-3 mb-1 mt-0.5" aria-label={`People in ${displayName}`}>
+          {participants.slice(0, 6).map((p) => {
+            const label = p.user.display_name || p.user.username;
+            const status = p.screen ? "sharing screen" : p.video ? "camera on" : p.listenOnly ? "listening" : p.muted ? "muted" : "in call";
+            return (
+              <div key={p.user_id} data-testid="voice-channel-participant" className="kc-voice-participant">
+                <div
+                  className="kc-voice-participant-avatar"
+                  style={{
+                    backgroundImage: p.user.avatar_url ? `url(${p.user.avatar_url})` : undefined,
+                  }}
+                  aria-hidden="true"
+                >
+                  {!p.user.avatar_url && label[0]?.toUpperCase()}
+                </div>
+                <span className="kc-voice-participant-name">{label}{p.isSelf ? " (you)" : ""}</span>
+                <span className="kc-voice-participant-status" title={status} aria-label={status}>
+                  {p.screen ? "▣" : p.video ? "◉" : p.listenOnly ? "♪" : p.muted ? "⌁" : "●"}
+                </span>
+              </div>
+            );
+          })}
+          {participants.length > 6 && (
+            <div className="kc-voice-participant kc-voice-participant--more">+{participants.length - 6} more</div>
+          )}
+        </div>
       )}
-    </button>
+    </div>
   );
 }
