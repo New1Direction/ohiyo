@@ -3,6 +3,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<title>Ohiyo social preview</title>
+<link rel="icon" href="kikka.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,500&family=Inter:wght@500;600&display=swap" rel="stylesheet" />
@@ -31,6 +33,7 @@
     flex: none; width: 300px; height: auto;
     filter: brightness(0) invert(.93) drop-shadow(0 22px 60px rgba(255, 122, 77, .55));
   }
+  main { display: contents; }
   .right { display: flex; flex-direction: column; position: relative; z-index: 1; }
   .word {
     font-family: "Baloo 2", system-ui, sans-serif; font-weight: 800;
@@ -57,13 +60,15 @@
 </head>
 <body>
   <div class="grain"></div>
-  <img class="mascot" src="kikka.svg" alt="" />
-  <div class="right">
-    <div class="word">o<span class="hi">Hi</span>Yo</div>
-    <div class="tag"><span class="em">Signal-level</span> privacy.<br />Discord-level everything.</div>
-    <div class="sub">Free, open, end-to-end encrypted — and launch your own server in one tap.</div>
-  </div>
-  <div class="lock">🔒 <b>0</b>&nbsp;plaintext on the server</div>
-  <div class="url">ohiyo.gg&nbsp;&nbsp;🐭</div>
+  <main>
+    <img class="mascot" src="kikka.svg" alt="" />
+    <div class="right">
+      <h1 class="word">o<span class="hi">Hi</span>Yo</h1>
+      <div class="tag"><span class="em">Discord-like</span> ease.<br />Private-by-design.</div>
+      <div class="sub">E2E content, self-host/export ownership, and honest voice visibility.</div>
+    </div>
+    <div class="lock">🔒 <b>E2E</b>&nbsp;content by design</div>
+    <div class="url">ohiyo.gg&nbsp;&nbsp;🐭</div>
+  </main>
 </body>
 </html>

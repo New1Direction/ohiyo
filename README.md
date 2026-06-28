@@ -1,11 +1,11 @@
 # Ohiyo
 
-A free, self-hostable Discord alternative — servers, channels, DMs, and real-time
-voice / video / screen-share, with **end-to-end encryption**, a sandboxed plugin
-system, and a brand of its own. Rust on the backend, React 19 + Tauri on the desktop.
-No subscriptions, no paywalled features, no telemetry. And **launch your own encrypted
-server in one tap** — Realms-style hosting where the box only ever holds ciphertext,
-with export and self-host always one click away.
+A private-by-design chat app with Discord-like ease — servers, channels, DMs, and
+real-time voice / video / screen-share, with **end-to-end encrypted content**, a
+sandboxed plugin system, and a brand of its own. Rust on the backend, React 19 + Tauri
+on the desktop. No subscriptions, no paywalled features, no telemetry. And **launch
+your own encrypted server in one tap** — Realms-style hosting where the box only ever
+holds ciphertext, with export ownership and self-host always one click away.
 
 <p align="center">
   <img src="./brand/preview-cream.png" alt="Ohiyo on the Daybreak light theme — cream and coral, with channels, chat, and member list" width="48%" />
@@ -29,7 +29,9 @@ with export and self-host always one click away.
   [Signal Protocol](https://signal.org/docs/). Keys live on your devices; the server
   only ever relays **ciphertext** and never sees your messages. Multi-device, with
   disappearing messages, safety-number verification, padded encrypted plaintext,
-  encrypted private attachments, and Privacy Mode for quieter metadata. *(See e2e
+  encrypted private attachments, and Privacy Mode for quieter metadata. Ohiyo is not
+  anonymous or SimpleX-level metadata privacy; it keeps Discord-like convenience while
+  reducing avoidable leaks. *(See e2e
   suites `19-e2e-dm`, `20-disappearing`, `21-multidevice`, `22-group-e2e`,
   `26-privacy-mode`, `27-private-dm-links`.)*
 - **Instant Servers** — launch your own end-to-end-encrypted community server in **one
@@ -41,8 +43,9 @@ with export and self-host always one click away.
   attachments, **read receipts / delivered state** on DMs.
 - **Voice & video** — WebRTC voice, video, and screen-share, with Discord-like live
   voice rows, a pre-join roster, and a “Ready to join?” preview with Join muted, so you
-  can see who is already in a room before hopping in. Peer-to-peer with STUN on LAN;
-  optional coturn (`infra/coturn/`) for symmetric-NAT users, or an optional LiveKit SFU
+  can see who is already in a room before hopping in. Voice participation is honest:
+  joining reveals you to the room/channel audience even when media is encrypted.
+  Peer-to-peer with STUN on LAN; optional coturn (`infra/coturn/`) for symmetric-NAT users, or an optional LiveKit SFU
   (`infra/livekit/`) for larger rooms.
 - **Plugins** — arbitrary third-party plugins run in a **genuinely isolated Web
   Worker sandbox**: no network, no DOM, no token access, even via the prototype
