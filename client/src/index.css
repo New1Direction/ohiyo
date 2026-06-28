@@ -1445,6 +1445,20 @@ button:disabled,
   color: var(--text-muted);
   font-weight: 650;
 }
+.kc-attachment-trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.22rem;
+  padding: 0.16rem 0.45rem;
+  border: 1px solid color-mix(in oklch, var(--green) 24%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--green) 10%, transparent);
+  color: var(--green);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
 .kc-privacy-mode-badge {
   display: inline-flex;
   align-items: center;

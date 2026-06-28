@@ -2549,6 +2549,7 @@ function PendingAttachmentPreview({ file, onRemove }: { file: UploadedFile; onRe
         <span className="min-w-0 flex-1 truncate">{file.filename}</span>
         <span style={{ color: "var(--text-muted)" }}>{formatBytes(file.size_bytes)}</span>
       </div>
+      {file.encrypted && <AttachmentTrustBadge text="Will encrypt before upload" />}
       <button
         type="button"
         aria-label={`Remove ${file.filename}`}
@@ -2560,6 +2561,10 @@ function PendingAttachmentPreview({ file, onRemove }: { file: UploadedFile; onRe
       </button>
     </div>
   );
+}
+
+function AttachmentTrustBadge({ text = "Encrypted before upload" }: { text?: string }) {
+  return <div className="kc-attachment-trust"><span aria-hidden="true">🔒</span>{text}</div>;
 }
 
 function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
@@ -2692,7 +2697,8 @@ function EncryptedAttachmentItem({ att }: { att: EncryptedAttachmentMeta }) {
         <div className="kc-img-frame" style={d ? { width: d.w, height: d.h } : { maxWidth: 400 }}>
           <img className="kc-img" src={url} alt={att.filename} loading="lazy" width={d?.w} height={d?.h} style={d ? undefined : { maxWidth: 400, maxHeight: 300 }} />
         </div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>🔒 {att.filename} · {formatBytes(att.size_bytes)}</div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{att.filename} · {formatBytes(att.size_bytes)}</div>
+        <AttachmentTrustBadge />
       </a>
     );
   }
@@ -2700,7 +2706,8 @@ function EncryptedAttachmentItem({ att }: { att: EncryptedAttachmentMeta }) {
     return (
       <div>
         <video src={url} controls playsInline preload="none" style={{ width: "min(360px, 100%)", maxHeight: 240, borderRadius: 10, display: "block", background: "var(--bg-input)", objectFit: "contain" }} />
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>🔒 {att.filename} · {formatBytes(att.size_bytes)}</div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{att.filename} · {formatBytes(att.size_bytes)}</div>
+        <AttachmentTrustBadge />
       </div>
     );
   }
@@ -2708,15 +2715,19 @@ function EncryptedAttachmentItem({ att }: { att: EncryptedAttachmentMeta }) {
     return (
       <div>
         <audio src={url} controls preload="none" style={{ maxWidth: 300 }} />
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>🔒 {att.filename} · {formatBytes(att.size_bytes)}</div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{att.filename} · {formatBytes(att.size_bytes)}</div>
+        <AttachmentTrustBadge />
       </div>
     );
   }
   return (
-    <a href={url} download={att.filename} className="link-preview" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, background: "var(--bg-input)", fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>
-      🔒 {fileIcon(att.content_type)} {att.filename}
-      <span style={{ color: "var(--text-muted)" }}>{formatBytes(att.size_bytes)}</span>
-    </a>
+    <div>
+      <a href={url} download={att.filename} className="link-preview" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, background: "var(--bg-input)", fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>
+        {fileIcon(att.content_type)} {att.filename}
+        <span style={{ color: "var(--text-muted)" }}>{formatBytes(att.size_bytes)}</span>
+      </a>
+      <AttachmentTrustBadge />
+    </div>
   );
 }
 
