@@ -36,6 +36,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 - **One-command Discord template migration:** added an owner-authenticated template import
   endpoint and CLI script that reconstructs category/channel hierarchy, roles, best-effort
   permissions, overwrite snapshots, server icons, and custom emoji assets.
+- **In-app Discord template move-in:** the Discord import wizard now accepts a template
+  link directly and shows a permission-review gate with mapped roles, overwrite counts,
+  imported emoji/assets, and a clear “review before inviting” warning.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the

@@ -335,6 +335,10 @@ export type ImportReport = {
   messages: number;
   reactions: number;
   attachments: number;
+  /** Custom emoji assets imported from a Discord template/archive when available. */
+  emojis?: number;
+  /** Granular Discord channel permission overwrites preserved for review/replay. */
+  permission_overwrites?: number;
   roles_needing_review: string[];
   parked: string[];
 };
@@ -553,6 +557,12 @@ export const api = {
     request<DiscrawlImportResponse>(
       "/imports/discord/run",
       { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+  runDiscordTemplateImport: (token: string, template: string) =>
+    request<DiscrawlImportResponse>(
+      "/imports/discord/template",
+      { method: "POST", body: JSON.stringify({ template }) },
       token
     ),
 

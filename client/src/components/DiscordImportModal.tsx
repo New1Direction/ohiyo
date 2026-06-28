@@ -31,6 +31,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   const [capability, setCapability] = useState<DiscrawlImportCapability | null>(null);
   const [connectInfo, setConnectInfo] = useState<DiscordConnectInfo | null>(null);
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
+  const [templateLink, setTemplateLink] = useState("");
   const [managedGuildId, setManagedGuildId] = useState("");
   const [availableGuilds, setAvailableGuilds] = useState<DiscordGuildInfo[]>([]);
   const [showArchiveFallback, setShowArchiveFallback] = useState(false);
@@ -156,6 +157,22 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
     }
   }
 
+  async function importTemplate() {
+    setBusy("import");
+    setError(null);
+    setImportStage(0);
+    try {
+      const imported = await api.runDiscordTemplateImport(token, templateLink.trim());
+      setImportStage(IMPORT_STAGES.length - 1);
+      setResult(imported);
+      onImported(imported.server);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (mountedRef.current) setBusy(null);
+    }
+  }
+
   async function importManagedDiscord() {
     setBusy("import");
     setError(null);
@@ -208,8 +225,9 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   const canPreview = importEnabled && busy === null && dbPath.trim().length > 0 && result === null;
   const canImport = canPreview && preview !== null;
   const canManagedImport = managedEnabled && busy === null && /^\d{5,}$/.test(managedGuildId.trim()) && result === null;
+  const canTemplateImport = busy === null && templateLink.trim().length >= 3 && result === null;
   const showArchiveControls = importEnabled && (!managedEnabled || showArchiveFallback || uploadedArchive !== null || preview !== null);
-  const step = result ? 3 : preview || managedGuildId ? 2 : 1;
+  const step = result ? 3 : preview || managedGuildId || templateLink.trim() ? 2 : 1;
 
   return (
     <ModalShell onClose={onClose} labelledBy="discord-import-title" maxWidthClass="max-w-2xl">
@@ -222,8 +240,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
             Move your Discord into Ohiyo
           </h2>
           <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-            Add the Ohiyo bot, pick your Discord server, and we’ll build a fresh Ohiyo space for you. No database files,
-            no secret settings, no scary setup.
+            Paste a Discord Server Template link for the one-click move, or use the bot/archive paths when you need message history. Ohiyo rebuilds the familiar shell first, then shows a permission review before you invite people.
           </p>
         </div>
 
@@ -237,6 +254,50 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
 
         {(capabilityError || (capability && !capability.enabled && !capability.managed_enabled)) && (
           <CapabilityNotice capability={capability} error={capabilityError} />
+        )}
+
+        {!result && (
+          <div className="overflow-hidden rounded-3xl border" style={{ borderColor: "color-mix(in oklch, var(--green, #22c55e) 34%, var(--bg-input))", background: "linear-gradient(145deg, color-mix(in oklch, var(--green, #22c55e) 10%, var(--bg-elevated)), var(--bg-elevated))" }}>
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-base font-bold" style={{ color: "var(--text-primary)" }}>Import from a Discord template link</div>
+                  <p className="mt-1 text-sm leading-6" style={{ color: "var(--text-muted)" }}>
+                    Fastest move-in: Ohiyo recreates categories, text/voice channels, roles, role colors, best-effort permissions, server icon, and custom emoji assets when Discord exposes them.
+                  </p>
+                </div>
+                <span className="rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide" style={{ background: "var(--green, #22c55e)", color: "#092015" }}>
+                  One link
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+                <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Discord Server Template URL or code
+                  <input
+                    value={templateLink}
+                    onChange={(e) => { setTemplateLink(e.target.value); resetRunState(); }}
+                    placeholder="https://discord.new/abc123 or abc123"
+                    className="kc-field px-3.5 py-3 text-sm outline-none"
+                    autoComplete="off"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="kc-interactive self-end px-4 py-3 text-sm font-bold"
+                  onClick={importTemplate}
+                  disabled={!canTemplateImport}
+                  style={{ borderRadius: "var(--radius-md)", background: canTemplateImport ? "var(--green, #22c55e)" : "var(--bg-input)", color: canTemplateImport ? "#092015" : "var(--text-muted)", border: "1px solid var(--bg-hover)", cursor: canTemplateImport ? "pointer" : "not-allowed" }}
+                >
+                  {busy === "import" && templateLink.trim() ? IMPORT_STAGES[importStage] : "Import template"}
+                </button>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                <TemplatePromise title="No rebuild" copy="The hierarchy comes over before members arrive." />
+                <TemplatePromise title="Role review" copy="Mapped bits and overwrites are called out clearly." />
+                <TemplatePromise title="Familiar feel" copy="Icon and emoji assets are pulled in when available." />
+              </div>
+            </div>
+          </div>
         )}
 
         {managedEnabled && !result && (
@@ -495,6 +556,15 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   );
 }
 
+function TemplatePromise({ title, copy }: { title: string; copy: string }) {
+  return (
+    <div className="rounded-2xl p-3 text-sm" style={{ background: "color-mix(in oklch, var(--bg-base) 58%, transparent)", color: "var(--text-muted)" }}>
+      <div className="font-bold" style={{ color: "var(--text-primary)" }}>{title}</div>
+      <div className="mt-1 text-xs leading-5">{copy}</div>
+    </div>
+  );
+}
+
 function DiscordCloneChecklist() {
   return (
     <div className="mt-4 rounded-2xl border p-4 text-sm" style={{ borderColor: "var(--bg-input)", background: "color-mix(in oklch, var(--bg-base) 58%, transparent)", color: "var(--text-muted)" }}>
@@ -536,7 +606,7 @@ function DiscordCloneChecklist() {
 function Stepper({ step }: { step: number }) {
   return (
     <div className="grid gap-2 sm:grid-cols-3">
-      {["Add bot", "Pick server", "Open space"].map((label, idx) => {
+      {["Choose source", "Review mapping", "Invite safely"].map((label, idx) => {
         const n = idx + 1;
         const active = step === n;
         const complete = step > n;
@@ -567,12 +637,12 @@ function Stepper({ step }: { step: number }) {
 function CapabilityNotice({ capability, error }: { capability: DiscrawlImportCapability | null; error: string | null }) {
   return (
     <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: "color-mix(in oklch, var(--gold, #f59e0b) 45%, var(--bg-input))", background: "color-mix(in oklch, var(--gold, #f59e0b) 10%, var(--bg-elevated))", color: "var(--text-primary)" }}>
-      <div className="font-bold">Discord move-in is not ready here yet</div>
+      <div className="font-bold">Bot/archive import is not ready here yet</div>
       <p className="mt-1" style={{ color: "var(--text-muted)" }}>
-        {error ?? capability?.message ?? "This Ohiyo home still needs its Discord bot connected by the person hosting it."}
+        {error ?? capability?.message ?? "This Ohiyo home still needs its Discord bot or local archive importer connected by the person hosting it."}
       </p>
       <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
-        If you are just using Ohiyo, you do not need to do anything technical. Ask the home owner to finish the Discord import setup, then come back and try again.
+        You can still use a Discord Server Template link above for a fast structure-only move. Use bot/archive import later when you need message history.
       </p>
     </div>
   );
@@ -646,20 +716,58 @@ function ImportProgress({ stage, job }: { stage: number; job: ManagedDiscordImpo
 function ResultCard({ result }: { result: DiscrawlImportResponse }) {
   return (
     <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: "var(--accent)", background: "color-mix(in oklch, var(--accent) 10%, var(--bg-elevated))", color: "var(--text-primary)" }}>
-      <div className="text-sm font-bold">3. Import complete</div>
+      <div className="text-sm font-bold">3. Import complete — review before inviting</div>
       <div className="mt-1 text-xl font-bold">{result.server.name}</div>
-      <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3">
+      <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
         <Stat label="Channels" value={result.report.channels} />
         <Stat label="Messages" value={result.report.messages} />
         <Stat label="Ghost authors" value={result.report.authors} />
+        <Stat label="Emoji assets" value={result.report.emojis ?? 0} />
         <Stat label="Attachments" value={result.report.attachments} />
         <Stat label="Reactions" value={result.report.reactions} />
-        <Stat label="Roles to review" value={result.report.roles_needing_review.length} />
+        <Stat label="Role reviews" value={result.report.roles_needing_review.length} />
+        <Stat label="Overwrites" value={result.report.permission_overwrites ?? 0} />
       </div>
+      <PermissionReviewCard report={result.report} />
       <ReportNotes report={result.report} />
       <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
-        You are already in the imported space. Close this and start exploring.
+        You are already in the imported space. Close this, check roles/channels, then invite people.
       </p>
+    </div>
+  );
+}
+
+function PermissionReviewCard({ report }: { report: ImportReport }) {
+  const roles = report.roles_needing_review ?? [];
+  const overwrites = report.permission_overwrites ?? 0;
+  const clean = roles.length === 0 && overwrites === 0;
+  return (
+    <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: clean ? "color-mix(in oklch, var(--green, #22c55e) 34%, var(--bg-input))" : "color-mix(in oklch, var(--gold, #f59e0b) 44%, var(--bg-input))", background: "color-mix(in oklch, var(--bg-base) 70%, transparent)" }}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-bold" style={{ color: "var(--text-primary)" }}>{clean ? "Permissions look simple" : "Permission review needed"}</div>
+          <p className="mt-1 text-xs leading-5" style={{ color: "var(--text-muted)" }}>
+            Ohiyo mapped server-level role permissions where it has equivalents. Discord channel overwrites are preserved for review; do not invite the whole community until sensitive channels look right.
+          </p>
+        </div>
+        <span className="rounded-full px-2 py-1 text-[11px] font-bold uppercase tracking-wide" style={{ background: clean ? "color-mix(in oklch, var(--green, #22c55e) 18%, transparent)" : "color-mix(in oklch, var(--gold, #f59e0b) 18%, transparent)", color: clean ? "var(--green, #22c55e)" : "var(--gold, #f59e0b)" }}>
+          {clean ? "low risk" : "check first"}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <ReviewStep title="1. Roles" copy={roles.length ? `${roles.slice(0, 3).join(", ")}${roles.length > 3 ? "…" : ""}` : "No flagged role permissions."} />
+        <ReviewStep title="2. Private channels" copy={overwrites ? `${overwrites.toLocaleString()} Discord overwrite snapshots preserved.` : "No channel overwrite snapshots."} />
+        <ReviewStep title="3. Invite" copy="Invite members only after checking role visibility." />
+      </div>
+    </div>
+  );
+}
+
+function ReviewStep({ title, copy }: { title: string; copy: string }) {
+  return (
+    <div className="rounded-xl p-3" style={{ background: "color-mix(in oklch, var(--text-primary) 4%, transparent)" }}>
+      <div className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>{title}</div>
+      <div className="mt-1 text-xs leading-5" style={{ color: "var(--text-muted)" }}>{copy}</div>
     </div>
   );
 }
