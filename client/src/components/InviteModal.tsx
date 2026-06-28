@@ -8,20 +8,27 @@ type Props = {
   serverName: string;
   serverIconUrl?: string | null;
   onClose: () => void;
+  onInviteCreated?: () => void;
 };
 
 /** Generates a shareable invite link for a server and makes it one tap to copy. */
-export function InviteModal({ token, serverId, serverName, serverIconUrl, onClose }: Props) {
+export function InviteModal({ token, serverId, serverName, serverIconUrl, onClose, onInviteCreated }: Props) {
   const [info, setInfo] = useState<InviteInfo | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onInviteCreatedRef = useRef(onInviteCreated);
+  onInviteCreatedRef.current = onInviteCreated;
 
   useEffect(() => {
     let alive = true;
     api
       .createInvite(token, serverId)
-      .then((i) => alive && setInfo(i))
+      .then((i) => {
+        if (!alive) return;
+        setInfo(i);
+        onInviteCreatedRef.current?.();
+      })
       .catch((e) => alive && setError(e instanceof Error ? e.message : "Couldn't create an invite link."));
     return () => {
       alive = false;

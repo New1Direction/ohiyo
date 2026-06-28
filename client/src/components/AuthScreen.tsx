@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { OhiyoHome } from "../lib/homes";
 import { BirdMark } from "./BirdMark";
+import { markActivation } from "../lib/activation";
 
 type Props = {
   home: OhiyoHome;
@@ -98,6 +99,7 @@ export function AuthScreen({ home, onAuth }: Props) {
           ? await api.login(username.trim(), password)
           : await api.register(username.trim(), password, displayName.trim() || undefined);
       localStorage.setItem(LAST_USERNAME_KEY, username.trim());
+      if (mode === "register") markActivation(res.user.id, "account");
       onAuth(res.token);
     } catch (err) {
       setError(friendlyError(err instanceof Error ? err.message : "", mode));

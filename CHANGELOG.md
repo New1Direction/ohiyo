@@ -20,6 +20,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   is enabled; encrypted attachment previews/messages show trust labels; empty channels,
   empty DMs, onboarding link entry, and the command palette now guide users toward the
   next private action.
+- **Owner activation checklist:** new community owners now get a local-only launch
+  checklist for account → first space → first message → invite → voice call, with
+  clearer first-space onboarding that explains the seeded #general and voice room.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the

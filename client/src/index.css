@@ -1474,6 +1474,131 @@ button:disabled,
   font-weight: 800;
   line-height: 1.2;
 }
+.kc-activation-card {
+  margin: 0.25rem 0.75rem 0.9rem;
+  padding: 0.85rem;
+  border: 1px solid color-mix(in oklch, var(--accent) 18%, transparent);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(160px 90px at 10% 0%, color-mix(in oklch, var(--accent) 13%, transparent), transparent 70%),
+    color-mix(in oklch, var(--text-primary) 3%, transparent);
+  box-shadow: 0 12px 36px -30px color-mix(in oklch, var(--accent) 55%, transparent);
+}
+.kc-activation-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.kc-activation-eyebrow {
+  color: var(--accent);
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.kc-activation-card h3 {
+  margin: 0.08rem 0 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  line-height: 1.2;
+}
+.kc-activation-card p {
+  margin: 0.45rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+.kc-activation-dismiss {
+  display: grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 7%, transparent);
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--text-primary) 4%, transparent);
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+}
+.kc-activation-progress {
+  height: 0.4rem;
+  margin-top: 0.65rem;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--text-primary) 7%, transparent);
+}
+.kc-activation-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--green));
+  transition: width var(--dur-base) var(--ease-out);
+}
+.kc-activation-list {
+  display: grid;
+  gap: 0.46rem;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.kc-activation-list li {
+  display: grid;
+  grid-template-columns: 1.35rem 1fr;
+  gap: 0.45rem;
+  align-items: flex-start;
+  color: var(--text-secondary);
+}
+.kc-activation-check {
+  display: grid;
+  place-items: center;
+  width: 1.18rem;
+  height: 1.18rem;
+  margin-top: 0.05rem;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 12%, transparent);
+  border-radius: var(--radius-full);
+  color: var(--bg-base);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+.kc-activation-list li.is-complete .kc-activation-check {
+  border-color: transparent;
+  background: var(--green);
+}
+.kc-activation-list strong {
+  display: block;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.2;
+}
+.kc-activation-list small {
+  display: block;
+  margin-top: 0.08rem;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+.kc-activation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+.kc-activation-actions button {
+  border: 1px solid color-mix(in oklch, var(--accent) 18%, transparent);
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 850;
+  padding: 0.38rem 0.58rem;
+}
+.kc-activation-privacy {
+  margin-top: 0.55rem;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  line-height: 1.25;
+}
 .kc-empty-dm-card {
   padding: 1rem;
   border: 1px solid color-mix(in oklch, var(--text-primary) 7%, transparent);

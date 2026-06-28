@@ -19,6 +19,21 @@ async function shot(page, name) {
   log("shot", name);
 }
 
+async function activation(page) {
+  return page.evaluate(() => {
+    const all = JSON.parse(localStorage.getItem("ohiyo:activation:v1") || "{}");
+    return Object.values(all)[0] || {};
+  });
+}
+
+async function waitActivation(page, key) {
+  await page.waitForFunction((milestone) => {
+    const all = JSON.parse(localStorage.getItem("ohiyo:activation:v1") || "{}");
+    return Object.values(all).some((state) => Boolean(state?.[milestone]));
+  }, key, { timeout: 8000 });
+  return activation(page);
+}
+
 const browser = await launchBrowser();
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
 const page = await ctx.newPage();
@@ -80,7 +95,11 @@ try {
   await settle(page, 600);
   await shot(page, "04-inapp-channel-1440");
 
-  // Verify the seeded voice channel exists (server seed change)
+  // Verify the owner checklist + seeded voice channel exist.
+  await page.waitForSelector("text=Owner launch checklist", { timeout: 8000 });
+  const afterCreate = await activation(page);
+  if (!afterCreate.account || !afterCreate.server) throw new Error("activation did not record account + server milestones");
+  log("owner launch checklist visible + account/server milestones recorded locally ✓");
   const hasVoice = await page.locator("text=Voice Channels").count();
   if (hasVoice > 0) log("seeded Voice Channels section present ✓");
   else { console.warn("  WARN: voice channel section not visible"); warnings++; }
@@ -91,8 +110,18 @@ try {
   await composer.fill("hello kikkacord 🐦 first message!");
   await composer.press("Enter");
   await page.waitForSelector("text=first message!", { timeout: 8000 });
-  log("message sent + rendered ✓");
+  const afterMessage = await waitActivation(page, "message");
+  if (!afterMessage.message) throw new Error("activation did not record message milestone");
+  log("message sent + rendered + activation recorded ✓");
   await shot(page, "05-inapp-message-1440");
+
+  // ── Invite milestone ─────────────────────────────────────────────
+  await page.click('button[aria-label="Invite people"]');
+  await page.waitForSelector('input[aria-label="Invite link"]', { timeout: 8000 });
+  const afterInvite = await waitActivation(page, "invite");
+  if (!afterInvite.invite) throw new Error("activation did not record invite milestone");
+  log("invite link generated + activation recorded ✓");
+  await page.click('button:has-text("Done")');
 
   // ── Create-server modal (the + button, replacing window.prompt) ──
   await page.click('[title="Add a Server"]');
@@ -136,7 +165,7 @@ try {
   log("mobile: drawer opens with channel list + scrim ✓");
   await shot(page, "08-mobile-drawer");
 
-  await page.locator(".kc-nav").locator("text=general").first().click();
+  await page.locator(".kc-nav button").filter({ hasText: /^general/ }).first().click();
   await page.waitForSelector(".kc-nav-scrim", { state: "detached", timeout: 4000 });
   await page.waitForSelector('input[placeholder*="Say something"]', { state: "visible", timeout: 4000 });
   log("mobile: picking a channel closes the drawer, back to chat ✓");

@@ -13,12 +13,12 @@ type Props = {
   onPickAccent?: (hex: string) => void;
 };
 
-const SUGGESTIONS = ["Study Group", "Game Night", "Book Club"];
+const SUGGESTIONS = ["My Crew", "Game Night", "Study Room"];
 
 const VALUE_BULLETS: { title: string; body: string }[] = [
-  { title: "Private messages", body: "Encrypted chats for your space." },
-  { title: "Voice calls", body: "Drop into a call when you need to talk." },
-  { title: "Screen sharing", body: "Share what you’re working on." },
+  { title: "#general is ready", body: "Your first text room is created for you." },
+  { title: "Voice is ready", body: "A voice room is seeded — no setup needed." },
+  { title: "Next steps are shown", body: "We’ll guide you through message, invite, and call." },
 ];
 
 /**
@@ -127,7 +127,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
           oh, hi {firstName} 👋
         </h1>
         <p className="mt-2 text-base" style={{ color: "var(--text-secondary)", maxWidth: 440 }}>
-          Start with one private space. Invite people when you’re ready.
+          Create one space for your people. Ohiyo will set up chat, voice, and a tiny launch checklist for you.
         </p>
 
         {/* Create-your-first-space card */}
@@ -177,7 +177,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-[11px] font-semibold uppercase" style={{ color: "var(--text-muted)", letterSpacing: "0.06em" }}>Suggestions</span>
+              <span className="mr-1 text-[11px] font-semibold uppercase" style={{ color: "var(--text-muted)", letterSpacing: "0.06em" }}>Try one</span>
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
@@ -197,7 +197,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
             </div>
 
             <p className="ohiyo-space-preview text-left text-xs" aria-live="polite">
-              {trimmed ? <>Creating <strong>{trimmed}</strong> — private by default.</> : "Private by default. You can change everything later."}
+              {trimmed ? <>Creating <strong>{trimmed}</strong> with #general, voice, and owner checklist.</> : "Name it and we’ll create #general + voice automatically."}
             </p>
 
             {error && (
@@ -297,7 +297,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
           className="kc-interactive mt-5 text-sm font-semibold"
           style={{ color: "var(--text-muted)", background: "none", border: "none" }}
         >
-          I'll look around first
+          I’m joining later — show the app
         </button>
       </div>
     </div>

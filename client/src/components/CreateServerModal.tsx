@@ -8,7 +8,7 @@ type Props = {
   onClose: () => void;
 };
 
-const SUGGESTIONS = ["Study Group", "Game Night", "Book Club", "Project Crew"];
+const SUGGESTIONS = ["My Crew", "Game Night", "Study Room", "Project Crew"];
 
 /** Branded "create a space" modal — replaces the old window.prompt. */
 export function CreateServerModal({ onCreate, onClose }: Props) {
@@ -105,7 +105,7 @@ export function CreateServerModal({ onCreate, onClose }: Props) {
             Create your space
           </h2>
           <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)", maxWidth: 320 }}>
-            Give it a name. You can change it anytime — nothing's set in stone.
+            Name it once. Ohiyo will add #general, voice, and a launch checklist automatically.
           </p>
         </div>
 
@@ -113,7 +113,7 @@ export function CreateServerModal({ onCreate, onClose }: Props) {
           <input
             ref={inputRef}
             className="kc-field px-3.5 py-3 text-sm outline-none"
-            placeholder="e.g. Study Group"
+            placeholder="e.g. My Crew"
             value={name}
             maxLength={64}
             onChange={(e) => { setName(e.target.value); if (error) setError(""); }}

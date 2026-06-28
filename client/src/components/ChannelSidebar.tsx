@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { Icon } from "./Icon";
+import { ActivationChecklist } from "./ActivationChecklist";
 import type { Channel, ServerWithChannels, PublicUser } from "../api";
+import type { ActivationState } from "../lib/activation";
 import type { ConnectionStatus, Activity } from "../gateway";
 
 type VoiceSidebarParticipant = {
@@ -43,6 +45,9 @@ type Props = {
   onCreatePrivateDmLink?: () => void;
   onFindPeople?: () => void;
   onOpenEvents?: () => void;
+  activationState?: ActivationState;
+  showActivationChecklist?: boolean;
+  onDismissActivationChecklist?: () => void;
   onLogout: () => void;
   onOpenSettings: () => void;
 };
@@ -111,6 +116,9 @@ export function ChannelSidebar({
   onCreatePrivateDmLink,
   onFindPeople,
   onOpenEvents,
+  activationState,
+  showActivationChecklist,
+  onDismissActivationChecklist,
   onLogout,
   onOpenSettings,
 }: Props) {
@@ -167,6 +175,7 @@ export function ChannelSidebar({
   const categories = [...(server?.categories ?? [])].sort((a, b) => a.position - b.position);
   const uncategorizedText = textChannels.filter((c) => !c.category_id);
   const selfOnline = connStatus === "connected";
+  const firstVoiceChannel = voiceChannels[0] ?? null;
 
   const renderChannel = (ch: Channel) => (
     <ChannelRow
@@ -353,6 +362,15 @@ export function ChannelSidebar({
 
       {/* Channel / DM list */}
       <div className="kc-touch-scroll flex-1 overflow-y-auto py-2">
+        {server && showActivationChecklist && activationState && onDismissActivationChecklist && (
+          <ActivationChecklist
+            state={activationState}
+            serverName={server.name}
+            onInvite={onInvite}
+            onJoinVoice={firstVoiceChannel ? () => onJoinVoice(firstVoiceChannel, { muted: true }) : undefined}
+            onDismiss={onDismissActivationChecklist}
+          />
+        )}
         {server ? (
           <>
             {/* Text channels (uncategorized) */}

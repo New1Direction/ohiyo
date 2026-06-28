@@ -33,6 +33,7 @@ import { PERM, can } from "./permissions";
 import { mentionsYou } from "./lib/mentions";
 import { notify, ensureNotificationPermission, initDeepLinks, claimNotification, isDesktop } from "./lib/desktop";
 import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendingFailedOutbox, reconcileStalePending } from "./lib/outbox";
+import { isActivationDismissed, loadActivation, markActivation, setActivationDismissed, type ActivationState } from "./lib/activation";
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
 import { myKeyPair, deriveSharedKey, decryptMessage, isEncrypted } from "./lib/e2e";
@@ -280,6 +281,8 @@ function MainApp({
 }) {
   const { toasts, push: toast } = useToast();
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
+  const [activation, setActivation] = useState<ActivationState>(() => loadActivation(null));
+  const [activationDismissed, setActivationDismissedState] = useState(false);
   // Whether this server runs the LiveKit SFU — fetched at runtime from /livekit/config,
   // so the same desktop build works against a mesh-only or an SFU-backed deployment.
   const [liveKitEnabled, setLiveKitEnabled] = useState(false);
@@ -341,6 +344,33 @@ function MainApp({
     });
     return () => cleanup();
   }, []);
+  useEffect(() => {
+    const userId = currentUser?.id;
+    setActivation(loadActivation(userId));
+    setActivationDismissedState(isActivationDismissed(userId));
+    if (userId) setActivation(markActivation(userId, "account"));
+    const refresh = () => {
+      setActivation(loadActivation(userId));
+      setActivationDismissedState(isActivationDismissed(userId));
+    };
+    window.addEventListener("ohiyo:activation", refresh);
+    window.addEventListener("ohiyo:activation-dismissed", refresh);
+    return () => {
+      window.removeEventListener("ohiyo:activation", refresh);
+      window.removeEventListener("ohiyo:activation-dismissed", refresh);
+    };
+  }, [currentUser?.id]);
+
+  const completeActivation = useCallback((milestone: keyof ActivationState) => {
+    setActivation(markActivation(currentUserRef.current?.id ?? currentUser?.id, milestone));
+  }, [currentUser?.id]);
+
+  const dismissActivationChecklist = useCallback(() => {
+    const userId = currentUserRef.current?.id ?? currentUser?.id;
+    setActivationDismissed(userId, true);
+    setActivationDismissedState(true);
+  }, [currentUser?.id]);
+
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [idleUsers, setIdleUsers] = useState<Set<string>>(new Set());
   const [activities, setActivities] = useState<Map<string, Activity>>(new Map());
@@ -1442,6 +1472,7 @@ function MainApp({
           }
         }
         const created = await api.sendMessage(token, cid, wire, attachmentIds, replyTo);
+        completeActivation("message");
         // Forward secrecy: we can't decrypt our own outgoing ciphertext later (1:1
         // ratchet or group sender key), so cache the plaintext by the real message id.
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
@@ -1460,7 +1491,7 @@ function MainApp({
         setOutboxState(tempId, "failed");
       }
     },
-    [token, dmPeerId, toast, distributeMySenderKey]
+    [token, dmPeerId, toast, distributeMySenderKey, completeActivation]
   );
 
   // Retry a failed/queued message using its stored send args.
@@ -1706,6 +1737,9 @@ function MainApp({
   // Throws on failure so the caller's form can surface the message inline.
   async function createServerAndEnter(name: string) {
     const server = await api.createServer(token, name);
+    completeActivation("server");
+    setActivationDismissedState(false);
+    setActivationDismissed(currentUserRef.current?.id ?? currentUser?.id, false);
     enterServer(server);
     toast(`Welcome to ${server.name}! 🎉`, "success");
   }
@@ -1834,9 +1868,11 @@ function MainApp({
   function handleJoinVoice(channel: Channel, opts?: { muted?: boolean; video?: boolean }) {
     setMobileNavOpen(false);
     if (webrtc.channelId === channel.id) return;
-    webrtc.joinVoice(channel.id, { video: opts?.video ?? false, muted: opts?.muted ?? false }).catch((err) =>
-      toast(`Couldn't join the call: ${err instanceof Error ? err.message : err}`, "error")
-    );
+    webrtc.joinVoice(channel.id, { video: opts?.video ?? false, muted: opts?.muted ?? false })
+      .then(() => completeActivation("call"))
+      .catch((err) =>
+        toast(`Couldn't join the call: ${err instanceof Error ? err.message : err}`, "error")
+      );
   }
 
   const sidebarVoiceParticipants = useMemo(() => {
@@ -2036,6 +2072,9 @@ function MainApp({
             onCreatePrivateDmLink={() => setShowPrivateDmLink(true)}
             onFindPeople={() => setShowFindPeople(true)}
             onOpenEvents={() => setShowEvents(true)}
+            activationState={activation}
+            showActivationChecklist={Boolean(selectedServer && currentUser && selectedServer.owner_id === currentUser.id && !activationDismissed)}
+            onDismissActivationChecklist={dismissActivationChecklist}
             onLogout={onLogout}
             onOpenSettings={() => setShowSettings(true)}
           />
@@ -2187,6 +2226,7 @@ function MainApp({
           serverId={selectedServer.id}
           serverName={selectedServer.name}
           serverIconUrl={selectedServer.icon_url}
+          onInviteCreated={() => completeActivation("invite")}
           onClose={() => setShowInvite(false)}
         />
       )}
