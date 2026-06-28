@@ -102,6 +102,15 @@ pub fn router() -> Router<AppState> {
             "/instances/{id}",
             get(instances::get_instance).delete(instances::delete_instance),
         )
+        .route("/instances/{id}/sleep", post(instances::sleep_instance))
+        .route("/instances/{id}/wake", post(instances::wake_instance))
+        .route("/instances/{id}/tier", patch(instances::set_tier))
+        .route("/instances/{id}/export", get(instances::export_instance))
+        .route(
+            "/instances/{id}/graduate",
+            get(instances::graduate_instance),
+        )
+        .route("/instances/{id}/billing", get(instances::billing_checkout))
         // Discord import (local/admin Discrawl archive path; env-gated)
         .route(
             "/imports/discord/capability",

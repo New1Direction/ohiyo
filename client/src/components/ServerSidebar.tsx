@@ -14,6 +14,7 @@ type Props = {
   activeHomeId: string;
   onSwitchHome: (id: string) => void;
   onAddHome: () => void;
+  onOpenInstantServers: () => void;
 };
 
 function ServerIcon({
@@ -86,6 +87,7 @@ export function ServerSidebar({
   activeHomeId,
   onSwitchHome,
   onAddHome,
+  onOpenInstantServers,
 }: Props) {
   return (
     <div
@@ -126,6 +128,16 @@ export function ServerSidebar({
           style={{ borderRadius: "50%", background: "var(--bg-sidebar)", color: "var(--accent)", border: "none" }}
         >
           +
+        </button>
+        <button
+          type="button"
+          onClick={onOpenInstantServers}
+          title="Create or manage Instant Servers"
+          aria-label="Create or manage Instant Servers"
+          className="kc-interactive flex h-8 w-8 items-center justify-center text-xs font-black"
+          style={{ borderRadius: "50%", background: "var(--bg-sidebar)", color: "var(--green)", border: "none" }}
+        >
+          ⚡
         </button>
       </div>
 

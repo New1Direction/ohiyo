@@ -50,6 +50,8 @@ pub enum ProvisionError {
 pub trait MachineProvisioner: Send + Sync {
     async fn provision(&self, req: ProvisionRequest) -> Result<ProvisionedMachine, ProvisionError>;
     async fn status(&self, machine_id: &str) -> Result<MachineState, ProvisionError>;
+    async fn start(&self, machine_id: &str) -> Result<(), ProvisionError>;
+    async fn stop(&self, machine_id: &str) -> Result<(), ProvisionError>;
     async fn destroy(&self, machine_id: &str) -> Result<(), ProvisionError>;
     async fn destroy_volume(&self, volume_id: &str) -> Result<(), ProvisionError>;
 }
@@ -208,6 +210,105 @@ pub async fn create_instance(
     Ok(inst)
 }
 
+fn machine_id_or_conflict(inst: &HostedInstance) -> Result<&str, (StatusCode, String)> {
+    inst.machine_id.as_deref().filter(|s| !s.is_empty()).ok_or((
+        StatusCode::CONFLICT,
+        "instance has no machine yet".to_string(),
+    ))
+}
+
+async fn owner_instance(
+    db: &sqlx::SqlitePool,
+    owner_id: &str,
+    id: &str,
+) -> Result<HostedInstance, (StatusCode, String)> {
+    sqlx::query_as::<_, HostedInstance>(
+        "SELECT * FROM hosted_instances WHERE id = ? AND owner_id = ?",
+    )
+    .bind(id)
+    .bind(owner_id)
+    .fetch_optional(db)
+    .await
+    .map_err(crate::api::error::internal)?
+    .ok_or((StatusCode::NOT_FOUND, "instance not found".to_string()))
+}
+
+pub async fn sleep_instance(
+    db: &sqlx::SqlitePool,
+    provisioner: &dyn MachineProvisioner,
+    owner_id: &str,
+    id: &str,
+) -> Result<HostedInstance, (StatusCode, String)> {
+    let inst = owner_instance(db, owner_id, id).await?;
+    let machine_id = machine_id_or_conflict(&inst)?;
+    provisioner
+        .stop(machine_id)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    update_instance_status(db, id, "sleeping").await
+}
+
+pub async fn wake_instance(
+    db: &sqlx::SqlitePool,
+    provisioner: &dyn MachineProvisioner,
+    owner_id: &str,
+    id: &str,
+) -> Result<HostedInstance, (StatusCode, String)> {
+    let inst = owner_instance(db, owner_id, id).await?;
+    let machine_id = machine_id_or_conflict(&inst)?;
+    sqlx::query("UPDATE hosted_instances SET status='waking', updated_at=? WHERE id=?")
+        .bind(now_unix())
+        .bind(id)
+        .execute(db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    provisioner
+        .start(machine_id)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    update_instance_status(db, id, "healthy").await
+}
+
+pub async fn set_instance_tier(
+    db: &sqlx::SqlitePool,
+    owner_id: &str,
+    id: &str,
+    tier: &str,
+) -> Result<HostedInstance, (StatusCode, String)> {
+    if !matches!(tier, "free" | "paid") {
+        return Err((StatusCode::BAD_REQUEST, "tier must be free or paid".into()));
+    }
+    let _ = owner_instance(db, owner_id, id).await?;
+    sqlx::query("UPDATE hosted_instances SET tier=?, updated_at=? WHERE id=? AND owner_id=?")
+        .bind(tier)
+        .bind(now_unix())
+        .bind(id)
+        .bind(owner_id)
+        .execute(db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    owner_instance(db, owner_id, id).await
+}
+
+async fn update_instance_status(
+    db: &sqlx::SqlitePool,
+    id: &str,
+    status: &str,
+) -> Result<HostedInstance, (StatusCode, String)> {
+    sqlx::query("UPDATE hosted_instances SET status=?, updated_at=? WHERE id=?")
+        .bind(status)
+        .bind(now_unix())
+        .bind(id)
+        .execute(db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    sqlx::query_as::<_, HostedInstance>("SELECT * FROM hosted_instances WHERE id = ?")
+        .bind(id)
+        .fetch_one(db)
+        .await
+        .map_err(crate::api::error::internal)
+}
+
 /// Destroy a caller-owned instance and its Fly volume, then remove the registry row. Cloud
 /// `NotFound` is treated as success so cleanup is idempotent after partial failures.
 pub async fn delete_instance(
@@ -268,6 +369,12 @@ mod create_tests {
         }
         async fn status(&self, _id: &str) -> Result<MachineState, ProvisionError> {
             Err(ProvisionError::NotFound)
+        }
+        async fn start(&self, _id: &str) -> Result<(), ProvisionError> {
+            Ok(())
+        }
+        async fn stop(&self, _id: &str) -> Result<(), ProvisionError> {
+            Ok(())
         }
         async fn destroy(&self, _id: &str) -> Result<(), ProvisionError> {
             Ok(())
@@ -363,6 +470,27 @@ mod create_tests {
         // Now genuinely at the cap (3 healthy); the next is rejected.
         let err = create_instance(&db, &ok, "u1", "over").await.unwrap_err();
         assert_eq!(err.0, StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn sleep_wake_and_tier_update_instance() {
+        let db = test_db().await;
+        let p = FakeProvisioner::default();
+        let inst = create_instance(&db, &p, "u1", "temporary").await.unwrap();
+        let machine_id = inst.machine_id.clone().unwrap();
+
+        let slept = sleep_instance(&db, &p, "u1", &inst.id).await.unwrap();
+        assert_eq!(slept.status, "sleeping");
+        assert_eq!(p.status(&machine_id).await.unwrap(), MachineState::Stopped);
+
+        let woke = wake_instance(&db, &p, "u1", &inst.id).await.unwrap();
+        assert_eq!(woke.status, "healthy");
+        assert_eq!(p.status(&machine_id).await.unwrap(), MachineState::Started);
+
+        let paid = set_instance_tier(&db, "u1", &inst.id, "paid")
+            .await
+            .unwrap();
+        assert_eq!(paid.tier, "paid");
     }
 
     #[tokio::test]

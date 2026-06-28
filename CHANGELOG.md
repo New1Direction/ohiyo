@@ -23,6 +23,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 - **Owner activation checklist:** new community owners now get a local-only launch
   checklist for account → first space → first message → invite → voice call, with
   clearer first-space onboarding that explains the seeded #general and voice room.
+- **Instant Servers UX:** added a rail-accessible manager for create/list/use, sleep/wake,
+  ownership-pack export, self-host graduation instructions, delete, and paid-tier billing
+  handoff; backend lifecycle endpoints now support sleep, wake, export, graduate, and tier
+  state with owner-scoped tests.
 
 ### Changed
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the

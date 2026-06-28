@@ -168,6 +168,16 @@ impl TestServer {
             .expect("request sent")
     }
 
+    pub async fn patch_json_auth(&self, path: &str, token: &str, body: Value) -> reqwest::Response {
+        self.client
+            .patch(self.url(path))
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await
+            .expect("request sent")
+    }
+
     pub async fn delete_auth(&self, path: &str, token: &str) -> reqwest::Response {
         self.client
             .delete(self.url(path))

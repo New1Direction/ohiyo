@@ -363,14 +363,36 @@ export interface HostedInstance {
   subdomain: string;
   region: string;
   tier: string;
-  status: "requested" | "provisioning" | "healthy" | "failed";
-  machine_id: string | null;
-  volume_id: string | null;
+  status: "requested" | "provisioning" | "healthy" | "sleeping" | "waking" | "failed" | "suspended";
+  machine_id?: string | null;
+  volume_id?: string | null;
   public_url: string | null;
   error: string | null;
   created_at: number;
   updated_at: number;
 }
+
+export type SelfHostGuide = {
+  docker_image: string;
+  export_url: string;
+  one_liner: string;
+  steps: string[];
+};
+
+export type InstanceExport = {
+  version: number;
+  generated_at: number;
+  instance: HostedInstance;
+  data_note: string;
+  self_host: SelfHostGuide;
+  billing_note: string;
+};
+
+export type BillingCheckout = {
+  mode: "operator" | "checkout" | string;
+  checkout_url: string;
+  note: string;
+};
 
 async function request<T>(
   path: string,
@@ -435,6 +457,18 @@ export const api = {
   listInstances: (token: string) => request<HostedInstance[]>("/instances", {}, token),
   getInstance: (id: string, token: string) =>
     request<HostedInstance>(`/instances/${id}`, {}, token),
+  sleepInstance: (id: string, token: string) =>
+    request<HostedInstance>(`/instances/${id}/sleep`, { method: "POST" }, token),
+  wakeInstance: (id: string, token: string) =>
+    request<HostedInstance>(`/instances/${id}/wake`, { method: "POST" }, token),
+  setInstanceTier: (id: string, tier: "free" | "paid", token: string) =>
+    request<HostedInstance>(`/instances/${id}/tier`, { method: "PATCH", body: JSON.stringify({ tier }) }, token),
+  getInstanceExport: (id: string, token: string) =>
+    request<InstanceExport>(`/instances/${id}/export`, {}, token),
+  getGraduateGuide: (id: string, token: string) =>
+    request<SelfHostGuide>(`/instances/${id}/graduate`, {}, token),
+  getBillingCheckout: (id: string, token: string) =>
+    request<BillingCheckout>(`/instances/${id}/billing`, {}, token),
   deleteInstance: (id: string, token: string) =>
     request<void>(`/instances/${id}`, { method: "DELETE" }, token),
 

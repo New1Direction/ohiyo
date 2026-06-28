@@ -21,6 +21,7 @@ import { InviteAccept } from "./components/InviteAccept";
 import { InviteModal } from "./components/InviteModal";
 import { PrivateDmLinkAccept } from "./components/PrivateDmLinkAccept";
 import { PrivateDmLinkModal } from "./components/PrivateDmLinkModal";
+import { InstantServersModal } from "./components/InstantServersModal";
 import { FindPeopleModal } from "./components/FindPeopleModal";
 import { SearchModal } from "./components/SearchModal";
 import { MembersModal } from "./components/MembersModal";
@@ -199,6 +200,7 @@ export default function App() {
         activeHomeId={activeHome.id}
         onSwitchHome={setActiveHomeId}
         onAddHome={() => setShowAddHome(true)}
+        onAddHomeUrl={addHome}
         onLogout={handleLogout}
       />
       {addHomeModal}
@@ -270,6 +272,7 @@ function MainApp({
   activeHomeId,
   onSwitchHome,
   onAddHome,
+  onAddHomeUrl,
   onLogout,
 }: {
   token: string;
@@ -277,6 +280,7 @@ function MainApp({
   activeHomeId: string;
   onSwitchHome: (id: string) => void;
   onAddHome: () => void;
+  onAddHomeUrl: (url: string) => void;
   onLogout: () => void;
 }) {
   const { toasts, push: toast } = useToast();
@@ -301,6 +305,7 @@ function MainApp({
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showCreateServer, setShowCreateServer] = useState(false);
   const [showDiscordImport, setShowDiscordImport] = useState(false);
+  const [showInstantServers, setShowInstantServers] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showPrivateDmLink, setShowPrivateDmLink] = useState(false);
   const [showFindPeople, setShowFindPeople] = useState(false);
@@ -2038,6 +2043,7 @@ function MainApp({
             activeHomeId={activeHomeId}
             onSwitchHome={onSwitchHome}
             onAddHome={onAddHome}
+            onOpenInstantServers={() => setShowInstantServers(true)}
           />
         </div>
 
@@ -2204,6 +2210,19 @@ function MainApp({
         <CreateServerModal
           onCreate={createServerAndEnter}
           onClose={() => setShowCreateServer(false)}
+        />
+      )}
+
+      {/* Instant Servers — managed/self-host lifecycle control plane. */}
+      {showInstantServers && (
+        <InstantServersModal
+          token={token}
+          onAddHome={(url) => {
+            onAddHomeUrl(url);
+            setShowInstantServers(false);
+          }}
+          onToast={toast}
+          onClose={() => setShowInstantServers(false)}
         />
       )}
 

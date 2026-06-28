@@ -123,6 +123,13 @@ try {
   log("invite link generated + activation recorded ✓");
   await page.click('button:has-text("Done")');
 
+  // ── Instant Servers manager is exposed from the rail ──────────────
+  await page.click('button[aria-label="Create or manage Instant Servers"]');
+  await page.waitForSelector("text=Managed encrypted homes you can leave anytime", { timeout: 8000 });
+  log("Instant Servers manager opens from rail ✓");
+  await page.keyboard.press("Escape");
+  await settle(page, 200);
+
   // ── Create-server modal (the + button, replacing window.prompt) ──
   await page.click('[title="Add a Server"]');
   await page.waitForSelector("text=Create your space", { timeout: 5000 });

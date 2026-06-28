@@ -172,6 +172,46 @@ impl MachineProvisioner for FlyProvisioner {
         })
     }
 
+    async fn start(&self, machine_id: &str) -> Result<(), ProvisionError> {
+        let res = self
+            .client
+            .post(format!("{}/machines/{machine_id}/start", self.base()))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|e| ProvisionError::Upstream(e.to_string()))?;
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(ProvisionError::NotFound);
+        }
+        if !res.status().is_success() {
+            return Err(ProvisionError::Upstream(format!(
+                "fly start returned {}",
+                res.status()
+            )));
+        }
+        Ok(())
+    }
+
+    async fn stop(&self, machine_id: &str) -> Result<(), ProvisionError> {
+        let res = self
+            .client
+            .post(format!("{}/machines/{machine_id}/stop", self.base()))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|e| ProvisionError::Upstream(e.to_string()))?;
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(ProvisionError::NotFound);
+        }
+        if !res.status().is_success() {
+            return Err(ProvisionError::Upstream(format!(
+                "fly stop returned {}",
+                res.status()
+            )));
+        }
+        Ok(())
+    }
+
     async fn destroy(&self, machine_id: &str) -> Result<(), ProvisionError> {
         let res = self
             .client

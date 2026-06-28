@@ -38,6 +38,24 @@ impl MachineProvisioner for FakeProvisioner {
             .ok_or(ProvisionError::NotFound)
     }
 
+    async fn start(&self, machine_id: &str) -> Result<(), ProvisionError> {
+        let mut machines = self.machines.lock().unwrap();
+        let state = machines
+            .get_mut(machine_id)
+            .ok_or(ProvisionError::NotFound)?;
+        *state = MachineState::Started;
+        Ok(())
+    }
+
+    async fn stop(&self, machine_id: &str) -> Result<(), ProvisionError> {
+        let mut machines = self.machines.lock().unwrap();
+        let state = machines
+            .get_mut(machine_id)
+            .ok_or(ProvisionError::NotFound)?;
+        *state = MachineState::Stopped;
+        Ok(())
+    }
+
     async fn destroy(&self, machine_id: &str) -> Result<(), ProvisionError> {
         self.machines.lock().unwrap().remove(machine_id);
         Ok(())
@@ -68,6 +86,16 @@ mod tests {
         let m = p.provision(req("inst1")).await.unwrap();
         assert_eq!(m.machine_id, "fake-machine-inst1");
         assert_eq!(m.state, MachineState::Started);
+        assert_eq!(
+            p.status(&m.machine_id).await.unwrap(),
+            MachineState::Started
+        );
+        p.stop(&m.machine_id).await.unwrap();
+        assert_eq!(
+            p.status(&m.machine_id).await.unwrap(),
+            MachineState::Stopped
+        );
+        p.start(&m.machine_id).await.unwrap();
         assert_eq!(
             p.status(&m.machine_id).await.unwrap(),
             MachineState::Started
