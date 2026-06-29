@@ -121,6 +121,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/push/devices/{id}", delete(push::delete_device))
         .route("/push/relay/content-free", post(push::relay_content_free))
+        .route("/push/dispatch", post(push::dispatch_content_free))
         // Public reliability/status endpoints. Content-free; no secrets or user content.
         .route("/reliability/status", get(reliability::status_summary))
         .route("/reliability/cost-model", get(reliability::cost_model))

@@ -34,6 +34,7 @@ sha1 = "0.10"
 base64 = "0.22"
 tokio-util = { version = "0.7", features = ["io"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
+web-push = { version = "0.11", default-features = false }
 url = "2"
 urlencoding = "2"
 imagesize = "0.13"

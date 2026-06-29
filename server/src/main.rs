@@ -47,6 +47,22 @@ async fn main() -> anyhow::Result<()> {
                     api::users::sweep_deadman(&sweep_state).await;
                     // Drop expired device-link codes so the table can't grow unbounded.
                     api::auth::sweep_link_tokens(&sweep_state).await;
+                    // Push delivery cleanup is safe even when provider dispatch is disabled.
+                    api::push::sweep_stale_push_rows(&sweep_state).await;
+                    // Real outbound push delivery is opt-in: self-hosters without provider
+                    // credentials can keep content-free queueing without burning attempts.
+                    if api::push::dispatcher_should_run() {
+                        match api::push::dispatch_queued(&sweep_state, 100).await {
+                            Ok(result) if result.attempted > 0 => {
+                                tracing::info!(
+                                    ?result,
+                                    "content-free push dispatch batch complete"
+                                );
+                            }
+                            Ok(_) => {}
+                            Err(e) => tracing::warn!("content-free push dispatch failed: {e}"),
+                        }
+                    }
                 });
                 if iteration.catch_unwind().await.is_err() {
                     tracing::error!("a background sweep panicked — continuing the loop");
