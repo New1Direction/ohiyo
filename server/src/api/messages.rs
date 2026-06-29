@@ -308,6 +308,21 @@ pub async fn send_message(
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
+    let dm_peers: Vec<String> = sqlx::query_scalar(
+        "SELECT dp.user_id FROM dm_participants dp
+         JOIN channels c ON c.id = dp.channel_id
+         WHERE dp.channel_id = ? AND c.server_id IS NULL AND dp.user_id != ?",
+    )
+    .bind(&channel_id)
+    .bind(&auth.0)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+    for peer in dm_peers {
+        if crate::api::abuse::is_blocked_pair(&state, &auth.0, &peer).await {
+            return Err((StatusCode::FORBIDDEN, "you can't message this user".into()));
+        }
+    }
     // Refresh liveness so an active user never trips their dead-man's switch.
     crate::api::users::touch_active(&state.db, &auth.0).await;
     // Per-user spam throttle (generous for humans, blocks flooders).
@@ -827,20 +842,21 @@ pub async fn delete_message(
 
     let msg = msg.ok_or((StatusCode::NOT_FOUND, "message not found".into()))?;
 
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT server_id FROM channels WHERE id = ?")
+            .bind(&channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+    let server_id = row.and_then(|(s,)| s);
     if msg.author_id != auth.0 {
         // Mods with MANAGE_MESSAGES can delete others' messages in a server channel.
-        let row: Option<(Option<String>,)> =
-            sqlx::query_as("SELECT server_id FROM channels WHERE id = ?")
-                .bind(&channel_id)
-                .fetch_optional(&state.db)
-                .await
-                .ok()
-                .flatten();
-        let can = match row.and_then(|(s,)| s) {
+        let can = match server_id.as_deref() {
             Some(sid) => {
                 crate::api::roles::has_perm(
                     &state,
-                    &sid,
+                    sid,
                     &auth.0,
                     crate::api::roles::perm::MANAGE_MESSAGES,
                 )
@@ -861,6 +877,22 @@ pub async fn delete_message(
 
     if crate::search::search_enabled() {
         tokio::spawn(crate::search::delete_message(id.clone()));
+    }
+    if msg.author_id != auth.0 {
+        let metadata = format!("author_id={}", msg.author_id);
+        crate::api::abuse::log_action(
+            &state,
+            crate::api::abuse::ActionLog {
+                server_id: server_id.as_deref(),
+                actor_id: &auth.0,
+                action: "delete_message",
+                target_type: "message",
+                target_id: &id,
+                report_id: None,
+                metadata: Some(&metadata),
+            },
+        )
+        .await?;
     }
 
     broadcast_to_channel(

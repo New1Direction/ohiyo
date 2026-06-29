@@ -30,6 +30,7 @@ export type IconName =
   | "lockOpen"
   | "clock"
   | "tv"
+  | "flag"
   | "more";
 
 const PATHS: Record<IconName, ReactNode> = {
@@ -176,6 +177,12 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <rect x="2" y="7" width="20" height="15" rx="2" ry="2" />
       <polyline points="17 2 12 7 7 2" />
+    </>
+  ),
+  flag: (
+    <>
+      <path d="M5 21V4" />
+      <path d="M5 4h11l-1 5 1 5H5" />
     </>
   ),
   more: (

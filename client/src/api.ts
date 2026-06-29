@@ -184,6 +184,38 @@ export type FriendItem = {
   updated_at: number;
 };
 
+export type BlockedUser = PublicUser & { created_at: number };
+
+export type AbuseReport = {
+  id: string;
+  reporter_id: string;
+  target_type: "message" | "user" | "server" | string;
+  target_id: string;
+  server_id: string | null;
+  channel_id: string | null;
+  message_id: string | null;
+  accused_user_id: string | null;
+  reason: string;
+  details: string | null;
+  status: "open" | "resolved" | "dismissed" | string;
+  created_at: number;
+  resolved_by: string | null;
+  resolved_at: number | null;
+  resolution_note: string | null;
+};
+
+export type ModerationAction = {
+  id: string;
+  server_id: string | null;
+  actor_id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  report_id: string | null;
+  metadata: string | null;
+  created_at: number;
+};
+
 export type PrivateDmLinkInfo = {
   token: string;
   expires_at: number;
@@ -517,6 +549,27 @@ export const api = {
     request<AuthResponse>("/devices/link/complete", { method: "POST", body: JSON.stringify({ code }) }),
 
   me: (token: string) => request<PublicUser>("/users/@me", {}, token),
+
+  // Abuse safety: block/report/local hide/moderation queue.
+  listBlocks: (token: string) => request<BlockedUser[]>("/users/@me/blocks", {}, token),
+  blockUser: (token: string, userId: string) =>
+    request<void>(`/users/${userId}/block`, { method: "POST" }, token),
+  unblockUser: (token: string, userId: string) =>
+    request<void>(`/users/${userId}/block`, { method: "DELETE" }, token),
+  createReport: (
+    token: string,
+    body: { target_type: "message" | "user" | "server"; target_id: string; reason: string; details?: string | null; server_id?: string | null }
+  ) => request<AbuseReport>("/reports", { method: "POST", body: JSON.stringify(body) }, token),
+  listModQueue: (token: string, serverId: string) =>
+    request<AbuseReport[]>(`/servers/${serverId}/mod-queue`, {}, token),
+  resolveReport: (token: string, serverId: string, reportId: string, status: "resolved" | "dismissed", note?: string | null) =>
+    request<AbuseReport>(`/servers/${serverId}/mod-queue/${reportId}/resolve`, { method: "POST", body: JSON.stringify({ status, note: note ?? null }) }, token),
+  listModerationActions: (token: string, serverId: string) =>
+    request<ModerationAction[]>(`/servers/${serverId}/moderation-actions`, {}, token),
+  listHiddenMessages: (token: string, channelId: string) =>
+    request<string[]>(`/channels/${channelId}/hidden-messages`, {}, token),
+  hideMessage: (token: string, channelId: string, messageId: string, hidden = true) =>
+    request<void>(`/channels/${channelId}/messages/${messageId}/hide`, { method: "POST", body: JSON.stringify({ hidden }) }, token),
 
   // Content-free push relay registration. Payloads carry no message text/channel names.
   getPushConfig: () => request<PushConfig>("/push/config"),

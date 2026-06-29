@@ -303,6 +303,19 @@ pub async fn ban_member(
     .map_err(crate::api::error::internal)?;
 
     remove_member(&state, &server_id, &target_id).await?;
+    crate::api::abuse::log_action(
+        &state,
+        crate::api::abuse::ActionLog {
+            server_id: Some(&server_id),
+            actor_id: &auth.0,
+            action: "ban_member",
+            target_type: "user",
+            target_id: &target_id,
+            report_id: None,
+            metadata: None,
+        },
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -334,6 +347,19 @@ pub async fn unban_member(
         .execute(&state.db)
         .await
         .map_err(crate::api::error::internal)?;
+    crate::api::abuse::log_action(
+        &state,
+        crate::api::abuse::ActionLog {
+            server_id: Some(&server_id),
+            actor_id: &auth.0,
+            action: "unban_member",
+            target_type: "user",
+            target_id: &target_id,
+            report_id: None,
+            metadata: None,
+        },
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -365,6 +391,19 @@ pub async fn kick_member(
     )
     .await?;
     remove_member(&state, &server_id, &target_id).await?;
+    crate::api::abuse::log_action(
+        &state,
+        crate::api::abuse::ActionLog {
+            server_id: Some(&server_id),
+            actor_id: &auth.0,
+            action: "kick_member",
+            target_type: "user",
+            target_id: &target_id,
+            report_id: None,
+            metadata: None,
+        },
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

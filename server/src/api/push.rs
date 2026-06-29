@@ -296,11 +296,16 @@ pub async fn enqueue_message_pushes(state: &AppState, channel_id: &str, author_i
     let Ok(rows) = rows else {
         return;
     };
-    let recipients: Vec<String> = rows
-        .into_iter()
-        .map(|(id,)| id)
-        .filter(|id| id != author_id)
-        .collect();
+    let mut recipients = Vec::new();
+    for (id,) in rows {
+        if id == author_id {
+            continue;
+        }
+        if crate::api::abuse::is_blocked_pair(state, author_id, &id).await {
+            continue;
+        }
+        recipients.push(id);
+    }
     if recipients.is_empty() {
         return;
     }

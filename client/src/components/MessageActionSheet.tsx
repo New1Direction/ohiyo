@@ -14,6 +14,7 @@ type Props = {
   onForward?: () => void;
   onSave: () => void;
   onHide?: () => void;
+  onReport?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
   onClose: () => void;
@@ -27,6 +28,7 @@ export function MessageActionSheet({
   onForward,
   onSave,
   onHide,
+  onReport,
   onEdit,
   onDelete,
   onClose,
@@ -41,6 +43,7 @@ export function MessageActionSheet({
         {onForward && <Row icon="forward" label="Forward" onClick={onForward} />}
         <Row icon="bookmark" label="Save" onClick={onSave} />
         {onHide && <Row icon="trash" label="Hide for me" onClick={onHide} />}
+        {onReport && !isMine && <Row icon="flag" label="Report" onClick={onReport} danger />}
         {isMine && onEdit && <Row icon="edit" label="Edit" onClick={onEdit} />}
         {isMine && onDelete && <Row icon="trash" label="Delete" onClick={onDelete} danger />}
       </div>

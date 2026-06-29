@@ -1,3 +1,4 @@
+pub mod abuse;
 pub mod auth;
 pub mod channels;
 pub mod discord_import;
@@ -51,9 +52,14 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me/saved", get(saved::list_saved))
         .route("/users/search", get(users::search_users))
         .route("/users/@me/friends", get(users::list_friends))
+        .route("/users/@me/blocks", get(abuse::list_blocks))
         .route(
             "/users/{user_id}/friendship",
             get(users::get_friendship).delete(users::delete_friendship),
+        )
+        .route(
+            "/users/{user_id}/block",
+            post(abuse::block_user).delete(abuse::unblock_user),
         )
         .route(
             "/users/{user_id}/friend-request",
@@ -96,6 +102,17 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me/key-backup", get(profile::get_key_backup))
         .route("/users/@me/key-backup", put(profile::put_key_backup))
         .route("/users/@me/key-backup", delete(profile::delete_key_backup))
+        // Abuse safety: block/report/queue/audit. Reports store metadata, not plaintext.
+        .route("/reports", post(abuse::create_report))
+        .route("/servers/{server_id}/mod-queue", get(abuse::mod_queue))
+        .route(
+            "/servers/{server_id}/mod-queue/{report_id}/resolve",
+            post(abuse::resolve_report),
+        )
+        .route(
+            "/servers/{server_id}/moderation-actions",
+            get(abuse::moderation_actions),
+        )
         // Content-free push relay. Payloads intentionally carry no message content.
         .route("/push/config", get(push::config))
         .route(
@@ -268,6 +285,10 @@ pub fn router() -> Router<AppState> {
         )
         .route("/channels/{channel_id}/reads", get(messages::list_reads))
         .route(
+            "/channels/{channel_id}/hidden-messages",
+            get(abuse::list_hidden_messages),
+        )
+        .route(
             "/channels/{channel_id}/disappearing",
             patch(messages::set_disappearing),
         )
@@ -287,6 +308,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/channels/{channel_id}/messages/{id}",
             delete(messages::delete_message),
+        )
+        .route(
+            "/channels/{channel_id}/messages/{id}/hide",
+            post(abuse::hide_message),
         )
         .route("/channels/{channel_id}/polls", post(polls::create_poll))
         .route(

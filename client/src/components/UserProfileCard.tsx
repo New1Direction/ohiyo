@@ -10,10 +10,12 @@ type Props = {
   anchorRef: React.RefObject<HTMLElement | null>;
   currentUserId?: string;
   onOpenDm?: (user: PublicUser) => void | Promise<void>;
+  onBlockUser?: (user: PublicUser) => void | Promise<void>;
+  onReportUser?: (user: PublicUser) => void | Promise<void>;
   onClose: () => void;
 };
 
-export function UserProfileCard({ userId, token, anchorRef, currentUserId, onOpenDm, onClose }: Props) {
+export function UserProfileCard({ userId, token, anchorRef, currentUserId, onOpenDm, onBlockUser, onReportUser, onClose }: Props) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -163,6 +165,30 @@ export function UserProfileCard({ userId, token, anchorRef, currentUserId, onOpe
                   }}
                 />
               )}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {onBlockUser && (
+                  <ActionButton
+                    busy={false}
+                    label="Block"
+                    danger
+                    onClick={() => {
+                      void onBlockUser({ id: profile.id, username: profile.username, display_name: profile.display_name, avatar_url: profile.avatar_url });
+                      onClose();
+                    }}
+                  />
+                )}
+                {onReportUser && (
+                  <ActionButton
+                    busy={false}
+                    label="Report"
+                    danger
+                    onClick={() => {
+                      void onReportUser({ id: profile.id, username: profile.username, display_name: profile.display_name, avatar_url: profile.avatar_url });
+                      onClose();
+                    }}
+                  />
+                )}
+              </div>
             </div>
           )}
         </>
@@ -182,11 +208,13 @@ function ActionButton({
   label,
   busy,
   primary = false,
+  danger = false,
   onClick,
 }: {
   label: string;
   busy: boolean;
   primary?: boolean;
+  danger?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -202,7 +230,7 @@ function ActionButton({
         padding: "9px 12px",
         cursor: busy ? "default" : "pointer",
         background: primary ? "var(--accent)" : "var(--bg-input)",
-        color: primary ? "#fff" : "var(--text-primary)",
+        color: primary ? "#fff" : danger ? "var(--danger)" : "var(--text-primary)",
         fontSize: 13,
         fontWeight: 700,
       }}

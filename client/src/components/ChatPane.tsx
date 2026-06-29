@@ -160,11 +160,14 @@ type Props = {
   onDeleteMessage?: (messageId: string) => void;
   onPinMessage?: (messageId: string, pinned: boolean) => void;
   onForward?: (msg: Message) => void;
+  onReportMessage?: (msg: Message) => void;
   onSaveRecovery?: () => void;
   onOpenSearch?: () => void;
   onOpenMembers?: () => void;
   /** Open/start a direct message from a user's profile card. */
   onOpenDm?: (user: PublicUser) => void | Promise<void>;
+  onBlockUser?: (user: PublicUser) => void | Promise<void>;
+  onReportUser?: (user: PublicUser) => void | Promise<void>;
   /** Members offered in the @-mention autocomplete (current server). */
   mentionables?: PublicUser[];
   /** People who belong to the current server/channel context, used for the friendly "who's here" header. */
@@ -315,10 +318,13 @@ export function ChatPane({
   onDeleteMessage,
   onPinMessage,
   onForward,
+  onReportMessage,
   onSaveRecovery,
   onOpenSearch,
   onOpenMembers,
   onOpenDm,
+  onBlockUser,
+  onReportUser,
   mentionables = [],
   channelMembers = [],
   onlineUserIds = new Set<string>(),
@@ -552,8 +558,16 @@ export function ChatPane({
   // keystroke in a new channel always fires.
   useEffect(() => {
     lastTypingRef.current = 0;
-    setHiddenMessageIds(channel?.id ? loadHiddenMessages(channel.id, currentUserId) : new Set());
-  }, [channel?.id, currentUserId]);
+    const local = channel?.id ? loadHiddenMessages(channel.id, currentUserId) : new Set<string>();
+    setHiddenMessageIds(local);
+    if (channel?.id) {
+      void api.listHiddenMessages(token, channel.id).then((ids) => {
+        const merged = new Set([...local, ...ids]);
+        saveHiddenMessages(channel.id, currentUserId, merged);
+        setHiddenMessageIds(merged);
+      }).catch(() => {});
+    }
+  }, [channel?.id, currentUserId, token]);
 
   // Per-channel drafts: on switch, stash the outgoing draft and restore the
   // incoming one; don't carry a half-written reply/mention across channels.
@@ -873,6 +887,7 @@ export function ChatPane({
 
   function hideMessageForMe(messageId: string) {
     if (!channel) return;
+    void api.hideMessage(token, channel.id, messageId, true).catch(() => {});
     setHiddenMessageIds((prev) => {
       const next = new Set(prev);
       next.add(messageId);
@@ -884,6 +899,7 @@ export function ChatPane({
 
   function unhideMessageForMe(messageId: string) {
     if (!channel) return;
+    void api.hideMessage(token, channel.id, messageId, false).catch(() => {});
     setHiddenMessageIds((prev) => {
       const next = new Set(prev);
       next.delete(messageId);
@@ -1629,6 +1645,11 @@ export function ChatPane({
                                   <Icon name="trash" size={16} />
                                 </button>
                               )}
+                              {!g.isMe && onReportMessage && !msg.id.startsWith("temp-") && (
+                                <button type="button" className="danger" aria-label="Report message" title="Report" onClick={(e) => { e.stopPropagation(); onReportMessage(msg); }}>
+                                  <Icon name="flag" size={16} />
+                                </button>
+                              )}
                               {!msg.id.startsWith("temp-") && (
                                 <button type="button" aria-label="Save message" title="Save" onClick={(e) => { e.stopPropagation(); handleSave(msg.id); }}>
                                   <Icon name="bookmark" size={16} />
@@ -1843,6 +1864,7 @@ export function ChatPane({
           onForward={onForward ? () => { onForward(actionSheetMsg); setActionSheetMsg(null); } : undefined}
           onSave={() => { handleSave(actionSheetMsg.id); setActionSheetMsg(null); }}
           onHide={() => { hideMessageForMe(actionSheetMsg.id); setActionSheetMsg(null); }}
+          onReport={onReportMessage ? () => { onReportMessage(actionSheetMsg); setActionSheetMsg(null); } : undefined}
           onEdit={onEditMessage && !actionSheetMsg.poll ? () => { setEditingId(actionSheetMsg.id); setEditText(actionSheetMsg.content); setActionSheetMsg(null); } : undefined}
           onDelete={onDeleteMessage ? () => { setConfirmDeleteId(actionSheetMsg.id); setActionSheetMsg(null); } : undefined}
           onClose={() => setActionSheetMsg(null)}
@@ -1906,6 +1928,8 @@ export function ChatPane({
           anchorRef={profileAnchorRef}
           currentUserId={currentUserId}
           onOpenDm={onOpenDm}
+          onBlockUser={onBlockUser}
+          onReportUser={onReportUser}
           onClose={() => setProfileUserId(null)}
         />
       )}

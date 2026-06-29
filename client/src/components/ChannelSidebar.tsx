@@ -45,6 +45,8 @@ type Props = {
   onCreatePrivateDmLink?: () => void;
   onFindPeople?: () => void;
   onOpenEvents?: () => void;
+  onReportServer?: () => void;
+  onOpenModQueue?: () => void;
   activationState?: ActivationState;
   showActivationChecklist?: boolean;
   onDismissActivationChecklist?: () => void;
@@ -116,6 +118,8 @@ export function ChannelSidebar({
   onCreatePrivateDmLink,
   onFindPeople,
   onOpenEvents,
+  onReportServer,
+  onOpenModQueue,
   activationState,
   showActivationChecklist,
   onDismissActivationChecklist,
@@ -327,6 +331,28 @@ export function ChannelSidebar({
               style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "pointer" }}
             >
               <Icon name="calendar" size={16} />
+            </button>
+          )}
+          {server && onReportServer && (
+            <button
+              onClick={onReportServer}
+              title="Report server"
+              aria-label="Report server"
+              className="kc-sidebar-action kc-interactive flex h-7 w-7 items-center justify-center rounded-full text-base"
+              style={{ background: "var(--bg-input)", color: "var(--danger)", border: "none", cursor: "pointer" }}
+            >
+              <Icon name="flag" size={15} />
+            </button>
+          )}
+          {server && onOpenModQueue && (
+            <button
+              onClick={onOpenModQueue}
+              title="Moderation queue"
+              aria-label="Moderation queue"
+              className="kc-sidebar-action kc-interactive flex h-7 w-7 items-center justify-center rounded-full text-base"
+              style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "pointer" }}
+            >
+              <Icon name="history" size={15} />
             </button>
           )}
           {server && onInvite && (

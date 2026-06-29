@@ -83,7 +83,7 @@ import {
   upsertHome,
   type OhiyoHome,
 } from "./lib/homes";
-import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
+import type { AbuseReport, Channel, Message, ModerationAction, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
 import type { GatewayEvent, ConnectionStatus, Activity, WatchSession } from "./gateway";
 
@@ -317,6 +317,8 @@ function MainApp({
   const [showEvents, setShowEvents] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
+  const [showModQueue, setShowModQueue] = useState(false);
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   const [forwarding, setForwarding] = useState<Message | null>(null);
   const [eventsRefresh, setEventsRefresh] = useState(0);
   const [myPerms, setMyPerms] = useState(0);
@@ -645,6 +647,15 @@ function MainApp({
     const total = Object.values(unread).reduce((sum, n) => sum + n, 0);
     document.title = total > 0 ? `(${total}) Ohiyo` : "Ohiyo";
   }, [unread]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    let alive = true;
+    api.listBlocks(token)
+      .then((blocks) => alive && setBlockedUserIds(new Set(blocks.map((b) => b.id))))
+      .catch(() => alive && setBlockedUserIds(new Set()));
+    return () => { alive = false; };
+  }, [currentUser?.id, token]);
 
   // My effective permissions for the selected server (gates moderation UI).
   useEffect(() => {
@@ -1677,6 +1688,7 @@ function MainApp({
   // Show a desktop notification for a message you're not actively reading.
   function maybeNotify(msg: Message) {
     if (msg.author.id === currentUserRef.current?.id) return;
+    if (blockedUserIds.has(msg.author.id)) return;
     const lookingAtIt =
       selectedChannelRef.current?.id === msg.channel_id && !document.hidden;
     if (lookingAtIt) return;
@@ -1833,6 +1845,10 @@ function MainApp({
 
   // ── Direct messages ─────────────────────────────────────────────────────────
   async function openDmWith(user: PublicUser) {
+    if (blockedUserIds.has(user.id)) {
+      toast("Unblock this user before messaging them.", "error");
+      throw new Error("blocked");
+    }
     try {
       const channel = await api.openDm(token, user.id);
       setDms((prev) => (prev.find((d) => d.id === channel.id) ? prev : [channel, ...prev]));
@@ -1843,6 +1859,40 @@ function MainApp({
     } catch (err) {
       toast(`Couldn't open that chat: ${err instanceof Error ? err.message : err}`, "error");
       throw err;
+    }
+  }
+
+  async function reportTarget(target_type: "message" | "user" | "server", target_id: string, label: string) {
+    const reason = window.prompt(`Why are you reporting this ${label}?`, "harassment/spam/unsafe content");
+    if (!reason?.trim()) return;
+    const details = window.prompt("Optional details for moderators", "") ?? "";
+    try {
+      await api.createReport(token, {
+        target_type,
+        target_id,
+        reason: reason.trim(),
+        details,
+        server_id: target_type === "user" && selectedServerIdRef.current ? selectedServerIdRef.current : null,
+      });
+      toast("Report sent to moderators", "success");
+      if (target_type === "message" && selectedChannelRef.current) {
+        await api.hideMessage(token, selectedChannelRef.current.id, target_id, true).catch(() => {});
+        setMessages((prev) => prev.filter((m) => m.id !== target_id));
+      }
+    } catch (err) {
+      toast(`Couldn't report: ${err instanceof Error ? err.message : err}`, "error");
+    }
+  }
+
+  async function blockUser(user: PublicUser) {
+    if (!window.confirm(`Block ${user.display_name || user.username}? Their messages and notifications will be hidden for you.`)) return;
+    try {
+      await api.blockUser(token, user.id);
+      setBlockedUserIds((prev) => new Set([...prev, user.id]));
+      setMessages((prev) => prev.filter((m) => m.author.id !== user.id));
+      toast("User blocked", "success");
+    } catch (err) {
+      toast(`Couldn't block: ${err instanceof Error ? err.message : err}`, "error");
     }
   }
 
@@ -2038,6 +2088,10 @@ function MainApp({
   }
 
   const selectedServer = servers.find((s) => s.id === selectedServerId) ?? null;
+  const visibleMessages = messages.filter((m) => !blockedUserIds.has(m.author.id));
+  const canModerateSelectedServer = selectedServer
+    ? can(myPerms, PERM.MANAGE_MESSAGES) || can(myPerms, PERM.BAN_MEMBERS) || can(myPerms, PERM.MANAGE_SERVER)
+    : false;
   const voiceChannel =
     servers.flatMap((s) => s.channels).find((c) => c.id === webrtc.channelId) ?? null;
   // Servers with at least one unread channel get a dot on the rail.
@@ -2104,6 +2158,8 @@ function MainApp({
             onCreatePrivateDmLink={() => setShowPrivateDmLink(true)}
             onFindPeople={() => setShowFindPeople(true)}
             onOpenEvents={() => setShowEvents(true)}
+            onReportServer={selectedServer ? () => void reportTarget("server", selectedServer.id, "server") : undefined}
+            onOpenModQueue={canModerateSelectedServer ? () => setShowModQueue(true) : undefined}
             activationState={activation}
             showActivationChecklist={Boolean(selectedServer && currentUser && selectedServer.owner_id === currentUser.id && !activationDismissed)}
             onDismissActivationChecklist={dismissActivationChecklist}
@@ -2127,7 +2183,7 @@ function MainApp({
       ) : (
       <ChatPane
         channel={selectedChannel}
-        messages={messages}
+        messages={visibleMessages}
         dmTabs={dms}
         dmUsers={dmUsers}
         onSelectDmTab={handleSelectChannel}
@@ -2149,9 +2205,12 @@ function MainApp({
         onDeleteMessage={handleDeleteMessage}
         onPinMessage={handlePinMessage}
         onForward={(msg) => setForwarding(msg)}
+        onReportMessage={(msg) => void reportTarget("message", msg.id, "message")}
         onOpenSearch={selectedServer ? () => setShowSearch(true) : undefined}
         onOpenMembers={selectedServer ? () => setShowMembers(true) : undefined}
         onOpenDm={openDmWith}
+        onBlockUser={blockUser}
+        onReportUser={(user) => void reportTarget("user", user.id, "user")}
         mentionables={selectedServer?.members ?? []}
         channelMembers={selectedServer?.members ?? undefined}
         onlineUserIds={onlineUsers}
@@ -2370,6 +2429,16 @@ function MainApp({
         />
       )}
 
+      {/* Moderation queue + audit log */}
+      {showModQueue && selectedServer && (
+        <ModerationQueueModal
+          token={token}
+          serverId={selectedServer.id}
+          onToast={toast}
+          onClose={() => setShowModQueue(false)}
+        />
+      )}
+
       {/* Forward a message to another channel */}
       {forwarding && (
         <ForwardModal
@@ -2397,5 +2466,104 @@ function MainApp({
         />
       )}
     </div>
+  );
+}
+
+function ModerationQueueModal({
+  token,
+  serverId,
+  onToast,
+  onClose,
+}: {
+  token: string;
+  serverId: string;
+  onToast: (message: string, type?: "success" | "error" | "info") => void;
+  onClose: () => void;
+}) {
+  const [reports, setReports] = useState<AbuseReport[]>([]);
+  const [actions, setActions] = useState<ModerationAction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [queue, log] = await Promise.all([
+        api.listModQueue(token, serverId),
+        api.listModerationActions(token, serverId),
+      ]);
+      setReports(queue);
+      setActions(log);
+    } catch (err) {
+      onToast(`Couldn't load moderation queue: ${err instanceof Error ? err.message : err}`, "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [token, serverId, onToast]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  async function resolve(report: AbuseReport, status: "resolved" | "dismissed") {
+    const note = window.prompt(status === "resolved" ? "Resolution note" : "Why dismiss this report?", "") ?? "";
+    try {
+      await api.resolveReport(token, serverId, report.id, status, note);
+      onToast(status === "resolved" ? "Report resolved" : "Report dismissed", "success");
+      void refresh();
+    } catch (err) {
+      onToast(`Couldn't update report: ${err instanceof Error ? err.message : err}`, "error");
+    }
+  }
+
+  return (
+    <ModalShell onClose={onClose} labelledBy="moderation-queue-title" maxWidthClass="max-w-2xl">
+      <div className="space-y-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="moderation-queue-title" className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>Moderation queue</h2>
+          <button type="button" className="kc-icon-btn" onClick={onClose} aria-label="Close moderation queue">×</button>
+        </div>
+        <p>
+          Reports keep message text out of moderator metadata by default. Resolve what you reviewed, dismiss false alarms,
+          and use the audit log to see recent safety actions.
+        </p>
+        {loading ? (
+          <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-input)" }}>Loading…</div>
+        ) : reports.length === 0 ? (
+          <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-input)" }}>No open reports.</div>
+        ) : (
+          <div className="space-y-3">
+            {reports.map((report) => (
+              <div key={report.id} className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-input)" }}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <strong style={{ color: "var(--text-primary)" }}>{report.target_type} report</strong>
+                  <span className="text-xs uppercase tracking-wide" style={{ color: "var(--danger)" }}>{report.reason}</span>
+                </div>
+                <div className="mt-2 grid gap-1 text-xs">
+                  <span>Target: <code>{report.target_id}</code></span>
+                  {report.accused_user_id && <span>Accused user: <code>{report.accused_user_id}</code></span>}
+                  {report.channel_id && <span>Channel: <code>{report.channel_id}</code></span>}
+                  {report.details && <span>Details: {report.details}</span>}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button type="button" className="kc-button-primary" onClick={() => void resolve(report, "resolved")}>Resolve</button>
+                  <button type="button" className="kc-button-secondary" onClick={() => void resolve(report, "dismissed")}>Dismiss</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Recent audit log</h3>
+          <div className="max-h-48 overflow-auto rounded-xl border" style={{ borderColor: "var(--border-subtle)" }}>
+            {actions.length === 0 ? (
+              <div className="p-3 text-xs">No actions yet.</div>
+            ) : actions.map((action) => (
+              <div key={action.id} className="border-b p-3 text-xs last:border-b-0" style={{ borderColor: "var(--border-subtle)" }}>
+                <strong style={{ color: "var(--text-primary)" }}>{action.action}</strong> · {action.target_type}/{action.target_id}
+                {action.metadata && <div className="mt-1">{action.metadata}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </ModalShell>
   );
 }

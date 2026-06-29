@@ -374,6 +374,9 @@ pub async fn open_dm(
     if recipient_exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "User not found".into()));
     }
+    if crate::api::abuse::is_blocked_pair(&state, &auth.0, &body.recipient_id).await {
+        return Err((StatusCode::FORBIDDEN, "you can't message this user".into()));
+    }
 
     // Check if a DM already exists between these two users.
     let existing: Option<Channel> = sqlx::query_as(
@@ -483,6 +486,14 @@ pub async fn open_group_dm(
         .map_err(crate::api::error::internal)?;
     if existing_count != members.len() as i64 {
         return Err((StatusCode::NOT_FOUND, "One or more users not found".into()));
+    }
+    for uid in &members {
+        if crate::api::abuse::is_blocked_pair(&state, &auth.0, uid).await {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "you can't add a blocked user to a group DM".into(),
+            ));
+        }
     }
 
     let id = new_id();
