@@ -47,6 +47,8 @@ pub struct SourceCategory {
     pub discord_id: String,
     pub name: String,
     pub position: i64,
+    #[serde(default)]
+    pub permission_overwrites: Vec<SourcePermissionOverwrite>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

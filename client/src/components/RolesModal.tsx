@@ -156,19 +156,24 @@ export function RolesModal({ token, serverId, members, ownerId, onClose }: Props
             <div key={r.id} className="mb-3" style={{ borderTop: "1px solid var(--bg-input)", paddingTop: "var(--space-3)" }}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold" style={{ color: r.color ?? "var(--text-primary)" }}>{r.name}</span>
-                <button
-                  type="button"
-                  onClick={() => del(r.id)}
-                  className="kc-interactive text-xs font-semibold"
-                  style={{ color: "var(--danger)", background: "none", border: "none", cursor: "pointer" }}
-                >
-                  Delete role
-                </button>
+                {!r.is_everyone ? (
+                  <button
+                    type="button"
+                    onClick={() => del(r.id)}
+                    className="kc-interactive text-xs font-semibold"
+                    style={{ color: "var(--danger)", background: "none", border: "none", cursor: "pointer" }}
+                  >
+                    Delete role
+                  </button>
+                ) : (
+                  <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>server default</span>
+                )}
               </div>
               <div className="mt-0.5 text-xs" style={{ color: "var(--text-muted)" }}>
                 {PERM_LABELS.filter((p) => (r.permissions & p.flag) !== 0).map((p) => p.label).join(" · ") || "No permissions"}
               </div>
               {/* assign to members */}
+              {!r.is_everyone && (
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {assignable.map((m) => {
                   const has = assigned[m.id]?.has(r.id) ?? false;
@@ -190,6 +195,7 @@ export function RolesModal({ token, serverId, members, ownerId, onClose }: Props
                   );
                 })}
               </div>
+              )}
             </div>
           ))
         )}

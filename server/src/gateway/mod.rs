@@ -222,16 +222,33 @@ pub async fn broadcast_to_channel(state: &AppState, channel_id: &str, event: &Ga
             .flatten();
 
     let recipients: Vec<String> = match server_id {
-        Some(sid) => sqlx::query_scalar("SELECT user_id FROM server_members WHERE server_id = ?")
-            .bind(sid)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(
-                    "broadcast_to_channel server members query failed for {channel_id}: {e}"
-                );
-                Vec::new()
-            }),
+        Some(sid) => {
+            let members: Vec<String> =
+                sqlx::query_scalar("SELECT user_id FROM server_members WHERE server_id = ?")
+                    .bind(sid)
+                    .fetch_all(&state.db)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(
+                        "broadcast_to_channel server members query failed for {channel_id}: {e}"
+                    );
+                        Vec::new()
+                    });
+            let mut visible = Vec::with_capacity(members.len());
+            for uid in members {
+                if crate::api::roles::has_channel_perm(
+                    state,
+                    channel_id,
+                    &uid,
+                    crate::api::roles::perm::VIEW_CHANNEL,
+                )
+                .await
+                {
+                    visible.push(uid);
+                }
+            }
+            visible
+        }
         None => sqlx::query_scalar("SELECT user_id FROM dm_participants WHERE channel_id = ?")
             .bind(channel_id)
             .fetch_all(&state.db)

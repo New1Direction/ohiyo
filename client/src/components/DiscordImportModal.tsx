@@ -853,6 +853,7 @@ function PlainEnglishSnapshot({ rows }: { rows: DiscordPermissionOverwriteReview
               <span className="font-bold" style={{ color: "var(--text-primary)" }}>#{row.channel_name}</span>
               <span>→ {row.target_name ?? row.target_discord_id}</span>
               <RiskBadge risk={row.risk_level} />
+              <EnforcementBadge status={row.enforcement_status} />
             </div>
             <div className="mt-1 font-bold" style={{ color: "var(--text-primary)" }}>{row.verdict_title}</div>
             <div className="mt-0.5">{row.verdict_summary}</div>
@@ -880,13 +881,27 @@ function OverwriteRow({ row }: { row: DiscordPermissionOverwriteReview }) {
       <div className="col-span-2 mt-2 rounded-lg px-2 py-2 sm:col-span-4" style={{ background: row.risk_level === "sensitive" ? "color-mix(in oklch, var(--gold, #f59e0b) 12%, transparent)" : row.manual_review ? "color-mix(in oklch, var(--accent) 8%, transparent)" : "color-mix(in oklch, var(--green, #22c55e) 8%, transparent)", color: "var(--text-muted)" }}>
         <div className="flex flex-wrap items-center gap-2">
           <RiskBadge risk={row.risk_level} />
+          <EnforcementBadge status={row.enforcement_status} />
           <span className="font-bold" style={{ color: "var(--text-primary)" }}>{row.verdict_title}</span>
         </div>
         <div className="mt-1">{row.verdict_summary}</div>
         <div className="mt-1" style={{ color: "var(--text-primary)" }}>Do this: {row.admin_action}</div>
         <div className="mt-1 text-[11px]">Raw audit note: {row.review_reason}</div>
+        {row.unsupported_reason && (
+          <div className="mt-1 text-[11px]" style={{ color: "var(--gold, #f59e0b)" }}>Unsupported behavior: {row.unsupported_reason}</div>
+        )}
       </div>
     </div>
+  );
+}
+
+function EnforcementBadge({ status }: { status: string }) {
+  const enforced = status === "enforced";
+  const partial = status === "partial";
+  return (
+    <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide" style={{ background: enforced ? "color-mix(in oklch, var(--green, #22c55e) 16%, transparent)" : partial ? "color-mix(in oklch, var(--gold, #f59e0b) 18%, transparent)" : "color-mix(in oklch, var(--danger, #ef4444) 12%, transparent)", color: enforced ? "var(--green, #22c55e)" : partial ? "var(--gold, #f59e0b)" : "var(--danger, #ef4444)" }}>
+      {enforced ? "enforced" : partial ? "partly enforced" : "unsupported"}
+    </span>
   );
 }
 

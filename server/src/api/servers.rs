@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::{
     auth::AuthUser,
-    gateway::broadcast_to_server,
+    gateway::{broadcast_to_server, broadcast_to_user},
     types::{
         new_id, now_unix, Category, GatewayEvent, PublicUser, Server, ServerWithChannels, User,
     },
@@ -30,11 +30,14 @@ pub async fn list_servers(
 
     // Fetch each server's full payload concurrently (WAL + pooled connections) instead
     // of N serial round-trips, matching the concurrent pattern in the gateway Ready path.
-    let out: Vec<ServerWithChannels> =
-        futures_util::future::join_all(servers.iter().map(|server| fetch_full(&server.id, &state)))
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()?;
+    let out: Vec<ServerWithChannels> = futures_util::future::join_all(
+        servers
+            .iter()
+            .map(|server| fetch_full_for_user(&server.id, &state, &auth.0)),
+    )
+    .await
+    .into_iter()
+    .collect::<Result<Vec<_>, _>>()?;
     Ok(Json(out))
 }
 
@@ -59,7 +62,7 @@ pub async fn get_server(
     if !is_member(&state, &id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "not a member of this server".into()));
     }
-    Ok(Json(fetch_full(&id, &state).await?))
+    Ok(Json(fetch_full_for_user(&id, &state, &auth.0).await?))
 }
 
 #[derive(Deserialize)]
@@ -172,8 +175,8 @@ pub async fn set_server_icon(
         .await
         .map_err(crate::api::error::internal)?;
 
-    let full = fetch_full(&id, &state).await?;
-    broadcast_to_server(&state, &id, &GatewayEvent::ServerCreate(full.clone())).await;
+    let full = fetch_full_for_user(&id, &state, &auth.0).await?;
+    broadcast_full_server_to_members(&state, &id).await;
     Ok(Json(full))
 }
 
@@ -439,9 +442,39 @@ pub async fn delete_server(
 
 // ── Internal helper ───────────────────────────────────────────────────────────
 
+async fn broadcast_full_server_to_members(state: &AppState, server_id: &str) {
+    let members: Vec<String> =
+        sqlx::query_scalar("SELECT user_id FROM server_members WHERE server_id = ?")
+            .bind(server_id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+    for user_id in members {
+        if let Ok(full) = fetch_full_for_user(server_id, state, &user_id).await {
+            broadcast_to_user(&state.sessions, &user_id, &GatewayEvent::ServerCreate(full));
+        }
+    }
+}
+
 pub async fn fetch_full(
     server_id: &str,
     state: &AppState,
+) -> Result<ServerWithChannels, (StatusCode, String)> {
+    fetch_full_inner(server_id, state, None).await
+}
+
+pub async fn fetch_full_for_user(
+    server_id: &str,
+    state: &AppState,
+    user_id: &str,
+) -> Result<ServerWithChannels, (StatusCode, String)> {
+    fetch_full_inner(server_id, state, Some(user_id)).await
+}
+
+async fn fetch_full_inner(
+    server_id: &str,
+    state: &AppState,
+    viewer_id: Option<&str>,
 ) -> Result<ServerWithChannels, (StatusCode, String)> {
     let server: Server = sqlx::query_as("SELECT * FROM servers WHERE id = ?")
         .bind(server_id)
@@ -449,11 +482,28 @@ pub async fn fetch_full(
         .await
         .map_err(|_| (StatusCode::NOT_FOUND, "server not found".into()))?;
 
-    let channels = sqlx::query_as("SELECT * FROM channels WHERE server_id = ? ORDER BY position")
-        .bind(server_id)
-        .fetch_all(&state.db)
-        .await
-        .unwrap_or_default();
+    let mut channels: Vec<crate::types::Channel> =
+        sqlx::query_as("SELECT * FROM channels WHERE server_id = ? ORDER BY position")
+            .bind(server_id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+    if let Some(user_id) = viewer_id {
+        let mut visible = Vec::with_capacity(channels.len());
+        for channel in channels {
+            if crate::api::roles::has_channel_perm(
+                state,
+                &channel.id,
+                user_id,
+                crate::api::roles::perm::VIEW_CHANNEL,
+            )
+            .await
+            {
+                visible.push(channel);
+            }
+        }
+        channels = visible;
+    }
 
     let members: Vec<User> = sqlx::query_as(
         "SELECT u.* FROM users u

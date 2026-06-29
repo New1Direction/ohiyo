@@ -168,6 +168,11 @@ pub async fn run_import_into(
     for category in &guild.categories {
         mapper::map_category(db, import_id, server_id, category).await?;
         report.categories += 1;
+        for overwrite in &category.permission_overwrites {
+            mapper::record_category_permission_overwrite(db, import_id, category, overwrite)
+                .await?;
+            report.permission_overwrites += 1;
+        }
     }
 
     for channel in &guild.channels {
@@ -449,6 +454,7 @@ mod tests {
                 discord_id: "c-1".into(),
                 name: "Text".into(),
                 position: 0,
+                permission_overwrites: vec![],
             }],
             channels: vec![SourceChannel {
                 discord_id: "ch-1".into(),

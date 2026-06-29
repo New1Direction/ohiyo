@@ -87,6 +87,28 @@ pub async fn create_poll(
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
+    let server_id: Option<String> =
+        sqlx::query_scalar::<_, Option<String>>("SELECT server_id FROM channels WHERE id = ?")
+            .bind(&channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+    if server_id.is_some()
+        && !crate::api::roles::has_channel_perm(
+            &state,
+            &channel_id,
+            &auth.0,
+            crate::api::roles::perm::SEND_MESSAGES,
+        )
+        .await
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't send messages in this channel".into(),
+        ));
+    }
     if !state
         .rate
         .check(&format!("msg:{}", auth.0), 30, Duration::from_secs(10))

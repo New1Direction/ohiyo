@@ -6,9 +6,9 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    api::servers::fetch_full,
+    api::servers::fetch_full_for_user,
     auth::AuthUser,
-    gateway::{broadcast_to_channel, broadcast_to_server},
+    gateway::{broadcast_to_channel, broadcast_to_user},
     types::{new_id, now_unix, Category, Channel, GatewayEvent},
     AppState,
 };
@@ -25,8 +25,16 @@ async fn can_manage(state: &AppState, server_id: &str, user_id: &str) -> bool {
 
 /// Reload + broadcast the whole server so every client picks up structural changes.
 async fn broadcast_server(state: &AppState, server_id: &str) {
-    if let Ok(full) = fetch_full(server_id, state).await {
-        broadcast_to_server(state, server_id, &GatewayEvent::ServerCreate(full)).await;
+    let members: Vec<String> =
+        sqlx::query_scalar("SELECT user_id FROM server_members WHERE server_id = ?")
+            .bind(server_id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+    for user_id in members {
+        if let Ok(full) = fetch_full_for_user(server_id, state, &user_id).await {
+            broadcast_to_user(&state.sessions, &user_id, &GatewayEvent::ServerCreate(full));
+        }
     }
 }
 
@@ -44,8 +52,21 @@ pub async fn list_channels(
             .fetch_all(&state.db)
             .await
             .map_err(crate::api::error::internal)?;
+    let mut visible = Vec::with_capacity(channels.len());
+    for channel in channels {
+        if crate::api::roles::has_channel_perm(
+            &state,
+            &channel.id,
+            &auth.0,
+            crate::api::roles::perm::VIEW_CHANNEL,
+        )
+        .await
+        {
+            visible.push(channel);
+        }
+    }
 
-    Ok(Json(channels))
+    Ok(Json(visible))
 }
 
 #[derive(Deserialize)]
@@ -225,10 +246,10 @@ pub async fn delete_channel(
             .ok()
             .flatten();
     let can = match row.and_then(|(s,)| s) {
-        Some(sid) => {
-            crate::api::roles::has_perm(
+        Some(_sid) => {
+            crate::api::roles::has_channel_perm(
                 &state,
-                &sid,
+                &id,
                 &auth.0,
                 crate::api::roles::perm::MANAGE_CHANNELS,
             )

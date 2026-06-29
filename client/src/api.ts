@@ -296,6 +296,7 @@ export type Role = {
   permissions: number;
   position: number;
   created_at: number;
+  is_everyone?: boolean;
 };
 
 export type InviteInfo = {
@@ -398,6 +399,8 @@ export type DiscordPermissionOverwriteReview = {
   verdict_summary: string;
   admin_action: string;
   risk_level: "ok" | "check" | "sensitive" | string;
+  enforcement_status: "enforced" | "partial" | "unsupported" | string;
+  unsupported_reason: string | null;
 };
 
 export type DiscordImportAssetReview = {

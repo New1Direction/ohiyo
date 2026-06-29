@@ -76,7 +76,7 @@ pub fn source_guild_from_template_value(code: &str, value: &Value) -> Result<Sou
         .iter()
         .map(|role| (role.discord_id.clone(), role.name.clone()))
         .collect();
-    let categories = parse_categories(source);
+    let categories = parse_categories(source, &role_names);
     let channels = parse_channels(source, &role_names);
     let emojis = parse_emojis(source);
 
@@ -112,7 +112,7 @@ fn parse_roles(source: &Value) -> Vec<SourceRole> {
         .collect()
 }
 
-fn parse_categories(source: &Value) -> Vec<SourceCategory> {
+fn parse_categories(source: &Value, role_names: &HashMap<String, String>) -> Vec<SourceCategory> {
     source
         .get("channels")
         .and_then(Value::as_array)
@@ -128,6 +128,7 @@ fn parse_categories(source: &Value) -> Vec<SourceCategory> {
                     .unwrap_or("Category")
                     .to_owned(),
                 position: ch.get("position").and_then(Value::as_i64).unwrap_or(0),
+                permission_overwrites: parse_overwrites(ch, role_names),
             })
         })
         .collect()

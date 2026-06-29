@@ -150,6 +150,8 @@ pub struct DiscordPermissionOverwriteReview {
     pub verdict_summary: String,
     pub admin_action: String,
     pub risk_level: String,
+    pub enforcement_status: String,
+    pub unsupported_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -526,47 +528,60 @@ pub async fn get_discord_import_review(
     .fetch_all(&state.db)
     .await
     .map_err(crate::api::error::internal)?;
-    let overwrites: Vec<DiscordPermissionOverwriteReview> = overwrite_rows
-        .into_iter()
-        .map(|row| {
-            let allow: String = row.get("allow");
-            let deny: String = row.get("deny");
-            let allow_flags = decode_discord_permission_bits(&allow);
-            let deny_flags = decode_discord_permission_bits(&deny);
-            let manual_review = !allow_flags.is_empty() || !deny_flags.is_empty();
-            let channel_name: String = row.get("channel_name");
-            let target_type: String = row.get("target_type");
-            let target_name: Option<String> = row.try_get("target_name").ok();
-            let verdict = summarize_permission_overwrite(
-                &channel_name,
-                &target_type,
-                target_name.as_deref(),
-                &allow_flags,
-                &deny_flags,
-            );
-            DiscordPermissionOverwriteReview {
-                channel_discord_id: row.get("channel_discord_id"),
-                channel_name,
-                target_discord_id: row.get("target_discord_id"),
-                target_type,
-                target_name,
-                allow,
-                deny,
-                review_reason: if manual_review {
-                    "Discord channel overwrite preserved; confirm equivalent Ohiyo visibility before inviting".to_owned()
-                } else {
-                    "No allow/deny bits set".to_owned()
-                },
-                manual_review,
-                allow_flags,
-                deny_flags,
-                verdict_title: verdict.title,
-                verdict_summary: verdict.summary,
-                admin_action: verdict.admin_action,
-                risk_level: verdict.risk_level,
-            }
-        })
-        .collect();
+    let mut overwrites: Vec<DiscordPermissionOverwriteReview> =
+        Vec::with_capacity(overwrite_rows.len());
+    for row in overwrite_rows {
+        let allow: String = row.get("allow");
+        let deny: String = row.get("deny");
+        let allow_flags = decode_discord_permission_bits(&allow);
+        let deny_flags = decode_discord_permission_bits(&deny);
+        let manual_review = !allow_flags.is_empty() || !deny_flags.is_empty();
+        let channel_discord_id: String = row.get("channel_discord_id");
+        let target_discord_id: String = row.get("target_discord_id");
+        let channel_name: String = row.get("channel_name");
+        let target_type: String = row.get("target_type");
+        let target_name: Option<String> = row.try_get("target_name").ok();
+        let verdict = summarize_permission_overwrite(
+            &channel_name,
+            &target_type,
+            target_name.as_deref(),
+            &allow_flags,
+            &deny_flags,
+        );
+        let (enforcement_status, unsupported_reason) = imported_overwrite_enforcement_status(
+            &state,
+            &import_id,
+            &channel_discord_id,
+            &target_discord_id,
+            &target_type,
+            &allow,
+            &deny,
+        )
+        .await;
+        overwrites.push(DiscordPermissionOverwriteReview {
+            channel_discord_id,
+            channel_name,
+            target_discord_id,
+            target_type,
+            target_name,
+            allow,
+            deny,
+            review_reason: if manual_review {
+                "Discord channel overwrite preserved; confirm equivalent Ohiyo visibility before inviting".to_owned()
+            } else {
+                "No allow/deny bits set".to_owned()
+            },
+            manual_review,
+            allow_flags,
+            deny_flags,
+            verdict_title: verdict.title,
+            verdict_summary: verdict.summary,
+            admin_action: verdict.admin_action,
+            risk_level: verdict.risk_level,
+            enforcement_status,
+            unsupported_reason,
+        });
+    }
 
     let asset_rows = sqlx::query(
         "SELECT asset_type, discord_id, name, ohiyo_id, source_url, status, note
@@ -602,6 +617,104 @@ pub async fn get_discord_import_review(
         overwrites,
         assets,
     }))
+}
+
+async fn imported_overwrite_enforcement_status(
+    state: &AppState,
+    import_id: &str,
+    channel_discord_id: &str,
+    target_discord_id: &str,
+    target_type: &str,
+    allow: &str,
+    deny: &str,
+) -> (String, Option<String>) {
+    let channel_id: Option<String> = sqlx::query_scalar(
+        "SELECT ohiyo_id FROM discord_import_map
+         WHERE import_id = ? AND entity_type = 'channel' AND discord_id = ?",
+    )
+    .bind(import_id)
+    .bind(channel_discord_id)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+    let category_id: Option<String> = if channel_id.is_none() {
+        sqlx::query_scalar(
+            "SELECT ohiyo_id FROM discord_import_map
+             WHERE import_id = ? AND entity_type = 'category' AND discord_id = ?",
+        )
+        .bind(import_id)
+        .bind(channel_discord_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+    } else {
+        None
+    };
+    let (scope_type, scope_id) = match (channel_id, category_id) {
+        (Some(id), _) => ("channel", id),
+        (None, Some(id)) => ("category", id),
+        (None, None) => {
+            return (
+                "unsupported".to_owned(),
+                Some("Imported channel/category is not mapped to Ohiyo".to_owned()),
+            )
+        }
+    };
+    let runtime: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT target_type, unsupported_reason FROM permission_overwrites
+         WHERE scope_type = ? AND scope_id = ? AND source = 'discord_import'
+           AND source_discord_id = ?
+         LIMIT 1",
+    )
+    .bind(scope_type)
+    .bind(&scope_id)
+    .bind(target_discord_id)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+    let unsupported_bits = unsupported_discord_permission_reason(allow, deny);
+    match runtime {
+        Some((_runtime_target, reason)) => match reason.or(unsupported_bits) {
+            Some(reason) => ("partial".to_owned(), Some(reason)),
+            None => ("enforced".to_owned(), None),
+        },
+        None if target_type == "member" => (
+            "unsupported".to_owned(),
+            Some("Member-specific Discord overwrite has no mapped Ohiyo member yet".to_owned()),
+        ),
+        None if target_type == "unknown" => (
+            "unsupported".to_owned(),
+            Some("Discord overwrite target type is unsupported".to_owned()),
+        ),
+        None => (
+            "unsupported".to_owned(),
+            Some("Discord overwrite target is not mapped to an Ohiyo role/member".to_owned()),
+        ),
+    }
+}
+
+fn unsupported_discord_permission_reason(allow: &str, deny: &str) -> Option<String> {
+    const SUPPORTED: u128 = (1 << 1)
+        | (1 << 2)
+        | (1 << 3)
+        | (1 << 4)
+        | (1 << 5)
+        | (1 << 10)
+        | (1 << 11)
+        | (1 << 13)
+        | (1 << 28);
+    let allow = allow.parse::<u128>().unwrap_or(0);
+    let deny = deny.parse::<u128>().unwrap_or(0);
+    if (allow | deny) & !SUPPORTED != 0 {
+        Some(
+            "Discord-only permission bits are preserved for review but not enforced yet".to_owned(),
+        )
+    } else {
+        None
+    }
 }
 
 fn permission_review_checklist(manual_review_count: usize, asset_count: usize) -> Vec<String> {

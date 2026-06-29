@@ -7,7 +7,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    api::servers::fetch_full,
+    api::servers::fetch_full_for_user,
     auth::AuthUser,
     gateway::broadcast_to_server,
     types::{now_unix, GatewayEvent, Invite, PublicUser, Server, ServerWithChannels, User},
@@ -271,7 +271,9 @@ pub async fn redeem_invite(
         .await;
     }
 
-    Ok(Json(fetch_full(&inv.server_id, &state).await?))
+    Ok(Json(
+        fetch_full_for_user(&inv.server_id, &state, &auth.0).await?,
+    ))
 }
 
 /// DELETE /invites/{code} — the creator or server owner can revoke a code.

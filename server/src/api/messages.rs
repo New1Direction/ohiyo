@@ -308,6 +308,12 @@ pub async fn send_message(
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
+    if !user_can_send(&state, &channel_id, &auth.0).await {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't send messages in this channel".into(),
+        ));
+    }
     let dm_peers: Vec<String> = sqlx::query_scalar(
         "SELECT dp.user_id FROM dm_participants dp
          JOIN channels c ON c.id = dp.channel_id
@@ -515,7 +521,7 @@ pub async fn build_full(
     })
 }
 
-/// True if the user can see (and therefore act in) a channel.
+/// True if the user can see a channel.
 pub async fn user_can_access(state: &AppState, channel_id: &str, user_id: &str) -> bool {
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT server_id FROM channels WHERE id = ?")
@@ -525,27 +531,50 @@ pub async fn user_can_access(state: &AppState, channel_id: &str, user_id: &str) 
             .ok()
             .flatten();
     let server_id = row.and_then(|(s,)| s);
-    let found: Option<(i64,)> = match server_id {
-        Some(sid) => {
-            sqlx::query_as("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
-                .bind(sid)
-                .bind(user_id)
-                .fetch_optional(&state.db)
-                .await
-                .ok()
-                .flatten()
+    match server_id {
+        Some(_) => {
+            crate::api::roles::has_channel_perm(
+                state,
+                channel_id,
+                user_id,
+                crate::api::roles::perm::VIEW_CHANNEL,
+            )
+            .await
         }
-        None => {
-            sqlx::query_as("SELECT 1 FROM dm_participants WHERE channel_id = ? AND user_id = ?")
-                .bind(channel_id)
-                .bind(user_id)
-                .fetch_optional(&state.db)
-                .await
-                .ok()
-                .flatten()
+        None => sqlx::query_as::<_, (i64,)>(
+            "SELECT 1 FROM dm_participants WHERE channel_id = ? AND user_id = ?",
+        )
+        .bind(channel_id)
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .is_some(),
+    }
+}
+
+async fn user_can_send(state: &AppState, channel_id: &str, user_id: &str) -> bool {
+    let server_id: Option<String> =
+        sqlx::query_scalar::<_, Option<String>>("SELECT server_id FROM channels WHERE id = ?")
+            .bind(channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+    match server_id {
+        Some(_) => {
+            crate::api::roles::has_channel_perm(
+                state,
+                channel_id,
+                user_id,
+                crate::api::roles::perm::SEND_MESSAGES,
+            )
+            .await
         }
-    };
-    found.is_some()
+        None => user_can_access(state, channel_id, user_id).await,
+    }
 }
 
 /// One participant's read cursor in a channel.
@@ -683,10 +712,10 @@ async fn set_pin(
             .fetch_optional(&state.db)
             .await
             .map_err(crate::api::error::internal)?;
-    if let Some((Some(sid),)) = chan {
-        if !crate::api::roles::has_perm(
+    if let Some((Some(_sid),)) = chan {
+        if !crate::api::roles::has_channel_perm(
             state,
-            &sid,
+            channel_id,
             user_id,
             crate::api::roles::perm::MANAGE_MESSAGES,
         )
@@ -795,7 +824,9 @@ pub async fn search_messages(
 
     let mut out = Vec::with_capacity(messages.len());
     for msg in messages {
-        out.push(build_full(&state, msg, &auth.0).await?);
+        if user_can_access(&state, &msg.channel_id, &auth.0).await {
+            out.push(build_full(&state, msg, &auth.0).await?);
+        }
     }
     Ok(Json(out))
 }
@@ -853,10 +884,10 @@ pub async fn delete_message(
     if msg.author_id != auth.0 {
         // Mods with MANAGE_MESSAGES can delete others' messages in a server channel.
         let can = match server_id.as_deref() {
-            Some(sid) => {
-                crate::api::roles::has_perm(
+            Some(_sid) => {
+                crate::api::roles::has_channel_perm(
                     &state,
-                    sid,
+                    &channel_id,
                     &auth.0,
                     crate::api::roles::perm::MANAGE_MESSAGES,
                 )
@@ -934,10 +965,10 @@ pub async fn set_disappearing(
             .ok()
             .flatten()
             .flatten();
-    if let Some(sid) = server_id {
-        if !crate::api::roles::has_perm(
+    if let Some(_sid) = server_id {
+        if !crate::api::roles::has_channel_perm(
             &state,
-            &sid,
+            &channel_id,
             &auth.0,
             crate::api::roles::perm::MANAGE_CHANNELS,
         )

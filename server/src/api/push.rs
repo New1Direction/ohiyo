@@ -296,12 +296,32 @@ pub async fn enqueue_message_pushes(state: &AppState, channel_id: &str, author_i
     let Ok(rows) = rows else {
         return;
     };
+    let is_server_channel: bool =
+        sqlx::query_scalar::<_, Option<String>>("SELECT server_id FROM channels WHERE id = ?")
+            .bind(channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten()
+            .is_some();
     let mut recipients = Vec::new();
     for (id,) in rows {
         if id == author_id {
             continue;
         }
         if crate::api::abuse::is_blocked_pair(state, author_id, &id).await {
+            continue;
+        }
+        if is_server_channel
+            && !crate::api::roles::has_channel_perm(
+                state,
+                channel_id,
+                &id,
+                crate::api::roles::perm::VIEW_CHANNEL,
+            )
+            .await
+        {
             continue;
         }
         recipients.push(id);

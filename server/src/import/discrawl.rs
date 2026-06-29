@@ -245,6 +245,7 @@ async fn read_categories(db: &SqlitePool, guild_id: &str) -> Result<Vec<SourceCa
             discord_id: row.get("id"),
             name: row.get("name"),
             position: row.get("position"),
+            permission_overwrites: vec![],
         })
         .collect())
 }

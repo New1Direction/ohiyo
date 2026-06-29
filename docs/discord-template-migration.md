@@ -38,7 +38,7 @@ Content-Type: application/json
   - Ban Members → `BAN_MEMBERS`.
   - Manage Roles → `MANAGE_ROLES`.
   - Manage Server → `MANAGE_SERVER`.
-- Granular Discord channel permission overwrites are preserved in `discord_import_permission_overwrites` for audit/replay. Ohiyo does not yet enforce Discord-style channel overwrites, so roles with source permissions are flagged for review.
+- Granular Discord channel/category permission overwrites are preserved in `discord_import_permission_overwrites` and replayed into Ohiyo's runtime `permission_overwrites` table when their target maps to `@everyone`, an imported role, or an imported member. Discord-only bits and unmapped/member-specific targets remain flagged for review.
 - Custom emojis are downloaded into Ohiyo files and created as server emojis when Discord includes them in the template payload.
 
 ## What is intentionally not imported from templates
@@ -52,7 +52,7 @@ Discord Server Templates do not carry message history. Use the managed bot/Discr
 3. Open the new Ohiyo space.
 4. Review the import report:
    - roles needing review;
-   - preserved channel overwrites;
+   - enforced, partly enforced, and unsupported channel overwrite rows;
    - parked assets or unsupported Discord-only features.
 5. Invite the community only after roles/channel visibility have been checked.
 

@@ -19,38 +19,194 @@ pub mod perm {
     pub const KICK_MEMBERS: i64 = 1 << 2;
     pub const BAN_MEMBERS: i64 = 1 << 3;
     pub const MANAGE_ROLES: i64 = 1 << 4;
-    #[allow(dead_code)] // reserved: rename/settings (gated client-side today)
     pub const MANAGE_SERVER: i64 = 1 << 5;
-    pub const ALL: i64 = (1 << 6) - 1;
+    pub const VIEW_CHANNEL: i64 = 1 << 6;
+    pub const SEND_MESSAGES: i64 = 1 << 7;
+    pub const ADMINISTRATOR: i64 = 1 << 8;
+    pub const LEGACY_MANAGE_ALL: i64 = (1 << 6) - 1;
+    pub const ALL: i64 = (1 << 9) - 1;
+    pub const DEFAULT_MEMBER: i64 = VIEW_CHANNEL | SEND_MESSAGES;
 }
 
-/// Effective permission bitfield for a member. The owner implicitly has every
-/// permission; everyone else gets the union of their assigned roles.
+/// Effective server-level permission bitfield for a member. The owner implicitly has
+/// every permission. Everyone else gets the @everyone role/defaults plus assigned roles.
 pub async fn member_permissions(state: &AppState, server_id: &str, user_id: &str) -> i64 {
+    base_member_permissions(state, server_id, user_id).await
+}
+
+pub async fn has_perm(state: &AppState, server_id: &str, user_id: &str, flag: i64) -> bool {
+    member_permissions(state, server_id, user_id).await & flag != 0
+}
+
+async fn is_owner(state: &AppState, server_id: &str, user_id: &str) -> bool {
     let owner: Option<String> = sqlx::query_scalar("SELECT owner_id FROM servers WHERE id = ?")
         .bind(server_id)
         .fetch_optional(&state.db)
         .await
         .ok()
         .flatten();
-    if owner.as_deref() == Some(user_id) {
-        return perm::ALL;
-    }
-    let rows: Vec<(i64,)> = sqlx::query_as(
-        "SELECT r.permissions FROM member_roles mr
+    owner.as_deref() == Some(user_id)
+}
+
+async fn member_role_ids_and_permissions(
+    state: &AppState,
+    server_id: &str,
+    user_id: &str,
+) -> (Vec<String>, i64) {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT r.id, r.permissions FROM member_roles mr
          JOIN roles r ON r.id = mr.role_id
-         WHERE mr.server_id = ? AND mr.user_id = ?",
+         WHERE mr.server_id = ? AND mr.user_id = ? AND r.is_everyone = 0",
     )
     .bind(server_id)
     .bind(user_id)
     .fetch_all(&state.db)
     .await
     .unwrap_or_default();
-    rows.into_iter().fold(0i64, |acc, (p,)| acc | p)
+    let mut ids = Vec::with_capacity(rows.len());
+    let mut permissions = 0;
+    for (id, p) in rows {
+        ids.push(id);
+        permissions |= p;
+    }
+    (ids, permissions)
 }
 
-pub async fn has_perm(state: &AppState, server_id: &str, user_id: &str, flag: i64) -> bool {
-    member_permissions(state, server_id, user_id).await & flag != 0
+async fn everyone_permissions(state: &AppState, server_id: &str) -> i64 {
+    sqlx::query_scalar("SELECT permissions FROM roles WHERE server_id = ? AND is_everyone = 1 ORDER BY created_at LIMIT 1")
+        .bind(server_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(perm::DEFAULT_MEMBER)
+}
+
+async fn base_member_permissions(state: &AppState, server_id: &str, user_id: &str) -> i64 {
+    if is_owner(state, server_id, user_id).await {
+        return perm::ALL;
+    }
+    if !crate::api::servers::is_member(state, server_id, user_id).await {
+        return 0;
+    }
+    let (_, role_permissions) = member_role_ids_and_permissions(state, server_id, user_id).await;
+    everyone_permissions(state, server_id).await | role_permissions
+}
+
+fn has_admin_override(permissions: i64) -> bool {
+    permissions & perm::ADMINISTRATOR != 0
+        || permissions & perm::LEGACY_MANAGE_ALL == perm::LEGACY_MANAGE_ALL
+}
+
+async fn apply_overwrite_scope(
+    state: &AppState,
+    mut permissions: i64,
+    scope_type: &str,
+    scope_id: &str,
+    user_id: &str,
+    role_ids: &[String],
+) -> i64 {
+    let rows: Vec<(String, Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT target_type, target_id, allow_permissions, deny_permissions
+         FROM permission_overwrites
+         WHERE scope_type = ? AND scope_id = ?",
+    )
+    .bind(scope_type)
+    .bind(scope_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let mut deny = 0;
+    let mut allow = 0;
+    for (target_type, _target_id, allow_permissions, deny_permissions) in &rows {
+        if target_type == "everyone" {
+            deny |= *deny_permissions;
+            allow |= *allow_permissions;
+        }
+    }
+    permissions &= !deny;
+    permissions |= allow;
+
+    deny = 0;
+    allow = 0;
+    for (target_type, target_id, allow_permissions, deny_permissions) in &rows {
+        if target_type == "role" && target_id.as_ref().is_some_and(|id| role_ids.contains(id)) {
+            deny |= *deny_permissions;
+            allow |= *allow_permissions;
+        }
+    }
+    permissions &= !deny;
+    permissions |= allow;
+
+    deny = 0;
+    allow = 0;
+    for (target_type, target_id, allow_permissions, deny_permissions) in &rows {
+        if target_type == "member" && target_id.as_deref() == Some(user_id) {
+            deny |= *deny_permissions;
+            allow |= *allow_permissions;
+        }
+    }
+    permissions &= !deny;
+    permissions |= allow;
+    permissions
+}
+
+/// Effective Discord-style channel permissions: server/@everyone base, unioned member
+/// roles, administrator override, then category and channel overwrites with Discord's
+/// level ordering: @everyone, combined roles, member-specific; deny then allow per level.
+pub async fn channel_permissions(state: &AppState, channel_id: &str, user_id: &str) -> i64 {
+    let row: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT server_id, category_id FROM channels WHERE id = ?")
+            .bind(channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+    let Some((Some(server_id), category_id)) = row else {
+        return 0;
+    };
+    if is_owner(state, &server_id, user_id).await {
+        return perm::ALL;
+    }
+    if !crate::api::servers::is_member(state, &server_id, user_id).await {
+        return 0;
+    }
+    let (role_ids, role_permissions) =
+        member_role_ids_and_permissions(state, &server_id, user_id).await;
+    let mut permissions = everyone_permissions(state, &server_id).await | role_permissions;
+    if has_admin_override(permissions) {
+        return perm::ALL;
+    }
+    if let Some(category_id) = category_id {
+        permissions = apply_overwrite_scope(
+            state,
+            permissions,
+            "category",
+            &category_id,
+            user_id,
+            &role_ids,
+        )
+        .await;
+    }
+    apply_overwrite_scope(
+        state,
+        permissions,
+        "channel",
+        channel_id,
+        user_id,
+        &role_ids,
+    )
+    .await
+}
+
+pub async fn has_channel_perm(
+    state: &AppState,
+    channel_id: &str,
+    user_id: &str,
+    flag: i64,
+) -> bool {
+    channel_permissions(state, channel_id, user_id).await & flag != 0
 }
 
 /// A member's rank for hierarchy checks: the owner outranks everyone (i64::MAX),
@@ -168,9 +324,10 @@ pub async fn create_role(
         permissions: granted,
         position,
         created_at: now_unix(),
+        is_everyone: false,
     };
     sqlx::query(
-        "INSERT INTO roles (id, server_id, name, color, permissions, position, created_at) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO roles (id, server_id, name, color, permissions, position, created_at, is_everyone) VALUES (?,?,?,?,?,?,?,0)",
     )
     .bind(&role.id)
     .bind(&role.server_id)
@@ -194,6 +351,19 @@ pub async fn delete_role(
 ) -> Result<StatusCode, (StatusCode, String)> {
     if !has_perm(&state, &server_id, &auth.0, perm::MANAGE_ROLES).await {
         return Err((StatusCode::FORBIDDEN, "you can't manage roles".into()));
+    }
+    let is_everyone: Option<bool> =
+        sqlx::query_scalar("SELECT is_everyone FROM roles WHERE id = ? AND server_id = ?")
+            .bind(&role_id)
+            .bind(&server_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    if is_everyone == Some(true) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "@everyone cannot be deleted".into(),
+        ));
     }
     sqlx::query("DELETE FROM roles WHERE id = ? AND server_id = ?")
         .bind(&role_id)
@@ -231,6 +401,16 @@ pub async fn assign_role(
             .await
             .ok()
             .flatten();
+    let role_is_everyone: Option<bool> =
+        sqlx::query_scalar("SELECT is_everyone FROM roles WHERE id = ? AND server_id = ?")
+            .bind(&role_id)
+            .bind(&server_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    if role_is_everyone == Some(true) {
+        return Err((StatusCode::BAD_REQUEST, "@everyone is automatic".into()));
+    }
     let Some((role_position, role_permissions)) = role_row else {
         return Err((StatusCode::NOT_FOUND, "role or member not found".into()));
     };

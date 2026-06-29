@@ -67,6 +67,8 @@ pub struct Role {
     pub permissions: i64,
     pub position: i64,
     pub created_at: i64,
+    #[serde(default)]
+    pub is_everyone: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

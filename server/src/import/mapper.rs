@@ -160,9 +160,8 @@ pub async fn map_reaction(
 }
 
 /// Map a Discord role to an Ohiyo role, preserving the role identifier in the import
-/// provenance table and translating Discord's broad server permissions to the Ohiyo
-/// permissions that already exist. Channel-specific allow/deny matrices are stored
-/// separately for review/replay because Ohiyo does not yet enforce them.
+/// provenance table and translating Discord's broad/server permissions to Ohiyo.
+/// Discord's @everyone role is marked as the automatic server-default role.
 pub async fn map_role(
     db: &SqlitePool,
     import_id: &str,
@@ -174,9 +173,10 @@ pub async fn map_role(
     }
     let id = new_id();
     let permissions = map_discord_permissions(r.permissions.as_deref());
+    let is_everyone = r.name.eq_ignore_ascii_case("@everyone");
     sqlx::query(
-        "INSERT INTO roles (id, server_id, name, color, permissions, position, created_at)
-         VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO roles (id, server_id, name, color, permissions, position, created_at, is_everyone)
+         VALUES (?,?,?,?,?,?,?,?)",
     )
     .bind(&id)
     .bind(server_id)
@@ -185,6 +185,7 @@ pub async fn map_role(
     .bind(permissions)
     .bind(r.position)
     .bind(now_unix())
+    .bind(is_everyone)
     .execute(db)
     .await?;
     record_map(db, import_id, "role", &r.discord_id, &id).await?;
@@ -203,7 +204,7 @@ pub async fn map_role(
     Ok(id)
 }
 
-/// Translate Discord permission bits to the closest Ohiyo server-level equivalents.
+/// Translate Discord permission bits to the closest Ohiyo equivalents.
 pub fn map_discord_permissions(bits: Option<&str>) -> i64 {
     let Some(raw) = bits else { return 0 };
     let Ok(discord) = raw.parse::<u128>() else {
@@ -214,6 +215,8 @@ pub fn map_discord_permissions(bits: Option<&str>) -> i64 {
     const DISCORD_ADMINISTRATOR: u128 = 1 << 3;
     const DISCORD_MANAGE_CHANNELS: u128 = 1 << 4;
     const DISCORD_MANAGE_GUILD: u128 = 1 << 5;
+    const DISCORD_VIEW_CHANNEL: u128 = 1 << 10;
+    const DISCORD_SEND_MESSAGES: u128 = 1 << 11;
     const DISCORD_MANAGE_MESSAGES: u128 = 1 << 13;
     const DISCORD_MANAGE_ROLES: u128 = 1 << 28;
 
@@ -227,6 +230,12 @@ pub fn map_discord_permissions(bits: Option<&str>) -> i64 {
     }
     if discord & DISCORD_MANAGE_MESSAGES != 0 {
         out |= crate::api::roles::perm::MANAGE_MESSAGES;
+    }
+    if discord & DISCORD_VIEW_CHANNEL != 0 {
+        out |= crate::api::roles::perm::VIEW_CHANNEL;
+    }
+    if discord & DISCORD_SEND_MESSAGES != 0 {
+        out |= crate::api::roles::perm::SEND_MESSAGES;
     }
     if discord & DISCORD_KICK_MEMBERS != 0 {
         out |= crate::api::roles::perm::KICK_MEMBERS;
@@ -270,7 +279,148 @@ pub async fn record_permission_overwrite(
     .bind(now_unix())
     .execute(db)
     .await?;
+
+    if let Some(channel_id) = lookup_map(db, import_id, "channel", &channel.discord_id).await? {
+        record_runtime_permission_overwrite(db, import_id, "channel", &channel_id, overwrite)
+            .await?;
+    }
     Ok(())
+}
+
+pub async fn record_category_permission_overwrite(
+    db: &SqlitePool,
+    import_id: &str,
+    category: &SourceCategory,
+    overwrite: &SourcePermissionOverwrite,
+) -> Result<()> {
+    let target_type = match overwrite.target_type.as_str() {
+        "role" | "member" => overwrite.target_type.as_str(),
+        _ => "unknown",
+    };
+    sqlx::query(
+        "INSERT OR IGNORE INTO discord_import_permission_overwrites
+         (import_id, channel_discord_id, channel_name, target_discord_id, target_type,
+          target_name, allow, deny, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)",
+    )
+    .bind(import_id)
+    .bind(&category.discord_id)
+    .bind(&category.name)
+    .bind(&overwrite.target_discord_id)
+    .bind(target_type)
+    .bind(&overwrite.target_name)
+    .bind(&overwrite.allow)
+    .bind(&overwrite.deny)
+    .bind(now_unix())
+    .execute(db)
+    .await?;
+
+    if let Some(category_id) = lookup_map(db, import_id, "category", &category.discord_id).await? {
+        record_runtime_permission_overwrite(db, import_id, "category", &category_id, overwrite)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn record_runtime_permission_overwrite(
+    db: &SqlitePool,
+    import_id: &str,
+    scope_type: &str,
+    scope_id: &str,
+    overwrite: &SourcePermissionOverwrite,
+) -> Result<()> {
+    let import_server_id: String =
+        sqlx::query_scalar("SELECT server_id FROM discord_imports WHERE id = ?")
+            .bind(import_id)
+            .fetch_one(db)
+            .await?;
+    let (target_type, target_id, unsupported_target) = match overwrite.target_type.as_str() {
+        "role" => {
+            let role_id = lookup_map(db, import_id, "role", &overwrite.target_discord_id).await?;
+            if let Some(role_id) = role_id {
+                let is_everyone =
+                    sqlx::query_scalar::<_, bool>("SELECT is_everyone FROM roles WHERE id = ?")
+                        .bind(&role_id)
+                        .fetch_optional(db)
+                        .await?
+                        .unwrap_or(false);
+                if is_everyone {
+                    ("everyone".to_owned(), None, None)
+                } else {
+                    ("role".to_owned(), Some(role_id), None)
+                }
+            } else {
+                (
+                    "unknown".to_owned(),
+                    None,
+                    Some("Discord role is not mapped to an Ohiyo role".to_owned()),
+                )
+            }
+        }
+        "member" => {
+            let user_id = lookup_map(db, import_id, "user", &overwrite.target_discord_id).await?;
+            if user_id.is_some() {
+                ("member".to_owned(), user_id, None)
+            } else {
+                (
+                    "unknown".to_owned(),
+                    None,
+                    Some("Discord member is not mapped to an Ohiyo user".to_owned()),
+                )
+            }
+        }
+        _ => (
+            "unknown".to_owned(),
+            None,
+            Some("Discord overwrite target type is unsupported".to_owned()),
+        ),
+    };
+    let allow_permissions = map_discord_permissions(Some(&overwrite.allow));
+    let deny_permissions = map_discord_permissions(Some(&overwrite.deny));
+    let unsupported_bits = unsupported_discord_permission_reason(&overwrite.allow, &overwrite.deny);
+    let unsupported_reason = unsupported_target.or(unsupported_bits);
+    sqlx::query(
+        "INSERT OR IGNORE INTO permission_overwrites
+         (id, server_id, scope_type, scope_id, target_type, target_id, allow_permissions,
+          deny_permissions, source, source_discord_id, unsupported_reason, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    )
+    .bind(new_id())
+    .bind(import_server_id)
+    .bind(scope_type)
+    .bind(scope_id)
+    .bind(target_type)
+    .bind(target_id)
+    .bind(allow_permissions)
+    .bind(deny_permissions)
+    .bind("discord_import")
+    .bind(&overwrite.target_discord_id)
+    .bind(unsupported_reason)
+    .bind(now_unix())
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+fn unsupported_discord_permission_reason(allow: &str, deny: &str) -> Option<String> {
+    const SUPPORTED: u128 = (1 << 1)
+        | (1 << 2)
+        | (1 << 3)
+        | (1 << 4)
+        | (1 << 5)
+        | (1 << 10)
+        | (1 << 11)
+        | (1 << 13)
+        | (1 << 28);
+    let allow = allow.parse::<u128>().unwrap_or(0);
+    let deny = deny.parse::<u128>().unwrap_or(0);
+    if (allow | deny) & !SUPPORTED != 0 {
+        Some(
+            "Discord-only permission bits are preserved for review but not enforced yet".to_owned(),
+        )
+    } else {
+        None
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -385,6 +535,7 @@ mod tests {
             discord_id: "c-1".into(),
             name: "Text".into(),
             position: 0,
+            permission_overwrites: vec![],
         };
         let a = map_category(&db, &import_id, "s1", &c).await.unwrap();
         let b = map_category(&db, &import_id, "s1", &c).await.unwrap();

@@ -55,7 +55,9 @@ pub async fn search_messages(
                 .await
                 .map_err(crate::api::error::internal)?;
                 if let Some(msg) = msg {
-                    out.push(build_full(&state, msg, &auth.0).await?);
+                    if messages::user_can_access(&state, &msg.channel_id, &auth.0).await {
+                        out.push(build_full(&state, msg, &auth.0).await?);
+                    }
                 }
             }
             return Ok(Json(out));
