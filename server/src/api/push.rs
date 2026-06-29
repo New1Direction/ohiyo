@@ -6,7 +6,7 @@
 
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     Json,
 };
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
@@ -170,6 +170,15 @@ fn content_free_payload(kind: &str) -> serde_json::Value {
         "tag": "ohiyo-activity",
         "data": { "kind": kind },
     })
+}
+
+fn web_push_key(value: &str) -> String {
+    value
+        .trim()
+        .replace('+', "-")
+        .replace('/', "_")
+        .trim_end_matches('=')
+        .to_owned()
 }
 
 fn privacy_note() -> String {
@@ -531,7 +540,9 @@ async fn send_web_push(http: &Client, job: &DeliveryJob) -> ProviderSendResult {
     let Some(auth) = job.auth.as_deref() else {
         return ProviderSendResult::Failed(permanent("web push auth missing"));
     };
-    let subscription = SubscriptionInfo::new(endpoint, p256dh, auth);
+    let p256dh = web_push_key(p256dh);
+    let auth = web_push_key(auth);
+    let subscription = SubscriptionInfo::new(endpoint.to_owned(), p256dh, auth);
     let mut sig = match VapidSignatureBuilder::from_pem(private_key.as_bytes(), &subscription) {
         Ok(builder) => builder,
         Err(_) => {
@@ -566,6 +577,7 @@ async fn send_web_push(http: &Client, job: &DeliveryJob) -> ProviderSendResult {
     }
     if let Some(payload) = message.payload {
         request = request.header("Content-Encoding", payload.content_encoding.to_str());
+        request = request.header(header::CONTENT_TYPE, "application/octet-stream");
         for (name, value) in payload.crypto_headers {
             request = request.header(name, value);
         }
@@ -583,7 +595,10 @@ async fn send_web_push(http: &Client, job: &DeliveryJob) -> ProviderSendResult {
         Ok(res) if res.status().is_server_error() || res.status().as_u16() == 429 => {
             ProviderSendResult::Failed(transient("web push provider unavailable"))
         }
-        Ok(_) => ProviderSendResult::Failed(permanent("web push delivery failed")),
+        Ok(res) => ProviderSendResult::Failed(permanent(&format!(
+            "web push delivery rejected with status {}",
+            res.status().as_u16()
+        ))),
         Err(_) => ProviderSendResult::Failed(transient("web push request failed")),
     }
 }
@@ -1021,6 +1036,12 @@ mod tests {
                 "payload should not contain {forbidden}: {payload}"
             );
         }
+    }
+
+    #[test]
+    fn web_push_keys_accept_browser_base64_and_base64url() {
+        assert_eq!(web_push_key("abcd+/=="), "abcd-_");
+        assert_eq!(web_push_key("abcd-_"), "abcd-_");
     }
 
     #[test]

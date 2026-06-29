@@ -24,7 +24,7 @@ function key(subscription: PushSubscription, name: PushEncryptionKeyName): strin
   const bytes = new Uint8Array(buf);
   let binary = "";
   for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 export function canUseWebPush(): boolean {
