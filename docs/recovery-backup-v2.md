@@ -57,4 +57,4 @@ Current states:
 3. **Not covered / gone** — preview persists not-covered results; after reload, those messages render without a restore button.
 4. **Restored but still unreadable** — manifest promised coverage or coverage was unknown, restore ran, decrypt still failed; show terminal explanation and no fake retry loop.
 
-Current limitation: coverage preview only classifies missing group sender-key messages observed in this browser session. Signal 1:1 sessions and messages not yet seen remain generic until later restore-read work adds durable per-message recovery metadata.
+Current limitation: coverage preview now keeps a durable per-home/per-user local ledger and scans recent accessible channels before preview, so group sender-key classification survives browser restarts and covers recently unseen messages. Signal 1:1 Double Ratchet messages are inventoried, but manifest coverage is still `unavailable`; they can only be verified by a real restore attempt against restored Signal ratchet state.

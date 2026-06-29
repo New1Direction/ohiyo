@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { ProfileSong, ProfileTheme, PublicUser, PushDevice, ServerEmoji, ServerWithChannels } from "../../api";
+import type { Channel, Message, ProfileSong, ProfileTheme, PublicUser, PushDevice, ServerEmoji, ServerWithChannels } from "../../api";
 import { api, getApiBase, getFileBase } from "../../api";
 import type { Theme, ThemeVar } from "../../themes";
 import {
@@ -22,7 +22,9 @@ import { ensureNotificationPermission, isDesktop } from "../../lib/desktop";
 import { canUseWebPush, enableContentFreeWebPush } from "../../lib/push";
 import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauriVault";
 import { generateRecoveryCode, encryptBackup, decryptBackup, backupSummary, backupCoversSenderKey, type BackupBlob, type BackupSummary, type CoverageCheck } from "../../lib/recovery";
-import { missingSenderKeys, saveCoverageResults } from "../../lib/recoveryCoverage";
+import { missingSenderKeys, recordGroupSenderKeyMessage, recordSignalMessage, saveCoverageResults, signalMessagesForRecovery } from "../../lib/recoveryCoverage";
+import { isSignalCiphertext, parseSignalCiphertextHeader } from "../../lib/signal";
+import { isGroupCiphertext, parseGroupCiphertextHeader } from "../../lib/senderKeys";
 import {
   ACCENT_PRESETS,
   APPEARANCE_CHANGED_EVENT,
@@ -58,6 +60,7 @@ type Props = {
   pluginManager: PluginManager;
   token: string;
   servers: ServerWithChannels[];
+  dms: Channel[];
   /** Open straight to a given tab (e.g. the recovery-code nudge deep-links to "security"). */
   initialTab?: Tab;
   onClose: () => void;
@@ -70,7 +73,7 @@ type Props = {
 const SETTINGS_FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), textarea, select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
-export function SettingsModal({ currentUser, pluginManager, token, servers, initialTab, onClose, onToast, privacyPrefs, onPrivacyPrefsChange, onCurrentUserUpdate }: Props) {
+export function SettingsModal({ currentUser, pluginManager, token, servers, dms, initialTab, onClose, onToast, privacyPrefs, onPrivacyPrefsChange, onCurrentUserUpdate }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "appearance");
   const dialogRef = useRef<HTMLDivElement>(null);
   // Keep onClose current without re-running the focus-management effect.
@@ -190,7 +193,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, init
           {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} onCurrentUserUpdate={onCurrentUserUpdate} />}
           {tab === "profile" && <ProfileTab token={token} onToast={onToast} />}
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
-          {tab === "security" && <SecurityTab token={token} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} />}
+          {tab === "security" && <SecurityTab token={token} servers={servers} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} />}
           {tab === "notifications" && <NotificationsTab token={token} onToast={onToast} />}
           {tab === "emoji" && <EmojiTab token={token} servers={servers} onToast={onToast} />}
         </div>
@@ -1696,15 +1699,21 @@ type RestorePreview = {
   not_covered: number;
   unavailable: number;
   checked_messages: number;
+  scanned_messages: number;
+  signal_messages: number;
 };
 
 function SecurityTab({
   token,
+  servers,
+  dms,
   onToast,
   privacyPrefs,
   onPrivacyPrefsChange,
 }: {
   token: string;
+  servers: ServerWithChannels[];
+  dms: Channel[];
   onToast: (t: string, type?: "info" | "success" | "error") => void;
   privacyPrefs: PrivacyPrefs;
   onPrivacyPrefsChange: (prefs: PrivacyPrefs) => void | Promise<void>;
@@ -1761,6 +1770,47 @@ function SecurityTab({
     }
   }
 
+  function recordRecoveryMetadata(messages: Message[], channelId: string): number {
+    let scanned = 0;
+    for (const message of messages) {
+      if (isGroupCiphertext(message.content)) {
+        const header = parseGroupCiphertextHeader(message.content);
+        if (!header) continue;
+        recordGroupSenderKeyMessage({ message_id: message.id, room_id: channelId, epoch: header.epoch, key_id: String(header.keyId) });
+        scanned += 1;
+      } else if (isSignalCiphertext(message.content)) {
+        const header = parseSignalCiphertextHeader(message.content);
+        if (!header) continue;
+        recordSignalMessage({
+          message_id: message.id,
+          channel_id: channelId,
+          author_id: message.author.id,
+          sender_device_id: header.sender_device_id,
+          recipient_count: header.recipient_count,
+        });
+        scanned += 1;
+      }
+    }
+    return scanned;
+  }
+
+  async function scanRecentRecoveryMetadata(): Promise<number> {
+    const channels = [
+      ...servers.flatMap((server) => server.channels),
+      ...dms,
+    ].filter((channel) => ["text", "dm", "group_dm"].includes(channel.channel_type));
+    let scanned = 0;
+    for (const channel of channels) {
+      try {
+        const messages = await api.listMessages(token, channel.id, 100);
+        scanned += recordRecoveryMetadata(messages, channel.id);
+      } catch {
+        /* best-effort: one inaccessible/offline channel should not block restore */
+      }
+    }
+    return scanned;
+  }
+
   async function previewRestore() {
     const code = restoreInput.trim();
     if (!code) return;
@@ -1770,11 +1820,16 @@ function SecurityTab({
       // Validate the recovery code before promising coverage. The public manifest is only
       // meaningful with the recovery-derived blind key; account auth alone cannot classify.
       await decryptBackup(code, blob);
+      const scanned = await scanRecentRecoveryMetadata();
       const summary = backupSummary(blob);
       const missing = missingSenderKeys();
+      const signals = signalMessagesForRecovery();
       const results: Record<string, CoverageCheck> = {};
       for (const item of missing) {
         results[item.message_id] = await backupCoversSenderKey(code, blob, item.room_id, item.epoch, item.key_id);
+      }
+      for (const item of signals) {
+        if (!results[item.message_id]) results[item.message_id] = "unavailable";
       }
       saveCoverageResults(results);
       const values = Object.values(results);
@@ -1786,6 +1841,8 @@ function SecurityTab({
         not_covered: values.filter((value) => value === "not_covered").length,
         unavailable: values.filter((value) => value === "unavailable").length,
         checked_messages: values.length,
+        scanned_messages: scanned,
+        signal_messages: signals.length,
       });
       setPreviewCode(code);
     } catch {
@@ -2030,11 +2087,13 @@ function SecurityTab({
               <div className="font-semibold" style={{ color: "var(--text-primary)" }}>Recovery preview</div>
               <div className="mt-1 grid gap-1">
                 <div>Backup format v{restorePreview.version}{restorePreview.updated_at ? ` · updated ${new Date(restorePreview.updated_at * 1000).toLocaleDateString()}` : ""}{restorePreview.entry_count ? ` · ${restorePreview.entry_count} entries` : ""}</div>
+                {restorePreview.scanned_messages > 0 && <div>Scanned {restorePreview.scanned_messages} recent encrypted message(s) across your accessible channels on this home.</div>}
                 {restorePreview.checked_messages > 0 ? (
-                  <div>{restorePreview.covered} message key(s) appear covered; {restorePreview.not_covered} not covered; {restorePreview.unavailable} unavailable.</div>
+                  <div>{restorePreview.covered} group message key(s) appear covered; {restorePreview.not_covered} not covered; {restorePreview.unavailable} unavailable.</div>
                 ) : (
-                  <div>No missing group-message keys have been seen in this browser session yet. Restore can still install your backed-up keys.</div>
+                  <div>No recent encrypted-message headers were found yet. Restore can still install your backed-up keys.</div>
                 )}
+                {restorePreview.signal_messages > 0 && <div>{restorePreview.signal_messages} Signal 1:1 message(s) need a real restore attempt to verify; manifest coverage is unavailable for Double Ratchet state.</div>}
                 {restorePreview.not_covered > 0 && <div>Messages marked not covered will not show a restore button after reload.</div>}
               </div>
             </div>

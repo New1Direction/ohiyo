@@ -252,6 +252,33 @@ export function isSignalCiphertext(s: string): boolean {
   return s.startsWith("sig2.") || s.startsWith("sig1.");
 }
 
+export type SignalCiphertextHeader = {
+  version: "sig2" | "sig1";
+  sender_device_id: number | null;
+  recipient_count: number | null;
+};
+
+/** Parse non-secret Signal envelope metadata for recovery inventory. This does not
+ * decrypt content or inspect ratchet state; it only lets the recovery UI say “we saw
+ * Signal 1:1 ciphertext here, but manifest coverage is unavailable for that class.” */
+export function parseSignalCiphertextHeader(wire: string): SignalCiphertextHeader | null {
+  if (wire.startsWith("sig2.")) {
+    try {
+      const env = JSON.parse(atob(wire.slice(5))) as { s?: unknown; r?: unknown };
+      return {
+        version: "sig2",
+        sender_device_id: typeof env.s === "number" ? env.s : null,
+        recipient_count: env.r && typeof env.r === "object" ? Object.keys(env.r).length : null,
+      };
+    } catch {
+      return null;
+    }
+  }
+  return ENVELOPE.test(wire)
+    ? { version: "sig1", sender_device_id: LEGACY_DEVICE, recipient_count: 1 }
+    : null;
+}
+
 type Bundle = Awaited<ReturnType<typeof api.getPrekeyBundles>>[number];
 
 // Ensure a session to (uid, device) exists, building it from a fetched bundle.

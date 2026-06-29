@@ -14,11 +14,11 @@ import {
   backupCoversSenderKey,
   type BackupBlobV1,
 } from "../src/lib/recovery.ts";
-import { coverageForMessage, missingSenderKeys, recordMissingSenderKey, saveCoverageResults } from "../src/lib/recoveryCoverage.ts";
+import { configureRecoveryCoverageScope, coverageForMessage, missingSenderKeys, recordMissingSenderKey, recordSignalMessage, saveCoverageResults, signalMessagesForRecovery } from "../src/lib/recoveryCoverage.ts";
 
-function installSessionStorage() {
+function memoryStorage(): Storage {
   const store = new Map<string, string>();
-  globalThis.sessionStorage = {
+  return {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => { store.set(key, value); },
     removeItem: (key: string) => { store.delete(key); },
@@ -26,6 +26,11 @@ function installSessionStorage() {
     key: (index: number) => [...store.keys()][index] ?? null,
     get length() { return store.size; },
   } as Storage;
+}
+
+function installWebStorage() {
+  globalThis.localStorage = memoryStorage();
+  globalThis.sessionStorage = memoryStorage();
 }
 
 const MATERIAL = {
@@ -113,13 +118,21 @@ test("a wrong code fails to decrypt (does not silently return garbage)", async (
   await assert.rejects(() => decryptBackup(generateRecoveryCode(), blob));
 });
 
-test("missing-key coverage ledger records and classifies messages", () => {
-  installSessionStorage();
+test("durable recovery coverage ledger is scoped and records Signal limitations", () => {
+  installWebStorage();
+  configureRecoveryCoverageScope("home-a", "user-a");
   recordMissingSenderKey({ message_id: "m1", room_id: "group1", epoch: 2, key_id: "123" });
+  recordSignalMessage({ message_id: "s1", channel_id: "dm1", author_id: "peer", sender_device_id: 7, recipient_count: 2 });
   assert.equal(missingSenderKeys().length, 1);
-  saveCoverageResults({ m1: "not_covered" });
+  assert.equal(signalMessagesForRecovery().length, 1);
+  saveCoverageResults({ m1: "not_covered", s1: "unavailable" });
   assert.equal(coverageForMessage("m1"), "not_covered");
-  assert.equal(coverageForMessage("m2"), null);
+  assert.equal(coverageForMessage("s1"), "unavailable");
+
+  configureRecoveryCoverageScope("home-b", "user-a");
+  assert.equal(missingSenderKeys().length, 0);
+  assert.equal(signalMessagesForRecovery().length, 0);
+  assert.equal(coverageForMessage("m1"), null);
 });
 
 test("v1 flat backups remain readable", async () => {

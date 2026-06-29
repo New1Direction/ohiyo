@@ -38,7 +38,7 @@ import { isActivationDismissed, loadActivation, markActivation, setActivationDis
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
 import { myKeyPair, deriveSharedKey, decryptMessage, isEncrypted } from "./lib/e2e";
-import { initSignal, encryptFor, decryptFrom, isSignalCiphertext, safetyNumber } from "./lib/signal";
+import { initSignal, encryptFor, decryptFrom, isSignalCiphertext, parseSignalCiphertextHeader, safetyNumber } from "./lib/signal";
 import {
   onIdentityChange,
   trustState,
@@ -47,7 +47,7 @@ import {
   type TrustState,
 } from "./lib/identityTrust";
 import { cachePlaintext, getCachedPlaintext, removeCachedPlaintext } from "./lib/e2eCache";
-import { coverageForMessage, recordMissingSenderKey } from "./lib/recoveryCoverage";
+import { configureRecoveryCoverageScope, coverageForMessage, recordGroupSenderKeyMessage, recordSignalMessage } from "./lib/recoveryCoverage";
 import {
   groupEncrypt,
   groupDecrypt,
@@ -608,7 +608,8 @@ function MainApp({
   useEffect(() => {
     currentUserRef.current = currentUser;
     window.__kikkacordUser = currentUser;
-  }, [currentUser]);
+    configureRecoveryCoverageScope(activeHomeId, currentUser?.id ?? null);
+  }, [activeHomeId, currentUser]);
 
   // Load our saved privacy prefs once we're known. Local prefs seed first paint;
   // server prefs win after login so Privacy Mode follows the account across devices.
@@ -1363,6 +1364,23 @@ function MainApp({
         if (sessionStorage.getItem("ohiyo:recovery-restored-at")) return "restore_failed";
         return "unknown";
       };
+      // Inventory encrypted-message headers durably before attempting decrypt, so the
+      // restore preview can reason about messages loaded in a previous browser session.
+      for (const m of msgs) {
+        if (isGroupCiphertext(m.content)) {
+          const header = parseGroupCiphertextHeader(m.content);
+          if (header) recordGroupSenderKeyMessage({ message_id: m.id, room_id: channelId, epoch: header.epoch, key_id: String(header.keyId) });
+        } else if (isSignalCiphertext(m.content)) {
+          const header = parseSignalCiphertextHeader(m.content);
+          if (header) recordSignalMessage({
+            message_id: m.id,
+            channel_id: channelId,
+            author_id: m.author.id,
+            sender_device_id: header.sender_device_id,
+            recipient_count: header.recipient_count,
+          });
+        }
+      }
       // Legacy static key only fetched if any v1 messages are present.
       const legacyKey = msgs.some((m) => isEncrypted(m.content)) ? await getDmKey(channelId) : null;
       // Sequential: the Double Ratchet requires in-order processing of new messages.
@@ -1378,12 +1396,6 @@ function MainApp({
           const pt = await groupDecrypt(channelId, m.author.id, m.content);
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
           if (plain !== null) cachePlaintext(m.id, plain);
-          if (plain === null) {
-            const header = parseGroupCiphertextHeader(m.content);
-            if (header) {
-              recordMissingSenderKey({ message_id: m.id, room_id: channelId, epoch: header.epoch, key_id: String(header.keyId) });
-            }
-          }
           out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
         } else if (isSignalCiphertext(m.content)) {
           const cached = getCachedPlaintext(m.id);
@@ -2375,6 +2387,7 @@ function MainApp({
           pluginManager={pluginManagerRef.current}
           token={token}
           servers={servers}
+          dms={dms}
           initialTab={settingsTab}
           privacyPrefs={privacyPrefs}
           onPrivacyPrefsChange={updatePrivacyPrefs}

@@ -725,8 +725,8 @@ export const api = {
       body: JSON.stringify({ category_id: categoryId }),
     }, token),
 
-  listMessages: (token: string, channelId: string) =>
-    request<Message[]>(`/channels/${channelId}/messages`, {}, token),
+  listMessages: (token: string, channelId: string, limit?: number) =>
+    request<Message[]>(`/channels/${channelId}/messages${limit ? `?limit=${limit}` : ""}`, {}, token),
 
   /** Read cursors for a channel — hydrates Delivered/Seen receipts on open. */
   listReads: (token: string, channelId: string) =>
