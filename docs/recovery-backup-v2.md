@@ -57,4 +57,16 @@ Current states:
 3. **Not covered / gone** — preview persists not-covered results; after reload, those messages render without a restore button.
 4. **Restored but still unreadable** — manifest promised coverage or coverage was unknown, restore ran, decrypt still failed; show terminal explanation and no fake retry loop.
 
-Current limitation: coverage preview now keeps a durable per-home/per-user local ledger and scans recent accessible channels before preview, so group sender-key classification survives browser restarts and covers recently unseen messages. Signal 1:1 Double Ratchet messages are inventoried, but manifest coverage is still `unavailable`; they can only be verified by a real restore attempt against restored Signal ratchet state.
+Coverage preview keeps a durable per-home/per-user local ledger and scans recent accessible channels before preview, so group sender-key classification survives browser restarts and covers recently unseen messages.
+
+Signal 1:1 Double Ratchet messages now get a stronger preview when the recent ciphertext is still accessible: after the user enters the recovery code, the client decrypts the backup into memory, clones the backed-up Signal store, and attempts Signal decrypts against the clone only. This classifies messages as:
+
+- `signal_restorable` — cloned ratchet state likely decrypts this ciphertext after restore.
+- `signal_missing_session` — backup lacks the sender/device ratchet session.
+- `signal_not_addressed` — ciphertext was not addressed to the backed-up user/device id.
+- `signal_corrupt` — ciphertext/session state is malformed or incompatible.
+- `unavailable` — durable inventory knows a Signal message existed, but recent ciphertext was not available for clone-preview.
+
+The clone-preview must never run against the live Signal store because a successful Double Ratchet decrypt advances state. The live store is mutated only when the user explicitly restores keys.
+
+Restore preview also reports partial restore material counts: total entries, importable entries, ignored unsupported entries, Signal ratchet sessions, group sender keys, and legacy plaintext-cache entries. Wrong-code/tamper/corrupt backup failures use honest error copy instead of pretending all failures are just mistyped recovery codes.

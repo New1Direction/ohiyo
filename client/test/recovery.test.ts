@@ -12,6 +12,7 @@ import {
   decryptBackup,
   backupSummary,
   backupCoversSenderKey,
+  recoveryMaterialReport,
   type BackupBlobV1,
 } from "../src/lib/recovery.ts";
 import { configureRecoveryCoverageScope, coverageForMessage, missingSenderKeys, recordMissingSenderKey, recordSignalMessage, saveCoverageResults, signalMessagesForRecovery } from "../src/lib/recoveryCoverage.ts";
@@ -133,6 +134,22 @@ test("durable recovery coverage ledger is scoped and records Signal limitations"
   assert.equal(missingSenderKeys().length, 0);
   assert.equal(signalMessagesForRecovery().length, 0);
   assert.equal(coverageForMessage("m1"), null);
+});
+
+test("recovery material report makes partial restore explicit", () => {
+  const report = recoveryMaterialReport({
+    ...MATERIAL,
+    "kc:sig:sessionpeer.7": JSON.stringify({ t: "raw", v: "opaque-session" }),
+    "kc:e2e-pt:old": "legacy plaintext cache",
+    "unknown:future": "skip me",
+  });
+  assert.equal(report.total, 7);
+  assert.equal(report.importable, 6);
+  assert.equal(report.ignored, 1);
+  assert.equal(report.signal_identity, true);
+  assert.equal(report.signal_sessions, 1);
+  assert.equal(report.sender_keys, 1);
+  assert.equal(report.plaintext_cache_entries, 1);
 });
 
 test("v1 flat backups remain readable", async () => {

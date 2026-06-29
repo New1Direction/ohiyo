@@ -21,9 +21,9 @@ import type { PluginManager } from "../../plugins/registry";
 import { ensureNotificationPermission, isDesktop } from "../../lib/desktop";
 import { canUseWebPush, enableContentFreeWebPush } from "../../lib/push";
 import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauriVault";
-import { generateRecoveryCode, encryptBackup, decryptBackup, backupSummary, backupCoversSenderKey, type BackupBlob, type BackupSummary, type CoverageCheck } from "../../lib/recovery";
+import { generateRecoveryCode, encryptBackup, decryptBackup, backupSummary, backupCoversSenderKey, recoveryMaterialReport, type BackupBlob, type BackupSummary, type CoverageCheck } from "../../lib/recovery";
 import { missingSenderKeys, recordGroupSenderKeyMessage, recordSignalMessage, saveCoverageResults, signalMessagesForRecovery } from "../../lib/recoveryCoverage";
-import { isSignalCiphertext, parseSignalCiphertextHeader } from "../../lib/signal";
+import { isSignalCiphertext, parseSignalCiphertextHeader, previewSignalRestoreFromMaterial } from "../../lib/signal";
 import { isGroupCiphertext, parseGroupCiphertextHeader } from "../../lib/senderKeys";
 import {
   ACCENT_PRESETS,
@@ -1701,6 +1701,16 @@ type RestorePreview = {
   checked_messages: number;
   scanned_messages: number;
   signal_messages: number;
+  signal_restorable: number;
+  signal_missing_session: number;
+  signal_not_addressed: number;
+  signal_corrupt: number;
+  material_total: number;
+  material_importable: number;
+  material_ignored: number;
+  material_signal_sessions: number;
+  material_sender_keys: number;
+  material_plaintext_cache_entries: number;
 };
 
 function SecurityTab({
@@ -1819,17 +1829,43 @@ function SecurityTab({
       const blob = (await api.getKeyBackup(token)) as unknown as BackupBlob;
       // Validate the recovery code before promising coverage. The public manifest is only
       // meaningful with the recovery-derived blind key; account auth alone cannot classify.
-      await decryptBackup(code, blob);
+      const material = await decryptBackup(code, blob);
       const scanned = await scanRecentRecoveryMetadata();
       const summary = backupSummary(blob);
+      const materialReport = recoveryMaterialReport(material);
       const missing = missingSenderKeys();
       const signals = signalMessagesForRecovery();
       const results: Record<string, CoverageCheck> = {};
       for (const item of missing) {
         results[item.message_id] = await backupCoversSenderKey(code, blob, item.room_id, item.epoch, item.key_id);
       }
+      const recentMessagesById = new Map<string, Message>();
+      for (const channel of [...servers.flatMap((server) => server.channels), ...dms]) {
+        if (!["text", "dm", "group_dm"].includes(channel.channel_type)) continue;
+        try {
+          for (const message of await api.listMessages(token, channel.id, 100)) recentMessagesById.set(message.id, message);
+        } catch {
+          /* best-effort: preview still falls back to durable inventory */
+        }
+      }
       for (const item of signals) {
-        if (!results[item.message_id]) results[item.message_id] = "unavailable";
+        if (results[item.message_id]) continue;
+        const message = recentMessagesById.get(item.message_id);
+        if (!message || !isSignalCiphertext(message.content)) {
+          results[item.message_id] = "unavailable";
+          continue;
+        }
+        const check = await previewSignalRestoreFromMaterial(material, item.author_id, message.content);
+        results[item.message_id] =
+          check === "restorable"
+            ? "signal_restorable"
+            : check === "missing_session"
+              ? "signal_missing_session"
+              : check === "not_addressed"
+                ? "signal_not_addressed"
+                : check === "corrupt"
+                  ? "signal_corrupt"
+                  : "unavailable";
       }
       saveCoverageResults(results);
       const values = Object.values(results);
@@ -1843,12 +1879,22 @@ function SecurityTab({
         checked_messages: values.length,
         scanned_messages: scanned,
         signal_messages: signals.length,
+        signal_restorable: values.filter((value) => value === "signal_restorable").length,
+        signal_missing_session: values.filter((value) => value === "signal_missing_session").length,
+        signal_not_addressed: values.filter((value) => value === "signal_not_addressed").length,
+        signal_corrupt: values.filter((value) => value === "signal_corrupt").length,
+        material_total: materialReport.total,
+        material_importable: materialReport.importable,
+        material_ignored: materialReport.ignored,
+        material_signal_sessions: materialReport.signal_sessions,
+        material_sender_keys: materialReport.sender_keys,
+        material_plaintext_cache_entries: materialReport.plaintext_cache_entries,
       });
       setPreviewCode(code);
     } catch {
       setRestorePreview(null);
       setPreviewCode("");
-      onToast("That code didn't match the backup", "error");
+      onToast("That code didn't match the backup, or the backup is corrupted", "error");
     } finally {
       setBackupBusy(false);
     }
@@ -1865,12 +1911,14 @@ function SecurityTab({
     try {
       const blob = (await api.getKeyBackup(token)) as unknown as BackupBlob;
       const material = await decryptBackup(code, blob);
+      const materialReport = recoveryMaterialReport(material);
       await importKeyMaterial(material);
       sessionStorage.setItem("ohiyo:recovery-restored-at", String(Date.now()));
-      onToast("Keys restored — reloading…", "success");
+      sessionStorage.setItem("ohiyo:recovery-restore-report", JSON.stringify(materialReport));
+      onToast(materialReport.ignored > 0 ? "Importable keys restored; unsupported backup entries were skipped." : "Keys restored — reloading…", "success");
       setTimeout(() => window.location.reload(), 1200);
     } catch {
-      onToast("That code didn't match the backup", "error");
+      onToast("That code didn't match the backup, or the backup is corrupted", "error");
       setBackupBusy(false);
     }
   }
@@ -2088,13 +2136,20 @@ function SecurityTab({
               <div className="mt-1 grid gap-1">
                 <div>Backup format v{restorePreview.version}{restorePreview.updated_at ? ` · updated ${new Date(restorePreview.updated_at * 1000).toLocaleDateString()}` : ""}{restorePreview.entry_count ? ` · ${restorePreview.entry_count} entries` : ""}</div>
                 {restorePreview.scanned_messages > 0 && <div>Scanned {restorePreview.scanned_messages} recent encrypted message(s) across your accessible channels on this home.</div>}
+                <div>Restore material: {restorePreview.material_importable}/{restorePreview.material_total} importable entr{restorePreview.material_total === 1 ? "y" : "ies"}; {restorePreview.material_signal_sessions} Signal ratchet session(s); {restorePreview.material_sender_keys} group sender key(s).</div>
+                {restorePreview.material_ignored > 0 && <div>{restorePreview.material_ignored} unsupported backup entr{restorePreview.material_ignored === 1 ? "y was" : "ies were"} skipped in the preview. Restore will be partial, not silent.</div>}
+                {restorePreview.material_plaintext_cache_entries > 0 && <div>This older backup includes {restorePreview.material_plaintext_cache_entries} plaintext-cache entr{restorePreview.material_plaintext_cache_entries === 1 ? "y" : "ies"}; new backups do not include plaintext cache by default.</div>}
                 {restorePreview.checked_messages > 0 ? (
                   <div>{restorePreview.covered} group message key(s) appear covered; {restorePreview.not_covered} not covered; {restorePreview.unavailable} unavailable.</div>
                 ) : (
                   <div>No recent encrypted-message headers were found yet. Restore can still install your backed-up keys.</div>
                 )}
-                {restorePreview.signal_messages > 0 && <div>{restorePreview.signal_messages} Signal 1:1 message(s) need a real restore attempt to verify; manifest coverage is unavailable for Double Ratchet state.</div>}
-                {restorePreview.not_covered > 0 && <div>Messages marked not covered will not show a restore button after reload.</div>}
+                {restorePreview.signal_messages > 0 && (
+                  <div>
+                    Signal preview: {restorePreview.signal_restorable} likely restorable from cloned ratchet state; {restorePreview.signal_missing_session} missing ratchet session; {restorePreview.signal_not_addressed} not addressed to this backed-up device; {restorePreview.signal_corrupt} corrupt/incompatible; {restorePreview.unavailable} unavailable without recent ciphertext.
+                  </div>
+                )}
+                {(restorePreview.not_covered > 0 || restorePreview.signal_missing_session > 0 || restorePreview.signal_not_addressed > 0 || restorePreview.signal_corrupt > 0) && <div>Messages marked not covered, missing, not addressed, or corrupt are terminal for this backup; Ohiyo will not show a fake retry loop after reload.</div>}
               </div>
             </div>
           )}

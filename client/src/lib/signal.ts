@@ -82,15 +82,27 @@ function dec(s: string): unknown {
 
 // ── SignalProtocolStore (the lib's storage interface) ──────────────────────────
 class SignalStore {
+  private readonly storage: SignalBackend | null;
+  private readonly reportIdentityChanges: boolean;
+
+  constructor(storage: SignalBackend | null = null, reportIdentityChanges = true) {
+    this.storage = storage;
+    this.reportIdentityChanges = reportIdentityChanges;
+  }
+
+  private activeBackend(): SignalBackend {
+    return this.storage ?? backend;
+  }
+
   private get(key: string): unknown {
-    const s = backend.getItem(NS + key);
+    const s = this.activeBackend().getItem(NS + key);
     return s === null ? undefined : dec(s);
   }
   private put(key: string, v: unknown) {
-    backend.setItem(NS + key, enc(v));
+    this.activeBackend().setItem(NS + key, enc(v));
   }
   private del(key: string) {
-    backend.removeItem(NS + key);
+    this.activeBackend().removeItem(NS + key);
   }
 
   async getIdentityKeyPair() {
@@ -134,6 +146,7 @@ class SignalStore {
     // Record the change so the UI can warn ("safety number changed"); a key we've
     // never seen is trust-on-first-use, not a change. Returns the same boolean the
     // library expects (true iff a known key was replaced).
+    if (!this.reportIdentityChanges) return Boolean(e && ab2b64(e) !== ab2b64(key));
     return recordKeySeen(userOf(id), e ? ab2b64(e) : undefined, ab2b64(key));
   }
 
@@ -168,7 +181,8 @@ class SignalStore {
     this.del("session" + id);
   }
   async removeAllSessions(prefix: string) {
-    for (const k of backend.keys()) if (k.startsWith(NS + "session" + prefix)) backend.removeItem(k);
+    const active = this.activeBackend();
+    for (const k of active.keys()) if (k.startsWith(NS + "session" + prefix)) active.removeItem(k);
   }
 }
 
@@ -277,6 +291,63 @@ export function parseSignalCiphertextHeader(wire: string): SignalCiphertextHeade
   return ENVELOPE.test(wire)
     ? { version: "sig1", sender_device_id: LEGACY_DEVICE, recipient_count: 1 }
     : null;
+}
+
+export type SignalRestorePreview = "restorable" | "missing_session" | "not_addressed" | "corrupt" | "unavailable";
+
+function materialBackend(material: Record<string, string>): SignalBackend {
+  const map = new Map(Object.entries(material).filter(([key]) => key.startsWith(NS)));
+  return {
+    getItem: (key) => map.get(key) ?? null,
+    setItem: (key, value) => {
+      map.set(key, value);
+    },
+    removeItem: (key) => {
+      map.delete(key);
+    },
+    keys: () => [...map.keys()],
+  };
+}
+
+/**
+ * Try a Signal decrypt against a cloned backup snapshot, never the live Signal store.
+ * A real decrypt is stronger than manifest guessing for Double Ratchet state, but it
+ * advances only the temporary clone, so preview cannot consume the user's live ratchet.
+ */
+export async function previewSignalRestoreFromMaterial(
+  material: Record<string, string>,
+  senderUserId: string,
+  wire: string,
+): Promise<SignalRestorePreview> {
+  if (!isValidUserId(senderUserId)) return "corrupt";
+  const cloned = new SignalStore(materialBackend(material), false);
+  try {
+    if (wire.startsWith("sig2.")) {
+      const env = JSON.parse(atob(wire.slice(5))) as { s?: unknown; r?: Record<string, { t: number; b: string }> };
+      if (typeof env.s !== "number" || !env.r || typeof env.r !== "object") return "corrupt";
+      const myId = material[NS + "ownUserId"];
+      const myDevice = Number.parseInt(material[NS + "deviceId"] ?? "", 10);
+      if (!myId || !Number.isFinite(myDevice)) return "unavailable";
+      const entry = env.r[`${myId}.${myDevice}`];
+      if (!entry) return "not_addressed";
+      if (!(await cloned.loadSession(`${senderUserId}.${env.s}`))) return "missing_session";
+      const cipher = new SessionCipher(cloned, new SignalProtocolAddress(senderUserId, env.s));
+      const body = atob(entry.b);
+      if (entry.t === 3) await cipher.decryptPreKeyWhisperMessage(body, "binary");
+      else await cipher.decryptWhisperMessage(body, "binary");
+      return "restorable";
+    }
+    const legacy = ENVELOPE.exec(wire);
+    if (!legacy) return "corrupt";
+    if (!(await cloned.loadSession(`${senderUserId}.${LEGACY_DEVICE}`))) return "missing_session";
+    const cipher = new SessionCipher(cloned, new SignalProtocolAddress(senderUserId, LEGACY_DEVICE));
+    const body = atob(legacy[2]);
+    if (legacy[1] === "3") await cipher.decryptPreKeyWhisperMessage(body, "binary");
+    else await cipher.decryptWhisperMessage(body, "binary");
+    return "restorable";
+  } catch {
+    return "corrupt";
+  }
 }
 
 type Bundle = Awaited<ReturnType<typeof api.getPrekeyBundles>>[number];

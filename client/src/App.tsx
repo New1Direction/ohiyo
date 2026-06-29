@@ -1371,7 +1371,12 @@ function MainApp({
       const peerId = dmPeerId(channelId);
       const decryptStateFor = (messageId: string): "unknown" | "not_covered" | "restore_failed" => {
         const coverage = coverageForMessage(messageId);
-        if (coverage === "not_covered") return "not_covered";
+        if (
+          coverage === "not_covered" ||
+          coverage === "signal_missing_session" ||
+          coverage === "signal_not_addressed" ||
+          coverage === "signal_corrupt"
+        ) return "not_covered";
         if (sessionStorage.getItem("ohiyo:recovery-restored-at")) return "restore_failed";
         return "unknown";
       };

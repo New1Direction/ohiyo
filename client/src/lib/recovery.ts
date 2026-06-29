@@ -274,7 +274,42 @@ export function backupSummary(blob: BackupBlob | Record<string, unknown>): Backu
   return { version: 1, updated_at: null, entry_count: null, room_count: null, key_count: null };
 }
 
-export type CoverageCheck = "covered" | "not_covered" | "unavailable";
+export type RecoveryMaterialReport = {
+  total: number;
+  importable: number;
+  ignored: number;
+  signal_sessions: number;
+  signal_identity: boolean;
+  sender_keys: number;
+  legacy_keypair: boolean;
+  plaintext_cache_entries: number;
+};
+
+export function recoveryMaterialReport(material: Record<string, string>): RecoveryMaterialReport {
+  const keys = Object.keys(material);
+  const importable = keys.filter((key) =>
+    key.startsWith("kc:sig:") || key.startsWith("kc:sk:") || key.startsWith("kc:e2e-keypair") || key.startsWith("kc:e2e-pt:"),
+  );
+  return {
+    total: keys.length,
+    importable: importable.length,
+    ignored: keys.length - importable.length,
+    signal_sessions: keys.filter((key) => key.startsWith("kc:sig:session")).length,
+    signal_identity: keys.includes("kc:sig:identityKey"),
+    sender_keys: keys.filter((key) => key.startsWith("kc:sk:")).length,
+    legacy_keypair: keys.some((key) => key.startsWith("kc:e2e-keypair")),
+    plaintext_cache_entries: keys.filter((key) => key.startsWith("kc:e2e-pt:")).length,
+  };
+}
+
+export type CoverageCheck =
+  | "covered"
+  | "not_covered"
+  | "unavailable"
+  | "signal_restorable"
+  | "signal_missing_session"
+  | "signal_not_addressed"
+  | "signal_corrupt";
 
 /**
  * Check whether a v2 backup manifest appears to cover a group sender key.
