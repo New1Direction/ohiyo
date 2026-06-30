@@ -3208,3 +3208,176 @@ button:disabled,
   color: var(--accent);
   box-shadow: var(--shadow-sm, 0 1px 2px rgba(40, 30, 24, 0.08));
 }
+
+/* ─── Mobile chat polish: phone-first, no horizontal squeeze ──────────────── */
+@media (max-width: 640px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .kc-chat-shell {
+    min-width: 0;
+    width: 100%;
+    overflow: hidden;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .kc-chat-header {
+    height: 3.25rem !important;
+    padding-inline: 0.85rem !important;
+    gap: 0.45rem !important;
+    background: color-mix(in oklch, var(--bg-channel) 94%, black);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+  .kc-chat-header > span:last-of-type {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kc-message-row {
+    padding-inline: 0.65rem !important;
+    padding-top: 0.7rem !important;
+  }
+  .kc-message-row > .flex {
+    gap: 0.55rem !important;
+    min-width: 0;
+  }
+  .kc-message-row .msg-avatar {
+    width: 2rem !important;
+    height: 2rem !important;
+    font-size: 0.8rem !important;
+  }
+  .kc-message-row .msg-meta {
+    min-width: 0;
+    gap: 0.45rem !important;
+    flex-wrap: wrap;
+    line-height: 1.1;
+  }
+  .kc-message-row .msg-meta button {
+    max-width: min(52vw, 15rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kc-message-row .msg-meta span {
+    font-size: 0.72rem !important;
+  }
+  .kc-msg,
+  .msg-content {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .msg-content {
+    font-size: 0.98rem;
+    line-height: 1.45;
+  }
+  .kc-msg-time {
+    display: none;
+  }
+
+  .kc-video-attachment {
+    width: 100%;
+    max-width: min(100%, calc(100vw - 4.35rem));
+  }
+  .kc-video-attachment > button,
+  .kc-video-attachment > video {
+    width: 100% !important;
+    min-height: clamp(150px, 48vw, 230px) !important;
+    max-height: 240px !important;
+    border-radius: 18px !important;
+  }
+  .kc-video-attachment__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.32rem;
+    min-width: 0;
+    max-width: 100%;
+    margin-top: 0.35rem;
+    font-size: 0.74rem;
+    line-height: 1.25;
+    color: var(--text-muted);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .kc-video-attachment__meta span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .kc-video-attachment__meta a {
+    flex-shrink: 0;
+  }
+
+  .kc-img-frame,
+  .kc-img-frame .kc-img,
+  .kc-video-embed,
+  iframe.kc-video-embed {
+    max-width: 100% !important;
+  }
+
+  .kc-composer-files,
+  .kc-composer-reply,
+  .kc-receipt {
+    margin-inline: 0.65rem !important;
+  }
+  .kc-composer-shell {
+    margin: 0.45rem 0.5rem max(0.45rem, env(safe-area-inset-bottom, 0px)) !important;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.35rem;
+    padding: 0.35rem;
+    border-radius: 26px;
+    background: color-mix(in oklch, var(--bg-input) 88%, black);
+  }
+  .kc-composer-tools {
+    gap: 0.15rem;
+  }
+  .kc-composer-tools .kc-icon-btn,
+  .kc-composer-send {
+    width: 2.65rem !important;
+    height: 2.65rem !important;
+    min-width: 2.65rem !important;
+    min-height: 2.65rem !important;
+  }
+  .kc-composer-tools .kc-icon-btn:nth-child(2) {
+    display: none;
+  }
+  .kc-composer-input {
+    height: 2.65rem;
+    min-height: 2.65rem;
+    padding-inline: 0.8rem;
+    font-size: 1rem !important;
+  }
+
+  .kc-jump-bottom {
+    bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 380px) {
+  .kc-message-row {
+    padding-inline: 0.5rem !important;
+  }
+  .kc-message-row .msg-avatar {
+    width: 1.85rem !important;
+    height: 1.85rem !important;
+  }
+  .kc-video-attachment {
+    max-width: min(100%, calc(100vw - 3.75rem));
+  }
+  .kc-composer-tools .kc-icon-btn,
+  .kc-composer-send {
+    width: 2.45rem !important;
+    height: 2.45rem !important;
+    min-width: 2.45rem !important;
+    min-height: 2.45rem !important;
+  }
+}

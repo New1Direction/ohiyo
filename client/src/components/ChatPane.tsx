@@ -1016,7 +1016,7 @@ export function ChatPane({
 
   return (
     <OgAuthTokenContext.Provider value={token}>
-    <div className="flex flex-1 flex-col" style={{ background: "var(--bg-channel)" }} {...getRootProps()}>
+    <div className="kc-chat-shell flex flex-1 flex-col" style={{ background: "var(--bg-channel)" }} {...getRootProps()}>
       <input {...getInputProps({ "aria-label": "Attach files" })} />
 
       {/* Drop overlay */}
@@ -1082,7 +1082,7 @@ export function ChatPane({
 
       {/* Channel header */}
       <div
-        className="flex h-12 flex-shrink-0 items-center gap-2 px-4 font-semibold shadow-sm"
+        className="kc-chat-header flex h-12 flex-shrink-0 items-center gap-2 px-4 font-semibold shadow-sm"
         style={{ borderBottom: "1px solid var(--bg-base)", fontSize: 15 }}
       >
         {onOpenNav && (
@@ -1530,7 +1530,7 @@ export function ChatPane({
               }
               const g = row.group;
               return (
-                <div style={style} className="msg-group px-4 pt-2 hover:bg-white/[0.02]">
+                <div style={style} className="msg-group kc-message-row px-4 pt-2 hover:bg-white/[0.02]">
                   <div className="flex items-start gap-3">
                     <button
                       className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
@@ -2819,11 +2819,16 @@ function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
         }
         if (att.content_type.startsWith("video/")) {
           return (
-            <div key={att.id} style={{ width: "min(520px, 100%)" }}>
+            <div key={att.id} className="kc-video-attachment">
               <VideoAttachmentPlayer url={url} filename={att.filename} />
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                {att.filename} · {formatBytes(att.size_bytes)} · click to play
-                {" · "}<a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>Open</a>
+              <div className="kc-video-attachment__meta">
+                <span>{att.filename}</span>
+                <span aria-hidden="true">·</span>
+                <span>{formatBytes(att.size_bytes)}</span>
+                <span aria-hidden="true">·</span>
+                <span>click to play</span>
+                <span aria-hidden="true">·</span>
+                <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>Open</a>
               </div>
             </div>
           );
