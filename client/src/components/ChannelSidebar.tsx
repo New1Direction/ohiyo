@@ -803,18 +803,11 @@ function ChannelRow({
       type="button"
       onClick={onClick}
       aria-current={isSelected ? "page" : undefined}
-      className="kc-interactive mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 px-2 py-1 text-left text-sm"
-      style={{
-        border: "none",
-        borderRadius: "var(--radius-md)",
-        background: isSelected ? "color-mix(in oklch, var(--text-primary) 8%, transparent)" : "transparent",
-        color: isSelected || hasUnread || showMention ? "var(--text-primary)" : "var(--text-muted)",
-        fontWeight: isSelected || hasUnread || showMention ? 650 : 400,
-        boxShadow: isSelected ? "inset 3px 0 0 var(--accent)" : undefined,
-      }}
+      className={`kc-channel-row kc-interactive mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 px-2 py-1 text-left text-sm${isSelected ? " is-selected" : ""}${hasUnread || showMention ? " has-unread" : ""}`}
     >
-      {icon}
+      <span className="kc-channel-row__icon" aria-hidden="true">{icon}</span>
       <span className="truncate flex-1">{name}</span>
+      {isSelected && <span className="kc-channel-row__active-dot" aria-hidden="true" />}
       {imported && (
         <span
           className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide"
