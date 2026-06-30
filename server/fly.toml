@@ -23,6 +23,7 @@ primary_region = "iad"
   # PUBLIC_BASE_URL = "https://ohiyo-<you>.fly.dev"
   # TURN/STUN for voice: set TURN_SECRET + TURN_URLS as secrets (see DEPLOY.md).
   STUN_URLS = "stun:stun.l.google.com:19302"
+  EMBEDS_ENABLED = "true"
 
 # Persists the SQLite DB (/data/ohiyo.db) AND uploaded files (/data/uploads).
 [[mounts]]

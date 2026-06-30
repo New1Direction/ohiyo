@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use tokio::sync::Semaphore;
 
-use crate::api::og::fetch_og_data;
+use crate::api::og::{fetch_og_data, is_youtube_url};
 
 /// Cap the work per message so a wall of links can't fan out unboundedly.
 const MAX_URLS: usize = 5;
@@ -88,9 +88,14 @@ pub async fn build_embeds(content: &str) -> Option<String> {
             if og.title.is_none() && og.description.is_none() && og.image.is_none() {
                 continue;
             }
+            let embed_type = if is_youtube_url(&og.url) {
+                "video"
+            } else {
+                "link"
+            };
             embeds.push(Embed {
                 url: og.url,
-                embed_type: "link".into(),
+                embed_type: embed_type.into(),
                 title: og.title,
                 description: og.description,
                 image: og.image,

@@ -192,6 +192,24 @@ pub async fn fetch_og(
     }
 }
 
+pub(crate) fn is_youtube_url(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed
+        .host_str()
+        .map(|h| h.trim_start_matches("www.").trim_start_matches("m."))
+    else {
+        return false;
+    };
+    (host == "youtu.be" && parsed.path_segments().and_then(|mut s| s.next()).is_some())
+        || ((host == "youtube.com" || host.ends_with(".youtube.com"))
+            && (parsed.path() == "/watch"
+                || parsed.path().starts_with("/shorts/")
+                || parsed.path().starts_with("/embed/")
+                || parsed.path().starts_with("/live/")))
+}
+
 /// Resolve Open Graph data for a single already-trimmed http(s) URL.
 ///
 /// Self-contained: applies the SSRF guard and the specialised YouTube/GitHub
@@ -208,8 +226,8 @@ pub(crate) async fn fetch_og_data(url: &str) -> Option<OgData> {
 
     // ── Specialised handlers for sites that block generic scrapers ────────────
 
-    // YouTube / youtu.be → use oEmbed API
-    if url.contains("youtube.com/watch") || url.contains("youtu.be/") {
+    // YouTube / youtu.be / Shorts / Live / Embed → use oEmbed API.
+    if is_youtube_url(url) {
         let oembed_url = format!(
             "https://www.youtube.com/oembed?url={}&format=json",
             urlencoding::encode(url)
@@ -369,4 +387,22 @@ fn extract_attr(tag: &str, attr: &str) -> Option<String> {
         .and_then(|r| r.split_once('"'))
         .or_else(|| rest.strip_prefix('\'').and_then(|r| r.split_once('\'')))?;
     Some(inner.0.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_youtube_url_shapes() {
+        assert!(is_youtube_url(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ));
+        assert!(is_youtube_url("https://youtu.be/dQw4w9WgXcQ"));
+        assert!(is_youtube_url("https://m.youtube.com/shorts/dQw4w9WgXcQ"));
+        assert!(is_youtube_url("https://youtube.com/embed/dQw4w9WgXcQ"));
+        assert!(is_youtube_url("https://youtube.com/live/dQw4w9WgXcQ"));
+        assert!(!is_youtube_url("https://example.com/watch?v=dQw4w9WgXcQ"));
+        assert!(!is_youtube_url("https://youtube.com/channel/abc"));
+    }
 }

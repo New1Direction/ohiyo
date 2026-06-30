@@ -134,6 +134,65 @@ export type ChatActivityNotice = {
 type MsgGroup = { author: Message["author"]; msgs: Message[]; isMe: boolean };
 type ChatRow = { kind: "messages"; group: MsgGroup } | { kind: "activity"; notice: ChatActivityNotice };
 
+const DIRECT_VIDEO_EXT_RE = /\.(mp4|m4v|mov|webm|ogv|ogg)(?:$|[?#])/i;
+
+function extractSafeHttpUrlsFromText(text: string): string[] {
+  const out: string[] = [];
+  for (const match of text.matchAll(/https?:\/\/[^\s]+/g)) {
+    const raw = match[0].replace(/[.,!?)\]}>'"]+$/, "");
+    const safe = safeHttpUrl(raw);
+    if (safe && !out.includes(safe)) out.push(safe);
+  }
+  return out;
+}
+
+function youtubeIdFromUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
+    let id: string | null = null;
+    if (host === "youtu.be") {
+      id = u.pathname.split("/").filter(Boolean)[0] ?? null;
+    } else if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+      if (u.pathname === "/watch") id = u.searchParams.get("v");
+      else {
+        const parts = u.pathname.split("/").filter(Boolean);
+        if (["embed", "shorts", "live"].includes(parts[0])) id = parts[1] ?? null;
+      }
+    }
+    return id && /^[A-Za-z0-9_-]{6,32}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function youtubeEmbedUrl(raw: string): string | null {
+  const id = youtubeIdFromUrl(raw);
+  return id ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}` : null;
+}
+
+function isDirectVideoUrl(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  try {
+    const u = new URL(raw);
+    return (u.protocol === "http:" || u.protocol === "https:") && DIRECT_VIDEO_EXT_RE.test(`${u.pathname}${u.search}`);
+  } catch {
+    return false;
+  }
+}
+
+function linkPreviewHeight(url: string): number {
+  if (youtubeIdFromUrl(url)) return 306;
+  if (isDirectVideoUrl(url)) return 286;
+  return 98;
+}
+
+function messageEmbedHeight(message: Message): number {
+  if (message.embeds?.length) return message.embeds.reduce((sum, embed) => sum + linkPreviewHeight(embed.url), 0);
+  return extractSafeHttpUrlsFromText(message.content).reduce((sum, url) => sum + linkPreviewHeight(url), 0);
+}
+
 type Props = {
   channel: Channel | null;
   messages: Message[];
@@ -722,7 +781,7 @@ export function ChatPane({
             if (a.content_type.startsWith("image/")) {
               return s + (a.width && a.height ? fitImg(a.width, a.height, 400, 300).h + 20 : 180);
             }
-            if (a.content_type.startsWith("video/")) return s + 278;
+            if (a.content_type.startsWith("video/")) return s + 330;
             if (a.content_type.startsWith("audio/")) return s + 58;
             return s + 34;
           }, 0)),
@@ -733,7 +792,7 @@ export function ChatPane({
       const pins = g.msgs.filter((m) => m.pinned).length;
       const failed = g.msgs.filter((m) => m._state === "failed").length;
       const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
-      const embedsH = g.msgs.reduce((sum, m) => sum + (m.embeds?.length ?? 0) * 92, 0);
+      const embedsH = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 0 : messageEmbedHeight(m)), 0);
       return basePx + Math.max(textLines, 1) * linePx + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
     },
     [rows, hiddenMessageIds]
@@ -2177,68 +2236,64 @@ function useOgPreview(url: string): OgData | null {
   return data;
 }
 
-function LinkPreviewCard({ url }: { url: string }) {
-  const og = useOgPreview(url);
-  if (!og || (!og.title && !og.description && !og.image)) return null;
+function YouTubeEmbedCard({ url, title, description }: { url: string; title?: string | null; description?: string | null }) {
+  const embedUrl = youtubeEmbedUrl(url);
+  if (!embedUrl) return null;
+  const label = title || "YouTube video";
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
+    <div
+      className="kc-video-embed"
       style={{
-        display: "flex",
-        gap: 10,
         marginTop: 6,
-        padding: "10px 12px",
-        borderRadius: 6,
-        background: "var(--bg-sidebar)",
-        borderLeft: "3px solid var(--accent)",
-        textDecoration: "none",
-        maxWidth: 480,
+        width: "min(520px, 100%)",
         overflow: "hidden",
+        borderRadius: 12,
+        background: "var(--bg-sidebar)",
+        border: "1px solid var(--bg-hover)",
+        boxShadow: "0 10px 28px rgba(0,0,0,.16)",
       }}
     >
-      {og.image && (
-        <img
-          src={og.image}
-          alt=""
-          style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 4, flexShrink: 0 }}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 9", background: "#000" }}>
+        <iframe
+          src={embedUrl}
+          title={label}
+          loading="lazy"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
         />
-      )}
-      <div style={{ minWidth: 0, flex: 1 }}>
-        {og.site_name && (
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>
-            {og.favicon && (
-              <img src={og.favicon} alt="" width={12} height={12} style={{ marginRight: 4, verticalAlign: "middle" }}
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-            )}
-            {og.site_name}
-          </div>
-        )}
-        {og.title && (
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 2,
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {og.title}
-          </div>
-        )}
-        {og.description && (
-          <div style={{ fontSize: 12, color: "var(--text-secondary)",
-            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-            {og.description}
-          </div>
-        )}
       </div>
-    </a>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ display: "block", padding: "9px 11px", color: "var(--text-primary)", textDecoration: "none" }}
+      >
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>YouTube</div>
+        <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+        {description && <div style={{ marginTop: 2, fontSize: 12, color: "var(--text-secondary)" }}>{description}</div>}
+      </a>
+    </div>
   );
 }
 
-/** Server-persisted link-preview card (no client fetch — fields come from the gateway). */
-function EmbedCard({ embed }: { embed: Embed }) {
-  if (!embed.title && !embed.description && !embed.image) return null;
-  const href = safeHttpUrl(embed.url);
-  const imageUrl = safeHttpUrl(embed.image);
-  const faviconUrl = safeHttpUrl(embed.favicon);
+function DirectVideoLinkPreview({ url }: { url: string }) {
+  return (
+    <div style={{ marginTop: 6, width: "min(520px, 100%)" }}>
+      <VideoAttachmentPlayer url={url} filename="Linked video" />
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+        Linked video · <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>Open</a>
+      </div>
+    </div>
+  );
+}
+
+function StandardLinkPreviewCard({ url, data }: { url: string; data: OgData | Embed }) {
+  if (!data.title && !data.description && !data.image) return null;
+  const href = safeHttpUrl(url);
+  const imageUrl = safeHttpUrl(data.image);
+  const faviconUrl = safeHttpUrl(data.favicon);
+  const color = "color" in data ? data.color : null;
   return (
     <a
       href={href}
@@ -2251,7 +2306,7 @@ function EmbedCard({ embed }: { embed: Embed }) {
         padding: "10px 12px",
         borderRadius: 6,
         background: "var(--bg-sidebar)",
-        borderLeft: `3px solid ${embed.color || "var(--accent)"}`,
+        borderLeft: `3px solid ${color || "var(--accent)"}`,
         textDecoration: "none",
         maxWidth: 480,
         overflow: "hidden",
@@ -2266,30 +2321,45 @@ function EmbedCard({ embed }: { embed: Embed }) {
         />
       )}
       <div style={{ minWidth: 0, flex: 1 }}>
-        {embed.site_name && (
+        {data.site_name && (
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>
             {faviconUrl && (
               <img src={faviconUrl} alt="" width={12} height={12} style={{ marginRight: 4, verticalAlign: "middle" }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
             )}
-            {embed.site_name}
+            {data.site_name}
           </div>
         )}
-        {embed.title && (
+        {data.title && (
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 2,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {embed.title}
+            {data.title}
           </div>
         )}
-        {embed.description && (
+        {data.description && (
           <div style={{ fontSize: 12, color: "var(--text-secondary)",
             display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-            {embed.description}
+            {data.description}
           </div>
         )}
       </div>
     </a>
   );
+}
+
+function LinkPreviewCard({ url }: { url: string }) {
+  const og = useOgPreview(url);
+  if (youtubeIdFromUrl(url)) return <YouTubeEmbedCard url={url} title={og?.title} description={og?.description} />;
+  if (isDirectVideoUrl(url)) return <DirectVideoLinkPreview url={url} />;
+  if (!og) return null;
+  return <StandardLinkPreviewCard url={url} data={og} />;
+}
+
+/** Server-persisted link-preview card (no client fetch — fields come from the gateway). */
+function EmbedCard({ embed }: { embed: Embed }) {
+  if (youtubeIdFromUrl(embed.url)) return <YouTubeEmbedCard url={embed.url} title={embed.title} description={embed.description} />;
+  if (isDirectVideoUrl(embed.url)) return <DirectVideoLinkPreview url={embed.url} />;
+  return <StandardLinkPreviewCard url={embed.url} data={embed} />;
 }
 
 // Inline text with bold, italic, inline code, and URL detection.
@@ -2580,6 +2650,55 @@ function assetUrl(url: string): string {
   return `${getFileBase()}${url.startsWith("/") ? url : `/${url}`}`;
 }
 
+function primeVideoPreview(e: React.SyntheticEvent<HTMLVideoElement>) {
+  const video = e.currentTarget;
+  // Nudge to the first real frame so the chat shows a thumbnail instead of a black
+  // poster box. Keep it tiny so pressing play still feels like starting at 0:00.
+  if (video.duration > 0 && video.currentTime === 0) {
+    try {
+      video.currentTime = Math.min(0.05, video.duration / 20);
+    } catch {
+      /* Some browsers disallow seeking before enough metadata is available. */
+    }
+  }
+}
+
+function VideoAttachmentPlayer({ url, filename, compact = false }: { url: string; filename: string; compact?: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="link-preview"
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 10px", color: "var(--accent)", textDecoration: "none" }}
+      >
+        🎬 Open {filename}
+      </a>
+    );
+  }
+  return (
+    <video
+      src={url}
+      controls
+      playsInline
+      preload="metadata"
+      onLoadedMetadata={primeVideoPreview}
+      onError={() => setFailed(true)}
+      style={{
+        width: compact ? "100%" : "min(520px, 100%)",
+        height: compact ? 110 : undefined,
+        maxHeight: compact ? 120 : 292,
+        borderRadius: compact ? 0 : 10,
+        display: "block",
+        background: "var(--bg-input)",
+        objectFit: "contain",
+      }}
+    />
+  );
+}
+
 function PendingAttachmentPreview({ file, onRemove }: { file: UploadedFile; onRemove: () => void }) {
   const url = file.previewUrl ?? assetUrl(file.url ?? `/files/${file.id}`);
   const isImage = file.content_type.startsWith("image/");
@@ -2598,7 +2717,7 @@ function PendingAttachmentPreview({ file, onRemove }: { file: UploadedFile; onRe
           style={{ height: d?.h ?? 110, maxHeight: 120 }}
         />
       ) : isVideo ? (
-        <video src={url} muted playsInline preload="metadata" className="block h-[110px] w-full object-cover" />
+        <VideoAttachmentPlayer url={url} filename={file.filename} compact />
       ) : null}
       <div className="flex items-center gap-1 px-2 py-1.5">
         <span>{fileIcon(file.content_type)}</span>
@@ -2653,16 +2772,10 @@ function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
         }
         if (att.content_type.startsWith("video/")) {
           return (
-            <div key={att.id}>
-              <video
-                src={url}
-                controls
-                playsInline
-                preload="none"
-                style={{ width: "min(360px, 100%)", maxHeight: 240, borderRadius: 10, display: "block", background: "var(--bg-input)", objectFit: "contain" }}
-              />
+            <div key={att.id} style={{ width: "min(520px, 100%)" }}>
+              <VideoAttachmentPlayer url={url} filename={att.filename} />
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                {att.filename} · {formatBytes(att.size_bytes)} · loads only when played
+                {att.filename} · {formatBytes(att.size_bytes)} · preview loaded
                 {" · "}<a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>Open</a>
               </div>
             </div>
@@ -2760,8 +2873,8 @@ function EncryptedAttachmentItem({ att }: { att: EncryptedAttachmentMeta }) {
   }
   if (att.content_type.startsWith("video/")) {
     return (
-      <div>
-        <video src={url} controls playsInline preload="none" style={{ width: "min(360px, 100%)", maxHeight: 240, borderRadius: 10, display: "block", background: "var(--bg-input)", objectFit: "contain" }} />
+      <div style={{ width: "min(520px, 100%)" }}>
+        <VideoAttachmentPlayer url={url} filename={att.filename} />
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{att.filename} · {formatBytes(att.size_bytes)}</div>
         <AttachmentTrustBadge />
       </div>
