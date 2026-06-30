@@ -1,14 +1,14 @@
 use axum::{
     body::Body,
     extract::{Multipart, Path, Query, State},
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::Response,
     Json,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::{
     auth::AuthUser,
@@ -32,7 +32,7 @@ pub(crate) fn upload_dir() -> PathBuf {
 /// Default per-user cumulative upload cap (bytes). Overridable via
 /// `MAX_UPLOAD_BYTES_PER_USER` so operators can size it to their volume — it stops a
 /// single account from exhausting the shared disk and breaking the DB for everyone.
-const DEFAULT_MAX_BYTES_PER_USER: i64 = 500 * 1024 * 1024; // 500 MiB
+const DEFAULT_MAX_BYTES_PER_USER: i64 = 10 * 1024 * 1024 * 1024; // 10 GiB
 
 fn max_bytes_per_user() -> i64 {
     std::env::var("MAX_UPLOAD_BYTES_PER_USER")
@@ -84,7 +84,7 @@ pub struct FileInfo {
     pub height: Option<i64>,
 }
 
-/// Upload a file — no size limit, streams directly to disk.
+/// Upload a file — streams directly to disk and enforces the configured quota.
 pub async fn upload_file(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -252,6 +252,51 @@ pub struct FileQuery {
     s: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ByteRange {
+    start: u64,
+    end: u64,
+}
+
+fn parse_single_byte_range(raw: &str, len: u64) -> Result<ByteRange, ()> {
+    if len == 0 {
+        return Err(());
+    }
+    let spec = raw.trim().strip_prefix("bytes=").ok_or(())?.trim();
+    // Keep the serving path simple and predictable: browsers' media elements use a
+    // single range. Multipart ranges are intentionally rejected instead of trying to
+    // synthesize a multipart/byteranges response.
+    if spec.is_empty() || spec.contains(',') {
+        return Err(());
+    }
+    let (start_raw, end_raw) = spec.split_once('-').ok_or(())?;
+    if start_raw.is_empty() {
+        let suffix_len = end_raw.parse::<u64>().map_err(|_| ())?;
+        if suffix_len == 0 {
+            return Err(());
+        }
+        let start = len.saturating_sub(suffix_len);
+        return Ok(ByteRange {
+            start,
+            end: len - 1,
+        });
+    }
+
+    let start = start_raw.parse::<u64>().map_err(|_| ())?;
+    if start >= len {
+        return Err(());
+    }
+    let end = if end_raw.is_empty() {
+        len - 1
+    } else {
+        end_raw.parse::<u64>().map_err(|_| ())?.min(len - 1)
+    };
+    if end < start {
+        return Err(());
+    }
+    Ok(ByteRange { start, end })
+}
+
 /// Serve a file by ID.
 ///
 /// SECURITY / ACCESS-CONTROL: this route is unauthenticated by necessity. Avatars,
@@ -286,6 +331,7 @@ pub async fn serve_file(
     Path(id): Path<String>,
     Query(query): Query<FileQuery>,
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Response, (StatusCode, String)> {
     // Capability gate (default OFF). When enforcement is on, the URL must carry a
     // signature matching this id; on mismatch we 404 rather than 401 so we never
@@ -305,12 +351,13 @@ pub async fn serve_file(
 
     let (path, filename, content_type) = row.ok_or((StatusCode::NOT_FOUND, "not found".into()))?;
 
-    let file = tokio::fs::File::open(&path)
+    let file_len = tokio::fs::metadata(&path)
+        .await
+        .map_err(|_| (StatusCode::NOT_FOUND, "file missing on disk".into()))?
+        .len();
+    let mut file = tokio::fs::File::open(&path)
         .await
         .map_err(|_| (StatusCode::NOT_FOUND, "file missing on disk".into()))?;
-
-    let stream = tokio_util::io::ReaderStream::new(file);
-    let body = Body::from_stream(stream);
 
     let safe_filename: String = filename
         .chars()
@@ -338,18 +385,52 @@ pub async fn serve_file(
         )
     };
 
-    Response::builder()
-        .status(StatusCode::OK)
+    let range = headers
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .map(|raw| parse_single_byte_range(raw, file_len))
+        .transpose()
+        .map_err(|_| {
+            (
+                StatusCode::RANGE_NOT_SATISFIABLE,
+                format!("range not satisfiable for {file_len} byte file"),
+            )
+        })?;
+
+    let mut builder = Response::builder()
+        .status(if range.is_some() {
+            StatusCode::PARTIAL_CONTENT
+        } else {
+            StatusCode::OK
+        })
         .header(header::CONTENT_TYPE, served_type)
         .header(header::CONTENT_DISPOSITION, disposition)
-        .body(body)
-        .map_err(|e| {
-            tracing::error!("serve_file: failed to build response for {id}: {e}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed to serve file".into(),
+        .header(header::ACCEPT_RANGES, "bytes");
+
+    let body = if let Some(ByteRange { start, end }) = range {
+        file.seek(std::io::SeekFrom::Start(start))
+            .await
+            .map_err(crate::api::error::internal)?;
+        let len = end - start + 1;
+        builder = builder
+            .header(
+                header::CONTENT_RANGE,
+                format!("bytes {start}-{end}/{file_len}"),
             )
-        })
+            .header(header::CONTENT_LENGTH, len.to_string());
+        Body::from_stream(tokio_util::io::ReaderStream::new(file.take(len)))
+    } else {
+        builder = builder.header(header::CONTENT_LENGTH, file_len.to_string());
+        Body::from_stream(tokio_util::io::ReaderStream::new(file))
+    };
+
+    builder.body(body).map_err(|e| {
+        tracing::error!("serve_file: failed to build response for {id}: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to serve file".into(),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -368,6 +449,35 @@ mod tests {
         assert!(!is_inline_safe("application/pdf"));
         assert!(!is_inline_safe("application/octet-stream"));
         assert!(!is_inline_safe(""));
+    }
+
+    #[test]
+    fn parses_browser_media_byte_ranges() {
+        assert_eq!(
+            parse_single_byte_range("bytes=0-", 100).unwrap(),
+            ByteRange { start: 0, end: 99 }
+        );
+        assert_eq!(
+            parse_single_byte_range("bytes=10-19", 100).unwrap(),
+            ByteRange { start: 10, end: 19 }
+        );
+        assert_eq!(
+            parse_single_byte_range("bytes=90-999", 100).unwrap(),
+            ByteRange { start: 90, end: 99 }
+        );
+        assert_eq!(
+            parse_single_byte_range("bytes=-25", 100).unwrap(),
+            ByteRange { start: 75, end: 99 }
+        );
+        assert_eq!(
+            parse_single_byte_range("bytes=-250", 100).unwrap(),
+            ByteRange { start: 0, end: 99 }
+        );
+        assert!(parse_single_byte_range("bytes=100-", 100).is_err());
+        assert!(parse_single_byte_range("bytes=20-10", 100).is_err());
+        assert!(parse_single_byte_range("bytes=0-1,4-5", 100).is_err());
+        assert!(parse_single_byte_range("items=0-1", 100).is_err());
+        assert!(parse_single_byte_range("bytes=0-", 0).is_err());
     }
 
     #[test]

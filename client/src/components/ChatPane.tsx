@@ -825,7 +825,9 @@ export function ChatPane({
                 }
                 resolve();
               } else {
-                reject(new Error(`Upload failed: ${xhr.status}`));
+                const serverText = xhr.responseText?.trim();
+                const reason = serverText || (xhr.status === 413 ? "file is too large for this server" : `HTTP ${xhr.status}`);
+                reject(new Error(reason));
               }
             };
             xhr.onerror = () => reject(new Error("Network error"));
@@ -840,8 +842,9 @@ export function ChatPane({
             delete next[progressKey];
             return next;
           });
-        } catch {
-          onToast(`Upload failed: ${file.name}`, "error");
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          onToast(`Upload failed: ${file.name} (${formatBytes(file.size)}): ${reason}`, "error");
         }
       }
 
