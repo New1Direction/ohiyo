@@ -279,10 +279,12 @@ fn parse_cors_origins(raw: &str) -> Vec<HeaderValue> {
 // ── Security headers ──────────────────────────────────────────────────────────
 // Applied to EVERY response (API + the /files upload-serving route). The locked-down
 // CSP + nosniff are what matter most on /files: they stop an uploaded HTML/SVG from
-// executing script when opened directly. HSTS only takes effect over HTTPS (ignored in
-// local http dev). The app document's own CSP/permissions are set by whatever serves
-// the SPA — this server is API-only.
+// executing script when opened directly. Inline audio/video gets a media-specific CSP
+// so direct-opened MP4/MOV/WebM files can use the browser's built-in player. HSTS only
+// takes effect over HTTPS (ignored in local http dev). The app document's own
+// CSP/permissions are set by whatever serves the SPA — this server is API-only.
 async fn security_headers(req: Request, next: Next) -> Response {
+    let is_file_route = req.uri().path().starts_with("/files/");
     let mut res = next.run(req).await;
     let h = res.headers_mut();
     h.insert(
@@ -294,11 +296,31 @@ async fn security_headers(req: Request, next: Next) -> Response {
         HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
     h.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    let is_inline_media = is_file_route
+        && h.get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(|ct| {
+                let base = ct.split(';').next().unwrap_or("").trim();
+                base.starts_with("video/") || base.starts_with("audio/")
+            })
+            .unwrap_or(false);
     h.insert(
         "content-security-policy",
-        HeaderValue::from_static(
-            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; sandbox",
-        ),
+        if is_inline_media {
+            // Direct navigation to a video creates a tiny browser-generated document
+            // whose <video src="same file"> is governed by this response CSP. The
+            // fully locked-down default-src/sandbox policy blocks that self-load, so
+            // allow only same-origin media for known-safe served media types. Active
+            // content and unknown files are still served as attachment/octet-stream by
+            // api::files and keep the sandboxed default below.
+            HeaderValue::from_static(
+                "default-src 'none'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+            )
+        } else {
+            HeaderValue::from_static(
+                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; sandbox",
+            )
+        },
     );
     h.insert(
         "strict-transport-security",

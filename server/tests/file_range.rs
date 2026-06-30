@@ -55,6 +55,19 @@ async fn uploaded_files_support_single_byte_ranges() {
             .and_then(|v| v.to_str().ok()),
         Some("6")
     );
+    let csp = ranged
+        .headers()
+        .get("content-security-policy")
+        .and_then(|v| v.to_str().ok())
+        .expect("video response CSP");
+    assert!(
+        csp.contains("media-src 'self'"),
+        "video CSP should allow the browser media player: {csp}"
+    );
+    assert!(
+        !csp.contains("sandbox"),
+        "video CSP must not sandbox the browser media player: {csp}"
+    );
     let body = ranged.bytes().await.expect("range body");
     assert_eq!(&body[..], b"abcdef");
 }
