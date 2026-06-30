@@ -57,6 +57,7 @@ function buildCsp(serverUrl: string | undefined): string {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https:",
+    "media-src 'self' blob: data: https:",
     `connect-src ${Array.from(connect).join(" ")}`,
     "worker-src 'self' blob:",
     "frame-src https:",
