@@ -108,14 +108,14 @@
   const PILLARS = [
     {
       ic: "🔒", name: "End-to-end encryption", key: "Privacy",
-      desc: "The server relays sealed envelopes between devices. It never holds a key and never sees plaintext.",
+      desc: "Private chats are sealed on-device. The server routes ciphertext for E2E DMs and group DMs, not readable message bodies.",
       feats: [
         ["Signal Protocol DMs", "X3DH + Double Ratchet via libsignal"],
-        ["Encrypted group chat", "sender keys, epoch rekey on join/leave"],
+        ["Encrypted group DMs", "sender keys, epoch rekey on join/leave"],
         ["Safety numbers", "verify a contact across all their devices"],
-        ["Encrypted voice & video", "per-call key (LiveKit FrameCryptor)"],
+        ["Encrypted attachments", "client-side AES-GCM before upload"],
         ["Backup & recovery", "self-custody code, PBKDF2 → AES-256-GCM"],
-        ["Multi-device + vault", "QR device linking, sealed key vault on desktop"],
+        ["Threat model", "public privacy boundaries, no anonymity overclaim"],
       ],
     },
     {
@@ -127,19 +127,19 @@
         ["Roles & permissions", "granular, per-channel gates"],
         ["Polls, events, reactions", "@everyone / @here mentions"],
         ["Pins, saved, forward, drafts", "read receipts too"],
-        ["Search, custom emoji, embeds", "file uploads with link previews"],
+        ["Rich media embeds", "video previews, direct video links, YouTube iframes"],
       ],
     },
     {
       ic: "🎙️", name: "Voice, video & screen-share", key: "Realtime",
-      desc: "Talk, watch, and present together — with the media encrypted end-to-end.",
+      desc: "Talk, watch, present, and share clips together — the realtime layer is built and still being hardened for launch.",
       feats: [
         ["Mesh + SFU", "WebRTC mesh or LiveKit, chosen at runtime"],
         ["Up to 4K screen-share", "crisp presenting & pair-work"],
-        ["End-to-end media", "frames encrypted before they leave you"],
-        ["TURN / STUN", "calls connect across any NAT or firewall"],
+        ["Media E2EE path", "FrameCryptor integration under live hardening"],
+        ["TURN / STUN", "calls connect across NATs and firewalls"],
         ["Watch parties", "synced video for the whole room"],
-        ["Rich presence", "playing / watching / working states"],
+        ["Video attachments", "inline previews with Range-backed playback"],
       ],
     },
     {
@@ -148,10 +148,10 @@
       feats: [
         ["Disappearing messages", "per-channel TTL, swept server-side"],
         ["Dead-man's switch", "auto-wipe after inactivity (1h–1y)"],
-        ["Blind server", "zero readable message content"],
-        ["Moderation", "kick, ban, role-gated actions"],
+        ["E2E blind spots", "private chat bodies remain unreadable to the server"],
+        ["Moderation", "hide, report, block, kick, ban, role-gated actions"],
         ["Rate limiting", "per-IP brute-force + spam throttles"],
-        ["Hardened surface", "CSP, nosniff, generic errors, no leaks"],
+        ["Hardened surface", "CSP, nosniff, signed file URLs, generic errors"],
       ],
     },
     {
@@ -172,10 +172,10 @@
       feats: [
         ["Rust + SQLite", "one axum binary, one database file"],
         ["React + Tauri desktop", "native mac / windows / linux apps"],
-        ["Deploy in one command", "Docker + Fly.io, documented end-to-end"],
-        ["Continuous backups", "Litestream WAL streaming + auto-restore"],
+        ["Instant Servers", "create, sleep, wake, export, graduate, billing handoff"],
+        ["Raw Server Pack", "SQLite snapshot + uploads + signed manifest"],
         ["Resilient by default", "fail-fast config, graceful shutdown, DB health"],
-        ["Proven quality", "8 hard CI gates · 85 tests · e2e suites"],
+        ["Proven quality", "116 server tests · 76 client tests · 27 E2E suites"],
       ],
     },
   ];

@@ -158,7 +158,7 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.5rem); }
 .btn {
   display: inline-flex; align-items: center; gap: 0.6rem;
   padding: 0.95rem 1.5rem; border-radius: 999px;
-  font-family: var(--font-ui); font-weight: 650; font-size: 0.98rem;
+  font-family: var(--font-ui); font-weight: 650; font-size: 1rem;
   color: var(--ink); background: var(--grad-warm);
   border: none; cursor: pointer; text-decoration: none;
   box-shadow: var(--glow); transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease);
@@ -177,7 +177,7 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.5rem); }
 @keyframes float { 50% { transform: translateY(-14px); } }
 .cover h1 { margin: 1.2rem 0 0.4rem; font-size: clamp(3.4rem, 10vw, 8rem); }
 .cover .tag { font-size: clamp(1.1rem, 2.2vw, 1.65rem); color: var(--cream); font-family: var(--font-display); font-style: italic; }
-.cover .sub { margin-top: 0.9rem; color: var(--muted); font-size: 1rem; letter-spacing: 0.01em; }
+.cover .sub { margin-top: 0.9rem; color: var(--muted); font-size: 1rem; line-height: 1.48; letter-spacing: 0.01em; }
 .cover .cta-row { margin-top: 2.4rem; display: flex; gap: 0.9rem; justify-content: center; flex-wrap: wrap; }
 
 /* ── Generic two-column slide ─────────────────────────────────────────────── */
@@ -274,7 +274,7 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.5rem); }
 .topbar { position: fixed; top: 1.4rem; left: 1.7rem; right: 1.7rem; display: flex; justify-content: space-between; align-items: center; z-index: 40; pointer-events: none; }
 .topbar .brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; letter-spacing: 0.02em; pointer-events: auto; }
 .topbar .brand img { width: 30px; filter: brightness(0) invert(0.92); }
-.topbar .menu-btn { pointer-events: auto; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); color: var(--cream); padding: 0.5rem 0.9rem; border-radius: 999px; font-size: 0.82rem; cursor: pointer; font-family: var(--font-ui); transition: border-color 0.25s; }
+.topbar .menu-btn { pointer-events: auto; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); color: var(--cream); padding: 0.5rem 0.9rem; border-radius: 999px; font-size: 1rem; cursor: pointer; font-family: var(--font-ui); transition: border-color 0.25s; }
 .topbar .menu-btn:hover { border-color: var(--coral); }
 
 .dots { position: fixed; bottom: 1.6rem; left: 50%; transform: translateX(-50%); display: flex; gap: 0.6rem; z-index: 40; }
@@ -286,7 +286,7 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.5rem); }
 .arrows button, .counter { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); color: var(--cream); border-radius: 999px; cursor: pointer; transition: all 0.25s var(--ease); font-family: var(--font-ui); }
 .arrows button { width: 40px; height: 40px; font-size: 1.1rem; }
 .arrows button:hover { border-color: var(--coral); color: var(--coral); }
-.counter { position: fixed; bottom: 1.6rem; left: 1.7rem; z-index: 40; padding: 0.5rem 0.95rem; font-size: 0.82rem; letter-spacing: 0.12em; color: var(--warm-2); }
+.counter { position: fixed; bottom: 1.6rem; left: 1.7rem; z-index: 40; padding: 0.5rem 0.95rem; font-size: 0.9rem; letter-spacing: 0.12em; color: var(--warm-2); }
 .counter b { color: var(--cream); }
 
 /* Jump menu overlay */
@@ -299,7 +299,7 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.5rem); }
 .menu li button:hover, .menu li button.on { color: var(--cream); background: rgba(255, 122, 77, 0.1); border-color: rgba(255, 122, 77, 0.25); padding-left: 1.5rem; }
 .menu .close-hint { text-align: center; margin-top: 1.4rem; color: var(--muted); font-size: 0.8rem; }
 
-.hint { position: fixed; bottom: 4.4rem; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 0.78rem; z-index: 40; letter-spacing: 0.08em; animation: pulse 2.6s ease-in-out infinite; }
+.hint { position: fixed; bottom: 4.4rem; left: 50%; transform: translateX(-50%); color: var(--cream); font-size: 0.82rem; z-index: 40; letter-spacing: 0.08em; opacity: 0.82; }
 @keyframes pulse { 50% { opacity: 0.4; } }
 kbd { font-family: var(--font-ui); background: var(--surface-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 0.1rem 0.4rem; font-size: 0.74rem; color: var(--cream); }
 

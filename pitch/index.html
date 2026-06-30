@@ -26,7 +26,7 @@
         <img class="logo" src="kikka.svg" alt="Kikka the Ohiyo chinchilla" data-rise="1" />
         <h1 class="wordmark" data-rise="2"><span class="o">o</span><span class="hi">Hi</span><span class="yo">Yo</span></h1>
         <p class="tag" data-rise="3"><span class="serif-i">oh, hi</span> — the encrypted home for your people.</p>
-        <p class="sub" data-rise="4">Signal-level privacy. Discord-level everything. Free, open, and yours to host.</p>
+        <p class="sub" data-rise="4">Encrypted private chats. Discord-like community spaces. Managed or self-hosted — with an exit.</p>
         <div class="cta-row" data-rise="5">
           <a class="btn" id="startBtn">See what we built →</a>
           <a class="btn ghost" id="menuBtn2">Jump to a slide</a>
@@ -44,7 +44,7 @@
         </div>
         <ul class="problems glass" data-rise="4" style="padding:1.6rem">
           <li><span class="x">✕</span><div><b>Plaintext on someone else's servers</b><span>Discord stores your DMs and every server message in the clear. The company — and anyone who compels it — can read them.</span></div></li>
-          <li><span class="x">✕</span><div><b>The good stuff is rented</b><span>Bigger uploads, custom emoji, HD video, themes — all behind Nitro. You pay monthly to decorate a place you don't own.</span></div></li>
+          <li><span class="x">✕</span><div><b>The good stuff is rented</b><span>Bigger uploads, custom emoji, HD video, themes, and community perks are split across Nitro and Boosts. You pay monthly to decorate a place you don't own.</span></div></li>
           <li><span class="x">✕</span><div><b>You can't host it or trust it</b><span>Closed source, closed servers. No self-hosting, no audit, no exit. Your community is a guest.</span></div></li>
         </ul>
       </div>
@@ -54,13 +54,13 @@
     <section class="slide" data-title="The idea">
       <div class="wrap split solo" style="text-align:center;margin-inline:auto">
         <span class="eyebrow" data-rise="1" style="justify-content:center">The idea</span>
-        <h2 data-rise="2" style="margin:.6rem auto 1.1rem">Take everything people love about Discord — and put it on a server that <span class="serif-i grad">literally cannot read it.</span></h2>
-        <p class="lead" data-rise="3" style="margin-inline:auto;max-width:54ch">End-to-end encryption built on the <b style="color:var(--cream)">Signal Protocol</b>, wrapped in a full community platform: servers, voice, video, screen-share, roles, polls, events. Free. Open source. Self-hostable in a single binary.</p>
+        <h2 data-rise="2" style="margin:.6rem auto 1.1rem">Take the parts people love about Discord — and give communities <span class="serif-i grad">privacy, portability, and ownership.</span></h2>
+        <p class="lead" data-rise="3" style="margin-inline:auto;max-width:56ch">End-to-end encrypted DMs and group chats built on the <b style="color:var(--cream)">Signal Protocol</b>, wrapped in a full community platform: servers, voice, video, screen-share, roles, polls, events, rich embeds, and one-tap managed servers you can export or self-host.</p>
         <div data-rise="4" style="margin-top:2rem;display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap">
-          <span class="pill">🔒 Blind server</span>
-          <span class="pill">🎙️ Voice &amp; video</span>
-          <span class="pill">🎨 Free customization</span>
-          <span class="pill">🏠 Self-hostable</span>
+          <span class="pill">🔒 E2E private chats</span>
+          <span class="pill">🎬 Video previews + YouTube embeds</span>
+          <span class="pill">⚡ Instant Servers</span>
+          <span class="pill">📦 Server Pack export</span>
           <span class="pill">⚙️ Rust + React + Tauri</span>
         </div>
       </div>
@@ -77,13 +77,13 @@
             <tbody>
               <tr><td>End-to-end encrypted DMs</td><td class="us-col"><span class="yes">✓</span> Signal Protocol <span class="verif">· integration-tested</span></td><td class="them-col"><span class="no">✕</span> plaintext on servers</td></tr>
               <tr><td>End-to-end encrypted group chat</td><td class="us-col"><span class="yes">✓</span> sender keys + epoch rekey <span class="verif">· integration-tested</span></td><td class="them-col"><span class="no">✕</span> none</td></tr>
-              <tr><td>Encrypted voice &amp; video</td><td class="us-col"><span class="yes">✓</span> per-call key (FrameCryptor) <span class="verif">· implemented</span></td><td class="them-col"><span class="meh">~</span> DAVE, 2024, calls only</td></tr>
-              <tr><td>Self-hostable &amp; open source</td><td class="us-col"><span class="yes">✓</span> single binary, MIT-spirit</td><td class="them-col"><span class="no">✕</span> closed SaaS</td></tr>
-              <tr><td>Price of the full feature set</td><td class="us-col"><span class="yes">✓</span> everything free</td><td class="them-col"><span class="no">✕</span> Nitro subscription</td></tr>
+              <tr><td>Encrypted voice &amp; video</td><td class="us-col"><span class="meh">~</span> media E2EE path built <span class="verif">· live SFU hardening</span></td><td class="them-col"><span class="meh">~</span> DAVE, 2024, calls only</td></tr>
+              <tr><td>Self-hostable &amp; open source</td><td class="us-col"><span class="yes">✓</span> Rust server + React/Tauri clients</td><td class="them-col"><span class="no">✕</span> closed SaaS</td></tr>
+              <tr><td>Managed server with an exit</td><td class="us-col"><span class="yes">✓</span> Instant Servers + raw Server Pack export <span class="verif">· shipped</span></td><td class="them-col"><span class="no">✕</span> no portable server export</td></tr>
               <tr><td>Custom &amp; build-your-own themes</td><td class="us-col"><span class="yes">✓</span> free theme editor <span class="verif">· shipped</span></td><td class="them-col"><span class="meh">~</span> limited / paid</td></tr>
+              <tr><td>Video previews &amp; YouTube embeds</td><td class="us-col"><span class="yes">✓</span> inline video + youtube-nocookie embeds <span class="verif">· deployed</span></td><td class="them-col"><span class="yes">✓</span> mature embeds</td></tr>
               <tr><td>Encrypted backup &amp; recovery</td><td class="us-col"><span class="yes">✓</span> self-custody code <span class="verif">· shipped</span></td><td class="them-col"><span class="no">✕</span> none</td></tr>
-              <tr><td>Disappearing messages &amp; dead-man switch</td><td class="us-col"><span class="yes">✓</span> built in <span class="verif">· shipped</span></td><td class="them-col"><span class="no">✕</span> none</td></tr>
-              <tr><td>Reads your data to monetize it</td><td class="us-col"><span class="yes">✓</span> can't — blind server</td><td class="them-col"><span class="no">✕</span> analytics &amp; ads</td></tr>
+              <tr><td>Privacy boundary documentation</td><td class="us-col"><span class="yes">✓</span> public threat model <span class="verif">· live</span></td><td class="them-col"><span class="meh">~</span> policy, not portable architecture</td></tr>
             </tbody>
           </table>
         </div>
@@ -108,12 +108,12 @@
       <div class="wrap stack">
         <span class="eyebrow" data-rise="1">Instant Servers</span>
         <h2 data-rise="2">Your own server, <span class="serif-i grad">in one tap.</span></h2>
-        <p class="lead" data-rise="3" style="max-width:60ch">We host it so it just works — but it's end-to-end encrypted (we can't read it), you can export everything anytime, and you're one button from moving it to your own box. Minecraft Realms, if Realms couldn't read your world.</p>
+        <p class="lead" data-rise="3" style="max-width:60ch">We host it so it just works — and the control plane only manages infrastructure metadata. Owners can create, sleep, wake, export, graduate, or delete an instance from the app. When you leave, the raw Server Pack carries the SQLite snapshot, uploads, manifest, and checksum proof.</p>
         <div class="road" data-rise="4">
           <div class="col glass"><div class="when">Discord Nitro</div><h4>$9.99/mo · per person</h4><ul><li>A fancier avatar, bigger emoji, HD — for <b>one person</b></li><li>Real server perks paywalled again behind Boosts (~$4.99 ea)</li><li>20 people who all want HD ≈ <b>$200/mo</b>, forever</li></ul></div>
-          <div class="col glass" style="border-color:rgba(255,122,77,.4)"><div class="when" style="color:var(--coral)">Ohiyo · &lt; one Nitro</div><h4>One server · the whole crew</h4><ul><li>Always-on encrypted server for <b>everyone</b>, all perks included</li><li>Or run it <b>free</b> (it naps when idle), or self-host for <b>$0</b></li><li>Cost-per-person only <b>drops</b> as you grow</li></ul></div>
+          <div class="col glass" style="border-color:rgba(255,122,77,.4)"><div class="when" style="color:var(--coral)">Ohiyo · &lt; one Nitro</div><h4>One server · the whole crew</h4><ul><li>Managed community home for <b>everyone</b>, with private E2E chats and no Nitro gates</li><li>Or run it <b>free</b> (it naps when idle), export it, or self-host for <b>$0</b></li><li>Cost-per-person only <b>drops</b> as you grow</li></ul></div>
         </div>
-        <p class="secnote" data-rise="5">One Discord Nitro buys you a fancier avatar. The same money runs your whole community — <b>encrypted</b> — on Ohiyo. We host it; we can't read it; you can leave with everything.</p>
+        <p class="secnote" data-rise="5">One Discord Nitro buys one person a fancier avatar. The same budget can run a whole Ohiyo home — with owner-scoped controls, export paths, and a self-host graduation guide instead of lock-in.</p>
       </div>
     </section>
 
@@ -129,7 +129,7 @@
           <div class="node glass"><span class="k">Trust</span><b>Safety numbers</b><p>Out-of-band verification across all of a contact's devices; a swapped key raises a loud banner.</p></div>
           <div class="node glass"><span class="k">At rest</span><b>Vault + backup</b><p>Desktop seals keys in an AES-256-GCM vault; recovery is a self-custody code (PBKDF2 → AES-GCM).</p></div>
         </div>
-        <p class="secnote" data-rise="4">The server only ever relays <b>ciphertext</b>. It moves sealed envelopes between devices, enforces membership, and stores nothing it can read — verified by a Rust integration suite that proves a removed member loses access and a pinned identity can't be silently swapped.</p>
+        <p class="secnote" data-rise="4">For E2E DMs and group chats, the server relays <b>ciphertext</b>: sealed envelopes between devices, membership enforcement, and no readable message body. Rust integration tests prove a removed member loses future access and a pinned identity can't be silently swapped.</p>
       </div>
     </section>
 
@@ -139,27 +139,27 @@
         <span class="eyebrow" data-rise="1">Where we stand</span>
         <h2 data-rise="2">Built like it's going to be <span class="serif-i grad">attacked.</span></h2>
         <div class="stats" data-rise="3">
-          <div class="stat glass"><div class="n grad">33</div><div class="l">PRs shipped &amp; merged to main</div></div>
-          <div class="stat glass"><div class="n grad">85</div><div class="l">unit &amp; integration tests<br>+ 22 end-to-end suites</div></div>
-          <div class="stat glass"><div class="n grad">8</div><div class="l">hard CI checks gate every merge</div></div>
-          <div class="stat glass"><div class="n grad">0</div><div class="l">plaintext messages on the server</div></div>
+          <div class="stat glass"><div class="n grad">192</div><div class="l">commits on main<br>and shipping daily</div></div>
+          <div class="stat glass"><div class="n grad">219</div><div class="l">server + client tests<br>+ 27 E2E suites</div></div>
+          <div class="stat glass"><div class="n grad">2</div><div class="l">live surfaces deployed<br>app + public site</div></div>
+          <div class="stat glass"><div class="n grad">0</div><div class="l">readable E2E message bodies<br>on the server</div></div>
         </div>
         <div class="checks glass" data-rise="4" style="padding:1.5rem 1.8rem">
-          <div class="done"><span class="s">✓</span> Signal E2E for DMs &amp; groups — integration-tested</div>
+          <div class="done"><span class="s">✓</span> Signal E2E for DMs &amp; group DMs — integration-tested</div>
           <div class="done"><span class="s">✓</span> Epoch group rekey + device pinning + tombstones</div>
-          <div class="done"><span class="s">✓</span> Encrypted backup &amp; recovery, device linking</div>
-          <div class="done"><span class="s">✓</span> Security headers, CSP, generic errors (no leaks)</div>
-          <div class="done"><span class="s">✓</span> Stored-XSS block + per-user upload quota</div>
-          <div class="done"><span class="s">✓</span> Fail-fast config; graceful shutdown; DB health</div>
-          <div class="done"><span class="s">✓</span> Hard fmt/clippy/build/test CI gates</div>
-          <div class="done"><span class="s">✓</span> Signed-release pipeline + Litestream backups (wired)</div>
-          <div class="done"><span class="s">✓</span> Instant Servers — one-tap provisioning (Phase 1), adversarially reviewed</div>
-          <div class="part"><span class="s">◐</span> Voice/video E2E — implemented; needs a live SFU to fully verify</div>
-          <div class="part"><span class="s">◐</span> E2E suite in CI — wired, non-blocking; needs a hosted run</div>
-          <div class="todo"><span class="s">○</span> Code-signing certs (Apple / Windows accounts)</div>
-          <div class="todo"><span class="s">○</span> Session token → desktop vault; public launch (domain, ToS)</div>
+          <div class="done"><span class="s">✓</span> Personal recovery, device linking, and encrypted attachment relay</div>
+          <div class="done"><span class="s">✓</span> Video attachment previews + direct video links + YouTube embeds — deployed</div>
+          <div class="done"><span class="s">✓</span> Instant Servers management — create, sleep, wake, export, graduate, billing handoff</div>
+          <div class="done"><span class="s">✓</span> Raw Server Pack export — SQLite snapshot, uploads archive, signed manifest</div>
+          <div class="done"><span class="s">✓</span> Public privacy threat model, Terms/Privacy, content-free push boundary</div>
+          <div class="done"><span class="s">✓</span> Security headers, CSP, signed file URLs, upload quota, generic errors</div>
+          <div class="done"><span class="s">✓</span> Live browser app at app.ohiyo.gg + Fly backend health checks</div>
+          <div class="part"><span class="s">◐</span> Voice/video E2E media path — built; live SFU/TURN hardening continues</div>
+          <div class="part"><span class="s">◐</span> Hosted E2E suite — wired; broaden hosted runner coverage</div>
+          <div class="todo"><span class="s">○</span> Apple Developer ID + Windows signing accounts for public installers</div>
+          <div class="todo"><span class="s">○</span> Billing operations, abuse workflows, and launch distribution polish</div>
         </div>
-        <div class="legend" data-rise="5"><span><b style="color:var(--emerald)">✓</b> shipped &amp; verified</span><span><b style="color:var(--amber)">◐</b> built, needs live validation</span><span><b style="color:var(--muted)">○</b> needs your accounts / a decision</span></div>
+        <div class="legend" data-rise="5"><span><b style="color:var(--emerald)">✓</b> shipped &amp; smoke-tested</span><span><b style="color:var(--amber)">◐</b> built, needs more live hardening</span><span><b style="color:var(--muted)">○</b> launch/account work</span></div>
       </div>
     </section>
 
@@ -167,11 +167,11 @@
     <section class="slide" data-title="What's next">
       <div class="wrap stack">
         <span class="eyebrow" data-rise="1">The path to launch</span>
-        <h2 data-rise="2">From <span class="serif-i grad">solid</span> to shipped.</h2>
+        <h2 data-rise="2">From <span class="serif-i grad">live product</span> to public launch.</h2>
         <div class="road" data-rise="3">
-          <div class="col glass"><div class="when">Now → days</div><h4>Sign &amp; verify</h4><ul><li>Add Apple/Windows certs → the release pipeline auto-signs</li><li>Stand up a LiveKit + TURN node to verify encrypted calls end-to-end</li><li>Stabilize the e2e suite on a hosted runner</li></ul></div>
-          <div class="col glass"><div class="when">Weeks</div><h4>Harden the edges</h4><ul><li>Instant Servers: sleep/wake + notification relay + export</li><li>Move the session token into the desktop vault</li><li>Enable Litestream backups against real object storage</li><li>Privacy policy + Terms; first signed public installers</li></ul></div>
-          <div class="col glass"><div class="when">The frontier</div><h4>Beyond Signal</h4><ul><li>Sealed sender — hide who-talks-to-whom metadata</li><li>Federation between self-hosted instances</li><li>Bots &amp; plugins, sandboxed against the E2E core</li></ul></div>
+          <div class="col glass"><div class="when">Now → days</div><h4>Package trust</h4><ul><li>Add Apple Developer ID + Windows signing so installers open cleanly</li><li>Run the hosted E2E suite against the production-like stack</li><li>Keep tightening the media path: LiveKit, TURN, device switching, call QA</li></ul></div>
+          <div class="col glass"><div class="when">Weeks</div><h4>Operate the hosted layer</h4><ul><li>Turn billing handoff into a repeatable operator workflow</li><li>Harden abuse, suspension, export, and graduation runbooks</li><li>Keep improving onboarding, media embeds, and importer proof moments</li></ul></div>
+          <div class="col glass"><div class="when">The frontier</div><h4>Beyond the first launch</h4><ul><li>Stronger metadata privacy: sealed sender-style routing where practical</li><li>Federation between self-hosted instances</li><li>Bots &amp; plugins, sandboxed against the E2E core</li></ul></div>
         </div>
       </div>
     </section>
@@ -181,7 +181,7 @@
       <div class="wrap">
         <img class="logo" src="kikka.svg" alt="" data-rise="1" style="width:clamp(120px,15vw,180px)" />
         <h2 data-rise="2" style="font-size:clamp(2.6rem,7vw,5rem);margin-top:1rem">Own your conversations.</h2>
-        <p class="lead" data-rise="3" style="margin:1rem auto 0;max-width:50ch">The warmth and reach of Discord, the privacy of Signal, and a server that can't betray you because it can't read you.</p>
+        <p class="lead" data-rise="3" style="margin:1rem auto 0;max-width:52ch">The warmth and reach of Discord, the privacy model of Signal for private chats, and servers your community can actually leave with.</p>
         <div class="cta-row" data-rise="4">
           <a class="btn" id="restartBtn">↺ Watch again</a>
           <a class="btn ghost" href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener noreferrer">Self-host on GitHub →</a>
@@ -193,9 +193,9 @@
   </main>
 
   <!-- chrome -->
-  <div class="counter" id="counter"></div>
+  <div class="counter" id="counter" aria-hidden="true"></div>
   <nav class="dots" id="dots"></nav>
-  <div class="hint" id="hint">Use <kbd>←</kbd> <kbd>→</kbd> &nbsp;·&nbsp; <kbd>M</kbd> for menu &nbsp;·&nbsp; <kbd>F</kbd> fullscreen</div>
+  <div class="hint" id="hint" aria-hidden="true">Use <kbd>←</kbd> <kbd>→</kbd> &nbsp;·&nbsp; <kbd>M</kbd> for menu &nbsp;·&nbsp; <kbd>F</kbd> fullscreen</div>
   <div class="arrows"><button id="prev" aria-label="Previous">‹</button><button id="next" aria-label="Next">›</button></div>
 
   <div class="menu" id="menu"><div><ol id="menuList"></ol><p class="close-hint">Esc to close</p></div></div>
