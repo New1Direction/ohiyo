@@ -1099,7 +1099,7 @@ export function ChatPane({
         <span style={{ color: "var(--text-muted)" }}>
           {channel.channel_type === "dm" ? "👤" : "#"}
         </span>
-        <span>{channel.name !== "dm" ? channel.name : "Direct Message"}</span>
+        <span className="kc-chat-title">{channel.name !== "dm" ? channel.name : "Direct Message"}</span>
         {channel.imported && (
           <span
             className="rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide"
@@ -1122,7 +1122,7 @@ export function ChatPane({
           <button
             type="button"
             onClick={onOpenMembers}
-            className="kc-interactive flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold"
+            className="kc-chat-members-pill kc-interactive flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold"
             style={{
               background: "color-mix(in oklch, var(--accent) 8%, var(--bg-input))",
               border: "1px solid color-mix(in oklch, var(--accent) 18%, var(--bg-hover))",
@@ -1216,7 +1216,7 @@ export function ChatPane({
           </button>
         )}
         {onSetDisappearing && (
-          <div className="relative flex-shrink-0">
+          <div className="kc-disappear-control relative flex-shrink-0">
             <button
               type="button"
               onClick={() => setDisappearOpen((v) => !v)}

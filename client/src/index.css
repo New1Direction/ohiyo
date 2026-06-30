@@ -3234,11 +3234,32 @@ button:disabled,
     -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
   }
-  .kc-chat-header > span:last-of-type {
+  .kc-chat-title {
     min-width: 0;
+    max-width: 40vw;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .kc-chat-header .kc-hide-narrow,
+  .kc-chat-header .kc-disappear-control:not(:has(.active)) {
+    display: none !important;
+  }
+  .kc-chat-members-pill {
+    margin-left: auto;
+    max-width: 7.9rem;
+    padding: 0.22rem 0.55rem !important;
+    gap: 0.35rem !important;
+  }
+  .kc-chat-members-pill span:last-child {
+    max-width: 4.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kc-chat-members-pill .flex {
+    transform: scale(0.9);
+    transform-origin: left center;
   }
 
   .kc-message-row {

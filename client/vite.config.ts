@@ -39,11 +39,15 @@ function wsOriginFrom(httpOrigin: string | undefined): string | null {
 // serves index.html. Setting response headers is not this file's job.
 function buildCsp(serverUrl: string | undefined): string {
   const connect = new Set<string>(["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"]);
+  const media = new Set<string>(["'self'", "blob:", "data:", "https:"]);
+  const img = new Set<string>(["'self'", "data:", "blob:", "https:"]);
   if (serverUrl) {
     try {
       const u = new URL(serverUrl);
       if (u.protocol === "http:" || u.protocol === "https:") {
         connect.add(u.origin);
+        media.add(u.origin);
+        img.add(u.origin);
         const ws = wsOriginFrom(serverUrl);
         if (ws) connect.add(ws);
       }
@@ -56,8 +60,8 @@ function buildCsp(serverUrl: string | undefined): string {
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: blob: https:",
-    "media-src 'self' blob: data: https:",
+    `img-src ${Array.from(img).join(" ")}`,
+    `media-src ${Array.from(media).join(" ")}`,
     `connect-src ${Array.from(connect).join(" ")}`,
     "worker-src 'self' blob:",
     "frame-src https:",

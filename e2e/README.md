@@ -7,7 +7,7 @@ full client↔server↔gateway round trip.
 ## Suites
 
 Each `NN-*.test.mjs` file is one journey; the filename names it. See the directory
-for all 27.
+for all 28.
 
 ## Prerequisites
 

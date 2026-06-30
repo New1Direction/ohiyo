@@ -2159,10 +2159,10 @@ function MainApp({
             onJoinVoice={handleJoinVoice}
             onCreateChannel={handleCreateChannel}
             onSetServerIcon={handleSetServerIcon}
-            onInvite={() => setShowInvite(true)}
-            onCreatePrivateDmLink={() => setShowPrivateDmLink(true)}
-            onFindPeople={() => setShowFindPeople(true)}
-            onOpenEvents={() => setShowEvents(true)}
+            onInvite={() => { setMobileNavOpen(false); setShowInvite(true); }}
+            onCreatePrivateDmLink={() => { setMobileNavOpen(false); setShowPrivateDmLink(true); }}
+            onFindPeople={() => { setMobileNavOpen(false); setShowFindPeople(true); }}
+            onOpenEvents={() => { setMobileNavOpen(false); setShowEvents(true); }}
             onReportServer={selectedServer ? () => void reportTarget("server", selectedServer.id, "server") : undefined}
             onOpenModQueue={canModerateSelectedServer ? () => setShowModQueue(true) : undefined}
             activationState={activation}
