@@ -2683,7 +2683,7 @@ function VideoAttachmentPlayer({ url, filename, compact = false }: { url: string
       src={url}
       controls
       playsInline
-      preload="metadata"
+      preload="auto"
       onLoadedMetadata={primeVideoPreview}
       onError={() => setFailed(true)}
       style={{
