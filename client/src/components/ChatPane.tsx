@@ -2650,21 +2650,19 @@ function assetUrl(url: string): string {
   return `${getFileBase()}${url.startsWith("/") ? url : `/${url}`}`;
 }
 
-function primeVideoPreview(e: React.SyntheticEvent<HTMLVideoElement>) {
-  const video = e.currentTarget;
-  // Nudge to the first real frame so the chat shows a thumbnail instead of a black
-  // poster box. Keep it tiny so pressing play still feels like starting at 0:00.
-  if (video.duration > 0 && video.currentTime === 0) {
-    try {
-      video.currentTime = Math.min(0.05, video.duration / 20);
-    } catch {
-      /* Some browsers disallow seeking before enough metadata is available. */
-    }
-  }
-}
-
 function VideoAttachmentPlayer({ url, filename, compact = false }: { url: string; filename: string; compact?: boolean }) {
   const [failed, setFailed] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const frameStyle = {
+    width: compact ? "100%" : "min(520px, 100%)",
+    height: compact ? 110 : undefined,
+    minHeight: compact ? 110 : 220,
+    maxHeight: compact ? 120 : 292,
+    borderRadius: compact ? 0 : 10,
+    display: "block",
+    background: "linear-gradient(135deg, color-mix(in oklch, var(--bg-input) 92%, #000), #050505)",
+    objectFit: "contain" as const,
+  };
   if (failed) {
     return (
       <a
@@ -2678,23 +2676,72 @@ function VideoAttachmentPlayer({ url, filename, compact = false }: { url: string
       </a>
     );
   }
+  if (!armed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setArmed(true)}
+        aria-label={`Load and play ${filename}`}
+        className="kc-interactive"
+        style={{
+          ...frameStyle,
+          position: "relative",
+          border: "1px solid color-mix(in oklch, var(--text-muted) 14%, transparent)",
+          color: "var(--text-secondary)",
+          cursor: "pointer",
+          overflow: "hidden",
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--accent) 16%, transparent), transparent 46%)",
+            opacity: 0.75,
+          }}
+        />
+        <span
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+            gap: 8,
+            padding: 16,
+            textAlign: "center",
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              display: "grid",
+              placeItems: "center",
+              width: compact ? 34 : 46,
+              height: compact ? 34 : 46,
+              borderRadius: "999px",
+              background: "rgba(255,255,255,.1)",
+              color: "#fff",
+              boxShadow: "0 0 0 1px rgba(255,255,255,.12)",
+              fontSize: compact ? 15 : 20,
+            }}
+          >
+            ▶
+          </span>
+          {!compact && <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>Click to load video</span>}
+          {!compact && <span style={{ maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-muted)", fontSize: 12 }}>{filename}</span>}
+        </span>
+      </button>
+    );
+  }
   return (
     <video
       src={url}
       controls
       playsInline
-      preload="auto"
-      onLoadedMetadata={primeVideoPreview}
+      preload="none"
       onError={() => setFailed(true)}
-      style={{
-        width: compact ? "100%" : "min(520px, 100%)",
-        height: compact ? 110 : undefined,
-        maxHeight: compact ? 120 : 292,
-        borderRadius: compact ? 0 : 10,
-        display: "block",
-        background: "var(--bg-input)",
-        objectFit: "contain",
-      }}
+      style={frameStyle}
     />
   );
 }
@@ -2775,7 +2822,7 @@ function AttachmentList({ attachments }: { attachments: AttachmentMeta[] }) {
             <div key={att.id} style={{ width: "min(520px, 100%)" }}>
               <VideoAttachmentPlayer url={url} filename={att.filename} />
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                {att.filename} · {formatBytes(att.size_bytes)} · preview loaded
+                {att.filename} · {formatBytes(att.size_bytes)} · click to play
                 {" · "}<a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>Open</a>
               </div>
             </div>

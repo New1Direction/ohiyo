@@ -12,7 +12,8 @@ try {
   await page.goto(ORIGIN, { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
-    const mod = await import("/src/plugins/sandbox.ts");
+    const SandboxHost = window.__ohiyoTestSandboxHost;
+    if (!SandboxHost) throw new Error("SandboxHost test hook missing");
     const toasts = [];
     const source = `
       kikkacord.definePlugin({
@@ -41,7 +42,7 @@ try {
         }
       });
     `;
-    const host = new mod.SandboxHost(source, {
+    const host = new SandboxHost(source, {
       onToast: (t) => toasts.push(t),
       onError: (e) => toasts.push("ERR:" + e),
     });

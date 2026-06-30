@@ -2,6 +2,10 @@ import type { OhiyoPlugin, PluginAPI, PluginEventHandler, PluginEventName } from
 import type { Message } from "../api";
 import { SandboxHost, sanitizePluginCss } from "./sandbox";
 
+if (typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+  (window as typeof window & { __ohiyoTestSandboxHost?: typeof SandboxHost }).__ohiyoTestSandboxHost = SandboxHost;
+}
+
 // Allowlist for the user-configurable font-picker value before it is
 // interpolated into a `font-family` declaration. Letters, digits, spaces and a
 // small set of separators only — no characters that could escape the rule.

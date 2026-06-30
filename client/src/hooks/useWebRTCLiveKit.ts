@@ -17,6 +17,7 @@ import {
 } from "../lib/voiceKey";
 import { usePeerQuality } from "../webrtc/usePeerQuality";
 import type { ScreenSharePresetId } from "../webrtc/screenShare";
+import { enableLiveKitMicrophone, liveKitScreenShareOptions } from "../webrtc/livekit";
 import type { CallState, VoiceParticipant, WebRTCCallbacks, UseWebRTCReturn } from "./useWebRTC";
 
 // Media E2EE (FrameCryptor) is on by default whenever the SFU is on; set
@@ -227,10 +228,18 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
           .on(RoomEvent.Disconnected, reset);
         await room.connect(url, lkToken);
         if (E2EE_ENABLED) await room.setE2EEEnabled(true);
-        await room.localParticipant.setMicrophoneEnabled(!joinMuted);
+        const micResult = await enableLiveKitMicrophone(room.localParticipant, !joinMuted);
         if (opts?.video) await room.localParticipant.setCameraEnabled(true);
         refresh();
         refreshLocal();
+        const nextSelf = {
+          muted: joinMuted || micResult === "listen-only",
+          video: room.localParticipant.isCameraEnabled,
+          screen: room.localParticipant.isScreenShareEnabled,
+          listenOnly: micResult === "listen-only",
+        };
+        setSelf(nextSelf);
+        cbRef.current.sendMeta(cid, nextSelf.muted, nextSelf.video, nextSelf.screen, nextSelf.listenOnly);
         setCallState("connected");
         // Announce our key to everyone already in the room so we all converge.
         if (E2EE_ENABLED) {
@@ -261,24 +270,27 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
     const room = roomRef.current;
     const cid = channelRef.current;
     if (!room || !cid) return;
+    const listenOnly = room.localParticipant.audioTrackPublications.size === 0;
     cbRef.current.sendMeta(
       cid,
-      !room.localParticipant.isMicrophoneEnabled,
+      listenOnly || !room.localParticipant.isMicrophoneEnabled,
       room.localParticipant.isCameraEnabled,
       room.localParticipant.isScreenShareEnabled,
-      false
+      listenOnly
     );
   }, []);
 
   const toggleAudio = useCallback(async () => {
     const room = roomRef.current;
     if (!room) return;
-    await room.localParticipant
-      .setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled)
-      .then(() => {
-        refreshLocal();
-        pushMeta();
-      });
+    const shouldPublish = !room.localParticipant.isMicrophoneEnabled;
+    await enableLiveKitMicrophone(room.localParticipant, shouldPublish).then((micResult) => {
+      refreshLocal();
+      if (micResult === "listen-only") {
+        setSelf((prev) => ({ ...prev, muted: true, listenOnly: true }));
+      }
+      pushMeta();
+    });
   }, [refreshLocal, pushMeta]);
 
   const toggleVideo = useCallback(async () => {
@@ -293,9 +305,13 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
     async (opts?: { presetId?: ScreenSharePresetId; wantAudio?: boolean }) => {
       const room = roomRef.current;
       if (!room) return;
-      await room.localParticipant.setScreenShareEnabled(!room.localParticipant.isScreenShareEnabled, {
-        audio: opts?.wantAudio ?? false,
-      });
+      const enabling = !room.localParticipant.isScreenShareEnabled;
+      const screenOpts = liveKitScreenShareOptions(opts);
+      await room.localParticipant.setScreenShareEnabled(
+        enabling,
+        enabling ? screenOpts.capture : undefined,
+        enabling ? screenOpts.publish : undefined,
+      );
       refreshLocal();
       pushMeta();
     },

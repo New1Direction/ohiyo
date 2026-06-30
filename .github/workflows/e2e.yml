@@ -1,18 +1,32 @@
 name: E2E
 
-# The end-to-end suite drives a real browser against a full running stack (axum
-# server + Vite client + Chromium). It is deliberately NOT a pull-request gate yet:
-# a couple of the crypto suites are timing-sensitive, and this job has not been
-# validated on a hosted runner. It runs on demand and on a weekly schedule; promote
-# it to a required check once it's proven stable here.
+# Hosted browser coverage is now a real PR/push signal. Each job drives Chromium
+# against a full local stack and runs twice: Vite dev (fast feedback) and the
+# production preview build (catches CSP/bundle/build-only regressions).
 on:
   workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}-${{ matrix.client_mode }}
+  cancel-in-progress: true
 
 jobs:
   e2e:
     runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        client_mode: [dev, production-preview]
+    name: E2E (${{ matrix.client_mode }})
     steps:
       - uses: actions/checkout@v7
 
@@ -33,29 +47,77 @@ jobs:
           npm ci
           npx playwright-core install --with-deps chromium
 
-      - name: Build + start the server on :3000
+      - name: Build server
         working-directory: server
+        run: cargo build --locked
+
+      - name: Run hosted E2E stack
         env:
+          CLIENT_MODE: ${{ matrix.client_mode }}
+          BIND_ADDR: 127.0.0.1:3000
+          DATABASE_URL: sqlite:/tmp/ohiyo-${{ matrix.client_mode }}.db
           JWT_SECRET: ci-e2e-secret-not-for-production-0123456789
-        run: |
-          cargo build --locked
-          ./target/debug/server &
-          for i in $(seq 1 30); do curl -sf http://localhost:3000/healthz && break || sleep 1; done
-
-      - name: Start the client dev server on :1420
-        working-directory: client
-        env:
           VITE_SERVER_URL: http://localhost:3000
-        run: |
-          npm run dev &
-          for i in $(seq 1 30); do curl -sf http://localhost:1420 >/dev/null && break || sleep 1; done
-
-      - name: Run the E2E suites
-        env:
-          # Dev Vite (no production CSP) so http://localhost:3000 isn't blocked.
           KIKKA_ORIGIN: http://localhost:1420
+          KIKKA_SHOTS: /tmp/kikka-shots-${{ matrix.client_mode }}
         run: |
-          # Point the (mac-centric) harness at the Linux Playwright Chromium via env —
-          # no harness code change needed, it already honours KIKKA_CHROMIUM.
+          set -euo pipefail
+          mkdir -p "$KIKKA_SHOTS"
+          rm -f "/tmp/ohiyo-${CLIENT_MODE}.db" "/tmp/ohiyo-${CLIENT_MODE}.db-shm" "/tmp/ohiyo-${CLIENT_MODE}.db-wal"
+
+          server/target/debug/server >"/tmp/ohiyo-server-${CLIENT_MODE}.log" 2>&1 &
+          server_pid=$!
+
+          cleanup() {
+            if [ -n "${client_pid:-}" ]; then
+              pkill -TERM -P "$client_pid" 2>/dev/null || true
+              kill "$client_pid" 2>/dev/null || true
+            fi
+            pkill -TERM -P "$server_pid" 2>/dev/null || true
+            kill "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:3000/healthz >/dev/null; then break; fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo "Server exited before /healthz" >&2
+              cat "/tmp/ohiyo-server-${CLIENT_MODE}.log" >&2 || true
+              exit 1
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:3000/healthz >/dev/null
+
+          if [ "$CLIENT_MODE" = "production-preview" ]; then
+            (cd client && npm run build)
+            (cd client && npm run preview -- --host 127.0.0.1 --port 1420) >"/tmp/ohiyo-client-${CLIENT_MODE}.log" 2>&1 &
+          else
+            (cd client && npm run dev -- --host 127.0.0.1 --port 1420) >"/tmp/ohiyo-client-${CLIENT_MODE}.log" 2>&1 &
+          fi
+          client_pid=$!
+
+          for i in $(seq 1 45); do
+            if curl -sf "$KIKKA_ORIGIN" >/dev/null; then break; fi
+            if ! kill -0 "$client_pid" 2>/dev/null; then
+              echo "Client exited before serving $KIKKA_ORIGIN" >&2
+              cat "/tmp/ohiyo-client-${CLIENT_MODE}.log" >&2 || true
+              exit 1
+            fi
+            sleep 1
+          done
+          curl -sf "$KIKKA_ORIGIN" >/dev/null
+
           export KIKKA_CHROMIUM="$(node -e "console.log(require('./client/node_modules/playwright-core').chromium.executablePath())")"
           node e2e/run.mjs
+
+      - name: Upload E2E artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.client_mode }}-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          path: |
+            /tmp/kikka-shots-${{ matrix.client_mode }}
+            /tmp/ohiyo-server-${{ matrix.client_mode }}.log
+            /tmp/ohiyo-client-${{ matrix.client_mode }}.log
