@@ -18,7 +18,7 @@ holds ciphertext, with export ownership and self-host always one click away.
 
 > **Status:** v0.2.0 public beta — early but real. The hosted app is live at
 > [app.ohiyo.gg](https://app.ohiyo.gg), the public site is live at
-> [ohiyo.gg](https://ohiyo.gg), and 27 end-to-end suites are green. Desktop builds are in
+> [ohiyo.gg](https://ohiyo.gg), and 28 end-to-end suites are green. Desktop builds are in
 > [Releases](../../releases); Mac builds are beta/ad-hoc signed until Apple notarization is complete.
 
 ---
@@ -70,7 +70,7 @@ holds ciphertext, with export ownership and self-host always one click away.
 | Desktop  | Tauri 2 |
 | Realtime | WebRTC (voice/video/screen-share), WS gateway with one-time tickets |
 | Deploy   | Fly.io + Docker (see [`DEPLOY.md`](DEPLOY.md)) |
-| Quality  | ESLint (hooks-as-error), `tsc`, unit tests, `cargo test`, 27-suite e2e, GitHub Actions CI |
+| Quality  | ESLint (hooks-as-error), `tsc`, unit tests, `cargo test`, 28-suite e2e, GitHub Actions CI |
 
 ## Repo layout
 

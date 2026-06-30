@@ -48,7 +48,7 @@ Your own encrypted server, in one tap — and you actually own it. Like Minecraf
 
 ## Foundations (cross-cutting)
 - [x] Rust (axum + sqlx/SQLite) server, React 19 + Tauri client, **Daybreak**/Dusk design
-- [x] Quality gate: ESLint (a11y as errors), tsc, cargo test, 22-suite e2e, GitHub Actions CI
+- [x] Quality gate: ESLint (a11y as errors), tsc, cargo test, 28-suite e2e, GitHub Actions CI
 - [x] **AGPL-3.0** licensed; adversarial security review pass (SSRF / XSS / injection / JWT)
 - [x] Presence **snapshot on connect** (see who's online + their activity the moment you open the app)
 - [ ] Multi-node scale: NATS/Redis gateway fan-out, Postgres option

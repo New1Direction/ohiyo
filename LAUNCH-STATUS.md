@@ -9,7 +9,7 @@ _Last checked: 2026-06-27_
 - `https://ohiyo.fly.dev/healthz` returns `ok`.
 - `https://api.ohiyo.gg/healthz` returns `ok`.
 - Production backend exposes current v0.2 routes; auth-gated routes return `401` instead of stale `404`.
-- Latest `main` CI and E2E runs are green.
+- Latest `main` CI and 28-suite E2E runs are green.
 - Fly app `ohiyo` is running one healthy machine with 30-day volume snapshot retention.
 - Backend image `registry.fly.io/ohiyo:deployment-01KW4G8KMFM0C6YBXMXB1CVSTD` is deployed.
 - Current `registry.fly.io/ohiyo-instances:latest` image has been pushed for newly provisioned community machines.
