@@ -14,13 +14,12 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: e2e-${{ github.workflow }}-${{ github.ref }}-${{ matrix.client_mode }}
-  cancel-in-progress: true
-
 jobs:
   e2e:
     runs-on: ubuntu-22.04
+    concurrency:
+      group: e2e-${{ github.workflow }}-${{ github.ref }}-${{ matrix.client_mode }}
+      cancel-in-progress: true
     timeout-minutes: 35
     strategy:
       fail-fast: false
