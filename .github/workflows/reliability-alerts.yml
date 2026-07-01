@@ -1,0 +1,44 @@
+name: Reliability Alerts
+
+# Lightweight production checks for the live beta. The frequent schedule checks
+# public surfaces only; the daily schedule also creates and deletes one temporary
+# Instant Server to catch provisioning regressions before users do.
+on:
+  workflow_dispatch:
+    inputs:
+      instant_server_smoke:
+        description: "Also run the create/health/delete Instant Server smoke"
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: "*/30 * * * *" # public status/app/API/push checks
+    - cron: "17 8 * * *"  # daily Instant Server provision smoke too
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reliability-alerts-${{ github.event_name }}-${{ github.event.schedule || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  beta-reliability:
+    name: Beta reliability checks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      LANDING_URL: https://ohiyo.gg
+      APP_URL: https://app.ohiyo.gg
+      API_URL: https://ohiyo.fly.dev
+      ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+      # Optional repo variable, comma-separated: assets/index-abc.js,assets/index-def.css
+      # Set this after manual Cloudflare Pages deploys when you want stale-bundle alerts.
+      EXPECTED_APP_BUNDLE: ${{ vars.OHIYO_EXPECTED_APP_BUNDLE }}
+      SMOKE_USERNAME: ${{ secrets.OHIYO_RELIABILITY_SMOKE_USERNAME }}
+      SMOKE_PASSWORD: ${{ secrets.OHIYO_RELIABILITY_SMOKE_PASSWORD }}
+      CHECK_INSTANT_SERVER_PROVISION: ${{ (github.event_name == 'schedule' && github.event.schedule == '17 8 * * *') || (github.event_name == 'workflow_dispatch' && inputs.instant_server_smoke) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run beta reliability alert checks
+        run: scripts/status-check.sh

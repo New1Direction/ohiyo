@@ -12,16 +12,23 @@ need curl
 need jq
 
 suffix="$(date +%Y%m%d%H%M%S)-$RANDOM"
-username="smoke-$suffix"
-password="$(openssl rand -base64 24 | tr -d '\n' 2>/dev/null || uuidgen)-Aa1!"
+username="${SMOKE_USERNAME:-smoke-$suffix}"
+password="${SMOKE_PASSWORD:-$(openssl rand -base64 24 | tr -d '\n' 2>/dev/null || uuidgen)-Aa1!}"
 
-echo "Registering temporary smoke user against $API_BASE ..."
-auth_json="$(curl -fsS "$API_BASE/auth/register" \
-  -H 'content-type: application/json' \
-  --data "$(jq -cn --arg username "$username" --arg password "$password" '{username:$username,password:$password,display_name:"Launch Smoke"}')")"
+if [[ -n "${SMOKE_USERNAME:-}" && -n "${SMOKE_PASSWORD:-}" ]]; then
+  echo "Logging in smoke user $SMOKE_USERNAME against $API_BASE ..."
+  auth_json="$(curl -fsS "$API_BASE/auth/login" \
+    -H 'content-type: application/json' \
+    --data "$(jq -cn --arg username "$username" --arg password "$password" '{username:$username,password:$password}')")"
+else
+  echo "Registering temporary smoke user against $API_BASE ..."
+  auth_json="$(curl -fsS "$API_BASE/auth/register" \
+    -H 'content-type: application/json' \
+    --data "$(jq -cn --arg username "$username" --arg password "$password" '{username:$username,password:$password,display_name:"Launch Smoke"}')")"
+fi
 token="$(jq -r '.token' <<<"$auth_json")"
 if [[ -z "$token" || "$token" == "null" ]]; then
-  echo "No token returned from register" >&2
+  echo "No token returned from auth" >&2
   exit 1
 fi
 
