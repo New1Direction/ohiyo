@@ -13,10 +13,10 @@ _Last checked: 2026-07-03_
 - `https://ohiyo.fly.dev/api/v1/reliability/status` reports all public components `ok`.
 - `https://ohiyo.fly.dev/api/v1/push/config` reports Web Push `enabled=true` with a VAPID public key.
 - Production backend exposes current v0.2 routes; auth-gated routes return `401` instead of stale `404`.
-- Latest `main` commit is `4a793e2` (`Polish launch modal surfaces`).
-- GitHub CI is green on `main` (`28667257242`).
-- GitHub 28-suite E2E is green on `main` in both dev and production-preview modes (`28667257250`).
-- GitHub Reliability Alerts is green on `main` (`28667631066`).
+- Current deployed app bundle includes launch modal polish from `4a793e2` (`Polish launch modal surfaces`).
+- GitHub CI is green on `main`.
+- GitHub 28-suite E2E is green on `main` in both dev and production-preview modes.
+- GitHub Reliability Alerts is green on `main`.
 - `OHIYO_EXPECTED_APP_BUNDLE` is set to the current Cloudflare Pages assets so scheduled alerts catch stale app deploys.
 - Fly app `ohiyo` is running and DB-backed health checks pass.
 - Fly provisioning secrets for Instant Servers are deployed and wildcard `*.ohiyo.gg` reaches the router.
