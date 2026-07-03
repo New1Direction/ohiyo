@@ -104,6 +104,7 @@ export function CommandPalette({ servers, dms, actions = [], onSelectChannel, on
       role="dialog"
       aria-modal="true"
       aria-label="Quick switcher"
+      className="kc-command-backdrop"
       style={{
         position: "fixed",
         inset: 0,
@@ -118,6 +119,7 @@ export function CommandPalette({ servers, dms, actions = [], onSelectChannel, on
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        className="kc-command-panel"
         style={{
           width: 520,
           borderRadius: "var(--radius-xl)",
@@ -136,8 +138,9 @@ export function CommandPalette({ servers, dms, actions = [], onSelectChannel, on
             padding: "14px 16px",
             borderBottom: "1px solid var(--bg-hover)",
           }}
+          className="kc-command-search"
         >
-          <span style={{ fontSize: 18, color: "var(--text-muted)" }}>🔍</span>
+          <span className="kc-polish-icon" style={{ width: 34, height: 34, borderRadius: 13, fontSize: 16 }}>⌘</span>
           <input
             ref={inputRef}
             value={query}
@@ -202,6 +205,7 @@ export function CommandPalette({ servers, dms, actions = [], onSelectChannel, on
                 aria-selected={i === clampedIdx}
                 onMouseEnter={() => setActiveIdx(i)}
                 onMouseDown={() => select(r)}
+                className="kc-command-option"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -264,6 +268,7 @@ export function CommandPalette({ servers, dms, actions = [], onSelectChannel, on
 
         {/* Footer hint */}
         <div
+          className="kc-command-footer"
           style={{
             borderTop: "1px solid var(--bg-hover)",
             padding: "8px 16px",

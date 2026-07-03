@@ -108,6 +108,7 @@ export function UserProfileCard({ userId, token, anchorRef, currentUserId, onOpe
       aria-modal="true"
       aria-label="User profile"
       tabIndex={-1}
+      className="kc-profile-popover"
       style={{
         position: "fixed",
         top: pos.top,
@@ -222,15 +223,14 @@ function ActionButton({
       type="button"
       disabled={busy}
       onClick={onClick}
-      className="kc-interactive"
+      className={`kc-interactive kc-polish-button ${primary ? "kc-polish-button--primary" : ""} ${danger ? "kc-polish-button--danger" : ""}`}
       style={{
         width: "100%",
         border: "none",
         borderRadius: "var(--radius-md)",
         padding: "9px 12px",
         cursor: busy ? "default" : "pointer",
-        background: primary ? "var(--accent)" : "var(--bg-input)",
-        color: primary ? "#fff" : danger ? "var(--danger)" : "var(--text-primary)",
+        color: primary ? "#071119" : danger ? "var(--danger)" : "var(--text-primary)",
         fontSize: 13,
         fontWeight: 700,
       }}

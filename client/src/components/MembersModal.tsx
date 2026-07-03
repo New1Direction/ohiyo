@@ -55,20 +55,24 @@ export function MembersModal({
   });
 
   return (
-    <ModalShell onClose={onClose} labelledBy="kc-members-title">
-      <div className="flex items-center justify-between gap-2">
-        <h2
-          id="kc-members-title"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-2xl)", color: "var(--text-primary)" }}
-        >
-          Members · {members.length}
-        </h2>
+    <ModalShell onClose={onClose} labelledBy="kc-members-title" maxWidthClass="max-w-2xl">
+      <div className="kc-polish-hero flex items-center justify-between gap-2">
+        <div>
+          <div className="kc-polish-kicker">Space roster</div>
+          <h2
+            id="kc-members-title"
+            className="kc-polish-title"
+            style={{ fontSize: "var(--text-2xl)" }}
+          >
+            Members · {members.length}
+          </h2>
+        </div>
         {canManageRoles && (
           <button
             type="button"
             onClick={onManageRoles}
-            className="kc-interactive flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            style={{ background: "color-mix(in oklch, var(--accent) 14%, transparent)", color: "var(--accent)" }}
+            className="kc-interactive kc-polish-button flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+            style={{ color: "var(--accent)" }}
           >
             ⚙ Manage roles
           </button>
@@ -79,14 +83,13 @@ export function MembersModal({
         {sorted.map((m) => (
           <div
             key={m.id}
-            className="flex items-center gap-3 px-2.5 py-2"
-            style={{ borderRadius: "var(--radius-md)" }}
+            className="kc-polish-row flex items-center gap-3 px-2.5 py-2"
           >
             <div className="relative flex-shrink-0">
               <div
-                className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold"
+                className="kc-polish-avatar flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold"
                 style={{
-                  background: "var(--accent)", color: "#fff",
+                  color: "#fff",
                   backgroundImage: m.avatar_url ? `url(${m.avatar_url})` : undefined,
                   backgroundSize: "cover", backgroundPosition: "center",
                 }}
@@ -133,8 +136,8 @@ export function MembersModal({
                     setDmBusyId(null);
                   }
                 }}
-                className="kc-interactive flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold"
-                style={{ background: "var(--bg-input)", color: "var(--accent)", border: "none", cursor: dmBusyId === m.id ? "default" : "pointer" }}
+                className="kc-interactive kc-polish-button flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold"
+                style={{ color: "var(--accent)", cursor: dmBusyId === m.id ? "default" : "pointer" }}
                 title={`Message ${m.display_name}`}
               >
                 {dmBusyId === m.id ? "Opening…" : "Message"}
@@ -145,8 +148,8 @@ export function MembersModal({
               <button
                 type="button"
                 onClick={() => onJoinVoice(voiceMembers.get(m.id)!)}
-                className="kc-interactive flex-shrink-0 flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
-                style={{ background: "color-mix(in oklch, var(--green) 16%, transparent)", color: "var(--green)", border: "none", cursor: "pointer" }}
+                className="kc-interactive kc-polish-button flex-shrink-0 flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
+                style={{ color: "var(--green)", cursor: "pointer" }}
                 title="Join their voice channel"
               >
                 🔊 Join
@@ -160,8 +163,8 @@ export function MembersModal({
                     <button
                       type="button"
                       onClick={() => { onKick(m.id); setConfirmId(null); }}
-                      className="kc-interactive px-2 py-1 text-xs font-semibold"
-                      style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)", border: "none", cursor: "pointer" }}
+                      className="kc-interactive kc-polish-button px-2 py-1 text-xs font-semibold"
+                      style={{ borderRadius: "var(--radius-md)", color: "var(--text-primary)", cursor: "pointer" }}
                       title="Remove — they can rejoin via invite"
                     >
                       Kick
@@ -181,8 +184,8 @@ export function MembersModal({
                   <button
                     type="button"
                     onClick={() => setConfirmId(null)}
-                    className="kc-interactive px-2 py-1 text-xs font-semibold"
-                    style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-secondary)", border: "none", cursor: "pointer" }}
+                    className="kc-interactive kc-polish-button px-2 py-1 text-xs font-semibold"
+                    style={{ borderRadius: "var(--radius-md)", color: "var(--text-secondary)", cursor: "pointer" }}
                   >
                     Cancel
                   </button>
@@ -192,8 +195,8 @@ export function MembersModal({
                   type="button"
                   onClick={() => setConfirmId(m.id)}
                   aria-label={`Remove ${m.display_name}`}
-                  className="kc-interactive flex-shrink-0 px-2 py-1 text-xs font-semibold"
-                  style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--danger)", border: "none", cursor: "pointer" }}
+                  className="kc-interactive kc-polish-button kc-polish-button--danger flex-shrink-0 px-2 py-1 text-xs font-semibold"
+                  style={{ borderRadius: "var(--radius-md)", color: "var(--danger)", cursor: "pointer" }}
                 >
                   Remove
                 </button>

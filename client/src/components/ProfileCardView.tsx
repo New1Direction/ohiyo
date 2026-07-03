@@ -122,10 +122,11 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
 
   return (
     <div
+      className="kc-profile-card"
       style={{
         position: "relative",
         overflow: "hidden",
-        background: "linear-gradient(180deg, color-mix(in oklch, var(--bg-sidebar) 94%, white), var(--bg-sidebar))",
+        background: "radial-gradient(circle at 82% 0%, color-mix(in oklch, var(--accent) 10%, transparent), transparent 9rem), linear-gradient(180deg, color-mix(in oklch, var(--bg-sidebar) 94%, white), var(--bg-sidebar))",
         boxShadow: theme.glow ? `inset 0 1px 0 rgba(255,255,255,.06), 0 0 36px color-mix(in oklch, ${theme.accent} 24%, transparent)` : undefined,
       }}
     >
@@ -227,11 +228,10 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
 
         {showStatus && data.custom_status && (
           <div
+            className="kc-polish-surface"
             style={{
               fontSize: 12,
               color: "var(--text-secondary)",
-              background: "linear-gradient(135deg, color-mix(in oklch, var(--bg-input) 88%, transparent), color-mix(in oklch, var(--bg-hover) 55%, transparent))",
-              border: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)",
               borderRadius: 12,
               padding: "8px 10px",
               marginTop: 10,

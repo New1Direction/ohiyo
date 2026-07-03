@@ -52,10 +52,9 @@ export function InviteModal({ token, serverId, serverName, serverIconUrl, onClos
 
   return (
     <ModalShell onClose={onClose} labelledBy="kc-invite-title">
-      <div className="flex flex-col items-center text-center">
+      <div className="kc-polish-hero flex flex-col items-center text-center">
         <div
-          className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl text-3xl font-bold"
-          style={{ background: "var(--accent)", color: "#fff", boxShadow: "var(--shadow-md)" }}
+          className="kc-polish-icon flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl text-3xl font-bold"
           aria-hidden
         >
           {serverIconUrl ? (
@@ -66,15 +65,14 @@ export function InviteModal({ token, serverId, serverName, serverIconUrl, onClos
         </div>
         <h2
           id="kc-invite-title"
-          className="mt-2"
+          className="kc-polish-title mt-2"
           style={{
-            fontFamily: "var(--font-display)", fontWeight: 700,
-            fontSize: "var(--text-2xl)", color: "var(--text-primary)",
+            fontSize: "var(--text-2xl)",
           }}
         >
           Invite people
         </h2>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)", maxWidth: 320 }}>
+        <p className="kc-polish-copy mt-1 text-sm" style={{ maxWidth: 320 }}>
           Share this link and anyone can join <strong>{serverName}</strong>. It never expires.
         </p>
       </div>
@@ -83,7 +81,7 @@ export function InviteModal({ token, serverId, serverName, serverIconUrl, onClos
         {error ? (
           <div
             role="alert"
-            className="px-3 py-2 text-xs"
+            className="kc-polish-surface px-3 py-2 text-xs"
             style={{
               background: "color-mix(in oklch, var(--danger) 12%, transparent)",
               color: "var(--danger)", borderRadius: "var(--radius-md)", fontWeight: 500,
@@ -94,7 +92,7 @@ export function InviteModal({ token, serverId, serverName, serverIconUrl, onClos
         ) : !info ? (
           <div className="kc-skeleton" style={{ height: 46 }} />
         ) : (
-          <div className="flex gap-2">
+          <div className="kc-polish-surface flex gap-2 p-2">
             <input
               readOnly
               value={url}
@@ -106,7 +104,7 @@ export function InviteModal({ token, serverId, serverName, serverIconUrl, onClos
             <button
               type="button"
               onClick={copy}
-              className="kc-cta flex flex-shrink-0 items-center justify-center px-4 py-3 text-sm"
+              className="kc-interactive kc-polish-button kc-polish-button--primary flex flex-shrink-0 items-center justify-center px-4 py-3 text-sm"
               style={{ minWidth: 92 }}
             >
               {copied ? "Copied ✓" : "Copy"}
@@ -118,8 +116,8 @@ export function InviteModal({ token, serverId, serverName, serverIconUrl, onClos
       <button
         type="button"
         onClick={onClose}
-        className="kc-interactive mt-5 w-full py-2.5 text-sm font-semibold"
-        style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-secondary)" }}
+        className="kc-interactive kc-polish-button mt-5 w-full py-2.5 text-sm font-semibold"
+        style={{ borderRadius: "var(--radius-md)" }}
       >
         Done
       </button>

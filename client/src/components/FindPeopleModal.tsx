@@ -105,18 +105,19 @@ export function FindPeopleModal({ token, onOpenDm, onClose }: Props) {
 
   return (
     <ModalShell onClose={onClose} labelledBy="kc-find-title" maxWidthClass="max-w-md">
-      <h2
-        id="kc-find-title"
-        style={{
-          fontFamily: "var(--font-display)", fontWeight: 700,
-          fontSize: "var(--text-2xl)", color: "var(--text-primary)",
-        }}
-      >
-        Find people
-      </h2>
-      <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-        Search by name and start a conversation.
-      </p>
+      <div className="kc-polish-hero">
+        <div className="kc-polish-kicker">People / DMs</div>
+        <h2
+          id="kc-find-title"
+          className="kc-polish-title"
+          style={{ fontSize: "var(--text-2xl)" }}
+        >
+          Find people
+        </h2>
+        <p className="kc-polish-copy mt-1 text-sm">
+          Search by name, send a friend request, or start a private DM.
+        </p>
+      </div>
 
       <input
         value={q}
@@ -238,11 +239,11 @@ function PersonRow({
   onFriendAction: (action: "add" | "accept" | "remove") => void;
 }) {
   return (
-    <div className="flex items-center gap-3 px-2.5 py-2" style={{ borderRadius: "var(--radius-md)", background: "transparent" }}>
+    <div className="kc-polish-row flex items-center gap-3 px-2.5 py-2">
       <div
-        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
+        className="kc-polish-avatar flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
         style={{
-          background: "var(--accent)", color: "#fff",
+          color: "#fff",
           backgroundImage: user.avatar_url ? `url(${user.avatar_url})` : undefined,
           backgroundSize: "cover", backgroundPosition: "center",
         }}
@@ -279,8 +280,8 @@ function MiniButton({ label, ariaLabel, busy, primary = false, onClick }: { labe
       disabled={busy}
       aria-label={ariaLabel ?? label}
       onClick={onClick}
-      className="kc-interactive rounded-full px-2.5 py-1 text-xs font-semibold"
-      style={{ border: "none", cursor: busy ? "default" : "pointer", background: primary ? "var(--accent)" : "var(--bg-input)", color: primary ? "#fff" : "var(--text-secondary)" }}
+      className={`kc-interactive kc-polish-button ${primary ? "kc-polish-button--primary" : ""} rounded-full px-2.5 py-1 text-xs font-semibold`}
+      style={{ cursor: busy ? "default" : "pointer", color: primary ? "#071119" : "var(--text-secondary)" }}
     >
       {busy ? "…" : label}
     </button>
@@ -290,7 +291,7 @@ function MiniButton({ label, ariaLabel, busy, primary = false, onClick }: { labe
 function EmptyHint({ text, danger = false }: { text: string; danger?: boolean }) {
   return (
     <div
-      className="flex h-full items-center justify-center text-center text-sm"
+      className="kc-polish-empty flex h-full items-center justify-center text-center text-sm"
       role={danger ? "alert" : undefined}
       style={{ color: danger ? "var(--danger)" : "var(--text-muted)", minHeight: 100 }}
     >
