@@ -30,7 +30,7 @@ dotenvy = "0.15"
 rand = "0.8"
 sha2 = "0.10"
 hmac = "0.12"
-sha1 = "0.10"
+sha1 = "0.11"
 base64 = "0.22"
 tokio-util = { version = "0.7", features = ["io"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
