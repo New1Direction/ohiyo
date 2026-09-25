@@ -1,5 +1,7 @@
 # Ohiyo
 
+[![Builder fees earned on repo.ing](https://repo.ing/api/badge/1269625283)](https://repo.ing/token/9RnMkXRLtkpMSWSCfgbUoGsYmJovAgEgJ7z8sHnwbaHk)
+
 A private-by-design chat app with Discord-like ease — servers, channels, DMs, and
 real-time voice / video / screen-share, with **end-to-end encrypted content**, a
 sandboxed plugin system, and a brand of its own. Rust on the backend, React 19 + Tauri
