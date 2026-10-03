@@ -364,6 +364,10 @@ function MainApp({
   const [showCategories, setShowCategories] = useState(false);
   const [showModQueue, setShowModQueue] = useState(false);
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
+  // maybeNotify runs from the gateway handler registered once per token, so it reads the
+  // current blocked list through this ref, not the first render's.
+  const blockedUserIdsRef = useRef(blockedUserIds);
+  blockedUserIdsRef.current = blockedUserIds;
   const [forwarding, setForwarding] = useState<Message | null>(null);
   const [eventsRefresh, setEventsRefresh] = useState(0);
   const [myPerms, setMyPerms] = useState(0);
@@ -1791,7 +1795,7 @@ function MainApp({
   // Show a desktop notification for a message you're not actively reading.
   function maybeNotify(msg: Message) {
     if (msg.author.id === currentUserRef.current?.id) return;
-    if (blockedUserIds.has(msg.author.id)) return;
+    if (blockedUserIdsRef.current.has(msg.author.id)) return;
     const lookingAtIt =
       selectedChannelRef.current?.id === msg.channel_id && !document.hidden;
     if (lookingAtIt) return;
