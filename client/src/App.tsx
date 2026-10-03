@@ -65,6 +65,7 @@ import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding
 import { getVaultStore, initVaultBackend } from "./lib/tauriVault";
 import { vaultLockedReason } from "./lib/vaultLock";
 import { clearLocalMessageData } from "./lib/logoutCleanup";
+import { saveEncryptedChannels } from "./lib/storageQuota";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -803,7 +804,7 @@ function MainApp({
         setE2eChannels((prev) => {
           const next = withoutServerChannels(prev, event.d.servers.flatMap((s) => s.channels));
           if (next === prev) return prev;
-          localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
+          saveEncryptedChannels(next);
           return new Set(next);
         });
         // Catch up on group rekeys that happened while we were offline: if a group's
@@ -1448,7 +1449,7 @@ function MainApp({
           if (prev.has(channelId)) return prev;
           const next = new Set(prev);
           next.add(channelId);
-          localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
+          saveEncryptedChannels(next);
           return next;
         });
       const wellFormed = shouldEnterEncryptedMode(channelType, contents, false);
@@ -1567,7 +1568,7 @@ function MainApp({
             });
           }
         }
-        localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
+        saveEncryptedChannels(next);
         return next;
       });
     },

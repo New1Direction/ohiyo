@@ -13,6 +13,7 @@ import { api } from "../api";
 import { recordKeySeen, setIdentityTrustBackend } from "./identityTrust";
 import { computeSafetyNumber } from "./safetyNumber";
 import { fanOut } from "./signalFanout";
+import { setItemEvictingPlaintextCache } from "./storageQuota";
 
 const NS = "kc:sig:";
 const PREKEY_BATCH = 100;
@@ -100,7 +101,9 @@ class SignalStore {
     return s === null ? undefined : dec(s);
   }
   private put(key: string, v: unknown) {
-    this.activeBackend().setItem(NS + key, enc(v));
+    // A full store drops the decrypted-message cache and retries once; if the key still
+    // can't be saved, this throws and the operation that needed it fails.
+    setItemEvictingPlaintextCache(this.activeBackend(), NS + key, enc(v));
   }
   private del(key: string) {
     this.activeBackend().removeItem(NS + key);
@@ -207,9 +210,19 @@ function ownUserId(): string | null {
   return backend.getItem(NS + "ownUserId");
 }
 
+// One tab at a time creates, stores and publishes this device's keys: two runs at once
+// could each create an identity, or hand out the same one-time prekey ids. publish() runs
+// only inside initSignal, so this one lock covers both (Web Locks aren't reentrant).
+const KEYS_LOCK = "ohiyo:signal-keys";
+
 /** Generate this device's identity + prekeys on first run + publish; replenish
  *  one-time prekeys when low. Safe to call on every login. */
-export async function initSignal(token: string): Promise<void> {
+export function initSignal(token: string): Promise<void> {
+  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
+  return locks ? locks.request(KEYS_LOCK, () => initSignalLocked(token)) : initSignalLocked(token);
+}
+
+async function initSignalLocked(token: string): Promise<void> {
   // Remember our own user id so we can fan out to (and decrypt for) our own devices.
   try {
     const me = await api.me(token);
