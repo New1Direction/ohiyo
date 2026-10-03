@@ -6,7 +6,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { createDistributionTracker, encryptOutgoing, EncryptedSendError } from "../src/lib/encryptedSend.ts";
+import {
+  createDistributionTracker,
+  encryptOutgoing,
+  EncryptedSendError,
+  forwardBlockReason,
+} from "../src/lib/encryptedSend.ts";
 
 const PLAINTEXT = "meet at noon";
 
@@ -166,4 +171,17 @@ test("forget() makes the next call distribute again, even while a run is in flig
     runs++;
   });
   assert.equal(runs, 3);
+});
+
+test("forwarding into a chat in encrypted mode is refused (it would go out as plaintext)", () => {
+  assert.equal(forwardBlockReason({}, true), "Can't forward into an encrypted chat yet.");
+});
+
+test("forwarding a message decrypted on this device is refused", () => {
+  assert.equal(forwardBlockReason({ _encrypted: true }, false), "Encrypted messages can't be forwarded yet.");
+});
+
+test("forwarding a plaintext message into a plaintext chat is allowed", () => {
+  assert.equal(forwardBlockReason({}, false), null);
+  assert.equal(forwardBlockReason({ _encrypted: false }, false), null);
 });

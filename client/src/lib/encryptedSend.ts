@@ -84,3 +84,12 @@ export function createDistributionTracker(): DistributionTracker {
     },
   };
 }
+
+/** Why a forward must not be sent (the toast to show), or null when it may go. A forward
+ *  is re-sent as plaintext, so it must never cross an encryption boundary: not into a
+ *  chat in encrypted mode, and not out of a message that was decrypted on this device. */
+export function forwardBlockReason(message: { _encrypted?: boolean }, targetEncrypted: boolean): string | null {
+  if (targetEncrypted) return "Can't forward into an encrypted chat yet.";
+  if (message._encrypted) return "Encrypted messages can't be forwarded yet.";
+  return null;
+}

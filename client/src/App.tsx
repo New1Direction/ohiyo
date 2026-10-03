@@ -59,7 +59,7 @@ import {
 } from "./lib/senderKeys";
 import { formatDuration } from "./lib/disappearing";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
-import { createDistributionTracker, encryptOutgoing, EncryptedSendError } from "./lib/encryptedSend";
+import { createDistributionTracker, encryptOutgoing, EncryptedSendError, forwardBlockReason } from "./lib/encryptedSend";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { initVaultBackend } from "./lib/tauriVault";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
@@ -1694,6 +1694,11 @@ function MainApp({
     const m = forwarding;
     setForwarding(null);
     if (!m) return;
+    const blocked = forwardBlockReason(m, e2eChannelsRef.current.has(channelId));
+    if (blocked) {
+      toast(blocked, "error");
+      return;
+    }
     const content = `【FWD:${m.author.display_name}】${m.content}`;
     const attachmentIds = (m.attachments ?? []).map((a) => a.id);
     try {
