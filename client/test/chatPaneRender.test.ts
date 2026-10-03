@@ -237,7 +237,7 @@ test("item I1: Edit stays for a decrypted message in encrypted mode, and for pla
 // person's messages while their lock is off, may be plain text).
 test("item I3/N4: the encrypted-chat banner says the server stores only ciphertext for what you send", () => {
   const text = banner(chat("dm", true, false));
-  assert.match(text, /Encryption is on\. The server stores only ciphertext for what you send here\./);
+  assert.match(text, /Encryption is on\. The server stores only ciphertext for messages and files you send here\./);
   assert.doesNotMatch(text, /not even the server|Messages here are encrypted/);
 });
 
@@ -268,7 +268,7 @@ test("item I3: an empty DM with the lock off doesn't claim its messages are encr
 test("item N1: an empty DM with the lock on says encryption is on and doesn't suggest the lock", () => {
   const html = emptyDm(true);
   assert.doesNotMatch(html, /tap the lock/i);
-  assert.match(html, /Encryption is on: the server stores only ciphertext for what you send here\./);
+  assert.match(html, /Encryption is on: the server stores only ciphertext for messages and files you send here\./);
   assert.match(html, /<span>Encryption is on<\/span>/);
 });
 

@@ -68,7 +68,7 @@ export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRec
   const title = isDM ? "Start the private thread 👋" : channelName ? `Welcome to #${channelName}!` : "This channel's all quiet";
   const sub = isDM
     ? encrypted
-      ? "Say hi or drop a file. Encryption is on: the server stores only ciphertext for what you send here."
+      ? "Say hi or drop a file. Encryption is on: the server stores only ciphertext for messages and files you send here."
       : "Say hi, drop a file, or tap the lock first so the server only stores sealed envelopes."
     : channelName
       ? `This is the start of #${channelName}. Say hi, share a file, or hop into voice when text is too slow.`
