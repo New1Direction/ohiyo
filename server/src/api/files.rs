@@ -395,14 +395,18 @@ pub(crate) async fn delete_unreferenced_files(
 /// costs a reference scan, so a small batch keeps the single SQLite writer free for others.
 const MAX_FILES_RELEASED_PER_TX: usize = 20;
 
+/// Attempts at one release batch that keeps failing because the database is busy.
+const RELEASE_BATCH_ATTEMPTS: usize = 3;
+
+/// Pause between those attempts (each one already waits out the busy timeout).
+const RELEASE_RETRY_PAUSE: std::time::Duration = std::time::Duration::from_millis(500);
+
 /// For many messages' files at once: after the referencing message rows are deleted
 /// and committed, delete each file in `file_ids` that nothing references any more, in
 /// separate transactions of at most [`MAX_FILES_RELEASED_PER_TX`] ids, removing each
-/// batch's blobs once it commits.
-pub(crate) async fn release_files_in_batches(
-    db: &sqlx::SqlitePool,
-    file_ids: &[String],
-) -> Result<(), sqlx::Error> {
+/// batch's blobs once it commits. A batch that fails is logged and the rest still run:
+/// the messages are already gone, so nothing would come back for those files later.
+pub(crate) async fn release_files_in_batches(db: &sqlx::SqlitePool, file_ids: &[String]) {
     let mut seen = std::collections::HashSet::new();
     let unique: Vec<String> = file_ids
         .iter()
@@ -410,12 +414,49 @@ pub(crate) async fn release_files_in_batches(
         .cloned()
         .collect();
     for batch in unique.chunks(MAX_FILES_RELEASED_PER_TX) {
-        let mut tx = db.begin().await?;
-        let orphaned_blobs = delete_unreferenced_files(&mut tx, batch).await?;
-        tx.commit().await?;
-        remove_blobs(orphaned_blobs).await;
+        if let Err(e) = release_batch_retrying_while_busy(db, batch).await {
+            tracing::error!(
+                file_ids = ?batch,
+                "couldn't release files of deleted messages; they stay stored: {e}"
+            );
+        }
     }
+}
+
+/// One release batch, tried up to [`RELEASE_BATCH_ATTEMPTS`] times while it fails busy.
+async fn release_batch_retrying_while_busy(
+    db: &sqlx::SqlitePool,
+    batch: &[String],
+) -> Result<(), sqlx::Error> {
+    let mut attempt = 1;
+    loop {
+        match release_batch(db, batch).await {
+            Err(e) if is_busy(&e) && attempt < RELEASE_BATCH_ATTEMPTS => {
+                attempt += 1;
+                tokio::time::sleep(RELEASE_RETRY_PAUSE).await;
+            }
+            result => return result,
+        }
+    }
+}
+
+async fn release_batch(db: &sqlx::SqlitePool, batch: &[String]) -> Result<(), sqlx::Error> {
+    // Take the write lock up front: the reference scans read before the first delete,
+    // and a read transaction that later upgrades fails at once (no busy wait) whenever
+    // another write lands in between. BEGIN IMMEDIATE waits out the busy timeout instead.
+    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    let orphaned_blobs = delete_unreferenced_files(&mut tx, batch).await?;
+    tx.commit().await?;
+    remove_blobs(orphaned_blobs).await;
     Ok(())
+}
+
+/// SQLITE_BUSY or one of its extended codes (sqlx reports the extended code).
+fn is_busy(e: &sqlx::Error) -> bool {
+    e.as_database_error()
+        .and_then(|e| e.code())
+        .and_then(|code| code.parse::<i32>().ok())
+        .is_some_and(|code| code & 0xff == 5)
 }
 
 /// Remove blobs released by [`delete_unreferenced_files`], after its transaction has
@@ -723,5 +764,43 @@ mod tests {
         assert_ne!(tampered, sig);
         // A different id yields a different signature.
         assert_ne!(crate::sign_file_id("a-different-id"), sig);
+    }
+
+    /// A writer holding the lock makes a second connection with no busy timeout fail
+    /// `BEGIN IMMEDIATE` at once with SQLITE_BUSY: a real busy error, deterministically.
+    #[tokio::test]
+    async fn sqlite_busy_errors_are_recognised_as_busy() {
+        use sqlx::sqlite::SqliteConnectOptions;
+        use sqlx::ConnectOptions;
+        let path = std::env::temp_dir().join(format!("ohiyo-busy-{}.db", uuid::Uuid::new_v4()));
+        let options = SqliteConnectOptions::new()
+            .filename(&path)
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+        let mut holder = options.connect().await.unwrap();
+        let mut waiter = options
+            .clone()
+            .busy_timeout(std::time::Duration::ZERO)
+            .connect()
+            .await
+            .unwrap();
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut holder)
+            .await
+            .unwrap();
+
+        let err = sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut waiter)
+            .await
+            .expect_err("the write lock is held");
+        assert!(is_busy(&err), "{err}");
+        assert!(!is_busy(&sqlx::Error::RowNotFound));
+
+        drop((holder, waiter));
+        for suffix in ["", "-wal", "-shm"] {
+            let mut p = path.clone().into_os_string();
+            p.push(suffix);
+            let _ = std::fs::remove_file(p);
+        }
     }
 }

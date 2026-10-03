@@ -286,9 +286,10 @@ async fn a_message_carries_at_most_ten_attachments() {
 }
 
 /// The dead-man wipe commits the message deletion first, then releases files in
-/// transactions of at most 20 ids. A trigger makes every file deletion fail once only 20
+/// transactions of at most 20 ids. A trigger makes every file deletion fail while only 20
 /// of the user's 45 files remain, so the 26th deletion fails: the first transaction (20
-/// files) stays committed, the second rolls back, and the messages are gone regardless.
+/// files) stays committed, the second rolls back, the third (the last 5 files) still
+/// runs, and the messages are gone regardless.
 #[tokio::test]
 async fn dead_man_wipe_deletes_messages_first_then_releases_files_in_small_batches() {
     let w = world().await;
@@ -360,7 +361,7 @@ async fn dead_man_wipe_deletes_messages_first_then_releases_files_in_small_batch
         .await
         .unwrap();
     assert_eq!(
-        files_left, 25,
-        "the first batch of 20 stays released; only the failed batch rolls back"
+        files_left, 20,
+        "only the failed batch rolls back; the batches before and after it are released"
     );
 }

@@ -900,7 +900,8 @@ async fn wipe_authored_messages(state: &AppState, user_id: &str) -> Result<(), s
         .iter()
         .flat_map(|raw| crate::api::files::attachment_file_ids(Some(raw)))
         .collect();
-    crate::api::files::release_files_in_batches(&state.db, &file_ids).await
+    crate::api::files::release_files_in_batches(&state.db, &file_ids).await;
+    Ok(())
 }
 
 /// Wipe data for users whose dead-man's switch has tripped (inactive past their window).
