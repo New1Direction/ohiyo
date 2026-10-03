@@ -97,6 +97,75 @@ pub fn build_state(db: SqlitePool) -> AppState {
     }
 }
 
+// ── Background tasks ──────────────────────────────────────────────────────────
+
+/// How often the background sweeps and the push dispatcher wake up.
+pub const BACKGROUND_INTERVAL: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Run `tick` every `period`, forever. Each tick is wrapped in catch_unwind so a panic
+/// is logged and the loop survives to the next tick — a background task that silently
+/// dies would let ciphertext, lapsed accounts, and stale codes accumulate forever.
+fn spawn_periodic<F, Fut>(period: std::time::Duration, mut tick: F) -> tokio::task::JoinHandle<()>
+where
+    F: FnMut() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    use futures_util::FutureExt;
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(period).await;
+            if std::panic::AssertUnwindSafe(tick())
+                .catch_unwind()
+                .await
+                .is_err()
+            {
+                tracing::error!("a background task panicked — continuing the loop");
+            }
+        }
+    })
+}
+
+/// Disappearing messages, the dead-man's switch, and link-token GC, every `period`.
+pub fn spawn_sweeper(state: AppState, period: std::time::Duration) -> tokio::task::JoinHandle<()> {
+    spawn_periodic(period, move || {
+        let state = state.clone();
+        async move {
+            api::messages::sweep_expired(&state).await;
+            // Account-level dead-man's switch: wipe data for users gone too long.
+            api::users::sweep_deadman(&state).await;
+            // Drop expired device-link codes so the table can't grow unbounded.
+            api::auth::sweep_link_tokens(&state).await;
+            // Push delivery cleanup is safe even when provider dispatch is disabled.
+            api::push::sweep_stale_push_rows(&state).await;
+        }
+    })
+}
+
+/// Content-free push delivery, every `period`, on its own task: a slow push provider
+/// delays only the next dispatch, never the sweeps.
+pub fn spawn_push_dispatcher(
+    state: AppState,
+    period: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
+    spawn_periodic(period, move || {
+        let state = state.clone();
+        async move {
+            // Real outbound push delivery is opt-in: self-hosters without provider
+            // credentials can keep content-free queueing without burning attempts.
+            if !api::push::dispatcher_should_run() {
+                return;
+            }
+            match api::push::dispatch_queued(&state, 100).await {
+                Ok(result) if result.attempted > 0 => {
+                    tracing::info!(?result, "content-free push dispatch batch complete");
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!("content-free push dispatch failed: {e}"),
+            }
+        }
+    })
+}
+
 /// Shortest acceptable production `JWT_SECRET`. Anything weaker is treated as
 /// unset — a guessable signing key forges sessions.
 const MIN_JWT_SECRET_LEN: usize = 32;
