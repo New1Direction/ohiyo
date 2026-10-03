@@ -204,9 +204,10 @@ pub async fn discord_connect_info(
 }
 
 pub async fn list_discord_guilds(
-    _auth: AuthUser,
+    auth: AuthUser,
 ) -> Result<Json<Vec<DiscordGuildInfo>>, (StatusCode, String)> {
     require_managed_discord_import_enabled()?;
+    require_operator(&auth)?;
     let guilds = fetch_bot_guilds().await?;
     Ok(Json(guilds))
 }
@@ -217,6 +218,7 @@ pub async fn start_managed_discord_import_job(
     Json(body): Json<ManagedDiscordImportBody>,
 ) -> Result<Json<ManagedDiscordImportJobStartResponse>, (StatusCode, String)> {
     require_managed_discord_import_enabled()?;
+    require_operator(&auth)?;
     // One import at a time per user: reject if a Queued/Running job already exists, so a
     // user can't spawn unbounded concurrent Discrawl clones (each is heavy + long-running).
     if owner_has_active_job(&auth.0) {
@@ -285,6 +287,7 @@ pub async fn get_managed_discord_import_job(
     auth: AuthUser,
     AxumPath(job_id): AxumPath<String>,
 ) -> Result<Json<ManagedDiscordImportJob>, (StatusCode, String)> {
+    require_operator(&auth)?;
     get_import_job(&auth.0, &job_id)
         .map(Json)
         .ok_or((StatusCode::NOT_FOUND, "import job not found".to_owned()))
@@ -295,6 +298,7 @@ pub async fn upload_discrawl_archive(
     mut multipart: Multipart,
 ) -> Result<Json<DiscrawlArchiveUploadResponse>, (StatusCode, String)> {
     require_local_discrawl_import_enabled()?;
+    require_operator(&auth)?;
     tokio::fs::create_dir_all(IMPORT_UPLOAD_DIR)
         .await
         .map_err(crate::api::error::internal)?;
@@ -386,6 +390,7 @@ pub async fn run_managed_discord_import(
     Json(body): Json<ManagedDiscordImportBody>,
 ) -> Result<Json<DiscrawlImportResponse>, (StatusCode, String)> {
     require_managed_discord_import_enabled()?;
+    require_operator(&auth)?;
     let guild_id = validate_guild_id(&body.guild_id)?;
     let history = body.history.unwrap_or(HistoryWindow::All);
     run_managed_discord_import_inner(auth.0, state, guild_id, history, |_, _| {})
@@ -944,11 +949,12 @@ const DISCORD_PERMISSION_FLAGS: &[(u32, &str)] = &[
 ];
 
 pub async fn preview_discrawl_import(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(_state): State<AppState>,
     Json(body): Json<DiscrawlArchiveBody>,
 ) -> Result<Json<DiscrawlPreview>, (StatusCode, String)> {
     require_local_discrawl_import_enabled()?;
+    require_operator(&auth)?;
     validate_db_path(&body.db_path).await?;
     let preview = discrawl::preview(&body.db_path, read_opts(&body))
         .await
@@ -962,6 +968,7 @@ pub async fn run_discrawl_import(
     Json(body): Json<DiscrawlArchiveBody>,
 ) -> Result<Json<DiscrawlImportResponse>, (StatusCode, String)> {
     require_local_discrawl_import_enabled()?;
+    require_operator(&auth)?;
     validate_db_path(&body.db_path).await?;
     let guild = discrawl::read_source_guild(&body.db_path, read_opts(&body))
         .await
@@ -1411,6 +1418,20 @@ fn require_local_discrawl_import_enabled() -> Result<(), (StatusCode, String)> {
         Err((
             StatusCode::FORBIDDEN,
             "local Discrawl archive import is disabled on this server".into(),
+        ))
+    }
+}
+
+/// Local and managed imports act with the server's own reach (host files, the shared
+/// Discord bot, archive-supplied URLs), so only operators named in
+/// `OHIYO_OPERATOR_USER_IDS` may use them. Unset means nobody.
+fn require_operator(auth: &AuthUser) -> Result<(), (StatusCode, String)> {
+    if crate::auth::is_operator(&auth.0) {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::FORBIDDEN,
+            "only an operator of this server can run Discord imports".into(),
         ))
     }
 }
