@@ -45,6 +45,10 @@ fly volumes create ohiyo_data --region iad --size 3   # 3 GB
 fly secrets set JWT_SECRET="$(openssl rand -base64 48)"
 fly secrets set PUBLIC_BASE_URL="https://ohiyo-<you>.fly.dev"
 
+# Operator accounts: a comma-separated list of user ids. Only these accounts can run
+# Discord imports or change an Instant Server's tier. Unset means nobody can.
+fly secrets set OHIYO_OPERATOR_USER_IDS="<your-user-id>"
+
 # Ship it. fly.toml + Dockerfile do the rest.
 fly deploy
 
@@ -66,6 +70,25 @@ Notes baked into the config:
 > **Scaling caveat:** SQLite on a local volume means exactly **one** machine — do
 > not `fly scale count 2`. When you outgrow a single node, migrate to
 > [LiteFS](https://fly.io/docs/litefs/) (SQLite replication) or Postgres.
+
+### Rate limits and client addresses
+
+Login, registration and other limits are keyed on the client's address.
+
+- **On Fly** nothing is needed: the server trusts `Fly-Client-IP` because `FLY_APP_NAME`
+  is set.
+- **Behind any other reverse proxy** set `TRUSTED_PROXY_HOPS` to the number of proxies
+  in front of the server (usually `1`). The server then takes that entry from the
+  right of `X-Forwarded-For`. Without it every client appears to come from the proxy
+  and shares one bucket, including the registration limit.
+- **Registration** is limited to 10 new accounts per hour per address
+  (`OHIYO_REGISTER_LIMIT_PER_HOUR`, `0` turns it off). People registering from one
+  shared address, such as a classroom, will hit it.
+- **Login** is also limited to 10 attempts per minute per username. A side effect:
+  anyone can lock a known username out of logging in for up to a minute. Existing
+  sessions are not affected.
+- **Local Discrawl import** reads media only from `OHIYO_DISCRAWL_MEDIA_ROOT`; the
+  request can no longer choose the folder.
 
 ### Backups — set this up before you have real users
 
@@ -277,8 +300,9 @@ These are tracked follow-ups, not blockers for a first test build:
 - [ ] **Token storage.** The web client keeps the session token in
       `localStorage`. Acceptable in the packaged app; revisit if you ship a pure
       web build to untrusted origins.
-- [ ] **Proxy IPs.** Behind Fly, parse `X-Forwarded-For` so auth rate-limiting
-      keys on the real client IP, not the proxy.
+- [x] **Proxy IPs.** On Fly the server keys rate limits on `Fly-Client-IP`. Behind any
+      other reverse proxy set `TRUSTED_PROXY_HOPS` (see "Rate limits and client
+      addresses"), or every client shares one bucket.
 - [x] **Privacy policy + Terms of Service.** Landing pages live in `site/privacy.html`
       and `site/terms.html`, with footer links and sitemap coverage.
 - [ ] **Load test** to replace the dev-machine benchmark numbers on the

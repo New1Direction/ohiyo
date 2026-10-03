@@ -11,7 +11,9 @@ for all 28.
 
 ## Prerequisites
 
-1. **Server** running on `:3000` — `cd server && cargo run`
+1. **Server** running on `:3000` — `cd server && cargo run`, with
+   `OHIYO_REGISTER_LIMIT_PER_HOUR=0` in `server/.env` (the suites register about 40
+   accounts from one address, and the default limit is 10 per hour)
 2. **Client** running on `:1420` — either `cd client && npm run dev` or `npm run build && npm run preview -- --port 1420`
 3. **Chromium** available — `cd client && npx playwright install chromium`
    (the harness auto-locates the cached "Chrome for Testing" binary)
