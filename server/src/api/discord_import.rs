@@ -32,6 +32,7 @@ const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
 const DEFAULT_MAX_DISCRAWL_DB_UPLOAD_BYTES: i64 = 2 * 1024 * 1024 * 1024; // 2 GiB
 const DEFAULT_DISCORD_BOT_PERMISSIONS: &str = "66560"; // View Channels + Read Message History
 const MANAGED_DISCRAWL_TIMEOUT_SECS: u64 = 60 * 60 * 4;
+const MAX_TEMPLATE_IMPORTS_PER_HOUR: usize = 3;
 
 #[derive(Debug, Deserialize)]
 pub struct DiscrawlArchiveBody {
@@ -442,6 +443,18 @@ pub async fn run_discord_template_import(
     State(state): State<AppState>,
     Json(body): Json<DiscordTemplateImportBody>,
 ) -> Result<Json<DiscrawlImportResponse>, (StatusCode, String)> {
+    // Open to every user, but each import fetches from Discord and builds a whole
+    // server, so it is rationed per user.
+    if !state.rate.check(
+        &format!("discord-template:{}", auth.0),
+        MAX_TEMPLATE_IMPORTS_PER_HOUR,
+        Duration::from_secs(60 * 60),
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many Discord template imports — try again later".into(),
+        ));
+    }
     let guild = import::discord_template::fetch_template_source(&body.template)
         .await
         .map_err(|e| {

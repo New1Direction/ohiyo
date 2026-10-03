@@ -133,3 +133,31 @@ async fn only_operators_may_use_local_and_managed_import_routes() {
     }
     assert_eq!(upload_archive(&srv, &operator).await, 400, "archive upload");
 }
+
+#[tokio::test]
+async fn template_imports_are_open_to_everyone_but_limited_to_3_an_hour_per_user() {
+    enable_imports();
+    let srv = TestServer::start().await;
+    let alice = srv.register("templatealice", "password123").await;
+    let bob = srv.register("templatebob", "password123").await;
+    // An empty template code fails before anything is fetched, but still counts.
+    let import = |user: &AuthOk| {
+        let token = user.token.clone();
+        let srv = &srv;
+        async move {
+            srv.post_json_auth(
+                "/api/v1/imports/discord/template",
+                &token,
+                json!({ "template": "" }),
+            )
+            .await
+            .status()
+            .as_u16()
+        }
+    };
+    for attempt in 1..=3 {
+        assert_eq!(import(&alice).await, 502, "attempt {attempt}");
+    }
+    assert_eq!(import(&alice).await, 429, "a fourth in the hour is refused");
+    assert_eq!(import(&bob).await, 502, "the limit is per user");
+}
