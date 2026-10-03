@@ -61,6 +61,9 @@ pub struct AppState {
     pub started_at: i64,
     /// How long a gateway socket may send nothing before it is closed as half-open.
     pub gateway_idle_timeout: std::time::Duration,
+    /// Registrations allowed per hour per client address; 0 turns that limit off. Read
+    /// once at startup from `OHIYO_REGISTER_LIMIT_PER_HOUR`.
+    pub register_limit_per_hour: usize,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
@@ -90,6 +93,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         provisioner,
         started_at: types::now_unix(),
         gateway_idle_timeout: gateway::IDLE_TIMEOUT,
+        register_limit_per_hour: api::auth::register_limit_from_env(),
     }
 }
 
@@ -400,6 +404,16 @@ mod config_tests {
 
     const STRONG: &str = "0123456789abcdef0123456789abcdef"; // 32 chars
     const URL: &str = "https://example.com";
+
+    #[tokio::test]
+    async fn the_registration_limit_is_read_into_state_at_startup() {
+        // The only test that touches this variable.
+        std::env::set_var("OHIYO_REGISTER_LIMIT_PER_HOUR", "3");
+        let pool = SqlitePool::connect_lazy("sqlite::memory:").unwrap();
+        let state = build_state(pool);
+        std::env::remove_var("OHIYO_REGISTER_LIMIT_PER_HOUR");
+        assert_eq!(state.register_limit_per_hour, 3);
+    }
 
     #[test]
     fn release_rejects_missing_or_weak_jwt_secret() {

@@ -141,6 +141,8 @@ const REGISTER_MAX_PER_HOUR: usize = 10;
 async fn registration_is_limited_to_10_an_hour_per_address_and_login_is_not() {
     std::env::remove_var("FLY_APP_NAME");
     std::env::remove_var("TRUSTED_PROXY_HOPS");
+    // Unset: the default of 10 applies.
+    std::env::remove_var("OHIYO_REGISTER_LIMIT_PER_HOUR");
     let srv = TestServer::start().await;
     let register = |i: usize| {
         srv.post_json(
@@ -169,4 +171,27 @@ async fn registration_is_limited_to_10_an_hour_per_address_and_login_is_not() {
         200,
         "logging in from that address still works"
     );
+}
+
+#[tokio::test]
+async fn a_configured_registration_limit_of_3_refuses_the_4th() {
+    let srv = TestServer::start_with(|state| state.register_limit_per_hour = 3).await;
+    for i in 0..3 {
+        srv.register(&format!("limited{i}"), "password123").await;
+    }
+    let res = srv
+        .post_json(
+            "/api/v1/auth/register",
+            json!({ "username": "limited3", "password": "password123" }),
+        )
+        .await;
+    assert_eq!(res.status(), 429);
+}
+
+#[tokio::test]
+async fn a_registration_limit_of_0_turns_it_off() {
+    let srv = TestServer::start_with(|state| state.register_limit_per_hour = 0).await;
+    for i in 0..12 {
+        srv.register(&format!("unlimited{i}"), "password123").await;
+    }
 }

@@ -5,6 +5,7 @@
  */
 const API = process.env.E2E_API || "https://ohiyo.fly.dev/api/v1";
 const ORIGIN = process.env.KIKKA_ORIGIN || "https://app.ohiyo.gg";
+// More than 10 users needs OHIYO_REGISTER_LIMIT_PER_HOUR raised or set to 0 on the target server.
 const USERS = Number(process.env.USERS || 5);
 const MESSAGES_PER_USER = Number(process.env.MESSAGES_PER_USER || 10);
 const uniq = Date.now().toString(36);

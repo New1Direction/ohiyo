@@ -23,10 +23,26 @@ const AUTH_MAX_PER_MIN: usize = 40;
 /// can lock a known username out of login for up to a minute.
 const LOGIN_MAX_PER_USERNAME_PER_MIN: usize = 10;
 
-/// Registrations per hour per client address (IPv6: per /64, and ten times that per
-/// /48), on top of the shared auth limit. Accounts are otherwise cheap, and each one can
-/// create per-user rate-limit keys.
-const REGISTER_MAX_PER_HOUR: usize = 10;
+/// Default registrations per hour per client address (IPv6: per /64, and ten times that
+/// per /48), on top of the shared auth limit. Accounts are otherwise cheap, and each one
+/// can create per-user rate-limit keys.
+const DEFAULT_REGISTER_LIMIT_PER_HOUR: usize = 10;
+
+/// The registration limit from `OHIYO_REGISTER_LIMIT_PER_HOUR`, read once at startup.
+pub fn register_limit_from_env() -> usize {
+    parse_register_limit(
+        std::env::var("OHIYO_REGISTER_LIMIT_PER_HOUR")
+            .ok()
+            .as_deref(),
+    )
+}
+
+/// A non-negative integer, 0 meaning no registration limit; the default when unset or
+/// unparseable.
+fn parse_register_limit(raw: Option<&str>) -> usize {
+    raw.and_then(|v| v.trim().parse().ok())
+        .unwrap_or(DEFAULT_REGISTER_LIMIT_PER_HOUR)
+}
 
 /// Count one attempt by the requesting client against the per-address limit `prefix`
 /// (see [`resolve_client_ip`], [`check_address_rate`]). False when it is spent.
@@ -216,14 +232,18 @@ pub async fn register(
     Json(body): Json<RegisterBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
     check_auth_rate(&state, &headers, &addr)?;
-    if !check_client_rate(
-        &state,
-        &headers,
-        &addr,
-        "register",
-        REGISTER_MAX_PER_HOUR,
-        Duration::from_secs(60 * 60),
-    ) {
+    // 0 turns the registration limit off (the shared auth limit above still applies).
+    let register_limit = state.register_limit_per_hour;
+    if register_limit > 0
+        && !check_client_rate(
+            &state,
+            &headers,
+            &addr,
+            "register",
+            register_limit,
+            Duration::from_secs(60 * 60),
+        )
+    {
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
             "too many new accounts from your network — try again later".into(),
@@ -600,6 +620,21 @@ mod client_ip_tests {
             (None, None),
         ] {
             assert_eq!(parse_proxy_hops(raw), hops, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn the_registration_limit_comes_from_the_environment_with_a_default_of_10() {
+        for (raw, limit) in [
+            (None, 10),
+            (Some("3"), 3),
+            (Some(" 3 "), 3),
+            (Some("0"), 0),
+            (Some("garbage"), 10),
+            (Some("-1"), 10),
+            (Some(""), 10),
+        ] {
+            assert_eq!(parse_register_limit(raw), limit, "{raw:?}");
         }
     }
 
