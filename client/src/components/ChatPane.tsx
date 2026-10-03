@@ -4,7 +4,7 @@ import { useDropzone } from "react-dropzone";
 import { VariableSizeList as List } from "react-window";
 import type { AttachmentMeta, Embed, Message, Channel, ReactionGroup, ServerEmoji, PublicUser } from "../api";
 import type { WatchSession } from "../gateway";
-import { isEncryptedAttachment, type EncryptedAttachmentMeta } from "../lib/encryptedPayload";
+import { homeFileUrl, isEncryptedAttachment, safeAttachmentBlobType, type EncryptedAttachmentMeta } from "../lib/encryptedPayload";
 import type { TrustState } from "../lib/identityTrust";
 import { WatchParty } from "./WatchParty";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -354,7 +354,7 @@ async function encryptAttachmentFile(file: File): Promise<{ blob: Blob; encrypte
 async function decryptAttachmentBytes(att: EncryptedAttachmentMeta, encryptedBytes: ArrayBuffer): Promise<Blob> {
   const key = await crypto.subtle.importKey("raw", unb64Url(att.encrypted.key), { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64Url(att.encrypted.iv) }, key, encryptedBytes);
-  return new Blob([plain], { type: att.content_type || "application/octet-stream" });
+  return new Blob([plain], { type: safeAttachmentBlobType(att.content_type) });
 }
 
 export function ChatPane({
@@ -2881,7 +2881,12 @@ function EncryptedAttachmentItem({ att }: { att: EncryptedAttachmentMeta }) {
   useEffect(() => {
     let alive = true;
     let objectUrl: string | null = null;
-    const source = assetUrl(att.url ?? `/files/${att.id}`);
+    // The URL is sender-controlled: fetch only this attachment's /files/<id> on the current home.
+    const source = homeFileUrl(att, getFileBase());
+    if (!source) {
+      setError(true);
+      return;
+    }
     fetch(source)
       .then((r) => {
         if (!r.ok) throw new Error("download failed");

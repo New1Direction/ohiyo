@@ -1,6 +1,6 @@
 import "./index.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, useSyncExternalStore, type FormEvent } from "react";
-import { api, getApiBase, setServerOrigin } from "./api";
+import { api, getApiBase, getFileBase, setServerOrigin } from "./api";
 import { Gateway } from "./gateway";
 import { AuthScreen } from "./components/AuthScreen";
 import { ModalShell } from "./components/ModalShell";
@@ -419,7 +419,8 @@ function MainApp({
   privacyModeRef.current = privacyMode;
 
   function messageFromDecryptedPlaintext(message: Message, plain: string): Message {
-    const unpacked = unpackEncryptedMessagePlaintext(plain);
+    // Attachments not on this home's /files/<id> are dropped (the URL is sender-controlled).
+    const unpacked = unpackEncryptedMessagePlaintext(plain, getFileBase());
     return {
       ...message,
       content: unpacked.text,
