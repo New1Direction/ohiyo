@@ -185,7 +185,8 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
                     <button type="button" onClick={() => showGraduate(inst)} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" }}>Self-host</button>
                     <button type="button" onClick={() => billing(inst)} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--accent)", border: "none" }}>Billing</button>
                     {inst.tier !== "paid" && (
-                      <button type="button" onClick={() => run(`paid:${inst.id}`, () => api.setInstanceTier(inst.id, "paid", token), () => onToast("Marked always-on for MVP/manual billing.", "success"))} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "color-mix(in oklch, var(--accent) 16%, var(--bg-input))", color: "var(--accent)", border: "none" }}>Activate paid</button>
+                      // Changing the tier is operator-only on the server (an owner gets 403).
+                      <button type="button" disabled className="rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "not-allowed", opacity: 0.7 }}>Paid plan: coming soon</button>
                     )}
                     <button type="button" onClick={() => { if (confirm(`Delete ${inst.name}? Export first if you need it.`)) void run(`delete:${inst.id}`, () => api.deleteInstance(inst.id, token), () => onToast("Instant Server deleted.", "success")); }} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--danger)", border: "none" }}><Icon name="trash" size={13} /> Delete</button>
                   </div>

@@ -598,8 +598,6 @@ export const api = {
     request<HostedInstance>(`/instances/${id}/sleep`, { method: "POST" }, token),
   wakeInstance: (id: string, token: string) =>
     request<HostedInstance>(`/instances/${id}/wake`, { method: "POST" }, token),
-  setInstanceTier: (id: string, tier: "free" | "paid", token: string) =>
-    request<HostedInstance>(`/instances/${id}/tier`, { method: "PATCH", body: JSON.stringify({ tier }) }, token),
   getInstanceExport: (id: string, token: string) =>
     request<InstanceExport>(`/instances/${id}/export`, {}, token),
   getGraduateGuide: (id: string, token: string) =>
