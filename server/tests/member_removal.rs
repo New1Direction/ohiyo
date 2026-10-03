@@ -1,6 +1,7 @@
 //! S-M10: removing a member (kick, ban, leave) must not leave state behind. Their roles
-//! go with the membership, they drop out of the server's live voice rooms, and the
-//! voice-key relay only delivers to recipients who can still see the channel.
+//! and member-level channel overwrites go with the membership, they drop out of the
+//! server's live voice rooms, and the voice-key relay only delivers to recipients who
+//! can still see the channel.
 
 mod common;
 
@@ -351,4 +352,103 @@ async fn voice_keys_only_reach_recipients_who_can_view_the_channel() {
         !drain(&mut locked_out_rx).iter().any(is_key),
         "a recipient who lost View Channel must not get the key"
     );
+}
+
+#[tokio::test]
+async fn member_overwrites_do_not_survive_removal() {
+    let w = world().await;
+    let secret: Value = w
+        .srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{}/channels", w.server_id),
+            &w.owner.token,
+            json!({ "name": "secret" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let secret_id = secret["id"].as_str().unwrap().to_owned();
+    let db = sqlx::SqlitePool::connect(w.srv.db_url()).await.unwrap();
+    sqlx::query(
+        "INSERT INTO permission_overwrites
+         (id, server_id, scope_type, scope_id, target_type, target_id, allow_permissions, deny_permissions, source, created_at)
+         VALUES ('ow_private', ?, 'channel', ?, 'everyone', NULL, 0, ?, 'test', 1)",
+    )
+    .bind(&w.server_id)
+    .bind(&secret_id)
+    .bind(VIEW_CHANNEL)
+    .execute(&db)
+    .await
+    .unwrap();
+    let history = format!("/api/v1/channels/{secret_id}/messages");
+
+    for (name, path) in [
+        ("overwritekicked", "kick"),
+        ("overwritebanned", "ban"),
+        ("overwriteleaver", "leave"),
+    ] {
+        let user = join(&w, name).await;
+        sqlx::query(
+            "INSERT INTO permission_overwrites
+             (id, server_id, scope_type, scope_id, target_type, target_id, allow_permissions, deny_permissions, source, created_at)
+             VALUES (?, ?, 'channel', ?, 'member', ?, ?, 0, 'test', 1)",
+        )
+        .bind(format!("ow_{name}"))
+        .bind(&w.server_id)
+        .bind(&secret_id)
+        .bind(&user.id)
+        .bind(VIEW_CHANNEL)
+        .execute(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            w.srv.get_auth(&history, &user.token).await.status(),
+            200,
+            "{name} let in"
+        );
+
+        let removed = match path {
+            "kick" => {
+                w.srv
+                    .delete_auth(
+                        &format!("/api/v1/servers/{}/members/{}", w.server_id, user.id),
+                        &w.owner.token,
+                    )
+                    .await
+            }
+            "ban" => {
+                let banned = w
+                    .srv
+                    .post_empty_auth(
+                        &format!("/api/v1/servers/{}/bans/{}", w.server_id, user.id),
+                        &w.owner.token,
+                    )
+                    .await;
+                assert_eq!(banned.status(), 204);
+                w.srv
+                    .delete_auth(
+                        &format!("/api/v1/servers/{}/bans/{}", w.server_id, user.id),
+                        &w.owner.token,
+                    )
+                    .await
+            }
+            _ => {
+                w.srv
+                    .post_empty_auth(
+                        &format!("/api/v1/servers/{}/leave", w.server_id),
+                        &user.token,
+                    )
+                    .await
+            }
+        };
+        assert_eq!(removed.status(), 204, "{path} succeeds");
+
+        join_by_invite(&w, &user).await;
+        assert_eq!(
+            w.srv.get_auth(&history, &user.token).await.status(),
+            403,
+            "after {path} and rejoin, the old member allow is gone"
+        );
+    }
 }

@@ -247,8 +247,9 @@ async fn require_mod_action(
 }
 
 /// Remove a member from a server, announcing it before the row disappears. Their roles
-/// go in the same transaction (so rejoining starts from @everyone), and they are
-/// evicted from the server's live voice rooms.
+/// and member-level channel/category overwrites go in the same transaction (so
+/// rejoining starts from @everyone), and they are evicted from the server's live voice
+/// rooms.
 async fn remove_member(
     state: &AppState,
     server_id: &str,
@@ -280,6 +281,15 @@ async fn remove_member(
         .execute(&mut *tx)
         .await
         .map_err(crate::api::error::internal)?;
+    sqlx::query(
+        "DELETE FROM permission_overwrites
+         WHERE server_id = ? AND target_type = 'member' AND target_id = ?",
+    )
+    .bind(server_id)
+    .bind(target_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(crate::api::error::internal)?;
     tx.commit().await.map_err(crate::api::error::internal)?;
     crate::gateway::evict_from_server_voice(state, server_id, target_id).await;
     Ok(())
