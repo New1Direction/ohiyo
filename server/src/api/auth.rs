@@ -28,6 +28,9 @@ const LOGIN_MAX_PER_USERNAME_PER_MIN: usize = 10;
 /// can create per-user rate-limit keys.
 const DEFAULT_REGISTER_LIMIT_PER_HOUR: usize = 10;
 
+/// The window the registration limit counts in.
+const REGISTER_WINDOW: Duration = Duration::from_secs(60 * 60);
+
 /// The registration limit from `OHIYO_REGISTER_LIMIT_PER_HOUR`, read once at startup.
 pub fn register_limit_from_env() -> usize {
     parse_register_limit(
@@ -60,6 +63,24 @@ pub(crate) fn check_client_rate(
 
 /// An IPv6 /48 may make this many times a per-address limit, however many /64s it uses.
 const V6_48_MULTIPLIER: usize = 10;
+
+/// Whether the requesting client has already used up the per-address limit `prefix`
+/// (for IPv6, its /64 or its /48), without counting this request or creating a key.
+fn client_rate_spent(
+    state: &AppState,
+    headers: &HeaderMap,
+    addr: &SocketAddr,
+    prefix: &str,
+    max: usize,
+    window: Duration,
+) -> bool {
+    let ip = resolve_client_ip(headers, addr.ip(), &ProxyTrust::from_env());
+    let rate = &state.rate;
+    rate.spent_unauth(&format!("{prefix}:{}", rate_key_for(ip)), max, window)
+        || v6_48_key(ip).is_some_and(|block| {
+            rate.spent_unauth(&format!("{prefix}:{block}"), max * V6_48_MULTIPLIER, window)
+        })
+}
 
 /// Count one attempt from `ip` against the per-address limit `prefix`, keyed by
 /// [`rate_key_for`]. An IPv6 client also counts against its /48 at
@@ -233,15 +254,16 @@ pub async fn register(
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
     check_auth_rate(&state, &headers, &addr)?;
     // 0 turns the registration limit off (the shared auth limit above still applies).
+    // Refused here once spent; only an account actually created counts, further down.
     let register_limit = state.register_limit_per_hour;
     if register_limit > 0
-        && !check_client_rate(
+        && client_rate_spent(
             &state,
             &headers,
             &addr,
             "register",
             register_limit,
-            Duration::from_secs(60 * 60),
+            REGISTER_WINDOW,
         )
     {
         return Err((
@@ -291,6 +313,18 @@ pub async fn register(
     .execute(&state.db)
     .await
     .map_err(crate::api::error::internal)?;
+
+    // Counted only now, so bad input or a taken username costs no registration slot.
+    if register_limit > 0 {
+        let _ = check_client_rate(
+            &state,
+            &headers,
+            &addr,
+            "register",
+            register_limit,
+            REGISTER_WINDOW,
+        );
+    }
 
     let user = User {
         id: id.clone(),

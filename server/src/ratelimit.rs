@@ -141,6 +141,13 @@ impl RateLimiter {
         true
     }
 
+    /// Whether `key` (address or caller-supplied) has already used its `max` attempts in
+    /// `window`, without counting an attempt or creating the key.
+    pub fn spent_unauth(&self, key: &str, max: usize, window: Duration) -> bool {
+        let mut inner = self.unauth.lock().unwrap_or_else(|e| e.into_inner());
+        inner.spent(truncate_key(key), max, window, Instant::now())
+    }
+
     /// How many keys the authenticated-user map holds right now.
     pub fn tracked_user_keys(&self) -> usize {
         let inner = self.user.lock().unwrap_or_else(|e| e.into_inner());

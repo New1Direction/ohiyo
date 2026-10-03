@@ -195,3 +195,27 @@ async fn a_registration_limit_of_0_turns_it_off() {
         srv.register(&format!("unlimited{i}"), "password123").await;
     }
 }
+
+#[tokio::test]
+async fn rejected_registrations_do_not_use_up_the_limit() {
+    let srv = TestServer::start_with(|state| state.register_limit_per_hour = 10).await;
+    srv.register("alreadytaken", "password123").await;
+    let register = |username: &'static str, password: &'static str| {
+        srv.post_json(
+            "/api/v1/auth/register",
+            json!({ "username": username, "password": password }),
+        )
+    };
+
+    for _ in 0..10 {
+        assert_eq!(register("alreadytaken", "password123").await.status(), 409);
+    }
+    for _ in 0..5 {
+        assert_eq!(register("tooshort", "short").await.status(), 400);
+    }
+    assert_eq!(
+        register("finallyfree", "password123").await.status(),
+        200,
+        "only the two accounts actually created count against the hourly limit"
+    );
+}
