@@ -10,6 +10,7 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
+import { errorMessage } from "../src/lib/errorMessage.ts";
 import { parseVaultLocked } from "../src/lib/vaultLock.ts";
 import { bundleEntry, fixtures, type Bundle } from "./fixtures/bundle.ts";
 
@@ -75,10 +76,12 @@ test("resetting the vault resets, then restarts the app", async () => {
   assert.deepEqual(calls, ["vault_reset", "app_restart"]);
 });
 
-test("a failed reset doesn't restart, and its error reaches the caller", async () => {
+test("a failed reset doesn't restart, and the locked screen can show the native error", async () => {
   const calls: string[] = [];
   invoke = (cmd) => (calls.push(cmd), cmd === "vault_reset" ? Promise.reject("the saved keys could not be moved aside: denied") : Promise.resolve(null));
-  await assert.rejects(bundle.mod.resetVaultAndRestart(), /could not be moved aside/);
+  await assert.rejects(bundle.mod.resetVaultAndRestart(), (err: unknown) => {
+    return errorMessage(err, "fallback") === "the saved keys could not be moved aside: denied";
+  });
   assert.deepEqual(calls, ["vault_reset"]);
 });
 

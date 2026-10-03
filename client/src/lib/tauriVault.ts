@@ -67,7 +67,13 @@ export function getVaultStore(): VaultStore | null {
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<T>(cmd, args);
+  try {
+    return await invoke<T>(cmd, args);
+  } catch (err) {
+    // A command's Err(String) arrives as a bare string; make it an Error so callers can
+    // show its message.
+    throw typeof err === "string" ? new Error(err) : err;
+  }
 }
 
 /**
