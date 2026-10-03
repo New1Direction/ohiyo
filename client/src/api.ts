@@ -501,6 +501,16 @@ export type RegisterPushDeviceBody = {
   device_name?: string | null;
 };
 
+/** A failed request: the message is the server's text, `status` its HTTP status (read it
+ *  with lib/apiErrors.ts apiStatus). */
+class ApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -519,7 +529,7 @@ async function request<T>(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
+    throw new ApiError(res.status, text || `HTTP ${res.status}`);
   }
 
   if (res.status === 204) return undefined as T;
