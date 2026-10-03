@@ -53,3 +53,38 @@ async fn throttled_background_heartbeats_keep_a_socket_open() {
         "a socket that keeps sending stays open"
     );
 }
+
+/// The client treats 40 s without any inbound frame as a dead socket, so a quiet but
+/// healthy connection needs a reply to its heartbeat. The ack goes to the heartbeating
+/// connection only, not to the user's other devices.
+#[tokio::test]
+async fn each_heartbeat_is_acknowledged_on_its_own_connection() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("acked", "password123").await;
+    // Presence echoes go to people sharing a server, so Alice needs one.
+    srv.post_json_auth("/api/v1/servers", &alice.token, json!({ "name": "Acks" }))
+        .await;
+    let mut heartbeating = Gateway::connect(&srv, &alice.token).await;
+    heartbeating.wait_for(|e| e["t"] == "Ready").await;
+    let mut other = Gateway::connect(&srv, &alice.token).await;
+    other.wait_for(|e| e["t"] == "Ready").await;
+
+    heartbeating.send(&json!({ "t": "Heartbeat" })).await;
+    heartbeating.wait_for(|e| e["t"] == "HeartbeatAck").await;
+
+    // Events reach a connection in order, so an ack sent to `other` would arrive before
+    // the echo of this later activity change.
+    other
+        .send(&json!({
+            "t": "SetActivity",
+            "d": { "activity": { "kind": "playing", "name": "marker", "details": null } }
+        }))
+        .await;
+    loop {
+        let event = other.next_event().await;
+        assert_ne!(event["t"], "HeartbeatAck", "the ack went to another device");
+        if event["t"] == "PresenceUpdate" && event["d"]["activity"]["name"] == "marker" {
+            break;
+        }
+    }
+}

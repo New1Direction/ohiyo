@@ -926,6 +926,16 @@ async fn handle_client_event(
         }
 
         ClientEvent::Heartbeat => {
+            // Answer on this connection only, so the client sees the socket is alive.
+            if let Some(tx) = state
+                .sessions
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(user_id)
+                .and_then(|conns| conns.get(&conn_id))
+            {
+                let _ = tx.send(GatewayEvent::HeartbeatAck);
+            }
             // A heartbeat proves the user is online: refresh the dead-man's-switch clock,
             // at most once per HEARTBEAT_TOUCH_INTERVAL on this connection.
             if last_heartbeat_touch.is_none_or(|t| t.elapsed() >= HEARTBEAT_TOUCH_INTERVAL) {
