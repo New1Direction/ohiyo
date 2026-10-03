@@ -170,7 +170,7 @@ export async function importKeyMaterial(material: Record<string, string>): Promi
   }
 }
 
-/** Restart the desktop app ("Try again" on the locked vault screen). */
+/** Restart the desktop app: "Try again" on the locked vault screen, and after a reset or burn. */
 export async function restartApp(): Promise<void> {
   await invoke("app_restart");
 }
