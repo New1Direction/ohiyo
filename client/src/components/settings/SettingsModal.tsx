@@ -16,6 +16,7 @@ import {
 } from "../../themes";
 import { isValidHex } from "../../lib/color";
 import { safeHttpUrl } from "../../lib/url";
+import { errorMessage } from "../../lib/errorMessage";
 import { PROFILE_PATTERNS, PROFILE_VIBES, ProfileCardView, type ProfileCardData } from "../ProfileCardView";
 import type { PluginManager } from "../../plugins/registry";
 import { ensureNotificationPermission, isDesktop } from "../../lib/desktop";
@@ -1193,14 +1194,12 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
 
   async function save() {
     try {
-      await fetch(`${getApiBase()}/users/@me/profile`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ bio, banner_color: bannerColor, custom_status: status, profile_theme: profileTheme, top_songs: cleanSongs(topSongs) }),
-      });
+      // api.updateProfile throws on a non-OK answer, so a 400 (e.g. a field over the
+      // server's length limit) shows the server's message instead of "Profile saved".
+      await api.updateProfile(token, { bio, banner_color: bannerColor, custom_status: status, profile_theme: profileTheme, top_songs: cleanSongs(topSongs) });
       onToast("Profile saved", "success");
-    } catch {
-      onToast("Failed to save", "error");
+    } catch (err) {
+      onToast(errorMessage(err, "Failed to save"), "error");
     }
   }
 
@@ -1258,6 +1257,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
             <input
               value={status}
               onChange={(e) => setStatus(e.target.value)}
+              maxLength={128}
               placeholder="Building something cool..."
               className="w-full rounded px-3 py-2 text-sm outline-none"
               style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
@@ -1267,6 +1267,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
+              maxLength={500}
               placeholder="Tell people about yourself..."
               rows={4}
               className="w-full rounded px-3 py-2 text-sm outline-none resize-none"
