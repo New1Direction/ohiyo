@@ -197,3 +197,35 @@ test("item 8: a one-to-one DM carries no Experimental label or group caveat", ()
   }
   assert.match(banner(chat("dm", true, false)), /Switched to end-to-end encrypted\./);
 });
+
+// I1: no Edit action for one's own decrypted message while the lock is off.
+function ownMessage(e2eEnabled: boolean, decrypted: boolean): string {
+  const me = { id: "u1", username: "ana", display_name: "Ana", avatar_url: null };
+  return renderChatPane({
+    channel: { id: "c1", server_id: null, name: "chat", channel_type: "dm", position: 0, topic: null, created_at: 0 },
+    messages: [
+      { id: "m1", channel_id: "c1", author: me, content: "meet at noon", created_at: 1, edited_at: null, reactions: [], ...(decrypted ? { _encrypted: true } : {}) },
+    ],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s },
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    onEditMessage() {},
+    isLoading: false,
+    e2eEnabled,
+    onToggleE2e() {},
+  });
+}
+
+const hasEditButton = (html: string) => /<button[^>]*aria-label="Edit message"/.test(html);
+
+test("item I1: no Edit for a decrypted message while the lock is off", () => {
+  assert.equal(hasEditButton(ownMessage(false, true)), false);
+});
+
+test("item I1: Edit stays for a decrypted message in encrypted mode, and for plain messages", () => {
+  assert.equal(hasEditButton(ownMessage(true, true)), true);
+  assert.equal(hasEditButton(ownMessage(false, false)), true);
+});

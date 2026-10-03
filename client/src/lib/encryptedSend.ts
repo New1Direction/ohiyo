@@ -115,6 +115,13 @@ export function createDistributionTracker(): DistributionTracker {
   };
 }
 
+/** Why an edit must not be sent (the toast to show), or null when it may go. Editing a
+ *  message that was decrypted on this device re-sends its text; outside encrypted mode
+ *  that text would go out unencrypted. */
+export function editBlockReason(message: { _encrypted?: boolean } | undefined, encryptedMode: boolean): string | null {
+  return message?._encrypted && !encryptedMode ? "Turn encryption back on to edit this message." : null;
+}
+
 /** Why a forward must not be sent (the toast to show), or null when it may go. A forward
  *  is re-sent as plaintext, so it must never cross an encryption boundary: not into a
  *  chat in encrypted mode, and not out of a message that was decrypted on this device. */

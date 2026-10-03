@@ -22,7 +22,7 @@ import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
 import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode } from "../lib/linkPreviews";
 import { loadDraft, persistDraft } from "../lib/drafts";
-import { pendingAttachmentsToKeep, REATTACH_MESSAGE } from "../lib/encryptedSend";
+import { editBlockReason, pendingAttachmentsToKeep, REATTACH_MESSAGE } from "../lib/encryptedSend";
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 
@@ -1739,7 +1739,7 @@ export function ChatPane({
                                   <Icon name="bookmark" size={16} />
                                 </button>
                               )}
-                              {g.isMe && onEditMessage && !msg.poll && !msg.id.startsWith("temp-") && (
+                              {g.isMe && onEditMessage && !msg.poll && !msg.id.startsWith("temp-") && editBlockReason(msg, e2eEnabled) === null && (
                                 <button type="button" aria-label="Edit message" title="Edit" onClick={(e) => { e.stopPropagation(); setEditingId(msg.id); setEditText(msg.content); }}>
                                   <Icon name="edit" size={16} />
                                 </button>
@@ -1952,7 +1952,7 @@ export function ChatPane({
           onSave={() => { handleSave(actionSheetMsg.id); setActionSheetMsg(null); }}
           onHide={() => { hideMessageForMe(actionSheetMsg.id); setActionSheetMsg(null); }}
           onReport={onReportMessage ? () => { onReportMessage(actionSheetMsg); setActionSheetMsg(null); } : undefined}
-          onEdit={onEditMessage && !actionSheetMsg.poll ? () => { setEditingId(actionSheetMsg.id); setEditText(actionSheetMsg.content); setActionSheetMsg(null); } : undefined}
+          onEdit={onEditMessage && !actionSheetMsg.poll && editBlockReason(actionSheetMsg, e2eEnabled) === null ? () => { setEditingId(actionSheetMsg.id); setEditText(actionSheetMsg.content); setActionSheetMsg(null); } : undefined}
           onDelete={onDeleteMessage ? () => { setConfirmDeleteId(actionSheetMsg.id); setActionSheetMsg(null); } : undefined}
           onClose={() => setActionSheetMsg(null)}
         />

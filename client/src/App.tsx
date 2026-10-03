@@ -59,7 +59,7 @@ import {
 } from "./lib/senderKeys";
 import { formatDuration, messageExpiry } from "./lib/disappearing";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
-import { createDistributionTracker, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
+import { createDistributionTracker, editBlockReason, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
 import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
@@ -1751,6 +1751,11 @@ function MainApp({
     const ch = selectedChannelRef.current;
     const cid = ch?.id;
     if (!cid) return;
+    const blocked = editBlockReason(messages.find((m) => m.id === messageId), e2eChannelsRef.current.has(cid));
+    if (blocked) {
+      toast(blocked, "error");
+      return;
+    }
     try {
       let wire = content;
       // E2E: encrypt the edit on-device too — editing must NOT leak plaintext to the
