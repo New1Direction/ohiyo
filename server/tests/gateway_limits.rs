@@ -1,6 +1,7 @@
 //! S-M11: gateway sockets are bounded. The transport refuses any inbound message or frame
 //! over 256 KiB, one user holds at most 20 live sockets (the 21st is closed at once with
-//! 1008 and gets no Ready), and logging out everywhere closes the user's live sockets.
+//! 1008 and gets no Ready), and logging out everywhere closes the user's live sockets
+//! and voids gateway tickets issued before it.
 
 mod common;
 
@@ -66,4 +67,22 @@ async fn logout_everywhere_closes_the_users_live_sockets() {
         srv.state.sessions.read().unwrap().contains_key(&bob.id),
         "other users' sockets stay"
     );
+}
+
+#[tokio::test]
+async fn a_ticket_issued_before_logout_everywhere_is_refused() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("staleticket", "password123").await;
+    let ticket = Gateway::issue_ticket(&srv, &alice.token).await;
+
+    let res = srv
+        .post_empty_auth("/api/v1/auth/logout-everywhere", &alice.token)
+        .await;
+    assert_eq!(res.status(), 204);
+
+    let head = Gateway::open(&srv, &ticket)
+        .await
+        .err()
+        .expect("the stale ticket must not open a socket");
+    assert!(head.starts_with("HTTP/1.1 401"), "{head}");
 }

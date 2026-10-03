@@ -31,8 +31,24 @@ pub struct WsQuery {
 
 /// Short-lived, single-use gateway tickets so the long-lived JWT never rides in
 /// the WebSocket URL (which leaks into proxy/access logs, devtools, referrers).
-pub type WsTickets = Arc<Mutex<HashMap<String, (String, Instant)>>>;
+pub type WsTickets = Arc<Mutex<HashMap<String, WsTicket>>>;
 const TICKET_TTL: Duration = Duration::from_secs(30);
+
+/// Who a ticket opens a socket for, and the user's token version when it was issued:
+/// "log out everywhere" bumps the version, which voids tickets issued before it.
+pub struct WsTicket {
+    user_id: String,
+    token_version: i64,
+    issued: Instant,
+}
+
+/// The user's current token version (None if the user is gone).
+async fn current_token_version(state: &AppState, user_id: &str) -> sqlx::Result<Option<i64>> {
+    sqlx::query_scalar("SELECT token_version FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+}
 
 pub fn new_ws_tickets() -> WsTickets {
     Arc::new(Mutex::new(HashMap::new()))
@@ -48,16 +64,27 @@ pub struct WsTicketResponse {
 pub async fn create_ws_ticket(
     auth: auth::AuthUser,
     State(state): State<AppState>,
-) -> Json<WsTicketResponse> {
+) -> Result<Json<WsTicketResponse>, (StatusCode, String)> {
+    let token_version = current_token_version(&state, &auth.0)
+        .await
+        .map_err(crate::api::error::internal)?
+        .ok_or((StatusCode::UNAUTHORIZED, "unknown user".to_owned()))?;
     let ticket: String = rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
         .take(32)
         .map(char::from)
         .collect();
     let mut tickets = state.tickets.lock().unwrap_or_else(|e| e.into_inner());
-    tickets.retain(|_, (_, issued)| issued.elapsed() < TICKET_TTL); // prune expired
-    tickets.insert(ticket.clone(), (auth.0, Instant::now()));
-    Json(WsTicketResponse { ticket })
+    tickets.retain(|_, t| t.issued.elapsed() < TICKET_TTL); // prune expired
+    tickets.insert(
+        ticket.clone(),
+        WsTicket {
+            user_id: auth.0,
+            token_version,
+            issued: Instant::now(),
+        },
+    );
+    Ok(Json(WsTicketResponse { ticket }))
 }
 
 // user_id → (connection_id → sender). A user can be connected from several devices /
@@ -317,13 +344,20 @@ pub async fn ws_handler(
     State(state): State<AppState>,
 ) -> Response {
     // One-time ticket (consumed on use), so no long-lived token sits in the URL.
-    let user_id = {
+    let ticket = {
         let mut tickets = state.tickets.lock().unwrap_or_else(|e| e.into_inner());
         match tickets.remove(&q.ticket) {
-            Some((uid, issued)) if issued.elapsed() < TICKET_TTL => uid,
+            Some(t) if t.issued.elapsed() < TICKET_TTL => t,
             _ => return (StatusCode::UNAUTHORIZED, "Invalid or expired ticket").into_response(),
         }
     };
+    // A ticket issued before "log out everywhere" is void: the version has moved on.
+    match current_token_version(&state, &ticket.user_id).await {
+        Ok(Some(v)) if v == ticket.token_version => {}
+        Ok(_) => return (StatusCode::UNAUTHORIZED, "Invalid or expired ticket").into_response(),
+        Err(e) => return crate::api::error::internal(e).into_response(),
+    }
+    let user_id = ticket.user_id;
     ws.max_message_size(MAX_WS_TRANSPORT_BYTES)
         .max_frame_size(MAX_WS_TRANSPORT_BYTES)
         .on_upgrade(move |socket| handle_socket(socket, user_id, state))

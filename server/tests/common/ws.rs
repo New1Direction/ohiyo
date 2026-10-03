@@ -22,13 +22,25 @@ pub struct Gateway {
 impl Gateway {
     /// Exchange `token` for a one-time ticket and open `/gateway` with it.
     pub async fn connect(srv: &TestServer, token: &str) -> Self {
+        let ticket = Self::issue_ticket(srv, token).await;
+        Self::open(srv, &ticket)
+            .await
+            .unwrap_or_else(|head| panic!("gateway upgrade failed: {head}"))
+    }
+
+    /// Exchange `token` for a one-time gateway ticket.
+    pub async fn issue_ticket(srv: &TestServer, token: &str) -> String {
         let ticket: Value = srv
             .post_empty_auth("/api/v1/ws/ticket", token)
             .await
             .json()
             .await
             .expect("ticket json");
-        let ticket = ticket["ticket"].as_str().expect("ticket").to_owned();
+        ticket["ticket"].as_str().expect("ticket").to_owned()
+    }
+
+    /// Open `/gateway` with a ticket. On a refused upgrade, returns the response head.
+    pub async fn open(srv: &TestServer, ticket: &str) -> Result<Self, String> {
         let addr = srv.base.trim_start_matches("http://").to_owned();
         let mut stream = TcpStream::connect(&addr).await.expect("connect gateway");
         let request = format!(
@@ -51,12 +63,11 @@ impl Gateway {
             gw.read_more().await;
         };
         let head = String::from_utf8_lossy(&gw.buf[..header_end]).to_string();
-        assert!(
-            head.starts_with("HTTP/1.1 101"),
-            "gateway upgrade failed: {head}"
-        );
+        if !head.starts_with("HTTP/1.1 101") {
+            return Err(head);
+        }
         gw.buf.drain(..header_end);
-        gw
+        Ok(gw)
     }
 
     async fn read_more(&mut self) {
