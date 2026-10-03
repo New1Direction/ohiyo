@@ -62,7 +62,7 @@ box; server channels are stored like any chat server's.
   (`infra/livekit/`) for larger rooms.
 - **Plugins** — third-party plugins run in a **Web Worker sandbox** with no DOM and no
   token access. Network APIs are removed inside the worker and the web build's CSP
-  blocks what remains; on desktop the sandbox is the only barrier, so install only
+  limits what remains; on desktop the sandbox is the only barrier, so install only
   plugins you trust. See `client/src/plugins/`.
 - **Design** — the **Daybreak** light theme (cream + coral, Quicksand + Inter) and a
   **Dusk** dark theme, with a real motion system and reduced-motion support.
@@ -176,6 +176,13 @@ We would rather you know these than find them:
 - **Group encryption is experimental.** It is Ohiyo's own sender-key design, not
   Signal's, and it can miss messages sent while a member was offline.
 - **Not end-to-end encrypted:** server channels, polls, and watch-party links.
+- **Signing out removes readable history from that device.** An encrypted message can
+  be decrypted only once, so the app keeps a readable copy on the device. Signing out
+  of your last account there removes those copies (after a confirmation), and they
+  cannot be decrypted on that device again. Your other devices are not affected.
+- **One account per browser profile.** Encryption keys are stored per browser profile,
+  not per account. Signing in to a second account in the same profile reuses the first
+  account's keys and breaks its sessions; use a separate profile for each account.
 - **No external audit yet.** One-to-one chat uses a community TypeScript port of the
   Signal Protocol; the group scheme, voice keys, backup and desktop vault are our own
   constructions.

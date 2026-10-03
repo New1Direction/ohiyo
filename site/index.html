@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#10100f" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Ohiyo — the encrypted home for your people" />
-<meta property="og:description" content="Discord-like ease, private-by-design. E2E content, self-host/export ownership, and honest voice visibility." />
+<meta property="og:description" content="Discord-like ease, private-by-design. End-to-end encrypted DMs and group chats, self-host/export ownership, and honest voice visibility." />
 <meta property="og:image" content="https://ohiyo.gg/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
@@ -50,18 +50,18 @@
 
 <!-- HERO -->
 <header class="hero" id="top"><div class="wrap">
-  <span class="pill reveal">🔒 E2E content · export ownership · self-hostable by design</span>
+  <span class="pill reveal">🔒 E2E DMs &amp; groups · export ownership · self-hostable by design</span>
   <div class="reveal"><span class="mascot"><img class="logo" src="kikka.svg" alt="Kikka, the Ohiyo chinchilla" /></span></div>
   <div class="wordmark"><span class="wm-l">o</span><span class="wm-l hi">H</span><span class="wm-l hi">i</span><span class="wm-l">Y</span><span class="wm-l">o</span></div>
   <h1 class="reveal"><span class="serif-i grad">Discord-like</span> ease. <span class="serif-i">Private-by-design</span> ownership.</h1>
-  <p class="sub reveal">The warm, free place for your people — servers, voice, video, 4K screen-share — with E2E content, exportable community homes, and honest call visibility. Open source. Yours to host.</p>
+  <p class="sub reveal">The warm, free place for your people — servers, voice, video, 4K screen-share — with end-to-end encrypted DMs and group chats, exportable community homes, and honest call visibility. Open source. Yours to host.</p>
   <div class="cta-row reveal">
     <a class="btn solid" href="https://app.ohiyo.gg" rel="noopener">Open in your browser →</a>
     <a class="btn ghost download-primary" href="#download">Download the app</a>
     <a class="btn ghost" href="#host">Self-host</a>
   </div>
   <div class="trust reveal">
-    <span><b>✓</b> E2E content</span>
+    <span><b>✓</b> E2E DMs &amp; groups</span>
     <span><b>✓</b> Free forever — no Nitro</span>
     <span><b>✓</b> Self-hostable, AGPL</span>
     <span><b>✓</b> Built in Rust</span>
@@ -212,7 +212,7 @@
       <span class="eyebrow reveal">Under the hood</span>
       <h2 class="reveal">A cozy room with a <span class="serif-i grad">steel door.</span></h2>
       <p class="lede reveal">Warm inside, sealed shut. We didn't hand-roll the hard parts — 1:1 messaging rides the Signal Protocol's Double Ratchet, and encrypted conversations reach the server only as ciphertext.</p>
-      <p class="sec-note reveal">The server moves <b>sealed envelopes</b> between devices, enforces membership, and stores nothing it can read — proven by a Rust integration suite that shows a removed member loses access and a pinned identity can't be silently swapped.</p>
+      <p class="sec-note reveal">For encrypted conversations the server moves <b>sealed envelopes</b> between devices, enforces membership, and stores only ciphertext — backed by a Rust integration suite that shows a removed member loses access.</p>
       <p class="sec-note reveal"><a href="threat-model.html">Read the public privacy threat model →</a></p>
     </div>
     <div class="sec-flow reveal">
@@ -232,12 +232,12 @@
     <table class="cmp">
       <thead><tr><th scope="col"><span class="sr-only">Feature</span></th><th scope="col" class="us">Ohiyo</th><th scope="col">Discord</th></tr></thead>
       <tbody>
-        <tr><td>End-to-end encrypted DMs &amp; groups</td><td class="us-col"><span class="yes">✓</span> Signal Protocol</td><td class="them-col"><span class="no">✕</span> plaintext on servers</td></tr>
+        <tr><td>End-to-end encrypted DMs &amp; groups</td><td class="us-col"><span class="yes">✓</span> opt-in · Signal Protocol for 1:1</td><td class="them-col"><span class="no">✕</span> plaintext on servers</td></tr>
         <tr><td>The full feature set</td><td class="us-col"><span class="yes">✓</span> everything free</td><td class="them-col"><span class="no">✕</span> Nitro subscription</td></tr>
         <tr><td>Launch your own server</td><td class="us-col"><span class="yes">✓</span> one tap, &lt; a Nitro</td><td class="them-col"><span class="no">✕</span> not a thing</td></tr>
         <tr><td>Self-hostable &amp; open source</td><td class="us-col"><span class="yes">✓</span> single binary, AGPL</td><td class="them-col"><span class="no">✕</span> closed SaaS</td></tr>
         <tr><td>Disappearing messages &amp; dead-man switch</td><td class="us-col"><span class="yes">✓</span> built in</td><td class="them-col"><span class="no">✕</span> none</td></tr>
-        <tr><td>Reads your data to monetize it</td><td class="us-col"><span class="yes">✓</span> can't — blind server</td><td class="them-col"><span class="no">✕</span> analytics &amp; ads</td></tr>
+        <tr><td>Reads your data to monetize it</td><td class="us-col"><span class="yes">✓</span> never — no ads, no data sales</td><td class="them-col"><span class="no">✕</span> analytics &amp; ads</td></tr>
       </tbody>
     </table>
   </div>

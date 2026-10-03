@@ -34,14 +34,14 @@
   <h2>What we collect</h2>
   <ul>
     <li><b>Account data:</b> username, display name, password hash, avatar/profile details, linked-device records, sessions, roles, server membership, invites, preferences, and similar app state.</li>
-    <li><b>Encrypted content:</b> message ciphertext, encrypted group/key-backup blobs, file metadata, uploaded files/attachments, emoji, server icons, and other content needed to deliver the service.</li>
+    <li><b>Content:</b> messages (as ciphertext for end-to-end encrypted DMs and group chats; as readable text for server channels and for conversations where encryption is off), encrypted group/key-backup blobs, file metadata, uploaded files/attachments, emoji, server icons, and other content needed to deliver the service.</li>
     <li><b>Operational data:</b> IP-derived rate-limit keys, request metadata, logs, crash/error details, abuse-prevention signals, and infrastructure metrics needed to run and secure the service.</li>
     <li><b>Push notification data:</b> if you enable push, the relay stores device endpoints/tokens, recipient ids, platform type, and delivery timestamps. Push payloads are content-free: they should say only that activity exists, not message text, filenames, channel names, invite codes, or E2E keys.</li>
     <li><b>Discord import data:</b> if you use Discord import, uploaded/staged import archives and mapped metadata are processed to perform the import. Bot tokens and import internals are treated as private operational data.</li>
   </ul>
 
   <h2>What we cannot read by design</h2>
-  <p>Ohiyo uses end-to-end encryption for private message content. The hosted server stores and relays ciphertext; it does not receive the plaintext for encrypted DMs/groups/calls. Some metadata remains necessary to operate the product, such as usernames, server/channel membership, timestamps, routing information, file records, and moderation/admin state.</p>
+  <p>Ohiyo offers end-to-end encryption for DMs and group chats, turned on per conversation. For those conversations the hosted server stores and relays ciphertext and does not receive the plaintext. Server channels, polls, and conversations where encryption is off are stored on the server in readable form. Some metadata remains necessary to operate the product, such as usernames, server/channel membership, timestamps, routing information, file records, and moderation/admin state.</p>
 
   <h2>How we use data</h2>
   <ul>

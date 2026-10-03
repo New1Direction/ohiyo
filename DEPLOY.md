@@ -92,8 +92,9 @@ Login, registration and other limits are keyed on the client's address.
 
 ### Backups — set this up before you have real users
 
-The `/data` volume holds the SQLite DB: **all** message ciphertext *and* the
-encrypted `key_backups` blobs. Losing it is unrecoverable, so back it up.
+The `/data` volume holds the SQLite DB: **all** messages (ciphertext for encrypted DMs
+and group chats, readable text for everything else) *and* the encrypted `key_backups`
+blobs. Losing it is unrecoverable, so back it up.
 
 - **Fly volume snapshots (baseline, automatic).** Fly snapshots every volume
   daily and keeps them ~5 days by default. Extend retention and *practice a
