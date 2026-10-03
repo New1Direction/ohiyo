@@ -82,12 +82,13 @@ const BOOTSTRAP = `
     log: function () { post("log", Array.prototype.slice.call(arguments).map(String).join(" ")); },
   };
   // Strip all ambient I/O so a sandboxed plugin literally cannot phone home.
-  // These globals live on WorkerGlobalScope.prototype, so we overwrite the
-  // OWNING prototype property AND pin a non-configurable own shadow on self —
-  // both bare access (\`fetch(...)\`) and prototype access (self.__proto__.fetch)
-  // then resolve to undefined, and the originals become unreachable.
-  function nuke(name) {
-    var o = self;
+  // These globals live on WorkerGlobalScope.prototype (and WorkerNavigator.prototype),
+  // so we overwrite the OWNING prototype property AND pin a non-configurable own shadow
+  // on the object — both bare access (\`fetch(...)\`) and prototype access
+  // (self.__proto__.fetch) then resolve to undefined, and the originals become
+  // unreachable. Accessors such as navigator.locks can't be removed by assignment.
+  function nuke(target, name) {
+    var o = target;
     while (o) {
       if (Object.prototype.hasOwnProperty.call(o, name)) {
         try { Object.defineProperty(o, name, { value: undefined, writable: true, configurable: true }); }
@@ -95,11 +96,16 @@ const BOOTSTRAP = `
       }
       o = Object.getPrototypeOf(o);
     }
-    try { Object.defineProperty(self, name, { value: undefined, writable: false, configurable: false }); } catch (e) {}
+    try { Object.defineProperty(target, name, { value: undefined, writable: false, configurable: false }); } catch (e) {}
   }
-  var kill = ["fetch","XMLHttpRequest","WebSocket","WebSocketStream","EventSource","importScripts","Worker","SharedWorker","Request","Response","caches","indexedDB","BroadcastChannel","RTCPeerConnection","RTCDataChannel","WebTransport","FontFace","fonts"];
-  for (var i = 0; i < kill.length; i++) { nuke(kill[i]); }
-  try { if (self.navigator) self.navigator.sendBeacon = undefined; } catch (e) {}
+  // Notification: its icon fetch is allowed by the page's img-src. navigator.locks: a
+  // plugin holding the Signal key-setup lock would block initSignal forever.
+  var kill = ["fetch","XMLHttpRequest","WebSocket","WebSocketStream","EventSource","importScripts","Worker","SharedWorker","Request","Response","caches","indexedDB","BroadcastChannel","RTCPeerConnection","RTCDataChannel","WebTransport","FontFace","fonts","Notification"];
+  for (var i = 0; i < kill.length; i++) { nuke(self, kill[i]); }
+  if (self.navigator) {
+    var killNavigator = ["sendBeacon","locks","storage"];
+    for (var j = 0; j < killNavigator.length; j++) { nuke(self.navigator, killNavigator[j]); }
+  }
   function safe(fn, arg) { if (typeof fn === "function") { try { return fn(arg); } catch (e) { post("error", String((e && e.message) || e)); } } }
   self.onmessage = function (e) {
     var d = e.data || {};

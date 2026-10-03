@@ -29,7 +29,12 @@ const REMOVED = [
   "indexedDB",
   "FontFace",
   "fonts",
+  "Notification",
 ];
+
+// Like WorkerNavigator.prototype: locks and storage are getters (sendBeacon is window-only,
+// removed too in case a runtime adds it).
+const NAVIGATOR_REMOVED = ["sendBeacon", "locks", "storage"];
 
 let script: Blob | null = null;
 
@@ -46,7 +51,11 @@ class VmWorker {
     // Like WorkerGlobalScope.prototype.fonts: a getter for the worker's FontFaceSet.
     Object.defineProperty(scope, "fonts", { get: () => ({ add() {}, load() {} }), configurable: true, enumerable: true });
     const g = Object.create(scope) as Record<string, unknown>;
-    g.navigator = Object.create({ sendBeacon: () => true });
+    const navigatorProto = { sendBeacon: () => true };
+    for (const name of ["locks", "storage"]) {
+      Object.defineProperty(navigatorProto, name, { get: () => ({ request() {} }), configurable: true, enumerable: true });
+    }
+    g.navigator = Object.create(navigatorProto);
     g.postMessage = (data: unknown) => this.onmessage?.({ data });
     g.self = g;
     this.context = vm.createContext(g);
@@ -95,5 +104,12 @@ test("a sandboxed plugin can reach no network or messaging API", async () => {
       `${name} is still reachable through the prototype`,
     );
   }
-  assert.equal(vm.runInContext("typeof navigator.sendBeacon", ctx), "undefined");
+  for (const name of NAVIGATOR_REMOVED) {
+    assert.equal(vm.runInContext(`typeof navigator.${name}`, ctx), "undefined", `navigator.${name} is still reachable`);
+    assert.equal(
+      vm.runInContext(`typeof Object.getPrototypeOf(navigator).${name}`, ctx),
+      "undefined",
+      `navigator.${name} is still reachable through the prototype`,
+    );
+  }
 });
