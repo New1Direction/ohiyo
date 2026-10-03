@@ -36,6 +36,8 @@ fn is_public_ip(ip: IpAddr) -> bool {
         IpAddr::V6(v6) => {
             let s = v6.segments();
             !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast()
+                || (s[0] == 0x2001 && s[1] == 0) // Teredo 2001::/32
+                || s[..4] == [0x100, 0, 0, 0] // discard 100::/64
                 || (s[0] & 0xfe00) == 0xfc00 // unique-local fc00::/7
                 || (s[0] & 0xffc0) == 0xfe80 // link-local fe80::/10
                 || (s[0] == 0x2001 && s[1] == 0x0db8) // documentation 2001:db8::/32
@@ -44,15 +46,19 @@ fn is_public_ip(ip: IpAddr) -> bool {
     }
 }
 
-/// The IPv4 address inside an IPv4-mapped (::ffff:0:0/96), NAT64 (64:ff9b::/96) or
-/// 6to4 (2002::/16) IPv6 address.
+/// The IPv4 address inside an IPv4-mapped (::ffff:0:0/96), IPv4-compatible (::/96),
+/// NAT64 (64:ff9b::/96, and the local-use 64:ff9b:1::/48 read the same way, from the
+/// last 32 bits) or 6to4 (2002::/16) IPv6 address.
 fn embedded_ipv4(v6: Ipv6Addr) -> Option<Ipv4Addr> {
     if let Some(v4) = v6.to_ipv4_mapped() {
         return Some(v4);
     }
     let s = v6.segments();
     let o = v6.octets();
-    if s[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
+    if s[..6] == [0x64, 0xff9b, 0, 0, 0, 0]
+        || s[..6] == [0, 0, 0, 0, 0, 0]
+        || s[..3] == [0x64, 0xff9b, 1]
+    {
         return Some(Ipv4Addr::new(o[12], o[13], o[14], o[15]));
     }
     if s[0] == 0x2002 {
@@ -496,6 +502,58 @@ mod tests {
             "2002:c0a8:101:1::1", // 192.168.1.1
             "2002:c000:201::1",   // 192.0.2.1, documentation
         ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn ipv4_compatible_is_judged_by_its_embedded_ipv4_address() {
+        // ::/96 carries the IPv4 address in its last 32 bits.
+        for ip in [
+            "::127.0.0.1",
+            "::10.0.0.1",
+            "::169.254.169.254",
+            "::192.168.1.1",
+            "::100.64.0.1",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+        assert!(public("::8.8.8.8"));
+    }
+
+    #[test]
+    fn local_use_nat64_is_judged_by_its_embedded_ipv4_address() {
+        // 64:ff9b:1::/48, read like the well-known prefix: IPv4 in the last 32 bits.
+        for ip in [
+            "64:ff9b:1::127.0.0.1",
+            "64:ff9b:1::10.0.0.1",
+            "64:ff9b:1::169.254.169.254",
+            "64:ff9b:1:ffff:ffff:ffff:192.168.1.1",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+        assert!(public("64:ff9b:1::8.8.8.8"));
+        assert!(public("64:ff9b:1:ffff:ffff:ffff:8.8.8.8"));
+    }
+
+    #[test]
+    fn teredo_is_not_public() {
+        // 2001::/32, whatever it embeds.
+        for ip in [
+            "2001::",
+            "2001::1",
+            "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+            "2001:0:ffff:ffff:ffff:ffff:ffff:ffff",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+        assert!(public("2001:4860:4860::8888"), "outside 2001::/32");
+    }
+
+    #[test]
+    fn the_discard_prefix_is_not_public() {
+        // 100::/64.
+        for ip in ["100::", "100::1", "100::ffff:ffff:ffff:ffff"] {
             assert!(!public(ip), "{ip}");
         }
     }
