@@ -174,6 +174,42 @@ async fn registration_is_limited_to_10_an_hour_per_address_and_login_is_not() {
 }
 
 #[tokio::test]
+async fn a_configured_login_limit_of_3_refuses_the_4th_attempt_on_a_username() {
+    let srv = TestServer::start_with(|state| state.login_limit_per_username_per_minute = 3).await;
+    srv.register("fewtries", "password123").await;
+    let login = |password: &'static str| {
+        srv.post_json(
+            "/api/v1/auth/login",
+            json!({ "username": "fewtries", "password": password }),
+        )
+    };
+    for _ in 0..3 {
+        assert_eq!(login("wrong-guess").await.status(), 401);
+    }
+    assert_eq!(login("password123").await.status(), 429);
+}
+
+#[tokio::test]
+async fn a_login_limit_of_0_turns_the_per_username_limit_off() {
+    let srv = TestServer::start_with(|state| state.login_limit_per_username_per_minute = 0).await;
+    srv.register("manytries", "password123").await;
+    let login = |password: &'static str| {
+        srv.post_json(
+            "/api/v1/auth/login",
+            json!({ "username": "manytries", "password": password }),
+        )
+    };
+    for _ in 0..LOGIN_MAX_PER_USERNAME_PER_MIN + 5 {
+        assert_eq!(login("wrong-guess").await.status(), 401);
+    }
+    assert_eq!(
+        login("password123").await.status(),
+        200,
+        "only the per-address auth limit still applies"
+    );
+}
+
+#[tokio::test]
 async fn a_configured_registration_limit_of_3_refuses_the_4th() {
     let srv = TestServer::start_with(|state| state.register_limit_per_hour = 3).await;
     for i in 0..3 {

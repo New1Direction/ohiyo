@@ -64,6 +64,9 @@ pub struct AppState {
     /// Registrations allowed per hour per client address; 0 turns that limit off. Read
     /// once at startup from `OHIYO_REGISTER_LIMIT_PER_HOUR`.
     pub register_limit_per_hour: usize,
+    /// Login attempts allowed per minute per username; 0 turns that limit off. Read once
+    /// at startup from `OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE`.
+    pub login_limit_per_username_per_minute: usize,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
@@ -94,6 +97,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         started_at: types::now_unix(),
         gateway_idle_timeout: gateway::IDLE_TIMEOUT,
         register_limit_per_hour: api::auth::register_limit_from_env(),
+        login_limit_per_username_per_minute: api::auth::login_limit_from_env(),
     }
 }
 
@@ -482,6 +486,16 @@ mod config_tests {
         let state = build_state(pool);
         std::env::remove_var("OHIYO_REGISTER_LIMIT_PER_HOUR");
         assert_eq!(state.register_limit_per_hour, 3);
+    }
+
+    #[tokio::test]
+    async fn the_login_limit_is_read_into_state_at_startup() {
+        // The only test that touches this variable.
+        std::env::set_var("OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE", "4");
+        let pool = SqlitePool::connect_lazy("sqlite::memory:").unwrap();
+        let state = build_state(pool);
+        std::env::remove_var("OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE");
+        assert_eq!(state.login_limit_per_username_per_minute, 4);
     }
 
     #[test]

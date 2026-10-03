@@ -18,10 +18,30 @@ use crate::{
 /// shared NATs and legit retries; still throttles online password guessing.
 const AUTH_MAX_PER_MIN: usize = 40;
 
-/// Per-username cap on login attempts, whatever address they come from, so guessing
-/// one account's password from many addresses is throttled too. A side effect: anyone
-/// can lock a known username out of login for up to a minute.
-const LOGIN_MAX_PER_USERNAME_PER_MIN: usize = 10;
+/// Default per-username cap on login attempts a minute, whatever address they come from,
+/// so guessing one account's password from many addresses is throttled too. The check
+/// runs before the password is verified, so anyone who keeps sending attempts for a
+/// known username keeps it from logging in for as long as they continue; sessions that
+/// are already signed in are not affected. `OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE`
+/// changes it, and 0 turns it off.
+const DEFAULT_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE: usize = 10;
+
+/// The per-username login limit from `OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE`, read
+/// once at startup.
+pub fn login_limit_from_env() -> usize {
+    parse_login_limit(
+        std::env::var("OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE")
+            .ok()
+            .as_deref(),
+    )
+}
+
+/// A non-negative integer, 0 meaning no per-username login limit; the default when
+/// unset or unparseable.
+fn parse_login_limit(raw: Option<&str>) -> usize {
+    raw.and_then(|v| v.trim().parse().ok())
+        .unwrap_or(DEFAULT_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE)
+}
 
 /// Default registrations per hour per client address (IPv6: per /64, and ten times that
 /// per /48), on top of the shared auth limit. Accounts are otherwise cheap, and each one
@@ -372,11 +392,15 @@ pub async fn login(
 
     // Keyed only once the username exists, so made-up usernames can't mint limiter keys.
     // Exact username: usernames are case-sensitive, so this is one account's key.
-    if !state.rate.check_unauth(
-        &format!("login-user:{}", body.username),
-        LOGIN_MAX_PER_USERNAME_PER_MIN,
-        Duration::from_secs(60),
-    ) {
+    // 0 turns the per-username limit off (the per-address auth limit above still applies).
+    let login_limit = state.login_limit_per_username_per_minute;
+    if login_limit > 0
+        && !state.rate.check_unauth(
+            &format!("login-user:{}", body.username),
+            login_limit,
+            Duration::from_secs(60),
+        )
+    {
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
             "too many attempts — give it a moment and try again".into(),
@@ -673,6 +697,21 @@ mod client_ip_tests {
             (Some(""), 10),
         ] {
             assert_eq!(parse_register_limit(raw), limit, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn the_login_limit_comes_from_the_environment_with_a_default_of_10() {
+        for (raw, limit) in [
+            (None, 10),
+            (Some("3"), 3),
+            (Some(" 3 "), 3),
+            (Some("0"), 0),
+            (Some("garbage"), 10),
+            (Some("-1"), 10),
+            (Some(""), 10),
+        ] {
+            assert_eq!(parse_login_limit(raw), limit, "{raw:?}");
         }
     }
 
