@@ -21,8 +21,9 @@ fn ise<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
 const MAX_DEVICES_PER_USER: i64 = 10;
 
 /// Prekey-bundle fetches per minute: per caller, and per target user from all callers,
-/// so nobody can drain a user's one-time prekeys.
-const BUNDLE_FETCHES_PER_CALLER: usize = 30;
+/// so nobody can drain a user's one-time prekeys. A first message to a full 20-member
+/// group takes about 21 fetches, so the per-caller limit leaves room for several.
+const BUNDLE_FETCHES_PER_CALLER: usize = 120;
 const BUNDLE_FETCHES_PER_TARGET: usize = 60;
 const BUNDLE_FETCH_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
 

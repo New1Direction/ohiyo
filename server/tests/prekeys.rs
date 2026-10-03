@@ -1,4 +1,4 @@
-//! S-M5: one-time prekeys can't be drained. Bundle fetches are throttled to 30 a minute
+//! S-M5: one-time prekeys can't be drained. Bundle fetches are throttled to 120 a minute
 //! per caller and 60 a minute per target user, each one-time prekey is handed out at
 //! most once even under concurrent fetches, and a user can register at most 10 devices.
 
@@ -43,14 +43,24 @@ async fn fetch(srv: &TestServer, caller: &AuthOk, target: &AuthOk) -> reqwest::R
 #[tokio::test]
 async fn bundle_fetches_are_limited_per_caller() {
     let srv = TestServer::start().await;
-    let target = srv.register("bundletarget", "password123").await;
     let caller = srv.register("bundlecaller", "password123").await;
-    assert_eq!(publish(&srv, &target, 1, 0).await, 204);
 
-    for _ in 0..30 {
-        assert_eq!(fetch(&srv, &caller, &target).await.status(), 200);
+    // 120 a minute: enough for a first message to a full 20-member group many times
+    // over. Split across two targets, each within its own 60-a-minute limit.
+    for name in ["targetone", "targettwo"] {
+        let target = srv.register(name, "password123").await;
+        assert_eq!(publish(&srv, &target, 1, 0).await, 204);
+        for _ in 0..60 {
+            assert_eq!(fetch(&srv, &caller, &target).await.status(), 200);
+        }
     }
-    assert_eq!(fetch(&srv, &caller, &target).await.status(), 429);
+    let third = srv.register("targetthree", "password123").await;
+    assert_eq!(publish(&srv, &third, 1, 0).await, 204);
+    assert_eq!(
+        fetch(&srv, &caller, &third).await.status(),
+        429,
+        "a 121st fetch by one caller is throttled"
+    );
 }
 
 #[tokio::test]
