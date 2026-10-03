@@ -71,6 +71,12 @@ pub struct AuthOk {
 
 impl TestServer {
     pub async fn start() -> Self {
+        Self::start_with(|_| {}).await
+    }
+
+    /// Like [`TestServer::start`], letting the test adjust the application state (for
+    /// example, shorten a timeout) before the server is built around it.
+    pub async fn start_with(configure: impl FnOnce(&mut server::AppState)) -> Self {
         // One deterministic signing secret for the whole binary. Set before any
         // request is served so the `AuthUser` extractor (which reads the env at
         // request time) sees it. `Once` avoids a set_var race between parallel tests.
@@ -82,7 +88,8 @@ impl TestServer {
         let pool = server::db::connect(&db.url)
             .await
             .expect("connect + migrate test database");
-        let state = server::build_state(pool);
+        let mut state = server::build_state(pool);
+        configure(&mut state);
         let app = server::build_app(state.clone());
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")

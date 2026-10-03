@@ -159,6 +159,10 @@ const MAX_WS_FRAME_BYTES: usize = 65_536;
 /// default is 64 MiB). Anything bigger fails the read and ends the connection.
 const MAX_WS_TRANSPORT_BYTES: usize = 256 * 1024;
 
+/// A socket that sends nothing for three client heartbeats (the client sends one every
+/// 20 s: `HEARTBEAT_MS` in client/src/gateway.ts) is presumed half-open and closed.
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(3 * 20);
+
 /// Most live gateway sockets one user may hold across tabs and devices. A connection
 /// over the cap is closed straight away (policy violation) without a Ready.
 const MAX_CONNECTIONS_PER_USER: usize = 20;
@@ -409,10 +413,15 @@ async fn handle_socket(mut socket: WebSocket, user_id: String, state: AppState) 
         let msg = tokio::select! {
             // The forwarder only stops once the socket is closed or unwritable.
             _ = &mut send_task => break,
-            msg = ws_rx.next() => match msg {
-                Some(Ok(msg)) => msg,
+            msg = tokio::time::timeout(state.gateway_idle_timeout, ws_rx.next()) => match msg {
+                Ok(Some(Ok(msg))) => msg,
                 // Closed, or a read error such as a message over the transport cap.
-                _ => break,
+                Ok(_) => break,
+                // Nothing at all for three heartbeats: presume the socket is half-open.
+                Err(_) => {
+                    tracing::debug!("gateway: closing idle connection for {user_id}");
+                    break;
+                }
             },
         };
         match msg {

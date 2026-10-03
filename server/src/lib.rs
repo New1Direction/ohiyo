@@ -59,6 +59,8 @@ pub struct AppState {
     pub provisioner: std::sync::Arc<dyn provision::MachineProvisioner>,
     /// Unix timestamp when this process state was built; used for public status uptime.
     pub started_at: i64,
+    /// How long a gateway socket may send nothing before it is closed as half-open.
+    pub gateway_idle_timeout: std::time::Duration,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
@@ -87,6 +89,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         watch: gateway::new_watch_sessions(),
         provisioner,
         started_at: types::now_unix(),
+        gateway_idle_timeout: gateway::IDLE_TIMEOUT,
     }
 }
 
