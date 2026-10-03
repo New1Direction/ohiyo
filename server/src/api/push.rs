@@ -92,6 +92,7 @@ pub struct DispatchResult {
     pub disabled_devices: i64,
     pub skipped_missing_device: i64,
     pub skipped_missing_provider: i64,
+    pub skipped_invalid_endpoint: i64,
 }
 
 #[derive(Debug)]
@@ -113,6 +114,53 @@ fn public_device(row: PushDevice) -> PushDevice {
 
 fn valid_platform(platform: &str) -> bool {
     matches!(platform, "web" | "apns" | "fcm")
+}
+
+/// Web push services a `platform=web` endpoint may name exactly.
+const WEB_PUSH_HOSTS: &[&str] = &[
+    "fcm.googleapis.com",
+    "updates.push.services.mozilla.com",
+    "web.push.apple.com",
+];
+
+/// Web push services a `platform=web` endpoint may name any subdomain of.
+const WEB_PUSH_HOST_SUFFIXES: &[&str] = &[
+    ".push.services.mozilla.com",
+    ".notify.windows.com",
+    ".push.apple.com",
+];
+
+/// An `https` URL on a known web push service. The relay POSTs to whatever a device
+/// registers, so anything else would let a user point it at internal addresses.
+fn is_web_push_endpoint(endpoint: &str) -> bool {
+    let Ok(url) = url::Url::parse(endpoint) else {
+        return false;
+    };
+    if url.scheme() != "https" {
+        return false;
+    }
+    let Some(url::Host::Domain(host)) = url.host() else {
+        return false;
+    };
+    WEB_PUSH_HOSTS.contains(&host)
+        || WEB_PUSH_HOST_SUFFIXES
+            .iter()
+            .any(|suffix| host.len() > suffix.len() && host.ends_with(suffix))
+}
+
+/// APNs device tokens are hex; the token becomes part of the provider URL path.
+fn is_apns_token(token: &str) -> bool {
+    !token.is_empty() && token.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Whether the relay may deliver to `endpoint` on `platform`. Checked when a device
+/// registers and again at dispatch, for rows stored before the check existed.
+fn endpoint_allowed(platform: &str, endpoint: &str) -> bool {
+    match platform {
+        "web" => is_web_push_endpoint(endpoint),
+        "apns" => is_apns_token(endpoint),
+        _ => true,
+    }
 }
 
 fn env_truthy(name: &str) -> bool {
@@ -225,6 +273,17 @@ pub async fn register_device(
     }
     if endpoint.is_empty() || endpoint.len() > 2048 {
         return Err((StatusCode::BAD_REQUEST, "endpoint is required".into()));
+    }
+    if !endpoint_allowed(&platform, endpoint) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            if platform == "apns" {
+                "APNs device token must be hex"
+            } else {
+                "web push endpoint must be an https URL on a known push service"
+            }
+            .into(),
+        ));
     }
     if platform == "web"
         && (body.p256dh.as_deref().unwrap_or_default().is_empty()
@@ -466,6 +525,13 @@ pub async fn dispatch_queued(state: &AppState, limit: i64) -> Result<DispatchRes
             result.failed += 1;
             continue;
         };
+        // Skipped, not deleted: the device row stays as it is.
+        if !endpoint_allowed(platform, job.endpoint.as_deref().unwrap_or_default()) {
+            mark_failed(state, &job, now, "push endpoint not allowed", false, false).await?;
+            result.skipped_invalid_endpoint += 1;
+            result.failed += 1;
+            continue;
+        }
         let send_result = send_job(&http, &job, platform).await;
         match send_result {
             ProviderSendResult::Sent => {
