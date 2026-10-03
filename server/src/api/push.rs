@@ -729,26 +729,8 @@ async fn send_apns(http: &Client, job: &DeliveryJob) -> ProviderSendResult {
     let Some(token) = job.endpoint.as_deref() else {
         return ProviderSendResult::Failed(permanent("APNs token missing"));
     };
-    let mut header = Header::new(Algorithm::ES256);
-    header.kid = Some(key_id);
-    let encoding_key = match EncodingKey::from_ec_pem(p8.as_bytes()) {
-        Ok(key) => key,
-        Err(_) => {
-            return ProviderSendResult::MissingProvider("APNs private key invalid".to_owned())
-        }
-    };
-    let jwt = match jsonwebtoken::encode(
-        &header,
-        &ApnsClaims {
-            iss: team_id,
-            iat: now_unix(),
-        },
-        &encoding_key,
-    ) {
-        Ok(jwt) => jwt,
-        Err(_) => {
-            return ProviderSendResult::MissingProvider("APNs private key invalid".to_owned())
-        }
+    let Some(jwt) = apns_jwt(key_id, team_id, &p8, now_unix()) else {
+        return ProviderSendResult::MissingProvider("APNs private key invalid".to_owned());
     };
     let host = if env_truthy("OHIYO_APNS_SANDBOX") {
         "https://api.sandbox.push.apple.com"
@@ -792,6 +774,15 @@ async fn send_apns(http: &Client, job: &DeliveryJob) -> ProviderSendResult {
         }
         .to_owned(),
     })
+}
+
+/// The ES256 provider token APNs expects, signed with the `.p8` key: `kid` is the key
+/// id, `iss` the team id. None if the key can't sign.
+fn apns_jwt(key_id: String, team_id: String, p8: &str, iat: i64) -> Option<String> {
+    let mut header = Header::new(Algorithm::ES256);
+    header.kid = Some(key_id);
+    let encoding_key = EncodingKey::from_ec_pem(p8.as_bytes()).ok()?;
+    jsonwebtoken::encode(&header, &ApnsClaims { iss: team_id, iat }, &encoding_key).ok()
 }
 
 fn apns_payload(kind: &str) -> serde_json::Value {
@@ -899,15 +890,12 @@ fn fcm_service_account() -> Result<Option<FcmServiceAccount>, serde_json::Error>
     Ok(None)
 }
 
-async fn fcm_access_token(http: &Client, account: &FcmServiceAccount) -> Result<String, String> {
-    let token_uri = account
-        .token_uri
-        .as_deref()
-        .unwrap_or("https://oauth2.googleapis.com/token");
-    let now = now_unix();
+/// The RS256 assertion, signed with the service account key, that `token_uri` exchanges
+/// for an FCM access token.
+fn fcm_assertion(account: &FcmServiceAccount, token_uri: &str, now: i64) -> Result<String, String> {
     let mut header = Header::new(Algorithm::RS256);
     header.typ = Some("JWT".to_owned());
-    let assertion = jsonwebtoken::encode(
+    jsonwebtoken::encode(
         &header,
         &FcmClaims {
             iss: &account.client_email,
@@ -919,7 +907,15 @@ async fn fcm_access_token(http: &Client, account: &FcmServiceAccount) -> Result<
         &EncodingKey::from_rsa_pem(account.private_key.as_bytes())
             .map_err(|_| "FCM private key invalid".to_owned())?,
     )
-    .map_err(|_| "FCM JWT signing failed".to_owned())?;
+    .map_err(|_| "FCM JWT signing failed".to_owned())
+}
+
+async fn fcm_access_token(http: &Client, account: &FcmServiceAccount) -> Result<String, String> {
+    let token_uri = account
+        .token_uri
+        .as_deref()
+        .unwrap_or("https://oauth2.googleapis.com/token");
+    let assertion = fcm_assertion(account, token_uri, now_unix())?;
     let res = http
         .post(token_uri)
         .form(&[
@@ -1174,6 +1170,71 @@ mod tests {
         let err = outcome.expect_err("a stalled provider is an error");
         assert!(err.is_timeout(), "{err}");
         assert!(started.elapsed() >= std::time::Duration::from_secs(10));
+    }
+
+    // Keys generated for these tests only (`openssl genpkey`, PKCS#8 as Apple and Google
+    // issue them). They sign nothing anywhere else.
+    const TEST_ONLY_APNS_P8: &str =
+        include_str!("../../tests/fixtures/test-only-apns-es256-private.p8");
+    const TEST_ONLY_APNS_PUBLIC: &str =
+        include_str!("../../tests/fixtures/test-only-apns-es256-public.pem");
+    const TEST_ONLY_FCM_PRIVATE: &str =
+        include_str!("../../tests/fixtures/test-only-fcm-rs256-private.pem");
+    const TEST_ONLY_FCM_PUBLIC: &str =
+        include_str!("../../tests/fixtures/test-only-fcm-rs256-public.pem");
+
+    #[test]
+    fn apns_provider_token_is_es256_signed_with_the_p8_key() {
+        let jwt = apns_jwt(
+            "KEYID12345".to_owned(),
+            "TEAMID1234".to_owned(),
+            TEST_ONLY_APNS_P8,
+            1_700_000_000,
+        )
+        .expect("a PKCS#8 P-256 key signs");
+        let header = jsonwebtoken::decode_header(&jwt).unwrap();
+        assert_eq!(header.alg, Algorithm::ES256);
+        assert_eq!(header.kid.as_deref(), Some("KEYID12345"));
+        let mut validation = jsonwebtoken::Validation::new(Algorithm::ES256);
+        validation.validate_exp = false;
+        validation.required_spec_claims.clear();
+        let public =
+            jsonwebtoken::DecodingKey::from_ec_pem(TEST_ONLY_APNS_PUBLIC.as_bytes()).unwrap();
+        let claims = jsonwebtoken::decode::<serde_json::Value>(&jwt, &public, &validation)
+            .expect("the signature verifies with the matching public key")
+            .claims;
+        assert_eq!(claims["iss"], "TEAMID1234");
+        assert_eq!(claims["iat"], 1_700_000_000);
+    }
+
+    #[test]
+    fn fcm_assertion_is_rs256_signed_with_the_service_account_key() {
+        let account = FcmServiceAccount {
+            project_id: "test-project".to_owned(),
+            client_email: "push@test-project.iam.gserviceaccount.com".to_owned(),
+            private_key: TEST_ONLY_FCM_PRIVATE.to_owned(),
+            token_uri: None,
+        };
+        let token_uri = "https://oauth2.googleapis.com/token";
+        let now = now_unix();
+        let assertion = fcm_assertion(&account, token_uri, now).expect("a PKCS#8 RSA key signs");
+        let header = jsonwebtoken::decode_header(&assertion).unwrap();
+        assert_eq!(header.alg, Algorithm::RS256);
+        assert_eq!(header.typ.as_deref(), Some("JWT"));
+        let mut validation = jsonwebtoken::Validation::new(Algorithm::RS256);
+        validation.set_audience(&[token_uri]);
+        let public =
+            jsonwebtoken::DecodingKey::from_rsa_pem(TEST_ONLY_FCM_PUBLIC.as_bytes()).unwrap();
+        let claims = jsonwebtoken::decode::<serde_json::Value>(&assertion, &public, &validation)
+            .expect("the signature verifies with the matching public key")
+            .claims;
+        assert_eq!(claims["iss"], account.client_email);
+        assert_eq!(
+            claims["scope"],
+            "https://www.googleapis.com/auth/firebase.messaging"
+        );
+        assert_eq!(claims["iat"], now);
+        assert_eq!(claims["exp"], now + 3600);
     }
 
     #[test]
