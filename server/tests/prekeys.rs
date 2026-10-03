@@ -141,6 +141,36 @@ async fn a_user_can_register_at_most_10_devices() {
     );
 }
 
+/// Accounts that registered more than 10 devices before the cap existed keep working:
+/// each existing device can still replenish its keys, but no new device is added.
+#[tokio::test]
+async fn an_account_already_over_the_cap_can_still_refresh_its_devices() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("overcap", "password123").await;
+    for device_id in 1..=10 {
+        assert_eq!(publish(&srv, &alice, device_id, 1).await, 204);
+    }
+    let db = sqlx::SqlitePool::connect(srv.db_url()).await.unwrap();
+    sqlx::query(
+        "INSERT INTO signal_identity
+           (user_id, device_id, identity_key, registration_id, signed_prekey_id, signed_prekey, signed_prekey_sig, updated_at)
+         VALUES (?, 11, 'IDENTITY_11', 1011, 1, 'SPK_PUB', 'SPK_SIG', 1)",
+    )
+    .bind(&alice.id)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    for device_id in [5, 11] {
+        assert_eq!(
+            publish(&srv, &alice, device_id, 1).await,
+            204,
+            "device {device_id} republishes its keys"
+        );
+    }
+    assert_eq!(publish(&srv, &alice, 12, 1).await, 403, "a 12th device");
+}
+
 #[tokio::test]
 async fn unknown_targets_create_no_per_target_limiter_keys() {
     let srv = TestServer::start().await;

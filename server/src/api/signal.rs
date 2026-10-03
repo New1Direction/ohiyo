@@ -86,20 +86,28 @@ pub async fn publish_keys(
         return Err((StatusCode::CONFLICT, "conflict".into()));
     }
 
-    // Refreshing an existing device is always allowed; a new one only under the cap.
-    let other_devices: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM signal_identity WHERE user_id = ? AND device_id != ?",
-    )
-    .bind(&auth.0)
-    .bind(b.device_id)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(ise)?;
-    if other_devices >= MAX_DEVICES_PER_USER {
-        return Err((
-            StatusCode::FORBIDDEN,
-            "too many devices (max 10) — remove one first".into(),
-        ));
+    // Refreshing an existing device is always allowed, even on an account that registered
+    // more than the cap before it existed; a new one only under the cap.
+    let existing_device: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM signal_identity WHERE user_id = ? AND device_id = ?")
+            .bind(&auth.0)
+            .bind(b.device_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(ise)?;
+    if existing_device.is_none() {
+        let devices: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM signal_identity WHERE user_id = ?")
+                .bind(&auth.0)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(ise)?;
+        if devices >= MAX_DEVICES_PER_USER {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "too many devices (max 10) — remove one first".into(),
+            ));
+        }
     }
 
     // Atomic identity-key pin. identity_key is NOT in the DO UPDATE SET (a conflicting row
