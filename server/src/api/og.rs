@@ -12,20 +12,33 @@ use crate::{auth::AuthUser, AppState};
 /// unspecified/broadcast). Blocks cloud metadata at 169.254.169.254, localhost, and
 /// internal services.
 fn is_public_ip(ip: IpAddr) -> bool {
+    // An IPv4-mapped IPv6 address (::ffff:a.b.c.d) reaches the IPv4 host: judge it as one.
+    let ip = match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+        v4 => v4,
+    };
     match ip {
         IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
             !(v4.is_loopback()
                 || v4.is_private()
                 || v4.is_link_local()
                 || v4.is_unspecified()
                 || v4.is_broadcast()
-                || v4.octets()[0] == 0)
+                || v4.is_multicast()
+                || a == 0
+                || (a == 100 && (b & 0xc0) == 64) // shared address space 100.64.0.0/10
+                || (a == 192 && b == 0 && c == 0) // IETF protocol assignments 192.0.0.0/24
+                || (a == 198 && (b & 0xfe) == 18) // benchmarking 198.18.0.0/15
+                || a >= 240) // reserved 240.0.0.0/4
         }
         IpAddr::V6(v6) => {
             let s = v6.segments();
-            !(v6.is_loopback() || v6.is_unspecified()
+            !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast()
                 || (s[0] & 0xfe00) == 0xfc00 // unique-local fc00::/7
-                || (s[0] & 0xffc0) == 0xfe80) // link-local fe80::/10
+                || (s[0] & 0xffc0) == 0xfe80 // link-local fe80::/10
+                || (s[0] == 0x2001 && s[1] == 0x0db8) // documentation 2001:db8::/32
+                || (s[0] == 0x3fff && (s[1] & 0xf000) == 0)) // documentation 3fff::/20
         }
     }
 }
@@ -392,6 +405,98 @@ fn extract_attr(tag: &str, attr: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn public(ip: &str) -> bool {
+        is_public_ip(ip.parse().unwrap())
+    }
+
+    #[test]
+    fn ordinary_public_addresses_are_public() {
+        for ip in [
+            "8.8.8.8",
+            "1.1.1.1",
+            "100.63.255.255",
+            "100.128.0.0",
+            "198.20.0.1",
+        ] {
+            assert!(public(ip), "{ip}");
+        }
+        for ip in [
+            "2606:4700:4700::1111",
+            "2a00:1450:4001::200e",
+            "::ffff:8.8.8.8",
+        ] {
+            assert!(public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn ipv4_mapped_ipv6_is_judged_as_the_ipv4_address() {
+        for ip in [
+            "::ffff:127.0.0.1",
+            "::ffff:10.0.0.1",
+            "::ffff:169.254.169.254",
+            "::ffff:192.168.1.1",
+            "::ffff:100.64.0.1",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn reserved_ipv4_ranges_are_not_public() {
+        for ip in [
+            // Already blocked: loopback, private, link-local, unspecified, broadcast, 0/8.
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.0.1",
+            "169.254.169.254",
+            "0.0.0.0",
+            "255.255.255.255",
+            // Shared address space (carrier-grade NAT), 100.64.0.0/10.
+            "100.64.0.0",
+            "100.127.255.255",
+            // IETF protocol assignments, 192.0.0.0/24.
+            "192.0.0.0",
+            "192.0.0.255",
+            // Benchmarking, 198.18.0.0/15.
+            "198.18.0.0",
+            "198.19.255.255",
+            // Reserved, 240.0.0.0/4.
+            "240.0.0.1",
+            "254.255.255.255",
+            // Multicast, 224.0.0.0/4.
+            "224.0.0.1",
+            "239.255.255.255",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn reserved_ipv6_ranges_are_not_public() {
+        for ip in [
+            "::1",
+            "::",
+            // Unique local, fc00::/7.
+            "fc00::1",
+            "fdff:ffff::1",
+            // Link-local, fe80::/10.
+            "fe80::1",
+            "febf::1",
+            // Multicast, ff00::/8.
+            "ff02::1",
+            "ff0e::1",
+            // Documentation, 2001:db8::/32 and 3fff::/20.
+            "2001:db8::1",
+            "2001:db8:ffff::1",
+            "3fff::1",
+            "3fff:0fff::1",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
 
     #[test]
     fn detects_youtube_url_shapes() {
