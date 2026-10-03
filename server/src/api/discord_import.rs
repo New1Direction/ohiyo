@@ -39,9 +39,9 @@ pub struct DiscrawlArchiveBody {
     /// behind `OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT=1` because arbitrary host paths are
     /// appropriate for local/admin import tooling, not public multi-tenant traffic.
     pub db_path: String,
-    /// Optional base directory for downloaded Discrawl media. Relative
-    /// `message_attachments.media_path` values are resolved against this directory.
-    pub media_root: Option<String>,
+    // There is deliberately no `media_root` here: a request naming its own root could
+    // re-host any host file. The root comes from `OHIYO_DISCRAWL_MEDIA_ROOT`, and a
+    // `media_root` a client still sends is ignored.
     /// Optional Discord guild snowflake. If omitted, the first non-`@me` guild is used.
     pub guild_id: Option<String>,
     pub history: Option<HistoryWindow>,
@@ -993,8 +993,17 @@ pub async fn run_discrawl_import(
 fn read_opts(body: &DiscrawlArchiveBody) -> DiscrawlReadOptions {
     DiscrawlReadOptions {
         guild_id: body.guild_id.clone(),
-        media_root: body.media_root.as_ref().map(PathBuf::from),
+        media_root: discrawl_media_root(),
     }
+}
+
+/// Base directory for Discrawl-downloaded media in local imports, from
+/// `OHIYO_DISCRAWL_MEDIA_ROOT`. Unset or empty: attachments are not imported.
+fn discrawl_media_root() -> Option<PathBuf> {
+    std::env::var("OHIYO_DISCRAWL_MEDIA_ROOT")
+        .ok()
+        .filter(|root| !root.trim().is_empty())
+        .map(PathBuf::from)
 }
 
 fn now_ts() -> i64 {
@@ -1528,6 +1537,22 @@ mod tests {
         // Cleanup.
         tokio::fs::remove_file(&valid).await.ok();
         tokio::fs::remove_file(&secret).await.ok();
+    }
+
+    #[test]
+    fn local_import_takes_the_media_root_from_the_environment_not_the_request() {
+        // The only test that touches this variable.
+        let body: DiscrawlArchiveBody = serde_json::from_value(serde_json::json!({
+            "db_path": "import-uploads/discord/a.db",
+            "media_root": "/",
+        }))
+        .unwrap();
+        std::env::remove_var("OHIYO_DISCRAWL_MEDIA_ROOT");
+        assert_eq!(read_opts(&body).media_root, None, "unset: no media");
+        std::env::set_var("OHIYO_DISCRAWL_MEDIA_ROOT", "/srv/discrawl-media");
+        let configured = read_opts(&body).media_root;
+        std::env::remove_var("OHIYO_DISCRAWL_MEDIA_ROOT");
+        assert_eq!(configured, Some(PathBuf::from("/srv/discrawl-media")));
     }
 
     #[test]
