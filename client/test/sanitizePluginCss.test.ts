@@ -47,6 +47,39 @@ test("leaves benign CSS intact", () => {
   assert.equal(sanitizePluginCss(css), css);
 });
 
+// C-H7: these got past the old replace-based sanitizer. A stylesheet containing any
+// request-capable construct, a backslash (CSS escapes) or a comment-split keyword is
+// now rejected whole.
+test("rejects the escape and image-set bypasses", () => {
+  const bypasses = [
+    "a { background: u\\72l(https://evil.test/p.png); }", // u\72l(  → url(
+    "a { background: \\75rl(https://evil.test/p.png); }", // \75rl(  → url(
+    'a { background: image-set("https://evil.test/p.png" 1x); }',
+    'a { background: -webkit-image-set("https://evil.test/p.png" 1x); }',
+  ];
+  for (const css of bypasses) assert.equal(sanitizePluginCss(css), "", css);
+});
+
+test("rejects every listed construct, in any case, and after removing comments", () => {
+  const rejected = [
+    "a { color: red; } \\",
+    "@IMPORT 'https://evil.test/x.css';",
+    "a { background: URL(x.png); }",
+    "a { background: Image-Set('x.png' 1x); }",
+    '@font-face { font-family: x; src: local("x"); }',
+    'a { background: src("https://evil.test/p.png"); }',
+    "a { width: EXPRESSION(alert(1)); }",
+    "a { background: ur/**/l(https://evil.test/p.png); }",
+    "@im/* hidden */port 'https://evil.test/x.css';",
+  ];
+  for (const css of rejected) assert.equal(sanitizePluginCss(css), "", css);
+});
+
+test("a comment can't hide a url() by starting inside a string", () => {
+  const css = 'a { content: "/*"; background: url(https://evil.test/p.png); } /* */';
+  assert.ok(!/url\(/i.test(sanitizePluginCss(css)));
+});
+
 test("handles non-string input safely", () => {
   // @ts-expect-error exercising the runtime guard
   assert.equal(sanitizePluginCss(undefined), "");

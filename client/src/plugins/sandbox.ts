@@ -97,7 +97,7 @@ const BOOTSTRAP = `
     }
     try { Object.defineProperty(self, name, { value: undefined, writable: false, configurable: false }); } catch (e) {}
   }
-  var kill = ["fetch","XMLHttpRequest","WebSocket","EventSource","importScripts","Worker","SharedWorker","Request","Response","caches","indexedDB","BroadcastChannel","RTCPeerConnection","WebTransport"];
+  var kill = ["fetch","XMLHttpRequest","WebSocket","WebSocketStream","EventSource","importScripts","Worker","SharedWorker","Request","Response","caches","indexedDB","BroadcastChannel","RTCPeerConnection","RTCDataChannel","WebTransport"];
   for (var i = 0; i < kill.length; i++) { nuke(kill[i]); }
   try { if (self.navigator) self.navigator.sendBeacon = undefined; } catch (e) {}
   function safe(fn, arg) { if (typeof fn === "function") { try { return fn(arg); } catch (e) { post("error", String((e && e.message) || e)); } } }
@@ -137,25 +137,21 @@ function sanitizeEvent(event: PluginEventName, data: unknown): unknown {
   }
 }
 
-/** Remove CSS exfiltration / code-execution vectors — the one channel a
- *  networkless worker (or even a "trusted" custom-CSS plugin) could still abuse
- *  via the host applying its CSS. We do NOT try to tell "safe" url()s apart:
- *  even `url(data:...)` and same-origin/relative `url()` are exfiltration or
- *  request-forgery vectors, so EVERY url(...) is neutralized. We also strip any
- *  remaining @import, legacy IE `expression(...)`, and Gecko `-moz-binding`. */
+// Anything in plugin CSS that can make a request or run code, plus the backslash: CSS
+// escapes (`u\72l(`, `\75rl(`) spell these past any text match, so no escape is allowed.
+const UNSAFE_CSS = /\\|@import|@font-face|url\(|-webkit-image-set\(|image-set\(|src\(|expression\(/i;
+
+/** Plugin CSS, or "" if it contains anything that could exfiltrate data or run code —
+ *  the one channel a networkless worker (or a "trusted" custom-CSS plugin) could still
+ *  abuse via the host applying its CSS. Rejecting the whole stylesheet, rather than
+ *  rewriting parts of it, leaves nothing for an obfuscated form to slip through. Comments
+ *  are removed first, so the text checked is exactly the text returned. */
 export function sanitizePluginCss(css: string): string {
   if (typeof css !== "string") return "";
-  return css
-    // Any @import (url or string form) — drop the whole at-rule up to ; or EOL.
-    .replace(/@import[^;]*;?/gi, "")
-    // Every url(...) regardless of scheme (http(s), //, data:, blob:, relative).
-    .replace(/url\(\s*(?:'[^']*'|"[^"]*"|[^)]*)\)/gi, "none")
-    // A bare `url(` with no closing paren (truncated/obfuscated) — neutralize too.
-    .replace(/url\s*\(/gi, "none(")
-    // IE expression() — arbitrary JS in legacy engines.
-    .replace(/expression\s*\(/gi, "void(")
-    // Gecko XBL binding — can load remote bindings / scripts.
-    .replace(/-moz-binding\b/gi, "-x-disabled-binding");
+  const uncommented = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  if (UNSAFE_CSS.test(uncommented)) return "";
+  // Gecko XBL binding — can load remote bindings / scripts.
+  return uncommented.replace(/-moz-binding\b/gi, "-x-disabled-binding");
 }
 
 export class SandboxHost {
