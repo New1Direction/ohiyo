@@ -138,7 +138,7 @@ type ChatRow = { kind: "messages"; group: MsgGroup } | { kind: "activity"; notic
 // Shown wherever group encryption is offered (sender keys reach only connected members).
 const GROUP_E2E_NOTE = "Group encryption can miss messages sent while you were offline.";
 
-const DIRECT_VIDEO_EXT_RE =/\.(mp4|m4v|mov|webm|ogv|ogg)(?:$|[?#])/i;
+const DIRECT_VIDEO_EXT_RE = /\.(mp4|m4v|mov|webm|ogv|ogg)(?:$|[?#])/i;
 
 function extractSafeHttpUrlsFromText(text: string): string[] {
   const out: string[] = [];
