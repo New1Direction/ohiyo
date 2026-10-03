@@ -12,3 +12,11 @@ export function apiStatus(err: unknown): number | null {
 export function rateLimitMessage(err: unknown): string | null {
   return apiStatus(err) === 429 ? "Too many attempts. Try again in a few minutes." : null;
 }
+
+/** What to show when publishing this device's Signal keys was refused because the account
+ *  already has 10 devices (403), else null. */
+export function deviceLimitMessage(err: unknown): string | null {
+  return apiStatus(err) === 403
+    ? "This account already has the maximum of 10 devices. Remove one in Settings → Privacy & security → Linked devices, then reopen Ohiyo."
+    : null;
+}

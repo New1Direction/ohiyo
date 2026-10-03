@@ -14,6 +14,7 @@ import { recordKeySeen, setIdentityTrustBackend } from "./identityTrust";
 import { computeSafetyNumber } from "./safetyNumber";
 import { fanOut } from "./signalFanout";
 import { setItemEvictingPlaintextCache } from "./storageQuota";
+import { deviceLimitMessage } from "./apiErrors";
 
 const NS = "kc:sig:";
 const PREKEY_BATCH = 100;
@@ -240,7 +241,9 @@ async function initSignalLocked(token: string): Promise<void> {
     try {
       const { count } = await api.signalPrekeyCount(token, dev);
       if (count < PREKEY_LOW) await publish(token, dev);
-    } catch {
+    } catch (err) {
+      // The account's device limit refused our keys: the caller tells the user.
+      if (deviceLimitMessage(err) !== null) throw err;
       /* offline — not critical */
     }
   }

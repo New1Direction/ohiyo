@@ -66,6 +66,7 @@ import { getVaultStore, initVaultBackend } from "./lib/tauriVault";
 import { vaultLockedReason } from "./lib/vaultLock";
 import { clearLocalMessageData } from "./lib/logoutCleanup";
 import { saveEncryptedChannels } from "./lib/storageQuota";
+import { deviceLimitMessage } from "./lib/apiErrors";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -566,7 +567,12 @@ function MainApp({
         .catch(() => {});
       // Generate + publish Signal prekeys (forward-secret X3DH sessions). Idempotent;
       // makes every signed-in user Signal-capable. The DM-flow switch builds on this.
-      void initSignal(token);
+      // An account at its device limit gets told where to remove one.
+      void initSignal(token).catch((err: unknown) => {
+        const tooManyDevices = deviceLimitMessage(err);
+        if (tooManyDevices === null) throw err;
+        if (alive) toast(tooManyDevices, "error");
+      });
       // Sync appearance (theme + accent) from the server so it follows the user across
       // devices. Local appearance already painted at boot; this reconciles.
       void pullAppearance(token);
