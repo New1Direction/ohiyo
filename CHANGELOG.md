@@ -68,8 +68,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   /48. Login is limited per username, registration to 10 new accounts an hour per
   address (`OHIYO_REGISTER_LIMIT_PER_HOUR`), and invite previews, prekey fetches and
   template imports have limits of their own. An account can hold 10 devices.
-- **Abuse limits:** length caps on names, topics, bios, statuses and poll fields; the
-  message list page size is clamped to 100; gateway frame size and sockets per user are
+- **Abuse limits:** length caps on names, topics, bios, statuses, profile and poll
+  fields; a message carries at most 10 attachments; the message list page size is
+  clamped to 100; gateway frame size and sockets per user are
   capped and silent sockets are closed; password hashing runs off the async runtime
   with bounded concurrency; failed uploads no longer leave temp files behind.
 - **Sessions:** "log out everywhere" now closes open gateway sockets and voids gateway
@@ -84,12 +85,15 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   forwarding cannot carry decrypted content into the clear or plaintext into an
   encrypted chat; only DMs and group chats can enter encrypted mode; decrypted messages
   and encrypted chats show no link previews or embeds; encrypted attachment links must
-  point at this home's file store; polls are hidden in encrypted chats because they are
-  stored unencrypted.
-- **Local data (app):** logging out clears the decrypted-message cache, the unsent
-  outbox and drafts (keys are kept); drafts in encrypted chats stay in memory only;
-  cached decrypted messages are dropped once they expire; a full browser storage no
-  longer crashes the app.
+  point at this home's file store; polls and watch parties are hidden in encrypted
+  chats because they are not encrypted; a decrypted message cannot be edited while the
+  lock is off.
+- **Local data (app):** signing out of the last account on a device asks first, then
+  clears the decrypted-message cache, the unsent outbox and drafts (keys are kept); the
+  same data is cleared when a different account signs in there, and kept when a session
+  simply expires. Drafts in encrypted chats stay in memory only; cached decrypted
+  messages are dropped once they expire; a full browser storage evicts the oldest
+  cached messages instead of crashing the app.
 - **Attachments:** files attached before a chat became encrypted are removed from the
   composer, and an encrypted chat refuses to send a file that was not encrypted.
 - **Desktop vault:** a keychain or sealed-file failure now leaves the vault locked
@@ -111,6 +115,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   miss messages sent while a member was offline.
 - Deleting a message now also deletes its attachments when nothing else refers to them.
 - Message history pages no longer skip or repeat messages created in the same second.
+- The gateway now answers heartbeats, so an idle connection is no longer treated as
+  dead and reconnected every 40 seconds.
+- A call is no longer dropped when another of your devices disconnects.
+- A member with Manage Roles now creates roles just below their own highest role, so
+  they can manage what they create.
 - "Activate paid" for Instant Servers is replaced by a disabled "Paid plan: coming soon"
   control until billing exists.
 - The local Discord import no longer takes a media folder from the request, and import
@@ -125,6 +134,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- Turning on encryption in a DM right after a reload no longer fails with "your friend
+  needs to open Ohiyo".
+- One undecryptable message no longer makes a group chat load empty.
 - Production call smoke tests now skip the dev-only low-level peer-connection inspector
   while still verifying the live roster/UI behavior.
 
