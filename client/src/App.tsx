@@ -59,6 +59,7 @@ import {
 } from "./lib/senderKeys";
 import { formatDuration } from "./lib/disappearing";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
+import { createDistributionTracker, encryptOutgoing, EncryptedSendError } from "./lib/encryptedSend";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { initVaultBackend } from "./lib/tauriVault";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
@@ -407,6 +408,8 @@ function MainApp({
   e2eChannelsRef.current = e2eChannels;
   const dmUsersRef = useRef(dmUsers);
   dmUsersRef.current = dmUsers;
+  const dmsRef = useRef(dms);
+  dmsRef.current = dms;
   const dmKeyCacheRef = useRef<Map<string, CryptoKey>>(new Map());
   const dmPeerRef = useRef<Map<string, string>>(new Map()); // channelId → peer userId (learned from messages)
   const serversRef = useRef<ServerWithChannels[]>([]);
@@ -738,8 +741,9 @@ function MainApp({
   function syncGroupEpoch(channelId: string, epoch: number | undefined): void {
     void setGroupEpoch(channelId, epoch ?? 0).then((rotated) => {
       if (!rotated) return;
-      distributedGroupsRef.current.delete(channelId);
-      if (e2eChannelsRef.current.has(channelId)) void distributeMySenderKey(channelId);
+      senderKeyDistributionRef.current.forget(channelId);
+      // A failure here resurfaces on the next send, which awaits a fresh attempt.
+      if (e2eChannelsRef.current.has(channelId)) distributeMySenderKey(channelId).catch(() => {});
     });
   }
 
@@ -1323,13 +1327,12 @@ function MainApp({
   // Signal messages can only be decrypted once — the ratchet destroys the key — so we
   // cache the plaintext locally and reuse it on later reloads.
   // Group E2E (sender keys): distribute MY sender key to every other group member,
-  // encrypted pairwise so the server stays blind. Idempotent — once per group/session.
-  const distributedGroupsRef = useRef<Set<string>>(new Set());
+  // encrypted pairwise so the server stays blind. Once per group/session; concurrent
+  // callers await the same in-flight run, and a failure rejects them (then retries next time).
+  const senderKeyDistributionRef = useRef(createDistributionTracker());
   const distributeMySenderKey = useCallback(
-    async (channelId: string) => {
-      if (distributedGroupsRef.current.has(channelId)) return;
-      distributedGroupsRef.current.add(channelId);
-      try {
+    (channelId: string): Promise<void> =>
+      senderKeyDistributionRef.current.ensure(channelId, async () => {
         const recipients = await api.listRecipients(token, channelId);
         const myId = currentUserRef.current?.id;
         const skdm = await buildDistribution(channelId);
@@ -1340,11 +1343,40 @@ function MainApp({
           if (env) envelopes[r.id] = env;
         }
         if (Object.keys(envelopes).length) await api.distributeSenderKey(token, channelId, envelopes);
-      } catch {
-        distributedGroupsRef.current.delete(channelId); // allow a retry on next send
-      }
-    },
+      }),
     [token]
+  );
+
+  // The type of a channel we know about (open, DM list, or a joined server).
+  const channelTypeOf = useCallback((channelId: string): Channel["channel_type"] | undefined => {
+    if (selectedChannelRef.current?.id === channelId) return selectedChannelRef.current.channel_type;
+    const dm = dmsRef.current.find((d) => d.id === channelId);
+    if (dm) return dm.channel_type;
+    for (const s of serversRef.current) {
+      const c = s.channels.find((ch) => ch.id === channelId);
+      if (c) return c.channel_type;
+    }
+    return undefined;
+  }, []);
+
+  // Encrypt for a channel in encrypted mode: ciphertext or a thrown EncryptedSendError,
+  // never the plaintext. Groups use our sender key (distributed first), DMs Signal.
+  const encryptForChannel = useCallback(
+    (channelId: string, channelType: Channel["channel_type"] | undefined, padded: string): Promise<string> =>
+      encryptOutgoing(channelType, padded, {
+        ensureSenderKey: () => distributeMySenderKey(channelId),
+        groupEncrypt: async (pt) => {
+          const wire = await groupEncrypt(channelId, pt);
+          // No sender key on this device any more: mint and distribute one on the next try.
+          if (!wire) senderKeyDistributionRef.current.forget(channelId);
+          return wire;
+        },
+        pairwiseEncrypt: async (pt) => {
+          const peerId = dmPeerId(channelId);
+          return peerId ? encryptFor(token, peerId, pt) : null;
+        },
+      }),
+    [token, dmPeerId, distributeMySenderKey]
   );
 
   const decryptMessages = useCallback(
@@ -1449,7 +1481,8 @@ function MainApp({
           next.add(channelId);
           if (isGroup) {
             // Group: hand my sender key to every member so they can read my messages.
-            void distributeMySenderKey(channelId);
+            // A failure here resurfaces on the next send, which awaits a fresh attempt.
+            distributeMySenderKey(channelId).catch(() => {});
           } else {
             void getDmKey(channelId).then((k) => {
               if (!k) toast("Your friend hasn't set up encryption yet — they just need to open Ohiyo once.");
@@ -1493,29 +1526,21 @@ function MainApp({
       }
       try {
         const cid = selectedChannelRef.current!.id;
-        const isGroup = selectedChannelRef.current!.channel_type === "group_dm";
+        const channelType = selectedChannelRef.current!.channel_type;
         let wire = content;
         const privatePlaintext = packEncryptedMessagePlaintext(content, encryptedAttachments);
         // E2E: encrypt on this device before it leaves — the server only sees ciphertext.
+        // Group: one sender-key ciphertext every member decrypts. 1:1: a forward-secret
+        // Signal session (no legacy static-key fallback). Never plaintext: on failure the
+        // message stays in the failed state with Retry.
         if ((content || encryptedAttachments?.length) && e2eChannelsRef.current.has(cid)) {
-          if (isGroup) {
-            // Group: encrypt once with our sender key (every member decrypts the same
-            // ciphertext). Ensure our key is distributed first (idempotent).
-            await distributeMySenderKey(cid);
-            const g = await groupEncrypt(cid, padMessagePlaintext(privatePlaintext));
-            if (g) wire = g;
-          } else {
-            // 1:1: require a forward-secret Signal session. We no longer fall back to
-            // the legacy static-key scheme (zero forward secrecy) — and never to
-            // plaintext. If there's no session yet, abort so the message stays
-            // retryable once the peer publishes prekeys.
-            const peerId = dmPeerId(cid);
-            const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(privatePlaintext)) : null;
-            if (!sig) {
+          try {
+            wire = await encryptForChannel(cid, channelType, padMessagePlaintext(privatePlaintext));
+          } catch (err) {
+            if (err instanceof EncryptedSendError && err.reason === "no-signal-session") {
               toast("Can't send encrypted yet — your friend needs to open Ohiyo once to set up encryption.");
-              throw new Error("no-signal-session");
             }
-            wire = sig;
+            throw err;
           }
         }
         const created = await api.sendMessage(token, cid, wire, attachmentIds, replyTo);
@@ -1538,7 +1563,7 @@ function MainApp({
         setOutboxState(tempId, "failed");
       }
     },
-    [token, dmPeerId, toast, distributeMySenderKey, completeActivation]
+    [token, toast, encryptForChannel, completeActivation]
   );
 
   // Retry a failed/queued message using its stored send args.
@@ -1552,16 +1577,9 @@ function MainApp({
         let wire = send.content;
         const privatePlaintext = packEncryptedMessagePlaintext(send.content, send.encryptedAttachments as EncryptedAttachmentMeta[] | undefined);
         if ((send.content || send.encryptedAttachments?.length) && e2eChannelsRef.current.has(msg.channel_id)) {
-          // A group sender key exists only for group channels (else null → 1:1 path).
-          const g = await groupEncrypt(msg.channel_id, padMessagePlaintext(privatePlaintext));
-          if (g) {
-            wire = g;
-          } else {
-            const peerId = dmPeerId(msg.channel_id);
-            const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(privatePlaintext)) : null;
-            if (!sig) throw new Error("no-signal-session"); // stays failed/retryable
-            wire = sig;
-          }
+          // The channel's type picks group vs 1:1. Unknown (e.g. before Ready) or no
+          // ciphertext → throws, so the message stays failed and retryable.
+          wire = await encryptForChannel(msg.channel_id, channelTypeOf(msg.channel_id), padMessagePlaintext(privatePlaintext));
         }
         const created = await api.sendMessage(token, msg.channel_id, wire, send.attachmentIds, send.replyTo ?? null);
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
@@ -1577,7 +1595,7 @@ function MainApp({
         setOutboxState(msg.id, "failed");
       }
     },
-    [token, dmPeerId]
+    [token, encryptForChannel, channelTypeOf]
   );
 
   // Drop a failed message (it never reached the server).
@@ -1627,18 +1645,14 @@ function MainApp({
       // E2E: encrypt the edit on-device too — editing must NOT leak plaintext to the
       // server (mirrors handleSend; without this an edited E2E message went out in clear).
       if (content && e2eChannelsRef.current.has(cid)) {
-        if (ch?.channel_type === "group_dm") {
-          await distributeMySenderKey(cid);
-          const g = await groupEncrypt(cid, padMessagePlaintext(content));
-          if (g) wire = g;
-        } else {
-          const peerId = dmPeerId(cid);
-          const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(content)) : null;
-          if (!sig) {
+        try {
+          wire = await encryptForChannel(cid, ch?.channel_type, padMessagePlaintext(content));
+        } catch (err) {
+          if (err instanceof EncryptedSendError && err.reason === "no-signal-session") {
             toast("Can't edit encrypted yet — your friend needs to open Ohiyo once to set up encryption.");
             return;
           }
-          wire = sig;
+          throw err; // e.g. no group ciphertext: "Couldn't edit: …", nothing sent
         }
       }
       await api.editMessage(token, cid, messageId, wire);
