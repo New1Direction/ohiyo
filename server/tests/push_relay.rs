@@ -183,6 +183,7 @@ async fn web_push_endpoints_must_be_https_urls_on_known_push_services() {
         "https://web.push.apple.com/abc",
         "https://api.push.apple.com/abc",
         "https://FCM.googleapis.com/fcm/send/upper",
+        "https://jmt17.google.com/fcm/send/abc",
     ] {
         assert_eq!(register(endpoint).await.status(), 200, "{endpoint}");
     }
@@ -202,6 +203,7 @@ async fn web_push_endpoints_must_be_https_urls_on_known_push_services() {
         "https://push.apple.com/abc",
         "https://notify.windows.com/abc",
         "https://x.fcm.googleapis.com/abc",
+        "https://x.jmt17.google.com/abc",
         "not a url",
     ] {
         assert_eq!(register(endpoint).await.status(), 400, "{endpoint}");

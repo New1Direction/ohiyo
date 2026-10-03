@@ -119,6 +119,7 @@ fn valid_platform(platform: &str) -> bool {
 /// Web push services a `platform=web` endpoint may name exactly.
 const WEB_PUSH_HOSTS: &[&str] = &[
     "fcm.googleapis.com",
+    "jmt17.google.com",
     "updates.push.services.mozilla.com",
     "web.push.apple.com",
 ];
@@ -275,6 +276,13 @@ pub async fn register_device(
         return Err((StatusCode::BAD_REQUEST, "endpoint is required".into()));
     }
     if !endpoint_allowed(&platform, endpoint) {
+        if platform == "web" {
+            // The host only, so a push service missing from the allowlist shows up in the
+            // logs; the rest of the URL is the subscription's secret and is never logged.
+            let url = url::Url::parse(endpoint).ok();
+            let host = url.as_ref().and_then(|u| u.host_str()).unwrap_or("(none)");
+            tracing::warn!(host, "push: refused a web push endpoint");
+        }
         return Err((
             StatusCode::BAD_REQUEST,
             if platform == "apns" {
