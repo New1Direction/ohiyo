@@ -3,9 +3,12 @@ use tauri::Manager;
 mod vault;
 
 /// Restart the app: "Try again" on the locked vault screen, and after a reset or burn.
+/// `request_restart` goes through the normal exit (the Exit event), so plugins such as
+/// single-instance clean up before the relaunch; `restart` from a command skips that and
+/// the relaunched process could quit instead of starting.
 #[tauri::command]
 fn app_restart(app: tauri::AppHandle) {
-    app.restart();
+    app.request_restart();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
