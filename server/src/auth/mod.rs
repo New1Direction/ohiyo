@@ -127,3 +127,72 @@ where
         }
     }
 }
+
+// ── Operators: instance-wide staff, named by environment ──────────────────────
+
+/// Comma-separated user ids allowed to perform operator-only actions (for example
+/// changing a hosted instance's tier). Unset or empty means nobody.
+const OPERATOR_USER_IDS_ENV: &str = "OHIYO_OPERATOR_USER_IDS";
+
+/// True if `user_id` is listed in `OHIYO_OPERATOR_USER_IDS`. Read on every call, so
+/// there is no cached copy to drift from the environment.
+pub fn is_operator(user_id: &str) -> bool {
+    operator_listed(
+        std::env::var(OPERATOR_USER_IDS_ENV).ok().as_deref(),
+        user_id,
+    )
+}
+
+/// Whether `user_id` appears in a raw comma-separated operator list. Entries are
+/// trimmed and blank entries ignored, so a stray comma can never match an empty id.
+fn operator_listed(raw: Option<&str>, user_id: &str) -> bool {
+    raw.is_some_and(|raw| {
+        raw.split(',')
+            .map(str::trim)
+            .any(|id| !id.is_empty() && id == user_id)
+    })
+}
+
+#[cfg(test)]
+mod operator_tests {
+    use super::*;
+
+    #[test]
+    fn unset_means_nobody() {
+        assert!(!operator_listed(None, "u1"));
+    }
+
+    #[test]
+    fn empty_means_nobody() {
+        assert!(!operator_listed(Some(""), "u1"));
+        assert!(!operator_listed(Some(" , ,"), "u1"));
+        assert!(
+            !operator_listed(Some(" , ,"), ""),
+            "a blank id never matches"
+        );
+    }
+
+    #[test]
+    fn single_id_matches_only_itself() {
+        assert!(operator_listed(Some("u1"), "u1"));
+        assert!(!operator_listed(Some("u1"), "u2"));
+        assert!(!operator_listed(Some("u1"), "u"), "no prefix matches");
+    }
+
+    #[test]
+    fn multiple_ids_each_match() {
+        let raw = Some("u1,u2,u3");
+        assert!(operator_listed(raw, "u1"));
+        assert!(operator_listed(raw, "u2"));
+        assert!(operator_listed(raw, "u3"));
+        assert!(!operator_listed(raw, "u4"));
+    }
+
+    #[test]
+    fn surrounding_whitespace_is_ignored() {
+        let raw = Some("  u1 ,\tu2\n, ");
+        assert!(operator_listed(raw, "u1"));
+        assert!(operator_listed(raw, "u2"));
+        assert!(!operator_listed(raw, ""));
+    }
+}
