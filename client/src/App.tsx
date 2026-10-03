@@ -57,7 +57,7 @@ import {
   installDistribution,
   setGroupEpoch,
 } from "./lib/senderKeys";
-import { formatDuration } from "./lib/disappearing";
+import { formatDuration, messageExpiry } from "./lib/disappearing";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
 import { createDistributionTracker, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
 import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
@@ -1521,7 +1521,7 @@ function MainApp({
           const pt = await groupDecrypt(channelId, m.author.id, m.content);
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
           if (plain !== null) {
-            cachePlaintext(m.id, plain, m.expires_at ?? null);
+            cachePlaintext(m.id, plain, messageExpiry(m));
             decryptedAny = true;
           }
           out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
@@ -1535,7 +1535,7 @@ function MainApp({
           const pt = peerId ? await decryptFrom(peerId, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
           if (plain !== null) {
-            cachePlaintext(m.id, plain, m.expires_at ?? null);
+            cachePlaintext(m.id, plain, messageExpiry(m));
             decryptedAny = true;
           }
           out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
@@ -1635,7 +1635,7 @@ function MainApp({
         // Forward secrecy: we can't decrypt our own outgoing ciphertext later (1:1
         // ratchet or group sender key), so cache the plaintext by the real message id.
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
-          cachePlaintext(created.id, privatePlaintext, created.expires_at ?? null);
+          cachePlaintext(created.id, privatePlaintext, messageExpiry(created));
           // If the gateway echo already rendered this as a placeholder (it can't
           // self-decrypt), patch it back to plaintext now.
           setMessages((prev) =>
@@ -1670,7 +1670,7 @@ function MainApp({
         );
         const created = await api.sendMessage(token, msg.channel_id, wire, send.attachmentIds, send.replyTo ?? null);
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
-          cachePlaintext(created.id, privatePlaintext, created.expires_at ?? null);
+          cachePlaintext(created.id, privatePlaintext, messageExpiry(created));
           setMessages((prev) =>
             prev.map((m) => (m.id === created.id ? { ...m, content: send.content, attachments: send.encryptedAttachments ?? m.attachments, _encrypted: true } : m))
           );
@@ -1747,7 +1747,7 @@ function MainApp({
       // Forward secrecy: cache the new plaintext under the message id so our own view
       // (and later history reloads) shows it — we can't re-decrypt our own ciphertext.
       if (isSignalCiphertext(wire) || isGroupCiphertext(wire)) {
-        cachePlaintext(messageId, content, edited?.expires_at ?? null);
+        cachePlaintext(messageId, content, messageExpiry(edited));
         setMessages((prev) =>
           prev.map((m) => (m.id === messageId ? { ...m, content, _encrypted: true } : m))
         );
