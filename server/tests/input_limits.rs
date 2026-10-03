@@ -188,6 +188,66 @@ async fn emoji_names_keep_their_existing_32_byte_cap() {
 }
 
 #[tokio::test]
+async fn banner_colors_are_capped_at_32_characters_and_social_fields_at_200() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("limitalice", "password123").await;
+    let fields = [
+        ("banner_color", 32),
+        ("social_spotify", 200),
+        ("social_github", 200),
+        ("social_twitter", 200),
+        ("social_steam", 200),
+        ("social_youtube", 200),
+        ("social_twitch", 200),
+    ];
+    for (field, max) in fields {
+        for (value, status) in [(chars(max + 1), 400), (chars(max), 200)] {
+            let mut body = serde_json::Map::new();
+            body.insert(field.to_owned(), json!(value));
+            let res = srv
+                .patch_json_auth("/api/v1/users/@me/profile", &alice.token, body.into())
+                .await;
+            assert_eq!(res.status(), status, "{field}");
+        }
+    }
+}
+
+/// The profile theme is stored as its JSON text; that text is capped at 16 KiB worth of
+/// characters. `{"note":"…"}` is the note plus 11 characters.
+#[tokio::test]
+async fn profile_themes_are_capped_at_16_kib_of_json() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("limitalice", "password123").await;
+    let theme = |note_chars: usize| json!({ "note": chars(note_chars) });
+    let max = 16 * 1024;
+
+    let res = srv
+        .patch_json_auth(
+            "/api/v1/users/@me/profile",
+            &alice.token,
+            json!({ "bio": "should not be saved", "profile_theme": theme(max - 11 + 1) }),
+        )
+        .await;
+    assert_eq!(res.status(), 400);
+    let profile: Value = srv
+        .get_auth("/api/v1/users/@me/profile", &alice.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert!(profile["bio"].is_null(), "a refused update writes nothing");
+
+    let res = srv
+        .patch_json_auth(
+            "/api/v1/users/@me/profile",
+            &alice.token,
+            json!({ "profile_theme": theme(max - 11) }),
+        )
+        .await;
+    assert_eq!(res.status(), 200);
+}
+
+#[tokio::test]
 async fn bios_are_capped_at_500_characters() {
     let srv = TestServer::start().await;
     let alice = srv.register("limitalice", "password123").await;

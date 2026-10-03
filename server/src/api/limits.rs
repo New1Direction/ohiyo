@@ -18,6 +18,12 @@ pub const ROLE_NAME: usize = 100;
 pub const EVENT_TITLE: usize = 200;
 pub const EVENT_DESCRIPTION: usize = 4000;
 pub const POLL_OPTION: usize = 200;
+/// The client sends `#rrggbb` from a colour picker.
+pub const BANNER_COLOR: usize = 32;
+/// Each social field: a handle, or a profile URL for some services.
+pub const SOCIAL_FIELD: usize = 200;
+/// The profile theme's stored JSON text. The client's theme is a few short fields.
+pub const PROFILE_THEME: usize = 16 * 1024;
 
 /// Reject `value` with 400 when it is longer than `max` characters.
 pub fn check_len(field: &str, value: &str, max: usize) -> Result<(), (StatusCode, String)> {

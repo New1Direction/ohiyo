@@ -252,6 +252,30 @@ pub async fn update_profile(
     if let Some(status) = &body.custom_status {
         crate::api::limits::check_len("custom status", status, crate::api::limits::CUSTOM_STATUS)?;
     }
+    if let Some(color) = &body.banner_color {
+        crate::api::limits::check_len("banner color", color, crate::api::limits::BANNER_COLOR)?;
+    }
+    for (field, value) in [
+        ("Spotify", &body.social_spotify),
+        ("GitHub", &body.social_github),
+        ("Twitter", &body.social_twitter),
+        ("Steam", &body.social_steam),
+        ("YouTube", &body.social_youtube),
+        ("Twitch", &body.social_twitch),
+    ] {
+        if let Some(value) = value {
+            crate::api::limits::check_len(field, value, crate::api::limits::SOCIAL_FIELD)?;
+        }
+    }
+    let theme_data = body
+        .profile_theme
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(crate::api::error::internal)?;
+    if let Some(raw) = &theme_data {
+        crate::api::limits::check_len("profile theme", raw, crate::api::limits::PROFILE_THEME)?;
+    }
     if let Some(name) = &body.display_name {
         crate::api::limits::check_len("display name", name, crate::api::limits::DISPLAY_NAME)?;
         sqlx::query("UPDATE users SET display_name = ? WHERE id = ?")
@@ -297,8 +321,7 @@ pub async fn update_profile(
             .await
             .map_err(crate::api::error::internal)?;
     }
-    if let Some(theme) = &body.profile_theme {
-        let raw = serde_json::to_string(theme).map_err(crate::api::error::internal)?;
+    if let Some(raw) = theme_data {
         sqlx::query("UPDATE users SET theme_data = ? WHERE id = ?")
             .bind(raw)
             .bind(&auth.0)
