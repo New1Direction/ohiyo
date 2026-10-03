@@ -139,7 +139,7 @@ function sanitizeEvent(event: PluginEventName, data: unknown): unknown {
 
 // Anything in plugin CSS that can make a request or run code, plus the backslash: CSS
 // escapes (`u\72l(`, `\75rl(`) spell these past any text match, so no escape is allowed.
-const UNSAFE_CSS = /\\|@import|@font-face|url\s*\(|-webkit-image-set\s*\(|image-set\s*\(|src\s*\(|expression\s*\(/i;
+const UNSAFE_CSS = /\\|@import|@font-face|url\s*\(|-webkit-image-set\s*\(|image-set\s*\(|image\s*\(|src\s*\(|expression\s*\(/i;
 
 /** Plugin CSS, or "" if it contains anything that could exfiltrate data or run code —
  *  the one channel a networkless worker (or a "trusted" custom-CSS plugin) could still
