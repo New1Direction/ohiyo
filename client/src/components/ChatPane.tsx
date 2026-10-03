@@ -21,28 +21,11 @@ import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
 import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode } from "../lib/linkPreviews";
+import { loadDraft, persistDraft } from "../lib/drafts";
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 
-// Composer drafts persisted per channel so a half-written message survives a reload,
-// not just a channel switch. Cleared on send.
-const DRAFT_PREFIX = "kc:draft:";
 const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
-function persistDraft(channelId: string, text: string) {
-  try {
-    if (text.trim()) localStorage.setItem(DRAFT_PREFIX + channelId, text);
-    else localStorage.removeItem(DRAFT_PREFIX + channelId);
-  } catch {
-    /* storage off */
-  }
-}
-function loadDraft(channelId: string): string {
-  try {
-    return localStorage.getItem(DRAFT_PREFIX + channelId) ?? "";
-  } catch {
-    return "";
-  }
-}
 function hiddenMessagesKey(channelId: string, userId: string): string {
   return `${HIDDEN_MESSAGES_PREFIX}${userId || "anonymous"}:${channelId}`;
 }
@@ -414,6 +397,9 @@ export function ChatPane({
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   // Composer is sacred: remember unsent text per channel so a switch never loses it.
   const draftsRef = useRef<Record<string, string>>({});
+  // Whether each chat was in encrypted mode when last shown: its draft then stays in memory.
+  const encryptedChatsRef = useRef<Record<string, boolean>>({});
+  if (channel?.id) encryptedChatsRef.current[channel.id] = e2eEnabled;
   const inputRef = useRef(input);
   inputRef.current = input;
   const prevChannelRef = useRef<string | null>(channel?.id ?? null);
@@ -495,7 +481,7 @@ export function ChatPane({
     setMention(activeMentionQuery(value, caret));
     notifyTyping();
     // Persist immediately so a reload never loses it (beforeunload is just a backstop).
-    if (channel?.id) persistDraft(channel.id, value);
+    if (channel?.id) persistDraft(channel.id, value, e2eEnabled);
   }
 
   function pickMention(username: string) {
@@ -526,7 +512,7 @@ export function ChatPane({
     setInput(next);
     inputRef.current = next;
     draftsRef.current[channel.id] = next;
-    persistDraft(channel.id, next);
+    persistDraft(channel.id, next, e2eEnabled);
     setMention(null);
     requestAnimationFrame(() => {
       el?.focus();
@@ -546,7 +532,7 @@ export function ChatPane({
     setInput("");
     inputRef.current = "";
     draftsRef.current[channel.id] = "";
-    persistDraft(channel.id, "");
+    persistDraft(channel.id, "", e2eEnabled);
     setReplyTarget(null);
     setGifUrl("");
     setComposerPickerOpen(false);
@@ -642,7 +628,7 @@ export function ChatPane({
     if (prev === next) return;
     if (prev) {
       draftsRef.current[prev] = inputRef.current;
-      persistDraft(prev, inputRef.current); // survive a reload, not just a switch
+      persistDraft(prev, inputRef.current, encryptedChatsRef.current[prev] === true); // survive a reload, not just a switch
       // Stash where the user was reading in the channel they're leaving.
       const s = scrollMapRef.current[prev];
       persistScroll(prev, s && !s.atBottom ? s.offset : null);
@@ -672,12 +658,18 @@ export function ChatPane({
     setShowJump(false);
   }, [channel?.id]);
 
+  // A chat in encrypted mode keeps its draft in memory only: drop any copy stored before
+  // encryption was on (the draft itself stays in the composer).
+  useEffect(() => {
+    if (channel?.id && e2eEnabled) persistDraft(channel.id, inputRef.current, true);
+  }, [channel?.id, e2eEnabled]);
+
   // Persist the CURRENT channel's draft on reload/close (the switch effect only fires
   // on a change, so a straight reload would otherwise drop it).
   useEffect(() => {
     const save = () => {
       if (!channel?.id) return;
-      persistDraft(channel.id, inputRef.current);
+      persistDraft(channel.id, inputRef.current, encryptedChatsRef.current[channel.id] === true);
       const s = scrollMapRef.current[channel.id];
       persistScroll(channel.id, s && !s.atBottom ? s.offset : null);
     };
@@ -826,7 +818,7 @@ export function ChatPane({
       onSend(transformed, pendingFiles.map((f) => f.id), replyTarget?.id ?? null, encryptedAttachments.length ? encryptedAttachments : undefined);
       setInput("");
       draftsRef.current[channel.id] = "";
-      persistDraft(channel.id, ""); // sent → no lingering draft
+      persistDraft(channel.id, "", encryptedChatsRef.current[channel.id] === true); // sent → no lingering draft
       setPendingFiles([]);
       setReplyTarget(null);
     },
