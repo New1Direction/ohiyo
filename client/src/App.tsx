@@ -60,6 +60,7 @@ import {
 import { formatDuration } from "./lib/disappearing";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
 import { createDistributionTracker, encryptOutgoing, EncryptedSendError, forwardBlockReason } from "./lib/encryptedSend";
+import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, withoutServerChannels } from "./lib/e2eMode";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { initVaultBackend } from "./lib/tauriVault";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
@@ -411,7 +412,7 @@ function MainApp({
   const dmsRef = useRef(dms);
   dmsRef.current = dms;
   const dmKeyCacheRef = useRef<Map<string, CryptoKey>>(new Map());
-  const dmPeerRef = useRef<Map<string, string>>(new Map()); // channelId → peer userId (learned from messages)
+  const dmPeerRef = useRef<Map<string, string>>(new Map()); // channelId → peer userId (from the participant list)
   const serversRef = useRef<ServerWithChannels[]>([]);
   const gatewayRef = useRef<Gateway | null>(null);
   const privacyModeRef = useRef(privacyMode);
@@ -754,6 +755,14 @@ function MainApp({
         setCurrentUser(event.d.user);
         setServers(event.d.servers);
         setDms(event.d.dms);
+        // Earlier builds could mark a server channel as encrypted (C-H6). Drop stored
+        // entries Ready lists as server channels; keep DMs and ids it doesn't mention.
+        setE2eChannels((prev) => {
+          const next = withoutServerChannels(prev, event.d.servers.flatMap((s) => s.channels));
+          if (next === prev) return prev;
+          localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
+          return new Set(next);
+        });
         // Catch up on group rekeys that happened while we were offline: if a group's
         // server epoch is ahead of our own sender key, this rotates us and redistributes.
         for (const d of event.d.dms) {
@@ -1284,7 +1293,7 @@ function MainApp({
     }
   }
 
-  // Resolve a DM peer's user id (learned from message authors, or dmUsers).
+  // Resolve a DM peer's user id (from the channel's participant list, or dmUsers).
   const dmPeerId = useCallback(
     (channelId: string): string | undefined =>
       dmPeerRef.current.get(channelId) ?? dmUsersRef.current[channelId]?.id,
@@ -1305,7 +1314,7 @@ function MainApp({
     async (channelId: string): Promise<CryptoKey | null> => {
       const cached = dmKeyCacheRef.current.get(channelId);
       if (cached) return cached;
-      // Peer = the learned message-author OR dmUsers (whichever we know).
+      // Peer = from the participant list OR dmUsers (whichever we know).
       const peerId = dmPeerRef.current.get(channelId) ?? dmUsersRef.current[channelId]?.id;
       if (!peerId) return null;
       try {
@@ -1385,22 +1394,32 @@ function MainApp({
         !msgs.some((m) => isEncrypted(m.content) || isSignalCiphertext(m.content) || isGroupCiphertext(m.content))
       )
         return msgs;
+      const channelType = channelTypeOf(channelId);
+      const contents = msgs.map((m) => m.content);
       // The conversation is encrypted → reflect it locally (sticky + mutual): the
-      // recipient's UI flips to encrypted mode and their replies encrypt too.
-      setE2eChannels((prev) => {
-        if (prev.has(channelId)) return prev;
-        const next = new Set(prev);
-        next.add(channelId);
-        localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
-        return next;
-      });
-      // Learn the DM peer from message authors (resilient to un-hydrated dmUsers).
-      if (!dmPeerRef.current.has(channelId)) {
-        const myId = currentUserRef.current?.id;
-        const peer = msgs.find((m) => m.author.id !== myId)?.author.id;
-        if (peer) dmPeerRef.current.set(channelId, peer);
+      // recipient's UI flips to encrypted mode and their replies encrypt too. Only in a
+      // DM / group DM, and only for a well-formed envelope (or, below, a message that
+      // decrypted) — never for text that merely starts with an envelope prefix.
+      const enterEncryptedMode = () =>
+        setE2eChannels((prev) => {
+          if (prev.has(channelId)) return prev;
+          const next = new Set(prev);
+          next.add(channelId);
+          localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
+          return next;
+        });
+      const wellFormed = shouldEnterEncryptedMode(channelType, contents, false);
+      if (wellFormed) enterEncryptedMode();
+      // The 1:1 peer comes from the channel's participant list, never message authors.
+      if (channelType === "dm" && !dmPeerId(channelId)) {
+        try {
+          const peer = pickDmPeer(await api.listRecipients(token, channelId), currentUserRef.current?.id);
+          if (peer) dmPeerRef.current.set(channelId, peer);
+        } catch {
+          /* offline — Signal messages stay undecryptable until the next load */
+        }
       }
-      const peerId = dmPeerId(channelId);
+      const peerId = channelType === "dm" ? dmPeerId(channelId) : undefined;
       const decryptStateFor = (messageId: string): "unknown" | "not_covered" | "restore_failed" => {
         const coverage = coverageForMessage(messageId);
         if (
@@ -1415,6 +1434,7 @@ function MainApp({
       // Inventory encrypted-message headers durably before attempting decrypt, so the
       // restore preview can reason about messages loaded in a previous browser session.
       for (const m of msgs) {
+        if (!isWellFormedEnvelope(m.content)) continue;
         if (isGroupCiphertext(m.content)) {
           const header = parseGroupCiphertextHeader(m.content);
           if (header) recordGroupSenderKeyMessage({ message_id: m.id, room_id: channelId, epoch: header.epoch, key_id: String(header.keyId) });
@@ -1433,39 +1453,54 @@ function MainApp({
       const legacyKey = msgs.some((m) => isEncrypted(m.content)) ? await getDmKey(channelId) : null;
       // Sequential: the Double Ratchet requires in-order processing of new messages.
       const out: Message[] = [];
+      let decryptedAny = false;
       for (const m of msgs) {
-        if (isGroupCiphertext(m.content)) {
+        if ((isGroupCiphertext(m.content) || isSignalCiphertext(m.content)) && !isWellFormedEnvelope(m.content)) {
+          // Only looks like ciphertext: show it as undecryptable and touch nothing else.
+          out.push({ ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
+        } else if (isGroupCiphertext(m.content)) {
           // Group sender-key message — decrypt from the message author's sender key.
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
+            decryptedAny = true;
             out.push(messageFromDecryptedPlaintext(m, cached));
             continue;
           }
           const pt = await groupDecrypt(channelId, m.author.id, m.content);
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
-          if (plain !== null) cachePlaintext(m.id, plain);
+          if (plain !== null) {
+            cachePlaintext(m.id, plain);
+            decryptedAny = true;
+          }
           out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
         } else if (isSignalCiphertext(m.content)) {
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
+            decryptedAny = true;
             out.push(messageFromDecryptedPlaintext(m, cached));
             continue;
           }
           const pt = peerId ? await decryptFrom(peerId, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
-          if (plain !== null) cachePlaintext(m.id, plain);
+          if (plain !== null) {
+            cachePlaintext(m.id, plain);
+            decryptedAny = true;
+          }
           out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
         } else if (isEncrypted(m.content)) {
           const pt = legacyKey ? await decryptMessage(legacyKey, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
+          if (plain !== null) decryptedAny = true;
           out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
         } else {
           out.push(m);
         }
       }
+      // E.g. a legacy static-key message that decrypted here (no sig/grp envelope).
+      if (!wellFormed && shouldEnterEncryptedMode(channelType, contents, decryptedAny)) enterEncryptedMode();
       return out;
     },
-    [getDmKey, dmPeerId]
+    [getDmKey, dmPeerId, channelTypeOf, token]
   );
 
   // Flip a DM into (or out of) end-to-end encrypted mode — persisted; the chat shifts
