@@ -1033,9 +1033,18 @@ async fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, c
             false
         }
     };
-    if !removed {
-        return;
+    if removed {
+        announce_voice_leave(state, user_id, me, channel_id).await;
     }
+}
+
+/// Tell everyone who can see `channel_id` that the user left its voice room.
+async fn announce_voice_leave(
+    state: &AppState,
+    user_id: &str,
+    me: Option<&PublicUser>,
+    channel_id: &str,
+) {
     if let Some(me) = me {
         broadcast_to_channel(
             state,
@@ -1096,17 +1105,28 @@ pub async fn evict_from_voice_rooms(state: &AppState, channels: &HashSet<String>
 
 /// On disconnect of connection `conn_id`, remove the user from every voice channel that
 /// connection joined. Rooms joined from the user's other connections are left alone.
+/// Every seat is checked and removed in one pass under the write lock, so a seat another
+/// connection takes over meanwhile is never removed by this one.
 async fn cleanup_voice(state: &AppState, user_id: &str, conn_id: u64, me: Option<&PublicUser>) {
-    let channels: Vec<String> = {
-        let rooms = state.voice.read().unwrap_or_else(|e| e.into_inner());
-        rooms
+    let left: Vec<String> = {
+        let mut rooms = state.voice.write().unwrap_or_else(|e| e.into_inner());
+        let channels: Vec<String> = rooms
             .iter()
             .filter(|(_, room)| room.get(user_id).is_some_and(|m| m.conn_id == conn_id))
             .map(|(cid, _)| cid.clone())
-            .collect()
+            .collect();
+        for cid in &channels {
+            if let Some(room) = rooms.get_mut(cid) {
+                room.remove(user_id);
+                if room.is_empty() {
+                    rooms.remove(cid);
+                }
+            }
+        }
+        channels
     };
-    for cid in channels {
-        leave_voice(state, user_id, me, &cid).await;
+    for cid in left {
+        announce_voice_leave(state, user_id, me, &cid).await;
     }
 }
 
@@ -1492,6 +1512,72 @@ mod tests {
             .unwrap()
             .get("u1")
             .is_some_and(|conns| conns.contains_key(&1)));
+    }
+
+    fn seat(conn_id: u64) -> VoiceMember {
+        VoiceMember {
+            user: PublicUser {
+                id: "u1".to_owned(),
+                username: "u1".to_owned(),
+                display_name: "U1".to_owned(),
+                avatar_url: None,
+            },
+            muted: false,
+            video: false,
+            screen: false,
+            listen_only: false,
+            conn_id,
+        }
+    }
+
+    /// Connection 1 closes while connection 2 of the same user (re)joins its rooms. The
+    /// test runtime is single-threaded, so the rejoin task runs at the cleanup's first
+    /// await. Whenever that is, a seat connection 2 holds afterwards must survive.
+    #[tokio::test]
+    async fn disconnect_cleanup_never_removes_a_seat_another_connection_holds() {
+        let state = state_with_user(0).await;
+        let rooms = ["room-a", "room-b"];
+        for room in rooms {
+            state
+                .voice
+                .write()
+                .unwrap()
+                .entry(room.to_owned())
+                .or_default()
+                .insert("u1".to_owned(), seat(1));
+        }
+        let rejoin = tokio::spawn({
+            let state = state.clone();
+            async move {
+                let mut voice = state.voice.write().unwrap();
+                for room in rooms {
+                    let room = voice.entry(room.to_owned()).or_default();
+                    match room.get_mut("u1") {
+                        Some(member) => member.conn_id = 2,
+                        None => {
+                            room.insert("u1".to_owned(), seat(2));
+                        }
+                    }
+                }
+            }
+        });
+
+        cleanup_voice(&state, "u1", 1, Some(&seat(1).user)).await;
+        rejoin.await.unwrap();
+
+        for room in rooms {
+            assert_eq!(
+                state
+                    .voice
+                    .read()
+                    .unwrap()
+                    .get(room)
+                    .and_then(|r| r.get("u1"))
+                    .map(|m| m.conn_id),
+                Some(2),
+                "{room}: connection 2's seat survives connection 1's cleanup"
+            );
+        }
     }
 
     /// Browsers wake timers in a long-hidden tab about once a minute, so a backgrounded
