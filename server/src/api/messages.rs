@@ -300,6 +300,51 @@ fn spawn_index(
     });
 }
 
+/// Most bytes of text a message may carry (a poll's question is its message text).
+pub const MAX_MESSAGE_BYTES: usize = 4000;
+
+/// In a DM, nothing from `sender` is delivered while either side has blocked the other.
+pub(crate) async fn ensure_dm_not_blocked(
+    state: &AppState,
+    channel_id: &str,
+    sender: &str,
+) -> Result<(), (StatusCode, String)> {
+    let dm_peers: Vec<String> = sqlx::query_scalar(
+        "SELECT dp.user_id FROM dm_participants dp
+         JOIN channels c ON c.id = dp.channel_id
+         WHERE dp.channel_id = ? AND c.server_id IS NULL AND dp.user_id != ?",
+    )
+    .bind(channel_id)
+    .bind(sender)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+    for peer in dm_peers {
+        if crate::api::abuse::is_blocked_pair(state, sender, &peer).await {
+            return Err((StatusCode::FORBIDDEN, "you can't message this user".into()));
+        }
+    }
+    Ok(())
+}
+
+/// Disappearing messages: if the channel has a TTL, a message created at `now`
+/// self-destructs at the returned time.
+pub(crate) async fn disappearing_expiry(
+    state: &AppState,
+    channel_id: &str,
+    now: i64,
+) -> Option<i64> {
+    let disappearing: Option<i64> =
+        sqlx::query_scalar("SELECT disappearing_seconds FROM channels WHERE id = ?")
+            .bind(channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+    disappearing.filter(|s| *s > 0).map(|s| now + s)
+}
+
 pub async fn send_message(
     auth: AuthUser,
     Path(channel_id): Path<String>,
@@ -315,21 +360,7 @@ pub async fn send_message(
             "you can't send messages in this channel".into(),
         ));
     }
-    let dm_peers: Vec<String> = sqlx::query_scalar(
-        "SELECT dp.user_id FROM dm_participants dp
-         JOIN channels c ON c.id = dp.channel_id
-         WHERE dp.channel_id = ? AND c.server_id IS NULL AND dp.user_id != ?",
-    )
-    .bind(&channel_id)
-    .bind(&auth.0)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
-    for peer in dm_peers {
-        if crate::api::abuse::is_blocked_pair(&state, &auth.0, &peer).await {
-            return Err((StatusCode::FORBIDDEN, "you can't message this user".into()));
-        }
-    }
+    ensure_dm_not_blocked(&state, &channel_id, &auth.0).await?;
     // Refresh liveness so an active user never trips their dead-man's switch.
     crate::api::users::touch_active(&state.db, &auth.0).await;
     // Per-user spam throttle (generous for humans, blocks flooders).
@@ -342,7 +373,7 @@ pub async fn send_message(
             "you're sending messages too fast".into(),
         ));
     }
-    if body.content.len() > 4000 {
+    if body.content.len() > MAX_MESSAGE_BYTES {
         return Err((
             StatusCode::BAD_REQUEST,
             "message too long (max 4000 chars)".into(),
@@ -394,16 +425,7 @@ pub async fn send_message(
     let now = now_unix();
     let content = body.content.trim().to_owned();
 
-    // Disappearing messages: if the channel has a TTL, this message self-destructs.
-    let disappearing: Option<i64> =
-        sqlx::query_scalar("SELECT disappearing_seconds FROM channels WHERE id = ?")
-            .bind(&channel_id)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten()
-            .flatten();
-    let expires_at = disappearing.filter(|s| *s > 0).map(|s| now + s);
+    let expires_at = disappearing_expiry(&state, &channel_id, now).await;
 
     // Only honour a reply target that actually exists in this channel.
     let reply_to: Option<String> = match body.reply_to.filter(|s| !s.is_empty()) {
