@@ -23,7 +23,7 @@ import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode } from "../lib/linkPreviews";
 import { loadDraft, persistDraft } from "../lib/drafts";
 import { editBlockReason, pendingAttachmentsToKeep, REATTACH_MESSAGE } from "../lib/encryptedSend";
-import { filesThatFit, TOO_MANY_ATTACHMENTS } from "../lib/attachmentLimit";
+import { filesThatFit, holdingSlots, TOO_MANY_ATTACHMENTS } from "../lib/attachmentLimit";
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 
@@ -856,78 +856,79 @@ export function ChatPane({
       const { fit, leftOut } = filesThatFit(pendingFilesRef.current.length + uploadingCountRef.current, acceptedFiles);
       if (leftOut > 0) onToast(TOO_MANY_ATTACHMENTS, "error");
       if (fit.length === 0) return;
-      uploadingCountRef.current += fit.length;
       setUploading(true);
+      // The slots come back however the batch ends, so a failure can't shrink the
+      // 10-file allowance (holdingSlots).
+      await holdingSlots(uploadingCountRef, fit.length, async () => {
+        const results: UploadedFile[] = [];
+        for (const file of fit) {
+          try {
+            // Inside the try: a file that can't be read or encrypted is reported like any
+            // other failed upload, and the rest still go.
+            const formData = new FormData();
+            const encryptedUpload = e2eEnabled ? await encryptAttachmentFile(file) : null;
+            const uploadFile = encryptedUpload
+              ? new File([encryptedUpload.blob], "encrypted.bin", { type: "application/octet-stream" })
+              : file;
+            formData.append("file", uploadFile);
+            const xhr = new XMLHttpRequest();
+            const progressKey = file.name;
 
-      const results: UploadedFile[] = [];
-      for (const file of fit) {
-        const formData = new FormData();
-        const encryptedUpload = e2eEnabled ? await encryptAttachmentFile(file) : null;
-        const uploadFile = encryptedUpload
-          ? new File([encryptedUpload.blob], "encrypted.bin", { type: "application/octet-stream" })
-          : file;
-        formData.append("file", uploadFile);
-
-        try {
-          const xhr = new XMLHttpRequest();
-          const progressKey = file.name;
-
-          await new Promise<void>((resolve, reject) => {
-            xhr.upload.onprogress = (e) => {
-              if (e.lengthComputable) {
-                setUploadProgress((prev) => ({
-                  ...prev,
-                  [progressKey]: Math.round((e.loaded / e.total) * 100),
-                }));
-              }
-            };
-            xhr.onload = () => {
-              if (xhr.status < 300) {
-                const data = JSON.parse(xhr.responseText) as UploadedFile[];
-                if (encryptedUpload) {
-                  results.push(
-                    ...data.map((item) => ({
-                      ...item,
-                      filename: file.name,
-                      content_type: file.type || "application/octet-stream",
-                      size_bytes: file.size,
-                      width: null,
-                      height: null,
-                      encrypted: encryptedUpload.encrypted,
-                      previewUrl: URL.createObjectURL(file),
-                    }))
-                  );
-                } else {
-                  results.push(...data);
+            await new Promise<void>((resolve, reject) => {
+              xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                  setUploadProgress((prev) => ({
+                    ...prev,
+                    [progressKey]: Math.round((e.loaded / e.total) * 100),
+                  }));
                 }
-                resolve();
-              } else {
-                const serverText = xhr.responseText?.trim();
-                const reason = serverText || (xhr.status === 413 ? "file is too large for this server" : `HTTP ${xhr.status}`);
-                reject(new Error(reason));
-              }
-            };
-            xhr.onerror = () => reject(new Error("Network error"));
+              };
+              xhr.onload = () => {
+                if (xhr.status < 300) {
+                  const data = JSON.parse(xhr.responseText) as UploadedFile[];
+                  if (encryptedUpload) {
+                    results.push(
+                      ...data.map((item) => ({
+                        ...item,
+                        filename: file.name,
+                        content_type: file.type || "application/octet-stream",
+                        size_bytes: file.size,
+                        width: null,
+                        height: null,
+                        encrypted: encryptedUpload.encrypted,
+                        previewUrl: URL.createObjectURL(file),
+                      }))
+                    );
+                  } else {
+                    results.push(...data);
+                  }
+                  resolve();
+                } else {
+                  const serverText = xhr.responseText?.trim();
+                  const reason = serverText || (xhr.status === 413 ? "file is too large for this server" : `HTTP ${xhr.status}`);
+                  reject(new Error(reason));
+                }
+              };
+              xhr.onerror = () => reject(new Error("Network error"));
 
-            xhr.open("POST", `${getApiBase()}/upload`);
-            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-            xhr.send(formData);
-          });
+              xhr.open("POST", `${getApiBase()}/upload`);
+              xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+              xhr.send(formData);
+            });
 
-          setUploadProgress((prev) => {
-            const next = { ...prev };
-            delete next[progressKey];
-            return next;
-          });
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          onToast(`Upload failed: ${file.name} (${formatBytes(file.size)}): ${reason}`, "error");
+            setUploadProgress((prev) => {
+              const next = { ...prev };
+              delete next[progressKey];
+              return next;
+            });
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            onToast(`Upload failed: ${file.name} (${formatBytes(file.size)}): ${reason}`, "error");
+          }
         }
-      }
 
-      setPendingFiles((prev) => [...prev, ...results]);
-      uploadingCountRef.current -= fit.length;
-      setUploading(false);
+        setPendingFiles((prev) => [...prev, ...results]);
+      }).finally(() => setUploading(false));
     },
     [token, onToast, e2eEnabled]
   );

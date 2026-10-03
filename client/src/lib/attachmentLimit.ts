@@ -8,3 +8,14 @@ export function filesThatFit<F>(alreadyAttached: number, incoming: readonly F[])
   const room = Math.max(0, MAX_ATTACHMENTS - alreadyAttached);
   return { fit: incoming.slice(0, room), leftOut: Math.max(0, incoming.length - room) };
 }
+
+/** Hold `n` attachment slots (files in flight) while `upload` runs, and give them back
+ *  however it ends, so a failure can't shrink the allowance for good. */
+export async function holdingSlots<T>(slots: { current: number }, n: number, upload: () => Promise<T>): Promise<T> {
+  slots.current += n;
+  try {
+    return await upload();
+  } finally {
+    slots.current -= n;
+  }
+}
