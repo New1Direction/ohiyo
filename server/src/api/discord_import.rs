@@ -167,10 +167,11 @@ pub struct DiscordImportAssetReview {
 }
 
 pub async fn discrawl_import_capability(
-    _auth: AuthUser,
+    auth: AuthUser,
 ) -> Result<Json<DiscrawlImportCapability>, (StatusCode, String)> {
-    let enabled = local_discrawl_import_enabled();
-    let managed_enabled = managed_discord_import_enabled();
+    // Reported for this caller, so a client never offers an import that would be refused.
+    let enabled = local_discrawl_import_enabled() && crate::auth::is_operator(&auth.0);
+    let managed_enabled = managed_discord_import_available_to(&auth);
     Ok(Json(DiscrawlImportCapability {
         enabled,
         managed_enabled,
@@ -190,9 +191,9 @@ pub async fn discrawl_import_capability(
 }
 
 pub async fn discord_connect_info(
-    _auth: AuthUser,
+    auth: AuthUser,
 ) -> Result<Json<DiscordConnectInfo>, (StatusCode, String)> {
-    let managed_enabled = managed_discord_import_enabled();
+    let managed_enabled = managed_discord_import_available_to(&auth);
     Ok(Json(DiscordConnectInfo {
         managed_enabled,
         invite_url: discord_bot_invite_url(),
@@ -1456,6 +1457,11 @@ fn require_operator(auth: &AuthUser) -> Result<(), (StatusCode, String)> {
             "only an operator of this server can run Discord imports".into(),
         ))
     }
+}
+
+/// Managed import is on and `auth` is an operator, the two things its routes require.
+fn managed_discord_import_available_to(auth: &AuthUser) -> bool {
+    managed_discord_import_enabled() && crate::auth::is_operator(&auth.0)
 }
 
 fn validate_guild_id(guild_id: &str) -> Result<String, (StatusCode, String)> {

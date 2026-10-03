@@ -3,13 +3,17 @@
 //! import route is for operators named in `OHIYO_OPERATOR_USER_IDS` only, on top of the
 //! feature flags.
 //!
-//! Each test sets the same environment, so tests in this binary can't disturb each other.
+//! Each test sets the same flags, so tests in this binary can't disturb each other. Tests
+//! that set `OHIYO_OPERATOR_USER_IDS` hold [`OPERATOR_ENV`] while they do.
 
 mod common;
 
 use common::{AuthOk, TestServer};
 use reqwest::Method;
 use serde_json::{json, Value};
+
+/// Held by every test that sets `OHIYO_OPERATOR_USER_IDS`, so they take turns.
+static OPERATOR_ENV: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// Turn both import flavours on. Nothing in this binary may reach Discord: any https
 /// request the server makes goes to a proxy on a closed local port and fails there.
@@ -85,6 +89,7 @@ async fn upload_archive(srv: &TestServer, user: &AuthOk) -> u16 {
 
 #[tokio::test]
 async fn only_operators_may_use_local_and_managed_import_routes() {
+    let _operator_env = OPERATOR_ENV.lock().await;
     enable_imports();
     let srv = TestServer::start().await;
     let operator = srv.register("importoperator", "password123").await;
@@ -160,4 +165,47 @@ async fn template_imports_are_open_to_everyone_but_limited_to_3_an_hour_per_user
     }
     assert_eq!(import(&alice).await, 429, "a fourth in the hour is refused");
     assert_eq!(import(&bob).await, 502, "the limit is per user");
+}
+
+/// What the capability and connect-info routes tell `user` about local Discrawl import
+/// and managed Discord import: (local, managed per capability, managed per connect).
+async fn reported(srv: &TestServer, user: &AuthOk) -> (Value, Value, Value) {
+    let capability: Value = srv
+        .get_auth("/api/v1/imports/discord/capability", &user.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    let connect: Value = srv
+        .get_auth("/api/v1/imports/discord/connect", &user.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    (
+        capability["enabled"].clone(),
+        capability["managed_enabled"].clone(),
+        connect["managed_enabled"].clone(),
+    )
+}
+
+#[tokio::test]
+async fn imports_are_reported_available_only_to_operators() {
+    let _operator_env = OPERATOR_ENV.lock().await;
+    enable_imports();
+    let srv = TestServer::start().await;
+    let operator = srv.register("capoperator", "password123").await;
+    let user = srv.register("capuser", "password123").await;
+    std::env::set_var("OHIYO_OPERATOR_USER_IDS", &operator.id);
+
+    let for_user = reported(&srv, &user).await;
+    let for_operator = reported(&srv, &operator).await;
+    std::env::remove_var("OHIYO_OPERATOR_USER_IDS");
+
+    assert_eq!(
+        for_user,
+        (json!(false), json!(false), json!(false)),
+        "a non-operator is not offered imports that would return 403"
+    );
+    assert_eq!(for_operator, (json!(true), json!(true), json!(true)));
 }
