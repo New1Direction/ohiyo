@@ -27,6 +27,8 @@ const REMOVED = [
   "Response",
   "caches",
   "indexedDB",
+  "FontFace",
+  "fonts",
 ];
 
 let script: Blob | null = null;
@@ -40,7 +42,9 @@ class VmWorker {
   ran: Promise<void>;
   constructor() {
     VmWorker.last = this;
-    const scope = Object.fromEntries(REMOVED.map((name) => [name, function original() {}]));
+    const scope = Object.fromEntries(REMOVED.filter((name) => name !== "fonts").map((name) => [name, function original() {}]));
+    // Like WorkerGlobalScope.prototype.fonts: a getter for the worker's FontFaceSet.
+    Object.defineProperty(scope, "fonts", { get: () => ({ add() {}, load() {} }), configurable: true, enumerable: true });
     const g = Object.create(scope) as Record<string, unknown>;
     g.navigator = Object.create({ sendBeacon: () => true });
     g.postMessage = (data: unknown) => this.onmessage?.({ data });

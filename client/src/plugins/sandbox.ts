@@ -97,7 +97,7 @@ const BOOTSTRAP = `
     }
     try { Object.defineProperty(self, name, { value: undefined, writable: false, configurable: false }); } catch (e) {}
   }
-  var kill = ["fetch","XMLHttpRequest","WebSocket","WebSocketStream","EventSource","importScripts","Worker","SharedWorker","Request","Response","caches","indexedDB","BroadcastChannel","RTCPeerConnection","RTCDataChannel","WebTransport"];
+  var kill = ["fetch","XMLHttpRequest","WebSocket","WebSocketStream","EventSource","importScripts","Worker","SharedWorker","Request","Response","caches","indexedDB","BroadcastChannel","RTCPeerConnection","RTCDataChannel","WebTransport","FontFace","fonts"];
   for (var i = 0; i < kill.length; i++) { nuke(kill[i]); }
   try { if (self.navigator) self.navigator.sendBeacon = undefined; } catch (e) {}
   function safe(fn, arg) { if (typeof fn === "function") { try { return fn(arg); } catch (e) { post("error", String((e && e.message) || e)); } } }
