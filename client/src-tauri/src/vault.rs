@@ -130,9 +130,10 @@ impl VaultState {
         Ok(())
     }
 
-    /// Wipe RAM, stop further writes, and delete the sealed file plus any temp file an
-    /// interrupted write left behind. Returns how each deletion went.
-    fn burn_local(&self) -> (io::Result<()>, io::Result<()>) {
+    /// Wipe RAM, stop further writes, and delete the sealed file, any temp file an
+    /// interrupted write left behind, and any file a reset moved aside. Returns how each
+    /// deletion went.
+    fn burn_local(&self) -> (io::Result<()>, io::Result<()>, io::Result<()>) {
         let _guard = self.vault.as_ref().ok().map(|unlocked| {
             let mut v = unlocked.inner.lock().unwrap();
             unlocked.burned.store(true, Ordering::SeqCst);
@@ -142,6 +143,7 @@ impl VaultState {
         (
             std::fs::remove_file(&self.path),
             std::fs::remove_file(temp_path(&self.path)),
+            std::fs::remove_file(unreadable_path(&self.path)),
         )
     }
 }
@@ -387,17 +389,20 @@ pub fn vault_reset(state: State<VaultState>) -> Result<(), String> {
     }
 }
 
-/// A burn's result: Ok when the sealed file, the temp file and the keychain key are all
-/// gone ("not found" counts as gone), else an error naming what is still there.
+/// A burn's result: Ok when the sealed file, the temp file, the moved-aside file and the
+/// keychain key are all gone ("not found" counts as gone), else an error naming what is
+/// still there.
 fn burn_outcome(
     file: io::Result<()>,
     temp: io::Result<()>,
+    aside: io::Result<()>,
     key: Result<(), keyring::Error>,
 ) -> Result<(), String> {
     let mut failed = Vec::new();
     for (what, deleted) in [
         ("the sealed vault file", file),
         ("the vault temp file", temp),
+        ("the moved-aside vault file", aside),
     ] {
         if let Err(e) = deleted {
             if e.kind() != io::ErrorKind::NotFound {
@@ -416,14 +421,14 @@ fn burn_outcome(
     }
 }
 
-/// The dead-man's switch: wipe RAM and try to delete both the sealed file and the keychain
-/// key, reporting anything that couldn't be deleted. On success the webview restarts.
+/// The dead-man's switch: wipe RAM and try to delete the vault files and the keychain key,
+/// reporting anything that couldn't be deleted. On success the webview restarts.
 #[tauri::command]
 pub fn vault_burn(state: State<VaultState>) -> Result<(), String> {
-    let (file, temp) = state.burn_local();
+    let (file, temp, aside) = state.burn_local();
     let key = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
         .and_then(|entry| entry.delete_credential());
-    burn_outcome(file, temp, key)
+    burn_outcome(file, temp, aside, key)
 }
 
 #[cfg(test)]
@@ -581,8 +586,8 @@ mod tests {
         let state = unlocked_state(dir.join(VAULT_FILE));
         set_and_persist(&state, "kc:sig:identityKey", "id");
         assert!(state.path.exists());
-        let (file, temp) = state.burn_local();
-        assert!(file.is_ok() && temp.is_err());
+        let (file, temp, aside) = state.burn_local();
+        assert!(file.is_ok() && temp.is_err() && aside.is_err());
         assert!(!state.path.exists());
         // A write after the burn would seal under a master key that no longer exists.
         set_and_persist(&state, "kc:sig:identityKey", "id2");
@@ -599,28 +604,47 @@ mod tests {
     }
 
     #[test]
+    fn a_burn_also_deletes_the_vault_file_a_reset_moved_aside() {
+        let dir = scratch_dir("burn-aside");
+        let state = unlocked_state(dir.join(VAULT_FILE));
+        std::fs::write(unreadable_path(&state.path), b"moved aside").unwrap();
+        let (_, _, aside) = state.burn_local();
+        assert!(aside.is_ok());
+        assert!(!unreadable_path(&state.path).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn burn_succeeds_when_everything_is_gone_even_if_it_was_never_there() {
-        assert_eq!(burn_outcome(Ok(()), Ok(()), Ok(())), Ok(()));
+        assert_eq!(burn_outcome(Ok(()), Ok(()), Ok(()), Ok(())), Ok(()));
         assert_eq!(
-            burn_outcome(not_found(), not_found(), Err(keyring::Error::NoEntry)),
+            burn_outcome(
+                not_found(),
+                not_found(),
+                not_found(),
+                Err(keyring::Error::NoEntry)
+            ),
             Ok(())
         );
     }
 
     #[test]
     fn burn_names_what_it_could_not_delete() {
-        let file = burn_outcome(denied(), Ok(()), Ok(())).unwrap_err();
+        let file = burn_outcome(denied(), Ok(()), Ok(()), Ok(())).unwrap_err();
         assert!(file.contains("the sealed vault file"), "{file}");
         assert!(!file.contains("keychain"), "{file}");
-        let key = burn_outcome(Ok(()), Ok(()), Err(platform_failure())).unwrap_err();
+        let aside = burn_outcome(Ok(()), Ok(()), denied(), Ok(())).unwrap_err();
+        assert!(aside.contains("the moved-aside vault file"), "{aside}");
+        let key = burn_outcome(Ok(()), Ok(()), Ok(()), Err(platform_failure())).unwrap_err();
         assert!(key.contains("the keychain key"), "{key}");
-        let both = burn_outcome(denied(), denied(), Err(platform_failure())).unwrap_err();
+        let all = burn_outcome(denied(), denied(), denied(), Err(platform_failure())).unwrap_err();
         for what in [
             "the sealed vault file",
             "the vault temp file",
+            "the moved-aside vault file",
             "the keychain key",
         ] {
-            assert!(both.contains(what), "{both}");
+            assert!(all.contains(what), "{all}");
         }
     }
 
