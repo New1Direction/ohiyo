@@ -17,6 +17,15 @@ fn ise<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
     crate::api::error::internal(e)
 }
 
+/// Most Signal devices one user may register.
+const MAX_DEVICES_PER_USER: i64 = 10;
+
+/// Prekey-bundle fetches per minute: per caller, and per target user from all callers,
+/// so nobody can drain a user's one-time prekeys.
+const BUNDLE_FETCHES_PER_CALLER: usize = 30;
+const BUNDLE_FETCHES_PER_TARGET: usize = 60;
+const BUNDLE_FETCH_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+
 #[derive(Deserialize)]
 pub struct SignedPreKeyIn {
     pub key_id: i64,
@@ -72,6 +81,22 @@ pub async fn publish_keys(
     .map_err(ise)?;
     if tomb.is_some_and(|k| k != b.identity_key) {
         return Err((StatusCode::CONFLICT, "conflict".into()));
+    }
+
+    // Refreshing an existing device is always allowed; a new one only under the cap.
+    let other_devices: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM signal_identity WHERE user_id = ? AND device_id != ?",
+    )
+    .bind(&auth.0)
+    .bind(b.device_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(ise)?;
+    if other_devices >= MAX_DEVICES_PER_USER {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "too many devices (max 10) — remove one first".into(),
+        ));
     }
 
     // Atomic identity-key pin. identity_key is NOT in the DO UPDATE SET (a conflicting row
@@ -150,10 +175,24 @@ pub struct PreKeyBundleOut {
 /// popping one one-time prekey per device (single-use). The sender encrypts a copy
 /// for every returned device.
 pub async fn get_bundles(
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(user_id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<PreKeyBundleOut>>, (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("prekey-caller:{}", auth.0),
+        BUNDLE_FETCHES_PER_CALLER,
+        BUNDLE_FETCH_WINDOW,
+    ) || !state.rate.check(
+        &format!("prekey-target:{user_id}"),
+        BUNDLE_FETCHES_PER_TARGET,
+        BUNDLE_FETCH_WINDOW,
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many key lookups — try again in a minute".into(),
+        ));
+    }
     let devices: Vec<(i64, String, i64, i64, String, String)> = sqlx::query_as(
         "SELECT device_id, identity_key, registration_id, signed_prekey_id, signed_prekey, signed_prekey_sig
          FROM signal_identity WHERE user_id = ?",
@@ -165,35 +204,24 @@ pub async fn get_bundles(
 
     let mut out = Vec::with_capacity(devices.len());
     for (device_id, identity_key, registration_id, spk_id, spk, spk_sig) in devices {
-        // Pop one one-time prekey for this device under a transaction (single-use).
-        let mut tx = state.db.begin().await.map_err(ise)?;
+        // Pop one one-time prekey for this device in a single statement, so concurrent
+        // fetches can never hand out the same key (single-use).
         let otk: Option<(i64, String)> = sqlx::query_as(
-            "SELECT key_id, public_key FROM signal_one_time_prekeys
-             WHERE user_id = ? AND device_id = ? LIMIT 1",
+            "DELETE FROM signal_one_time_prekeys
+             WHERE user_id = ? AND device_id = ? AND key_id = (
+               SELECT key_id FROM signal_one_time_prekeys
+               WHERE user_id = ? AND device_id = ? LIMIT 1)
+             RETURNING key_id, public_key",
         )
         .bind(&user_id)
         .bind(device_id)
-        .fetch_optional(&mut *tx)
+        .bind(&user_id)
+        .bind(device_id)
+        .fetch_optional(&state.db)
         .await
         .map_err(ise)?;
-        let one_time_prekey = if let Some((kid, pk)) = &otk {
-            sqlx::query(
-                "DELETE FROM signal_one_time_prekeys WHERE user_id = ? AND device_id = ? AND key_id = ?",
-            )
-            .bind(&user_id)
-            .bind(device_id)
-            .bind(kid)
-            .execute(&mut *tx)
-            .await
-            .map_err(ise)?;
-            Some(OneTimePreKeyOut {
-                key_id: *kid,
-                public_key: pk.clone(),
-            })
-        } else {
-            None
-        };
-        tx.commit().await.map_err(ise)?;
+        let one_time_prekey =
+            otk.map(|(key_id, public_key)| OneTimePreKeyOut { key_id, public_key });
 
         out.push(PreKeyBundleOut {
             device_id,
