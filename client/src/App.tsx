@@ -59,7 +59,7 @@ import {
 } from "./lib/senderKeys";
 import { formatDuration } from "./lib/disappearing";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
-import { createDistributionTracker, encryptOutgoing, EncryptedSendError, forwardBlockReason } from "./lib/encryptedSend";
+import { createDistributionTracker, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
 import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { getVaultStore, initVaultBackend } from "./lib/tauriVault";
@@ -1616,22 +1616,21 @@ function MainApp({
       try {
         const cid = selectedChannelRef.current!.id;
         const channelType = selectedChannelRef.current!.channel_type;
-        let wire = content;
         const privatePlaintext = packEncryptedMessagePlaintext(content, encryptedAttachments);
         // E2E: encrypt on this device before it leaves — the server only sees ciphertext.
         // Group: one sender-key ciphertext every member decrypts. 1:1: a forward-secret
-        // Signal session (no legacy static-key fallback). Never plaintext: on failure the
-        // message stays in the failed state with Retry.
-        if ((content || encryptedAttachments?.length) && e2eChannelsRef.current.has(cid)) {
+        // Signal session (no legacy static-key fallback). Never plaintext, and never a file
+        // uploaded in the clear: on failure the message stays in the failed state with Retry.
+        const wire = await outgoingWire({ content, attachmentIds, encryptedAttachments }, e2eChannelsRef.current.has(cid), async () => {
           try {
-            wire = await encryptForChannel(cid, channelType, padMessagePlaintext(privatePlaintext));
+            return await encryptForChannel(cid, channelType, padMessagePlaintext(privatePlaintext));
           } catch (err) {
             if (err instanceof EncryptedSendError && err.reason === "no-signal-session") {
               toast("Can't send encrypted yet — your friend needs to open Ohiyo once to set up encryption.");
             }
             throw err;
           }
-        }
+        });
         const created = await api.sendMessage(token, cid, wire, attachmentIds, replyTo);
         completeActivation("message");
         // Forward secrecy: we can't decrypt our own outgoing ciphertext later (1:1
@@ -1646,7 +1645,8 @@ function MainApp({
         }
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         removeFromOutbox(tempId);
-      } catch {
+      } catch (err) {
+        if (err instanceof EncryptedSendError && err.reason === "unencrypted-attachment") toast(err.message, "error");
         // Keep the message visible in a failed state (persisted) so it can be retried.
         setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _state: "failed" } : m)));
         setOutboxState(tempId, "failed");
@@ -1663,13 +1663,12 @@ function MainApp({
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, _state: "pending" } : m)));
       setOutboxState(msg.id, "pending");
       try {
-        let wire = send.content;
         const privatePlaintext = packEncryptedMessagePlaintext(send.content, send.encryptedAttachments as EncryptedAttachmentMeta[] | undefined);
-        if ((send.content || send.encryptedAttachments?.length) && e2eChannelsRef.current.has(msg.channel_id)) {
-          // The channel's type picks group vs 1:1. Unknown (e.g. before Ready) or no
-          // ciphertext → throws, so the message stays failed and retryable.
-          wire = await encryptForChannel(msg.channel_id, channelTypeOf(msg.channel_id), padMessagePlaintext(privatePlaintext));
-        }
+        // The channel's type picks group vs 1:1. Unknown (e.g. before Ready), no
+        // ciphertext, or a file uploaded in the clear → throws, so the message stays failed.
+        const wire = await outgoingWire(send, e2eChannelsRef.current.has(msg.channel_id), () =>
+          encryptForChannel(msg.channel_id, channelTypeOf(msg.channel_id), padMessagePlaintext(privatePlaintext)),
+        );
         const created = await api.sendMessage(token, msg.channel_id, wire, send.attachmentIds, send.replyTo ?? null);
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
           cachePlaintext(created.id, privatePlaintext, created.expires_at ?? null);
@@ -1679,12 +1678,13 @@ function MainApp({
         }
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
         removeFromOutbox(msg.id);
-      } catch {
+      } catch (err) {
+        if (err instanceof EncryptedSendError && err.reason === "unencrypted-attachment") toast(err.message, "error");
         setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, _state: "failed" } : m)));
         setOutboxState(msg.id, "failed");
       }
     },
-    [token, encryptForChannel, channelTypeOf]
+    [token, toast, encryptForChannel, channelTypeOf]
   );
 
   // Drop a failed message (it never reached the server).

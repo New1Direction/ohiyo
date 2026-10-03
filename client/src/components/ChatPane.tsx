@@ -22,6 +22,7 @@ import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
 import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode } from "../lib/linkPreviews";
 import { loadDraft, persistDraft } from "../lib/drafts";
+import { pendingAttachmentsToKeep, REATTACH_MESSAGE } from "../lib/encryptedSend";
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 
@@ -663,6 +664,15 @@ export function ChatPane({
   useEffect(() => {
     if (channel?.id && e2eEnabled) persistDraft(channel.id, inputRef.current, true);
   }, [channel?.id, e2eEnabled]);
+
+  // A file attached while the chat was unencrypted was uploaded in the clear: once the
+  // chat is in encrypted mode (toggle or incoming encrypted message) it can't be sent.
+  useEffect(() => {
+    const kept = pendingAttachmentsToKeep(pendingFiles, e2eEnabled);
+    if (kept === pendingFiles) return;
+    setPendingFiles([...kept]);
+    onToast(REATTACH_MESSAGE);
+  }, [e2eEnabled, pendingFiles, onToast]);
 
   // Persist the CURRENT channel's draft on reload/close (the switch effect only fires
   // on a change, so a straight reload would otherwise drop it).

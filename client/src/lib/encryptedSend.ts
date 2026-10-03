@@ -6,7 +6,7 @@ import type { Channel } from "../api";
 
 type ChannelType = Channel["channel_type"];
 
-export type EncryptedSendFailure = "no-group-sender-key" | "no-signal-session" | "not-a-direct-chat";
+export type EncryptedSendFailure = "no-group-sender-key" | "no-signal-session" | "not-a-direct-chat" | "unencrypted-attachment";
 
 export class EncryptedSendError extends Error {
   readonly reason: EncryptedSendFailure;
@@ -44,6 +44,36 @@ export async function encryptOutgoing(
   }
   // A server channel, or a channel whose type we don't know yet: never guess a scheme.
   throw new EncryptedSendError("not-a-direct-chat", "this chat can't be encrypted");
+}
+
+type OutgoingMessage = {
+  content: string;
+  attachmentIds?: readonly string[];
+  encryptedAttachments?: readonly { id: string }[];
+};
+
+export const REATTACH_MESSAGE = "Re-attach files to send them encrypted.";
+
+/** What goes on the wire for a message (send, retry and outbox flush all use this). Outside
+ *  encrypted mode, the text as it is. In encrypted mode, ciphertext from `encrypt` (which
+ *  throws rather than return plaintext), and a message carrying an attachment with no
+ *  encrypted payload (a file uploaded in the clear, e.g. attached before encryption was
+ *  on) is refused: it would go out unencrypted inside an encrypted chat. */
+export async function outgoingWire(message: OutgoingMessage, encryptedMode: boolean, encrypt: () => Promise<string>): Promise<string> {
+  if (!encryptedMode) return message.content;
+  const encrypted = new Set((message.encryptedAttachments ?? []).map((a) => a.id));
+  if ((message.attachmentIds ?? []).some((id) => !encrypted.has(id))) {
+    throw new EncryptedSendError("unencrypted-attachment", REATTACH_MESSAGE);
+  }
+  if (!message.content && encrypted.size === 0) return message.content; // nothing to encrypt
+  return encrypt();
+}
+
+/** The composer's pending attachments to keep: in encrypted mode, only files uploaded
+ *  through the encrypted-attachment path. Returns `pending` itself when nothing goes. */
+export function pendingAttachmentsToKeep<T extends { encrypted?: unknown }>(pending: readonly T[], encryptedMode: boolean): readonly T[] {
+  if (!encryptedMode || pending.every((f) => f.encrypted)) return pending;
+  return pending.filter((f) => f.encrypted);
 }
 
 export type DistributionTracker = {
