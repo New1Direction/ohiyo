@@ -270,12 +270,11 @@ async fn dispatch_skips_stored_endpoints_that_no_longer_validate_and_keeps_the_d
     assert_eq!(body["skipped_invalid_endpoint"], 2);
     assert_eq!(body["retried"], 0);
 
-    let jobs: Vec<(String, String)> = sqlx::query_as(
-        "SELECT status, COALESCE(last_error, '') FROM push_deliveries ORDER BY id",
-    )
-    .fetch_all(&pool)
-    .await
-    .unwrap();
+    let jobs: Vec<(String, String)> =
+        sqlx::query_as("SELECT status, COALESCE(last_error, '') FROM push_deliveries ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     for (status, error) in jobs {
         assert_eq!(status, "failed");
         assert!(error.contains("not allowed"), "{error}");
@@ -286,7 +285,10 @@ async fn dispatch_skips_stored_endpoints_that_no_longer_validate_and_keeps_the_d
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(devices, 2, "the devices are skipped, not deleted or disabled");
+    assert_eq!(
+        devices, 2,
+        "the devices are skipped, not deleted or disabled"
+    );
 }
 
 #[tokio::test]
