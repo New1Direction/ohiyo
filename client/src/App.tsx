@@ -62,8 +62,9 @@ import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type En
 import { createDistributionTracker, encryptOutgoing, EncryptedSendError, forwardBlockReason } from "./lib/encryptedSend";
 import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
-import { initVaultBackend } from "./lib/tauriVault";
+import { getVaultStore, initVaultBackend } from "./lib/tauriVault";
 import { vaultLockedReason } from "./lib/vaultLock";
+import { clearLocalMessageData } from "./lib/logoutCleanup";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -102,6 +103,18 @@ type VoiceSidebarParticipant = {
 
 // Boot the theme + personal accent from localStorage immediately (warm first paint).
 applyActiveAppearance();
+
+// On logout: drop decrypted plaintext, the outbox and every draft from localStorage and
+// (desktop) the vault. Identity and session keys stay.
+function clearSignedOutMessageData(): void {
+  try {
+    const browser = { keys: () => Object.keys(localStorage), removeItem: (k: string) => localStorage.removeItem(k) };
+    const vault = getVaultStore();
+    clearLocalMessageData(vault ? [browser, vault] : [browser]);
+  } catch {
+    /* storage disabled — nothing was persisted to clear */
+  }
+}
 
 export default function App() {
   const initialHomesRef = useRef<OhiyoHome[] | null>(null);
@@ -144,6 +157,15 @@ export default function App() {
     };
   }, []);
 
+  // Set by handleLogout. Clearing waits for the signed-out render to commit: the chat
+  // saves its draft as it unmounts, and effects run after every unmount cleanup.
+  const logoutCleanupPendingRef = useRef(false);
+  useEffect(() => {
+    if (!logoutCleanupPendingRef.current) return;
+    logoutCleanupPendingRef.current = false;
+    clearSignedOutMessageData();
+  }, [token]);
+
   function persistHomes(next: OhiyoHome[]) {
     setHomes(next);
     saveHomes(next);
@@ -170,6 +192,7 @@ export default function App() {
 
   function handleLogout() {
     if (!activeHome) return;
+    logoutCleanupPendingRef.current = true;
     persistHomes(setHomeToken(homes, activeHome.id, null));
   }
 
