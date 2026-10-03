@@ -13,10 +13,15 @@ export function rateLimitMessage(err: unknown): string | null {
   return apiStatus(err) === 429 ? "Too many attempts. Try again in a few minutes." : null;
 }
 
+// The server's answer when an account at its device cap publishes keys for a new device
+// (server/src/api/signal.rs: 403 "too many devices (max 10) — remove one first").
+const DEVICE_CAP_ANSWER = "too many devices";
+
 /** What to show when publishing this device's Signal keys was refused because the account
- *  already has 10 devices (403), else null. */
+ *  already has 10 devices, else null. Other 403s are not the device cap. */
 export function deviceLimitMessage(err: unknown): string | null {
-  return apiStatus(err) === 403
+  const isDeviceCap = apiStatus(err) === 403 && err instanceof Error && err.message.startsWith(DEVICE_CAP_ANSWER);
+  return isDeviceCap
     ? "This account already has the maximum of 10 devices. Remove one in Settings → Privacy & security → Linked devices, then reopen Ohiyo."
     : null;
 }

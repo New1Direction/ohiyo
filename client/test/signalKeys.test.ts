@@ -20,6 +20,7 @@ let bundle: Bundle<Signal>;
 let published = 0;
 let prekeyCount = 100;
 let refusePublish = false;
+let forbidden: "publish" | "count" | null = null; // a 403 that isn't the device cap
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 
@@ -62,9 +63,13 @@ before(async () => {
   g.localStorage = empty;
   g.fetch = async (url: string, init?: RequestInit) => {
     if (url.endsWith("/users/@me")) return json({ id: "11111111-2222-4333-8444-555555555555" });
-    if (url.includes("/signal/keys/count")) return json({ count: prekeyCount });
+    if (url.includes("/signal/keys/count")) {
+      if (forbidden === "count") return new Response("forbidden", { status: 403 });
+      return json({ count: prekeyCount });
+    }
     if (url.endsWith("/signal/keys") && init?.method === "POST") {
       if (refusePublish) return new Response("too many devices (max 10) — remove one first", { status: 403 });
+      if (forbidden === "publish") return new Response("forbidden", { status: 403 });
       published++;
       return new Response(null, { status: 204 });
     }
@@ -84,6 +89,7 @@ beforeEach(() => {
   published = 0;
   prekeyCount = 100;
   refusePublish = false;
+  forbidden = null;
 });
 
 test("key setup on a full store evicts the plaintext cache instead of failing", async () => {
@@ -125,4 +131,25 @@ test("a device whose first publish was refused reports the limit again on its ne
 test("other failed requests are not the device limit", () => {
   assert.equal(deviceLimitMessage(Object.assign(new Error("offline"), { status: 500 })), null);
   assert.equal(deviceLimitMessage(new Error("Failed to fetch")), null);
+});
+
+test("a 403 that isn't the device cap is not reported as one", async () => {
+  bundle.mod.setSignalBackend(quotaStore(Infinity));
+  forbidden = "publish";
+  await assert.rejects(bundle.mod.initSignal("token"), (err: unknown) => deviceLimitMessage(err) === null);
+});
+
+test("a 403 from the prekey count is handled like before, not as the device cap", async () => {
+  const s = quotaStore(Infinity);
+  bundle.mod.setSignalBackend(s);
+  await bundle.mod.initSignal("token"); // first start: identity stored and published
+  forbidden = "count";
+  await bundle.mod.initSignal("token"); // resolves: not the device cap, so not surfaced
+});
+
+test("only the server's device-cap answer reads as the device limit", () => {
+  const forbiddenWith = (message: string) => Object.assign(new Error(message), { status: 403 });
+  assert.equal(deviceLimitMessage(forbiddenWith("too many devices (max 10) — remove one first")), TOO_MANY_DEVICES);
+  assert.equal(deviceLimitMessage(forbiddenWith("forbidden")), null);
+  assert.equal(deviceLimitMessage(Object.assign(new Error("too many devices (max 10) — remove one first"), { status: 500 })), null);
 });
