@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use axum::{
@@ -14,28 +14,89 @@ use crate::{
     AppState,
 };
 
-/// Per-IP cap on auth attempts to blunt brute-forcing. Generous enough for
+/// Per-client cap on auth attempts to blunt brute-forcing. Generous enough for
 /// shared NATs and legit retries; still throttles online password guessing.
-/// NOTE: behind a reverse proxy, parse X-Forwarded-For for the real client IP.
 const AUTH_MAX_PER_MIN: usize = 40;
 
-/// Resolve the real client IP for rate-limiting. Behind our deploy proxy (Fly),
-/// the socket peer is the proxy — so prefer the proxy-set header. These headers
-/// are only trustworthy behind a proxy that overwrites them (Fly does).
-fn client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
-    headers
-        .get("fly-client-ip")
-        .and_then(|v| v.to_str().ok())
-        .or_else(|| {
-            headers
-                .get("x-forwarded-for")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.split(',').next())
-        })
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-        .unwrap_or_else(|| addr.ip().to_string())
+/// Rate-limit key for the requesting client (see [`resolve_client_ip`], [`rate_key_for`]).
+pub(crate) fn client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
+    rate_key_for(resolve_client_ip(
+        headers,
+        addr.ip(),
+        &ProxyTrust::from_env(),
+    ))
+}
+
+/// Which proxy-set client-address headers this deployment may believe. Any client can
+/// send these headers, so each is trusted only when a proxy in front is known to set it.
+struct ProxyTrust {
+    /// `Fly-Client-IP`, overwritten by Fly's edge proxy. Fly sets `FLY_APP_NAME` on
+    /// every machine it runs.
+    fly: bool,
+    /// `X-Forwarded-For` behind `TRUSTED_PROXY_HOPS` proxies that each append the
+    /// address they saw.
+    xff_hops: Option<usize>,
+}
+
+impl ProxyTrust {
+    fn from_env() -> Self {
+        ProxyTrust {
+            fly: std::env::var_os("FLY_APP_NAME").is_some(),
+            xff_hops: parse_proxy_hops(std::env::var("TRUSTED_PROXY_HOPS").ok().as_deref()),
+        }
+    }
+}
+
+/// `TRUSTED_PROXY_HOPS` must be an integer of at least 1; anything else is ignored.
+fn parse_proxy_hops(raw: Option<&str>) -> Option<usize> {
+    raw.and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+}
+
+/// The client's address: `Fly-Client-IP` on Fly, else the Nth `X-Forwarded-For` entry
+/// from the right behind N trusted proxies, else the socket peer. A missing or invalid
+/// trusted header falls through; too few forwarded entries fall back to the peer, never
+/// to an entry the client could have written itself.
+fn resolve_client_ip(headers: &HeaderMap, peer: IpAddr, trust: &ProxyTrust) -> IpAddr {
+    if trust.fly {
+        let fly_ip = headers
+            .get("fly-client-ip")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse().ok());
+        if let Some(ip) = fly_ip {
+            return ip;
+        }
+    }
+    if let Some(hops) = trust.xff_hops {
+        let forwarded: Vec<&str> = headers
+            .get_all("x-forwarded-for")
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .flat_map(|v| v.split(','))
+            .collect();
+        return forwarded
+            .iter()
+            .rev()
+            .nth(hops - 1)
+            .and_then(|entry| entry.trim().parse().ok())
+            .unwrap_or(peer);
+    }
+    peer
+}
+
+/// Rate-limit key for a client address. IPv4 (including IPv4-mapped IPv6) is keyed as
+/// is; other IPv6 by its /64, the block one subscriber typically controls.
+fn rate_key_for(ip: IpAddr) -> String {
+    match ip {
+        IpAddr::V4(v4) => v4.to_string(),
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => v4.to_string(),
+            None => {
+                let s = v6.segments();
+                format!("{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
+            }
+        },
+    }
 }
 
 /// Argon2 runs at most this many at once: each takes 19 MiB and tens of milliseconds of CPU.
@@ -365,4 +426,103 @@ pub async fn link_complete(
         token,
         user: user.into(),
     }))
+}
+
+#[cfg(test)]
+mod client_ip_tests {
+    use super::*;
+
+    const PEER: &str = "203.0.113.9";
+
+    fn headers(pairs: &[(&'static str, &str)]) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        for (name, value) in pairs {
+            map.append(*name, value.parse().unwrap());
+        }
+        map
+    }
+
+    fn resolve(pairs: &[(&'static str, &str)], fly: bool, xff_hops: Option<usize>) -> String {
+        resolve_client_ip(
+            &headers(pairs),
+            PEER.parse().unwrap(),
+            &ProxyTrust { fly, xff_hops },
+        )
+        .to_string()
+    }
+
+    #[test]
+    fn proxy_headers_are_ignored_unless_trusted() {
+        let spoofed = [("fly-client-ip", "1.1.1.1"), ("x-forwarded-for", "2.2.2.2")];
+        assert_eq!(resolve(&spoofed, false, None), PEER);
+    }
+
+    #[test]
+    fn fly_client_ip_is_used_on_fly_and_falls_through_when_missing_or_invalid() {
+        let both = [("fly-client-ip", "1.1.1.1"), ("x-forwarded-for", "2.2.2.2")];
+        assert_eq!(resolve(&both, true, Some(1)), "1.1.1.1");
+        assert_eq!(resolve(&[("fly-client-ip", "nonsense")], true, None), PEER);
+        assert_eq!(
+            resolve(
+                &[
+                    ("fly-client-ip", "nonsense"),
+                    ("x-forwarded-for", "2.2.2.2")
+                ],
+                true,
+                Some(1)
+            ),
+            "2.2.2.2"
+        );
+        assert_eq!(resolve(&[], true, None), PEER);
+    }
+
+    #[test]
+    fn forwarded_for_takes_the_nth_address_from_the_right() {
+        let xff = [("x-forwarded-for", "9.9.9.9, 1.1.1.1, 2.2.2.2")];
+        assert_eq!(resolve(&xff, false, Some(1)), "2.2.2.2");
+        assert_eq!(resolve(&xff, false, Some(2)), "1.1.1.1");
+        assert_eq!(resolve(&xff, false, Some(3)), "9.9.9.9");
+        // Separate header lines count as one comma-joined list.
+        let split = [
+            ("x-forwarded-for", "9.9.9.9"),
+            ("x-forwarded-for", "1.1.1.1"),
+        ];
+        assert_eq!(resolve(&split, false, Some(1)), "1.1.1.1");
+    }
+
+    #[test]
+    fn forwarded_for_falls_back_to_the_peer_never_the_leftmost_entry() {
+        let xff = [("x-forwarded-for", "9.9.9.9, 1.1.1.1")];
+        assert_eq!(resolve(&xff, false, Some(3)), PEER, "too few entries");
+        let garbage = [("x-forwarded-for", "9.9.9.9, not-an-ip")];
+        assert_eq!(resolve(&garbage, false, Some(1)), PEER, "invalid entry");
+        assert_eq!(resolve(&[], false, Some(1)), PEER, "no header");
+    }
+
+    #[test]
+    fn trusted_proxy_hops_must_be_a_positive_integer() {
+        for (raw, hops) in [
+            (Some("1"), Some(1)),
+            (Some(" 2 "), Some(2)),
+            (Some("0"), None),
+            (Some("-1"), None),
+            (Some("two"), None),
+            (None, None),
+        ] {
+            assert_eq!(parse_proxy_hops(raw), hops, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn ipv6_clients_are_keyed_by_their_64_and_mapped_ipv4_as_ipv4() {
+        let key = |ip: &str| rate_key_for(ip.parse().unwrap());
+        assert_eq!(key("198.51.100.7"), "198.51.100.7");
+        assert_eq!(key("::ffff:198.51.100.7"), "198.51.100.7");
+        assert_eq!(
+            key("2001:db8:aa:bb:1:2:3:4"),
+            key("2001:db8:aa:bb:ffff:ffff:ffff:ffff")
+        );
+        assert_ne!(key("2001:db8:aa:bb::1"), key("2001:db8:aa:bc::1"));
+        assert_eq!(key("2001:db8:aa:bb::1"), "2001:db8:aa:bb::/64");
+    }
 }
