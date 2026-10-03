@@ -39,7 +39,7 @@ A calm, fast place to get things done with a team.
 Your own encrypted server, in one tap — and you actually own it. Like Minecraft Realms, if Realms couldn't read your world.
 
 - [x] **Instant Servers — Phase 1 (provision + connect)** — a control plane that spins up a dedicated per-community instance behind a `MachineProvisioner` trait (real Fly Machines impl + a zero-infra fake selected by `FLY_API_TOKEN`), an **atomic** free-tier cap, owner-scoped + rate-limited `/api/v1/instances`. **Adversarially reviewed and fixed** (TOCTOU cap-bypass, cap lockout, empty-volume data loss, untested failure path — all closed); build / clippy / 8 new tests green. Live provisioning gated on a Fly token + the `ohiyo.gg` domain.
-- [x] **Realms-shaped ownership model** — we host it, but the box only ever holds ciphertext (E2E); the design bakes in export + one-click "graduate to your own box", priced below one Discord Nitro. Spec: [`docs/superpowers/specs/2026-06-16-instant-servers-design.md`](docs/superpowers/specs/2026-06-16-instant-servers-design.md).
+- [x] **Realms-shaped ownership model** — we host it; encrypted DMs and group chats are ciphertext on the box (server channels are not end-to-end encrypted); the design bakes in export + one-click "graduate to your own box", priced below one Discord Nitro. Spec: [`docs/superpowers/specs/2026-06-16-instant-servers-design.md`](docs/superpowers/specs/2026-06-16-instant-servers-design.md).
 - [ ] **Phase 2 — sleep/wake** — idle instances auto-stop and wake-on-request (sub-second), with a "waking…" UX
 - [ ] **Phase 3 — notification relay** — content-free pushes so a *sleeping* server can still ping you at 2am
 - [ ] **Phase 4 — export + graduate** — download-my-server + move-to-your-own-box flows
@@ -59,6 +59,10 @@ Your own encrypted server, in one tap — and you actually own it. Like Minecraf
 - [x] **Disappearing messages** — per-conversation TTL; messages carry `expires_at`, a background sweeper deletes them server-side (ciphertext doesn't linger) and a client timer drops them instantly. One-click duration picker + live banner. **Two-client verified: self-destruct with no reload.** (Also the engine for an account-level dead-man's switch.)
 - [x] **Desktop key vault** (dazai/ningen-shikkaku) — on the desktop app, E2E private keys live in **page-locked, non-swappable RAM** (vendored `goodnight::SecretBuffer`), persisted only as an **AES-256-GCM sealed blob** (master key in the OS keychain) — never plaintext on disk like the old localStorage. An on-demand **burn** (wipe RAM + sealed blob + keychain key) is the dead-man's switch. Web build keeps localStorage (no mlock in a browser). *Vault core unit-tested; Tauri integration compiles; in-use keys still transit JS heap (full native crypto is a later phase).*
 - [x] **Dead-man's switch (inactivity wipe)** — opt-in, cross-platform: if you don't open Ohiyo for N days (7/30/90), a server sweeper wipes your authored messages, and optionally your server-side Signal directory (scope = history / keys). Configurable in Settings → Privacy & Security. **Two-user verified: armed+inactive user's history wiped, others' survive.**
+- [ ] **Device-change notices** — announce a new device for a contact or your own account, and bind "verified" to the actual key set
+- [ ] **Encryption on by default** for DMs and group chats
+- [ ] **Group encryption rework** — per-device sender keys, skipped-key caching and delivery to offline members (today's scheme is experimental)
+- [ ] **Account basics** — password change, password reset, account deletion, and a logout that revokes the session
 - [ ] Sealed sender (metadata hiding — needs sender certs + server trust-model change)
 - [ ] Federation
 
