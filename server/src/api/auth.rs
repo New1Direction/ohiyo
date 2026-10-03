@@ -234,6 +234,15 @@ pub async fn login(
     Json(body): Json<LoginBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
     check_auth_rate(&state, &client_ip(&headers, &addr))?;
+    let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
+        .bind(&body.username)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+
+    let user = user.ok_or((StatusCode::UNAUTHORIZED, "invalid credentials".into()))?;
+
+    // Keyed only once the username exists, so made-up usernames can't mint limiter keys.
     // Exact username: usernames are case-sensitive, so this is one account's key.
     if !state.rate.check_unauth(
         &format!("login-user:{}", body.username),
@@ -245,13 +254,6 @@ pub async fn login(
             "too many attempts — give it a moment and try again".into(),
         ));
     }
-    let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
-        .bind(&body.username)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(crate::api::error::internal)?;
-
-    let user = user.ok_or((StatusCode::UNAUTHORIZED, "invalid credentials".into()))?;
 
     let (password, hash) = (body.password, user.password_hash.clone());
     if !run_argon2(move || verify_password(&password, &hash)).await? {

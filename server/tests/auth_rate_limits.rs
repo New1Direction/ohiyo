@@ -113,3 +113,22 @@ async fn a_flood_of_address_keys_does_not_lock_out_signed_in_users() {
     }
     assert_eq!(send().await.status(), 429, "her own limit still applies");
 }
+
+#[tokio::test]
+async fn a_login_for_an_unknown_username_creates_no_username_key() {
+    std::env::remove_var("FLY_APP_NAME");
+    std::env::remove_var("TRUSTED_PROXY_HOPS");
+    let srv = TestServer::start().await;
+
+    // Past the 10-a-minute username limit, an unknown username still gets the plain
+    // "invalid credentials" answer: only the per-address limit (40) counts it.
+    for _ in 0..=LOGIN_MAX_PER_USERNAME_PER_MIN {
+        let res = srv
+            .post_json(
+                "/api/v1/auth/login",
+                json!({ "username": "nobodyhere", "password": "password123" }),
+            )
+            .await;
+        assert_eq!(res.status(), 401);
+    }
+}
