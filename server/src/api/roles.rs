@@ -304,6 +304,7 @@ pub async fn create_role(
     if name.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "role name required".into()));
     }
+    crate::api::limits::check_len("role name", name, crate::api::limits::ROLE_NAME)?;
     // A non-owner can never grant permissions they don't themselves hold.
     let mine = member_permissions(&state, &server_id, &auth.0).await;
     let granted = body.permissions & mine & perm::ALL;

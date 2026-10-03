@@ -12,6 +12,7 @@ pub mod ice;
 pub mod instances;
 pub mod invites;
 pub mod keys;
+pub mod limits;
 pub mod livekit;
 pub mod messages;
 pub mod og;

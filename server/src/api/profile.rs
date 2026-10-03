@@ -243,6 +243,7 @@ pub async fn update_profile(
     Json(body): Json<UpdateProfileBody>,
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
     if let Some(name) = &body.display_name {
+        crate::api::limits::check_len("display name", name, crate::api::limits::DISPLAY_NAME)?;
         sqlx::query("UPDATE users SET display_name = ? WHERE id = ?")
             .bind(name)
             .bind(&auth.0)

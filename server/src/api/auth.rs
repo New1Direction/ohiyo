@@ -81,6 +81,9 @@ pub async fn register(
     if body.password.len() < 8 {
         return Err((StatusCode::BAD_REQUEST, "password must be ≥8 chars".into()));
     }
+    if let Some(name) = &body.display_name {
+        crate::api::limits::check_len("display name", name, crate::api::limits::DISPLAY_NAME)?;
+    }
 
     let existing: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
         .bind(&body.username)

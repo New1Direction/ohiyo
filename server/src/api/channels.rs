@@ -93,6 +93,14 @@ pub async fn create_channel(
     if !can_manage(&state, &server_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "you can't manage channels".into()));
     }
+    crate::api::limits::check_len(
+        "channel name",
+        body.name.trim(),
+        crate::api::limits::CHANNEL_NAME,
+    )?;
+    if let Some(topic) = &body.topic {
+        crate::api::limits::check_len("topic", topic, crate::api::limits::CHANNEL_TOPIC)?;
+    }
     let id = new_id();
     let now = now_unix();
     let position = body.position.unwrap_or(0);

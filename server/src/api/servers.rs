@@ -83,6 +83,11 @@ pub async fn create_server(
     if body.name.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "name required".into()));
     }
+    crate::api::limits::check_len(
+        "server name",
+        body.name.trim(),
+        crate::api::limits::SERVER_NAME,
+    )?;
 
     let server_id = new_id();
     let now = now_unix();
