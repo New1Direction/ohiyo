@@ -20,6 +20,9 @@ const KEYRING_SERVICE: &str = "kikkacord";
 const KEYRING_ACCOUNT: &str = "vault-master";
 const VAULT_FILE: &str = "kc-vault.bin";
 const VAULT_TEMP_SUFFIX: &str = ".tmp";
+/// Where a reset moves saved keys that can't be opened (kept, in case they can be opened
+/// by hand later).
+const VAULT_UNREADABLE_SUFFIX: &str = ".unreadable";
 
 /// Namespaces the webview is allowed to persist into the vault. Anything outside
 /// these prefixes is rejected by `vault_set` so a compromised/buggy frontend
@@ -39,15 +42,58 @@ fn is_allowed_key(key: &str) -> bool {
     ALLOWED_EXACT_KEYS.contains(&key) || ALLOWED_KEY_PREFIXES.iter().any(|p| key.starts_with(p))
 }
 
-/// Start of the error every vault command returns while the vault is locked. The webview
-/// (`lib/vaultLock.ts`) matches it to show the locked state instead of starting empty.
+/// Start of the error every vault command returns while the vault is locked, followed by
+/// the kind and the reason: `vault_locked: <keychain|vault>: <reason>`. The webview
+/// (`lib/vaultLock.ts`) parses it to show the locked screen instead of starting empty.
 const VAULT_LOCKED_PREFIX: &str = "vault_locked: ";
+
+/// Why the vault stayed locked, which decides what the locked screen offers.
+#[derive(Clone, Copy)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+enum LockKind {
+    /// The keychain couldn't be reached or read, or a new key couldn't be saved. Retrying
+    /// can help; a reset can't.
+    Keychain,
+    /// No key but a sealed vault exists, the stored key is malformed, or the sealed file
+    /// can't be read or opened. The user may reset this device.
+    Vault,
+}
+
+#[cfg_attr(test, derive(Debug, PartialEq))]
+struct Locked {
+    kind: LockKind,
+    reason: String,
+}
+
+impl Locked {
+    fn keychain(reason: impl Into<String>) -> Self {
+        Self {
+            kind: LockKind::Keychain,
+            reason: reason.into(),
+        }
+    }
+
+    fn vault(reason: impl Into<String>) -> Self {
+        Self {
+            kind: LockKind::Vault,
+            reason: reason.into(),
+        }
+    }
+
+    fn error(&self) -> String {
+        let kind = match self.kind {
+            LockKind::Keychain => "keychain",
+            LockKind::Vault => "vault",
+        };
+        format!("{VAULT_LOCKED_PREFIX}{kind}: {}", self.reason)
+    }
+}
 
 pub struct VaultState {
     path: PathBuf,
     /// The unlocked vault, or why it stayed locked. A locked vault never writes the sealed
     /// file, so a keychain or decrypt failure can't replace it with an empty one.
-    vault: Result<UnlockedVault, String>,
+    vault: Result<UnlockedVault, Locked>,
 }
 
 struct UnlockedVault {
@@ -60,9 +106,7 @@ struct UnlockedVault {
 
 impl VaultState {
     fn unlocked(&self) -> Result<&UnlockedVault, String> {
-        self.vault
-            .as_ref()
-            .map_err(|reason| format!("{VAULT_LOCKED_PREFIX}{reason}"))
+        self.vault.as_ref().map_err(Locked::error)
     }
 
     fn persist(&self, vault: &Vault) {
@@ -106,6 +150,59 @@ fn temp_path(path: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
+fn unreadable_path(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(VAULT_UNREADABLE_SUFFIX);
+    PathBuf::from(name)
+}
+
+/// Reset, step 1: move the sealed file aside (replacing an earlier one) and drop any temp
+/// file. A missing sealed file is fine. If the move fails, nothing else is changed.
+fn move_sealed_aside(path: &Path) -> io::Result<()> {
+    match std::fs::rename(path, unreadable_path(path)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    let _ = std::fs::remove_file(temp_path(path));
+    Ok(())
+}
+
+/// Reset, step 2: what to do with the keychain entry.
+#[cfg_attr(test, derive(Debug, PartialEq))]
+enum KeychainReset {
+    /// A well-formed key stays: the next launch starts an empty vault under it, and the
+    /// moved file can still be opened with it by hand.
+    Keep,
+    /// A malformed key is useless; delete it so the next launch creates a new one.
+    Delete,
+    /// No entry: nothing to do.
+    Nothing,
+}
+
+fn keychain_reset(stored: Result<String, keyring::Error>) -> Result<KeychainReset, String> {
+    match stored {
+        Ok(hex) if from_hex(&hex).is_some() => Ok(KeychainReset::Keep),
+        Ok(_) => Ok(KeychainReset::Delete),
+        Err(keyring::Error::NoEntry) => Ok(KeychainReset::Nothing),
+        Err(e) => Err(format!("the OS keychain could not be read: {e}")),
+    }
+}
+
+/// The sealed file a reset may move aside: only when the vault is locked on its saved
+/// keys. A reset can't help when the keychain can't be reached, and must never touch a
+/// vault that opened.
+fn reset_target(state: &VaultState) -> Result<&Path, String> {
+    match &state.vault {
+        Err(Locked {
+            kind: LockKind::Vault,
+            ..
+        }) => Ok(&state.path),
+        Err(_) => Err("a reset can't help: the OS keychain can't be reached".to_string()),
+        Ok(_) => Err("the vault isn't locked".to_string()),
+    }
+}
+
 /// Replace `path` with `bytes` without ever leaving a partial file: write a temp file in
 /// the same directory, fsync it, then rename it over `path`.
 fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
@@ -147,7 +244,7 @@ enum MasterKey {
     Existing([u8; 32]),
     CreateNew,
     /// Don't create or store a key; the vault stays locked for this reason.
-    Locked(String),
+    Locked(Locked),
 }
 
 /// Only a "no entry" answer, on a first run with no sealed vault on disk, creates a new
@@ -161,32 +258,38 @@ fn decide_master_key(
     match stored {
         Ok(hex) => match from_hex(&hex) {
             Some(k) => MasterKey::Existing(k),
-            None => MasterKey::Locked("the vault key in the OS keychain is malformed".to_string()),
+            None => MasterKey::Locked(Locked::vault(
+                "the vault key in the OS keychain is malformed",
+            )),
         },
         Err(keyring::Error::NoEntry) if !sealed_vault_exists => MasterKey::CreateNew,
-        Err(keyring::Error::NoEntry) => MasterKey::Locked(
-            "the OS keychain has no vault key, but a sealed vault exists".to_string(),
-        ),
-        Err(e) => MasterKey::Locked(format!("the OS keychain could not be read: {e}")),
+        Err(keyring::Error::NoEntry) => MasterKey::Locked(Locked::vault(
+            "the OS keychain has no vault key, but a sealed vault exists",
+        )),
+        Err(e) => MasterKey::Locked(Locked::keychain(format!(
+            "the OS keychain could not be read: {e}"
+        ))),
     }
 }
 
 /// The vault from the sealed file's bytes. Only a missing file starts an empty vault; a
 /// file that can't be read or decrypted keeps the vault locked.
-fn open_sealed(read: io::Result<Vec<u8>>, master: &[u8; 32]) -> Result<Vault, String> {
+fn open_sealed(read: io::Result<Vec<u8>>, master: &[u8; 32]) -> Result<Vault, Locked> {
     match read {
         Ok(blob) => Vault::open(&blob, master)
-            .map_err(|e| format!("the sealed vault could not be opened: {e}")),
+            .map_err(|e| Locked::vault(format!("the sealed vault could not be opened: {e}"))),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Vault::new()),
-        Err(e) => Err(format!("the sealed vault could not be read: {e}")),
+        Err(e) => Err(Locked::vault(format!(
+            "the sealed vault could not be read: {e}"
+        ))),
     }
 }
 
 /// Unlock the sealed vault at `path` with the keychain master key (created on first run).
 /// On any failure nothing is generated, stored or overwritten, and the reason is returned.
-fn unlock(path: &Path) -> Result<UnlockedVault, String> {
+fn unlock(path: &Path) -> Result<UnlockedVault, Locked> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
-        .map_err(|e| format!("the OS keychain is unavailable: {e}"))?;
+        .map_err(|e| Locked::keychain(format!("the OS keychain is unavailable: {e}")))?;
     // If we can't tell whether a sealed vault exists, assume it does.
     let sealed_vault_exists = path.try_exists().unwrap_or(true);
     let master = match decide_master_key(entry.get_password(), sealed_vault_exists) {
@@ -195,7 +298,9 @@ fn unlock(path: &Path) -> Result<UnlockedVault, String> {
             let mut k = [0u8; 32];
             rand::rng().fill_bytes(&mut k);
             entry.set_password(&to_hex(&k)).map_err(|e| {
-                format!("a new vault key could not be saved to the OS keychain: {e}")
+                Locked::keychain(format!(
+                    "a new vault key could not be saved to the OS keychain: {e}"
+                ))
             })?;
             k
         }
@@ -262,6 +367,23 @@ pub fn vault_remove(state: State<VaultState>, key: String) -> Result<(), String>
 #[tauri::command]
 pub fn vault_remove_many(state: State<VaultState>, keys: Vec<String>) -> Result<(), String> {
     state.remove_many(&keys)
+}
+
+/// "Reset this device" on the locked screen, only when the saved keys can't be opened:
+/// move the sealed file aside, then delete the keychain key only if it is malformed. On
+/// success the webview restarts the app, which then starts an empty vault.
+#[tauri::command]
+pub fn vault_reset(state: State<VaultState>) -> Result<(), String> {
+    let path = reset_target(&state)?;
+    move_sealed_aside(path).map_err(|e| format!("the saved keys could not be moved aside: {e}"))?;
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+        .map_err(|e| format!("the OS keychain is unavailable: {e}"))?;
+    match keychain_reset(entry.get_password())? {
+        KeychainReset::Delete => entry
+            .delete_credential()
+            .map_err(|e| format!("the malformed keychain key could not be deleted: {e}")),
+        KeychainReset::Keep | KeychainReset::Nothing => Ok(()),
+    }
 }
 
 #[tauri::command]
@@ -332,12 +454,18 @@ mod tests {
         ] {
             assert!(matches!(
                 decide_master_key(Err(err), true),
-                MasterKey::Locked(_)
+                MasterKey::Locked(Locked {
+                    kind: LockKind::Keychain,
+                    ..
+                })
             ));
         }
         assert!(matches!(
             decide_master_key(Err(platform_failure()), false),
-            MasterKey::Locked(_)
+            MasterKey::Locked(Locked {
+                kind: LockKind::Keychain,
+                ..
+            })
         ));
     }
 
@@ -345,7 +473,10 @@ mod tests {
     fn malformed_keychain_value_locks_the_vault() {
         assert!(matches!(
             decide_master_key(Ok("not-a-hex-key".to_string()), true),
-            MasterKey::Locked(_)
+            MasterKey::Locked(Locked {
+                kind: LockKind::Vault,
+                ..
+            })
         ));
     }
 
@@ -353,7 +484,10 @@ mod tests {
     fn missing_entry_with_a_sealed_vault_on_disk_locks_instead_of_replacing_the_key() {
         assert!(matches!(
             decide_master_key(Err(keyring::Error::NoEntry), true),
-            MasterKey::Locked(_)
+            MasterKey::Locked(Locked {
+                kind: LockKind::Vault,
+                ..
+            })
         ));
     }
 
@@ -376,14 +510,14 @@ mod tests {
         let mut v = Vault::new();
         v.set("kc:sig:identityKey", "id").unwrap();
         let blob = v.seal(&KEY).unwrap();
-        assert!(open_sealed(Ok(blob), &[9u8; 32]).is_err());
-        assert!(open_sealed(Ok(Vec::new()), &KEY).is_err());
+        assert!(is_vault_locked(open_sealed(Ok(blob), &[9u8; 32])));
+        assert!(is_vault_locked(open_sealed(Ok(Vec::new()), &KEY)));
     }
 
     #[test]
     fn unreadable_sealed_file_stays_locked() {
         let read = Err(io::Error::from(io::ErrorKind::PermissionDenied));
-        assert!(open_sealed(read, &KEY).is_err());
+        assert!(is_vault_locked(open_sealed(read, &KEY)));
     }
 
     #[test]
@@ -441,22 +575,105 @@ mod tests {
     fn batch_removal_on_a_locked_vault_reports_it_locked() {
         let state = VaultState {
             path: PathBuf::from("unused"),
-            vault: Err("the OS keychain could not be read: denied".to_string()),
+            vault: Err(Locked::keychain(
+                "the OS keychain could not be read: denied",
+            )),
         };
         let err = state.remove_many(&["kc:outbox".to_string()]).unwrap_err();
         assert!(err.starts_with(VAULT_LOCKED_PREFIX), "{err}");
     }
 
     #[test]
-    fn a_locked_vault_reports_why_with_the_prefix_the_webview_matches() {
-        let state = VaultState {
+    fn a_locked_vault_reports_its_kind_and_why_in_the_form_the_webview_parses() {
+        let keychain = VaultState {
             path: PathBuf::from("unused"),
-            vault: Err("the OS keychain could not be read: denied".to_string()),
+            vault: Err(Locked::keychain(
+                "the OS keychain could not be read: denied",
+            )),
         };
         assert_eq!(
-            state.unlocked().err().as_deref(),
-            Some("vault_locked: the OS keychain could not be read: denied")
+            keychain.unlocked().err().as_deref(),
+            Some("vault_locked: keychain: the OS keychain could not be read: denied")
         );
+        let vault = VaultState {
+            path: PathBuf::from("unused"),
+            vault: Err(Locked::vault("the sealed vault could not be opened")),
+        };
+        assert_eq!(
+            vault.unlocked().err().as_deref(),
+            Some("vault_locked: vault: the sealed vault could not be opened")
+        );
+    }
+
+    fn is_vault_locked(opened: Result<Vault, Locked>) -> bool {
+        matches!(
+            opened,
+            Err(Locked {
+                kind: LockKind::Vault,
+                ..
+            })
+        )
+    }
+
+    #[test]
+    fn reset_keeps_a_good_key_deletes_a_malformed_one_and_needs_a_readable_keychain() {
+        assert_eq!(keychain_reset(Ok(to_hex(&KEY))), Ok(KeychainReset::Keep));
+        assert_eq!(
+            keychain_reset(Ok("not-a-hex-key".to_string())),
+            Ok(KeychainReset::Delete)
+        );
+        assert_eq!(
+            keychain_reset(Err(keyring::Error::NoEntry)),
+            Ok(KeychainReset::Nothing)
+        );
+        assert!(keychain_reset(Err(platform_failure())).is_err());
+    }
+
+    #[test]
+    fn reset_moves_the_sealed_file_aside_replacing_an_earlier_one() {
+        let dir = scratch_dir("move-aside");
+        let path = dir.join(VAULT_FILE);
+        std::fs::write(&path, b"sealed").unwrap();
+        std::fs::write(unreadable_path(&path), b"earlier").unwrap();
+        std::fs::write(temp_path(&path), b"partial").unwrap();
+        move_sealed_aside(&path).unwrap();
+        assert!(!path.exists());
+        assert!(!temp_path(&path).exists());
+        assert_eq!(std::fs::read(unreadable_path(&path)).unwrap(), b"sealed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reset_with_no_sealed_file_is_fine() {
+        let dir = scratch_dir("move-aside-missing");
+        assert!(move_sealed_aside(&dir.join(VAULT_FILE)).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_failed_move_changes_nothing() {
+        let dir = scratch_dir("move-aside-fails");
+        let path = dir.join(VAULT_FILE);
+        std::fs::write(&path, b"sealed").unwrap();
+        std::fs::write(temp_path(&path), b"partial").unwrap();
+        // A non-empty directory where the moved file should go makes the move fail.
+        std::fs::create_dir(unreadable_path(&path)).unwrap();
+        std::fs::write(unreadable_path(&path).join("x"), b"x").unwrap();
+        assert!(move_sealed_aside(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"sealed");
+        assert!(temp_path(&path).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reset_is_only_for_a_vault_that_is_locked_on_its_saved_keys() {
+        let at = |vault| VaultState {
+            path: PathBuf::from("kc-vault.bin"),
+            vault,
+        };
+        assert!(reset_target(&at(Err(Locked::vault("could not be opened")))).is_ok());
+        assert!(reset_target(&at(Err(Locked::keychain("denied")))).is_err());
+        assert!(reset_target(&unlocked_state(PathBuf::from("kc-vault.bin"))).is_err());
     }
 
     #[test]

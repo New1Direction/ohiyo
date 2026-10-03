@@ -20,7 +20,7 @@ import { setSignalBackend } from "./signal";
 import { setSenderKeyBackend } from "./senderKeys";
 import { setE2eStore } from "./e2e";
 import { setHomesTokenStore } from "./homes";
-import { vaultLockedReason } from "./vaultLock";
+import { parseVaultLocked } from "./vaultLock";
 
 // localStorage namespaces that hold sensitive material → moved into the vault. Covers
 // Signal (kc:sig:), group sender keys (kc:sk:), the legacy ECDH keypair, per-home
@@ -74,7 +74,7 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
  * Point the Signal + sender-key stores at the native locked-RAM vault. MUST be awaited
  * before initSignal (or any key access). Returns true if the vault is active, false in
  * a browser (callers then just keep localStorage). Rejects with the native locked error
- * (see vaultLockedReason) when the vault exists but couldn't be unlocked: starting on
+ * (see parseVaultLocked) when the vault exists but couldn't be unlocked: starting on
  * localStorage then would run this device with no keys.
  */
 export async function initVaultBackend(): Promise<boolean> {
@@ -122,7 +122,7 @@ export async function initVaultBackend(): Promise<boolean> {
     vaultStore = backend;
     return true;
   } catch (err) {
-    if (vaultLockedReason(err) !== null) throw err;
+    if (parseVaultLocked(err) !== null) throw err;
     return false; // vault unavailable — fall back to localStorage
   }
 }
@@ -162,6 +162,22 @@ export async function importKeyMaterial(material: Record<string, string>): Promi
       localStorage.setItem(k, v);
     }
   }
+}
+
+/** Restart the desktop app ("Try again" on the locked vault screen). */
+export async function restartApp(): Promise<void> {
+  await invoke("app_restart");
+}
+
+/**
+ * "Reset this device" on the locked screen, offered only when the keys saved on this
+ * device can't be opened: the native side moves the sealed file aside (and deletes a
+ * malformed keychain key), then the app restarts with an empty vault. A failure rejects
+ * with the native error and nothing restarts.
+ */
+export async function resetVaultAndRestart(): Promise<void> {
+  await invoke("vault_reset");
+  await restartApp();
 }
 
 /**

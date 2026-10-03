@@ -62,8 +62,9 @@ import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type En
 import { createDistributionTracker, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
 import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
-import { getVaultStore, initVaultBackend } from "./lib/tauriVault";
-import { vaultLockedReason } from "./lib/vaultLock";
+import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
+import { parseVaultLocked, type VaultLocked } from "./lib/vaultLock";
+import { VaultLockedScreen } from "./components/VaultLockedScreen";
 import { clearLocalMessageData } from "./lib/logoutCleanup";
 import { saveEncryptedChannels } from "./lib/storageQuota";
 import { deviceLimitMessage } from "./lib/apiErrors";
@@ -136,7 +137,7 @@ export default function App() {
   // sealed", so the UI is gated on this flag. Web has no vault → ready immediately.
   const [vaultReady, setVaultReady] = useState(() => !isDesktop());
   // Desktop: why the vault couldn't be unlocked (keychain or sealed-file failure), if so.
-  const [vaultLocked, setVaultLocked] = useState<string | null>(null);
+  const [vaultLocked, setVaultLocked] = useState<VaultLocked | null>(null);
 
   useEffect(() => {
     if (activeHome) setServerOrigin(activeHome.url);
@@ -150,7 +151,7 @@ export default function App() {
     let cancelled = false;
     void initVaultBackend()
       .catch((err: unknown) => {
-        if (!cancelled) setVaultLocked(vaultLockedReason(err) ?? String(err));
+        if (!cancelled) setVaultLocked(parseVaultLocked(err) ?? { kind: "keychain", reason: String(err) });
       })
       .finally(() => {
         if (cancelled) return;
@@ -209,15 +210,7 @@ export default function App() {
   }
   if (vaultLocked !== null) {
     // Desktop only: don't start with an empty vault, which would replace the saved keys.
-    return (
-      <div role="alert" className="fixed inset-0 grid place-items-center p-6 text-center text-sm">
-        <div className="max-w-md">
-          <p className="mb-2 font-semibold">Ohiyo couldn&apos;t unlock your encrypted key vault.</p>
-          <p className="mb-2 opacity-70">{vaultLocked}</p>
-          <p className="opacity-70">Nothing was deleted. Unlock your system keychain, then restart Ohiyo.</p>
-        </div>
-      </div>
-    );
+    return <VaultLockedScreen locked={vaultLocked} onTryAgain={restartApp} onReset={resetVaultAndRestart} />;
   }
   const addHomeModal = showAddHome ? (
     <AddHomeModal
