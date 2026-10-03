@@ -394,13 +394,42 @@ pub async fn create_role(
     let mine = member_permissions(&state, &server_id, &auth.0).await;
     let granted = body.permissions & mine & perm::ALL;
 
-    // New roles rank above existing ones (creation order = hierarchy in v1).
-    let position: i64 =
+    // The owner's new roles rank above existing ones (creation order = hierarchy in v1).
+    // Anyone else's take the rank of their own top role, which moves up one together with
+    // every role above it: the new role sits directly below the creator, who can then
+    // assign and delete it, and every other role keeps its order. Without a role of their
+    // own, anything they made would rank at or above them.
+    let creator_top = member_top_position(&state, &server_id, &auth.0).await;
+    let by_owner = creator_top == i64::MAX;
+    let position: i64 = if by_owner {
         sqlx::query_scalar("SELECT COALESCE(MAX(position), 0) + 1 FROM roles WHERE server_id = ?")
             .bind(&server_id)
             .fetch_one(&state.db)
             .await
-            .unwrap_or(1);
+            .unwrap_or(1)
+    } else if creator_top >= 0 {
+        creator_top
+    } else {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you need a role of your own to create roles below it".into(),
+        ));
+    };
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(crate::api::error::internal)?;
+    if !by_owner {
+        sqlx::query(
+            "UPDATE roles SET position = position + 1 WHERE server_id = ? AND position >= ?",
+        )
+        .bind(&server_id)
+        .bind(position)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    }
 
     let role = Role {
         id: new_id(),
@@ -422,9 +451,10 @@ pub async fn create_role(
     .bind(role.permissions)
     .bind(role.position)
     .bind(role.created_at)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
 
     Ok(Json(role))
 }
