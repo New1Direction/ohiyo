@@ -43,3 +43,40 @@ async fn a_rotating_fly_client_ip_does_not_escape_the_per_ip_limit() {
         "the 41st attempt from one peer is throttled whatever the headers say"
     );
 }
+
+/// Login attempts allowed per username per minute, from any number of addresses.
+const LOGIN_MAX_PER_USERNAME_PER_MIN: usize = 10;
+
+#[tokio::test]
+async fn logins_for_one_username_are_limited_to_10_a_minute() {
+    std::env::remove_var("FLY_APP_NAME");
+    std::env::remove_var("TRUSTED_PROXY_HOPS");
+    let srv = TestServer::start().await;
+    srv.register("victim", "password123").await;
+    srv.register("bystander", "password123").await;
+    let login = |username: &'static str, password: &'static str| {
+        srv.post_json(
+            "/api/v1/auth/login",
+            json!({ "username": username, "password": password }),
+        )
+    };
+
+    for _ in 0..LOGIN_MAX_PER_USERNAME_PER_MIN {
+        assert_eq!(login("victim", "wrong-guess").await.status(), 401);
+    }
+    assert_eq!(
+        login("victim", "wrong-guess").await.status(),
+        429,
+        "the 11th attempt on one username is throttled"
+    );
+    assert_eq!(
+        login("victim", "password123").await.status(),
+        429,
+        "even with the right password, until the minute is up"
+    );
+    assert_eq!(
+        login("bystander", "password123").await.status(),
+        200,
+        "other usernames are unaffected"
+    );
+}

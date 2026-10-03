@@ -18,6 +18,11 @@ use crate::{
 /// shared NATs and legit retries; still throttles online password guessing.
 const AUTH_MAX_PER_MIN: usize = 40;
 
+/// Per-username cap on login attempts, whatever address they come from, so guessing
+/// one account's password from many addresses is throttled too. A side effect: anyone
+/// can lock a known username out of login for up to a minute.
+const LOGIN_MAX_PER_USERNAME_PER_MIN: usize = 10;
+
 /// Rate-limit key for the requesting client (see [`resolve_client_ip`], [`rate_key_for`]).
 pub(crate) fn client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
     rate_key_for(resolve_client_ip(
@@ -229,6 +234,17 @@ pub async fn login(
     Json(body): Json<LoginBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
     check_auth_rate(&state, &client_ip(&headers, &addr))?;
+    // Exact username: usernames are case-sensitive, so this is one account's key.
+    if !state.rate.check(
+        &format!("login-user:{}", body.username),
+        LOGIN_MAX_PER_USERNAME_PER_MIN,
+        Duration::from_secs(60),
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many attempts — give it a moment and try again".into(),
+        ));
+    }
     let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
         .bind(&body.username)
         .fetch_optional(&state.db)
