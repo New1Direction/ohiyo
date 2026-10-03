@@ -1,13 +1,14 @@
-// C-M6: a full localStorage must not throw into rendering. A write that hits the quota
-// evicts the decrypted-message cache and retries once. The encrypted-mode chat list is
-// saved inside React state updaters, so saving it never throws; a Signal key write still
-// throws if the retry fails too, so a key that couldn't be saved fails its operation.
+// C-M6 / M5: a full localStorage must not throw into rendering. A write that hits the
+// quota evicts the oldest quarter of the decrypted-message cache and retries, repeating
+// until the write fits or the cache is empty, and the user is told once per session. The
+// encrypted-mode chat list is saved inside React state updaters, so saving it never
+// throws; a Signal key write still throws if it can't fit even with the cache gone.
 //   node --experimental-strip-types --test test/storageQuota.test.ts
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { saveEncryptedChannels, setItemEvictingPlaintextCache } from "../src/lib/storageQuota.ts";
+import { onPlaintextCacheEvicted, saveEncryptedChannels, setItemEvictingPlaintextCache } from "../src/lib/storageQuota.ts";
 
 const full = () => new DOMException("The quota has been exceeded.", "QuotaExceededError");
 
@@ -95,6 +96,52 @@ test("eviction removes the cache in one batch when the store can batch", () => {
     },
   };
   setItemEvictingPlaintextCache(store, "kc:sig:session:u2.1", "s".repeat(40));
-  assert.deepEqual(batches, [["kc:e2e-pt:m1", "kc:e2e-pt-index"]]);
-  assert.deepEqual(single, []);
+  assert.deepEqual(batches, [["kc:e2e-pt:m1"]]);
+  assert.deepEqual(single, ["kc:e2e-pt-index"]); // the emptied cache's index goes too
+});
+
+// Eight 10-character entries, m1 oldest, plus their index.
+function eightEntries(): Record<string, string> {
+  const ids = ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"];
+  return { ...Object.fromEntries(ids.map((id) => [`kc:e2e-pt:${id}`, "x".repeat(10)])), "kc:e2e-pt-index": JSON.stringify(ids) };
+}
+const cacheIds = (s: { m: Map<string, string> }) =>
+  [...s.m.keys()].filter((k) => k.startsWith("kc:e2e-pt:")).map((k) => k.slice("kc:e2e-pt:".length));
+
+test("eviction removes the oldest quarter first and stops as soon as the write fits", () => {
+  const s = quotaStore(130, eightEntries()); // 80 of entries + 41 of index; the write needs 25
+  setItemEvictingPlaintextCache(s, "kc:sig:session:u2.1", "s".repeat(25));
+  assert.deepEqual(cacheIds(s), ["m3", "m4", "m5", "m6", "m7", "m8"]);
+  assert.deepEqual(JSON.parse(s.m.get("kc:e2e-pt-index")!), ["m3", "m4", "m5", "m6", "m7", "m8"]);
+  assert.equal(s.m.get("kc:sig:session:u2.1"), "s".repeat(25));
+});
+
+test("eviction keeps taking the oldest quarter until the write fits", () => {
+  const s = quotaStore(100, eightEntries());
+  setItemEvictingPlaintextCache(s, "kc:sig:session:u2.1", "s".repeat(25));
+  assert.deepEqual(cacheIds(s), ["m5", "m6", "m7", "m8"]);
+  assert.deepEqual(JSON.parse(s.m.get("kc:e2e-pt-index")!), ["m5", "m6", "m7", "m8"]);
+});
+
+test("cache entries the index doesn't list (older builds) go first", () => {
+  const s = quotaStore(44, { // 30 of entries + 11 of index; the write needs 4
+    "kc:e2e-pt:m2": "x".repeat(10),
+    "kc:e2e-pt:m3": "x".repeat(10),
+    "kc:e2e-pt:legacy": "x".repeat(10),
+    "kc:e2e-pt-index": '["m2","m3"]',
+  });
+  setItemEvictingPlaintextCache(s, "k", "v".repeat(4));
+  assert.deepEqual(cacheIds(s).sort(), ["m2", "m3"]);
+});
+
+test("the user is told once per session that older decrypted messages were removed", () => {
+  const notices: string[] = [];
+  const stop = onPlaintextCacheEvicted((notice) => notices.push(notice));
+  try {
+    setItemEvictingPlaintextCache(quotaStore(130, eightEntries()), "k", "s".repeat(25));
+    setItemEvictingPlaintextCache(quotaStore(130, eightEntries()), "k", "s".repeat(25));
+    assert.deepEqual(notices, ["Storage is full. Older decrypted messages were removed from this device."]);
+  } finally {
+    stop();
+  }
 });

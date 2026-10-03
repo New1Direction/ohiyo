@@ -69,7 +69,7 @@ import { VaultLockedScreen } from "./components/VaultLockedScreen";
 import { SignOutDialog } from "./components/SignOutDialog";
 import { signOutRemovesLocalData } from "./lib/signOut";
 import { clearLocalMessageData } from "./lib/logoutCleanup";
-import { saveEncryptedChannels } from "./lib/storageQuota";
+import { onPlaintextCacheEvicted, saveEncryptedChannels } from "./lib/storageQuota";
 import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
 import { deviceLimitMessage } from "./lib/apiErrors";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
@@ -353,6 +353,8 @@ function MainApp({
   onLogout: () => void;
 }) {
   const { toasts, push: toast } = useToast();
+  // A full localStorage removed the oldest decrypted messages to make room: say so once.
+  useEffect(() => onPlaintextCacheEvicted((notice) => toast(notice)), [toast]);
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
   const [activation, setActivation] = useState<ActivationState>(() => loadActivation(null));
   const [activationDismissed, setActivationDismissedState] = useState(false);

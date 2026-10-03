@@ -12,6 +12,8 @@
 // All primitives are the browser's NATIVE crypto.subtle (HMAC, HKDF, AES-GCM, ECDSA);
 // only the protocol composition (the chain ratchet + distribution) is ours.
 
+import { localStorageStore, setItemEvictingPlaintextCache } from "./storageQuota.ts";
+
 const NS = "kc:sk:";
 // Furthest a received message may ratchet a peer's chain ahead of what we've stored.
 const MAX_RATCHET_SKIP = 2000;
@@ -27,6 +29,13 @@ let backend: SenderKeyBackend = {
 };
 export function setSenderKeyBackend(b: SenderKeyBackend) {
   backend = b;
+}
+
+// Every sender-key write. A full localStorage (web) frees the oldest decrypted-message
+// cache entries and retries, like the Signal store; if the key still can't be saved this
+// throws and the operation that needed it fails. The desktop vault never fills up.
+function put(k: string, v: string): void {
+  setItemEvictingPlaintextCache({ ...localStorageStore(), setItem: (key, value) => backend.setItem(key, value) }, k, v);
 }
 
 const b64 = (ab: ArrayBuffer): string => {
@@ -93,7 +102,7 @@ const getJson = <T,>(k: string): T | null => {
   const s = backend.getItem(k);
   return s ? (JSON.parse(s) as T) : null;
 };
-const putJson = (k: string, v: unknown) => backend.setItem(k, JSON.stringify(v));
+const putJson = (k: string, v: unknown) => put(k, JSON.stringify(v));
 
 /** Is stored content a group sender-key ciphertext envelope? */
 export function isGroupCiphertext(s: string): boolean {
@@ -125,7 +134,7 @@ export function getGroupEpoch(groupId: string): number {
 }
 // Persist the known epoch, never decreasing (the server's epoch only goes up).
 function rememberEpoch(groupId: string, epoch: number): void {
-  if (epoch > getGroupEpoch(groupId)) backend.setItem(epochKey(groupId), String(epoch));
+  if (epoch > getGroupEpoch(groupId)) put(epochKey(groupId), String(epoch));
 }
 
 // Mint a fresh sender key (random chain + ECDSA signing pair + key id) at `epoch`,
@@ -306,5 +315,5 @@ export async function groupDecrypt(groupId: string, fromUserId: string, wire: st
 
 /** Forget all sender-key state for a group (e.g. on membership change → rotate). */
 export function resetGroup(groupId: string): void {
-  backend.setItem(ownKey(groupId), "");
+  put(ownKey(groupId), "");
 }

@@ -17,6 +17,8 @@
 //       blob itself remains the synchronous source of truth to keep startup unbroken.
 //   Net: no behavior change, no broken async, and the token namespace is vault-aware.
 
+import { localStorageStore, setItemEvictingPlaintextCache } from "./storageQuota.ts";
+
 export type OhiyoHome = {
   id: string;
   name: string;
@@ -39,8 +41,8 @@ type KvStore = {
 // On DESKTOP, tauriVault points this at the encrypted locked-RAM vault via
 // setHomesTokenStore() once it hydrates (sealed-at-rest); on WEB — no OS secure store in
 // a browser sandbox — it stays localStorage (the inherent, accepted web tradeoff). The
-// setter inversion (rather than importing the vault here) keeps homes a dependency-free
-// leaf and mirrors setSignalBackend()/setSenderKeyBackend(). Before the desktop vault
+// setter inversion (rather than importing the vault here) keeps homes free of the vault
+// (it imports only the storageQuota leaf) and mirrors setSignalBackend()/setSenderKeyBackend(). Before the desktop vault
 // hydrates, reads miss and App.tsx waits on a vault-ready gate (then re-loads), so the
 // token never has to sit in the plaintext blob just to survive startup.
 let tokenBackend: KvStore | null = null;
@@ -149,7 +151,14 @@ export function saveHomes(homes: OhiyoHome[]) {
   // plaintext blob — the blob is persisted with every token nulled out.
   for (const h of deduped) writeToken(h.id, h.token);
   const blob = deduped.map((h) => ({ ...h, token: null }));
-  localStorage.setItem(HOMES_KEY, JSON.stringify(blob));
+  // Never throws (this can run while rendering): a full store frees old decrypted
+  // messages first; if it still can't save, the homes in memory stay right and the next
+  // change saves them.
+  try {
+    setItemEvictingPlaintextCache(localStorageStore(), HOMES_KEY, JSON.stringify(blob));
+  } catch {
+    /* still full or storage off */
+  }
 }
 
 export function loadActiveHomeId(homes: OhiyoHome[]): string {
