@@ -103,24 +103,35 @@ fn privacy_enabled(state: &AppState, user_id: &str) -> bool {
         .contains(user_id)
 }
 
-async fn load_persisted_privacy_mode(state: &AppState, user_id: &str) -> bool {
+/// The user's saved Privacy Mode preference. Each caller decides what a database error
+/// means for it.
+async fn load_persisted_privacy_mode(state: &AppState, user_id: &str) -> sqlx::Result<bool> {
     let row: Option<(String,)> =
         sqlx::query_as("SELECT prefs_json FROM user_prefs WHERE user_id = ?")
             .bind(user_id)
             .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten();
-    row.and_then(|(s,)| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .await?;
+    Ok(row
+        .and_then(|(s,)| serde_json::from_str::<serde_json::Value>(&s).ok())
         .and_then(|v| v.pointer("/privacy/metadataMode").and_then(|b| b.as_bool()))
-        .unwrap_or(false)
+        .unwrap_or(false))
 }
 
 /// Whether a user is in metadata Privacy Mode, for checks outside a live socket (REST):
 /// on if switched on live over the gateway, or saved in their prefs — the latter covers
-/// users who have not connected since this process started.
+/// users who have not connected since this process started. Fails closed: if the saved
+/// preference can't be read, it counts as on, so a transient error never exposes a
+/// read cursor or last-seen time.
 pub async fn privacy_mode_on(state: &AppState, user_id: &str) -> bool {
-    privacy_enabled(state, user_id) || load_persisted_privacy_mode(state, user_id).await
+    if privacy_enabled(state, user_id) {
+        return true;
+    }
+    load_persisted_privacy_mode(state, user_id)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("privacy mode lookup failed for {user_id}, treating as on: {e}");
+            true
+        })
 }
 
 fn set_privacy_mode(state: &AppState, user_id: &str, enabled: bool) {
@@ -349,7 +360,11 @@ async fn handle_socket(mut socket: WebSocket, user_id: String, state: AppState) 
 
     // Load persisted Privacy Mode before the first presence fan-out. Otherwise a
     // privacy-mode user would briefly flash online on every reconnect.
-    let persisted_privacy = load_persisted_privacy_mode(&state, &user_id).await;
+    // On a read error the socket starts with Privacy Mode off, as before: failing closed
+    // here would hide this user's presence and typing until they reconnect.
+    let persisted_privacy = load_persisted_privacy_mode(&state, &user_id)
+        .await
+        .unwrap_or(false);
     set_privacy_mode(&state, &user_id, persisted_privacy);
 
     // Load our own public profile once for voice events.

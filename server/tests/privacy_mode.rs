@@ -166,3 +166,57 @@ async fn last_active_of_privacy_mode_users_is_hidden_from_others() {
     set_live_privacy(&srv, &carol, true);
     assert_eq!(seen_last_active(&srv, &alice, &carol).await, Value::Null);
 }
+
+#[tokio::test]
+async fn a_database_error_reading_privacy_mode_hides_cursors_and_last_seen() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("faultalice", "supersecret123").await;
+    let bob = srv.register("faultbob", "supersecret123").await;
+    let channel_id = open_dm(&srv, &alice, &bob).await;
+    let msg: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/channels/{channel_id}/messages"),
+            &alice.token,
+            json!({ "content": "hi" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let db = sqlx::SqlitePool::connect(srv.db_url()).await.unwrap();
+    sqlx::query(
+        "INSERT INTO channel_reads (channel_id, user_id, last_read_message_id, last_read_at)
+         VALUES (?,?,?,?)",
+    )
+    .bind(&channel_id)
+    .bind(&bob.id)
+    .bind(msg["id"].as_str().unwrap())
+    .bind(common::now_unix())
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE users SET last_active_at = ? WHERE id = ?")
+        .bind(common::now_unix())
+        .bind(&bob.id)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    // Bob never turned Privacy Mode on, but his saved preference can't be read.
+    sqlx::query("ALTER TABLE user_prefs RENAME TO user_prefs_unreadable")
+        .execute(&db)
+        .await
+        .unwrap();
+
+    assert!(
+        !reader_ids(&srv, &alice, &channel_id)
+            .await
+            .contains(&bob.id),
+        "an unreadable preference counts as Privacy Mode on"
+    );
+    assert_eq!(seen_last_active(&srv, &alice, &bob).await, Value::Null);
+    assert!(
+        reader_ids(&srv, &bob, &channel_id).await.contains(&bob.id),
+        "Bob still sees his own cursor"
+    );
+}
