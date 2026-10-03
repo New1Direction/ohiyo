@@ -23,9 +23,9 @@ const MAX_DEVICES_PER_USER: i64 = 10;
 /// Prekey-bundle fetches per minute per caller; over it, 429. A first message to a full
 /// 20-member group takes about 21 fetches, so this leaves room for several.
 const BUNDLE_FETCHES_PER_CALLER: usize = 120;
-/// One-time prekeys handed out per minute per target user, from all callers. Past it,
-/// bundles still come back, without a one-time prekey: nobody can drain a user's
-/// one-time prekeys, and nobody can block new sessions with them either.
+/// Bundle fetches per minute per target user, from all callers, that hand out one-time
+/// prekeys. Past it, bundles still come back, without a one-time prekey: nobody can
+/// drain a user's one-time prekeys, and nobody can block new sessions with them either.
 const BUNDLE_FETCHES_PER_TARGET: usize = 60;
 const BUNDLE_FETCH_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
 
