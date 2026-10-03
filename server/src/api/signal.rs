@@ -192,6 +192,16 @@ pub async fn get_bundles(
             "too many key lookups — try again in a minute".into(),
         ));
     }
+    // An unknown user has no devices: answer with no bundles, as before, without minting
+    // a per-target limiter key for a made-up id.
+    let target_exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM users WHERE id = ?")
+        .bind(&user_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(ise)?;
+    if target_exists.is_none() {
+        return Ok(Json(Vec::new()));
+    }
     let hand_out_one_time_prekeys = state.rate.check(
         &format!("prekey-target:{user_id}"),
         BUNDLE_FETCHES_PER_TARGET,

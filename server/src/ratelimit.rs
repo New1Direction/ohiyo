@@ -88,6 +88,12 @@ impl RateLimiter {
         self.check_at(KeyMap::Unauth, key, max, window, Instant::now())
     }
 
+    /// How many keys the authenticated-user map holds right now.
+    pub fn tracked_user_keys(&self) -> usize {
+        let inner = self.user.lock().unwrap_or_else(|e| e.into_inner());
+        inner.keys.len()
+    }
+
     fn map(&self, map: KeyMap) -> &Mutex<Inner> {
         match map {
             KeyMap::User => &self.user,

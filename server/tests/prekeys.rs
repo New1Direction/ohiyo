@@ -140,3 +140,45 @@ async fn a_user_can_register_at_most_10_devices() {
         "an existing device still refreshes its keys"
     );
 }
+
+#[tokio::test]
+async fn unknown_targets_create_no_per_target_limiter_keys() {
+    let srv = TestServer::start().await;
+    let real = srv.register("realtarget", "password123").await;
+    assert_eq!(publish(&srv, &real, 1, 5).await, 204);
+    let callers = [
+        srv.register("probeone", "password123").await,
+        srv.register("probetwo", "password123").await,
+    ];
+    // Each caller's own key, and the real target's key, exist before counting.
+    for caller in &callers {
+        assert_eq!(fetch(&srv, caller, &real).await.status(), 200);
+    }
+    let before = srv.state.rate.tracked_user_keys();
+
+    // 200 made-up user ids, split so neither caller reaches its 120-a-minute limit.
+    for (i, caller) in (0..200).zip(callers.iter().cycle()) {
+        let res = srv
+            .get_auth(
+                &format!("/api/v1/users/no-such-user-{i}/prekey-bundles"),
+                &caller.token,
+            )
+            .await;
+        assert_eq!(res.status(), 200, "unknown users still answer as before");
+        assert_eq!(res.json::<Value>().await.unwrap(), json!([]));
+    }
+    assert_eq!(
+        srv.state.rate.tracked_user_keys(),
+        before,
+        "no limiter key for a user id that doesn't exist"
+    );
+
+    let another = srv.register("anothertarget", "password123").await;
+    assert_eq!(publish(&srv, &another, 1, 5).await, 204);
+    assert_eq!(fetch(&srv, &callers[0], &another).await.status(), 200);
+    assert_eq!(
+        srv.state.rate.tracked_user_keys(),
+        before + 1,
+        "a real target still gets its key"
+    );
+}
