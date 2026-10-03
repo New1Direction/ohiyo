@@ -103,7 +103,8 @@ pub async fn list_messages(
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
-    let limit = q.limit.min(100);
+    // SQLite reads a negative LIMIT as "no limit", so clamp from below too.
+    let limit = q.limit.clamp(1, 100);
 
     // Never serve an already-expired disappearing message, even in the window before
     // the background sweeper physically deletes it.
