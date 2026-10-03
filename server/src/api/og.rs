@@ -65,7 +65,7 @@ fn embedded_ipv4(v6: Ipv6Addr) -> Option<Ipv4Addr> {
 /// resolved address is public. Returns `None` if the URL is malformed, resolution
 /// fails, or ANY resolved address is private/loopback/link-local — so an attacker
 /// can't slip an internal IP into a multi-record DNS answer.
-async fn resolve_public_addrs(url: &str) -> Option<(String, u16, Vec<SocketAddr>)> {
+pub(crate) async fn resolve_public_addrs(url: &str) -> Option<(String, u16, Vec<SocketAddr>)> {
     let parsed = url::Url::parse(url).ok()?;
     let host = parsed.host_str()?.to_owned();
     let port = parsed.port_or_known_default().unwrap_or(443);
