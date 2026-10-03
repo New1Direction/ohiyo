@@ -20,6 +20,7 @@ import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
 import { safeHttpUrl } from "../lib/url";
+import { linkPreviewMode } from "../lib/linkPreviews";
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 
@@ -188,8 +189,10 @@ function linkPreviewHeight(url: string): number {
   return 98;
 }
 
-function messageEmbedHeight(message: Message): number {
-  if (message.embeds?.length) return message.embeds.reduce((sum, embed) => sum + linkPreviewHeight(embed.url), 0);
+function messageEmbedHeight(message: Message, channelEncrypted: boolean): number {
+  const mode = linkPreviewMode(message, channelEncrypted);
+  if (mode === "none") return 0;
+  if (mode === "server-embeds") return (message.embeds ?? []).reduce((sum, embed) => sum + linkPreviewHeight(embed.url), 0);
   return extractSafeHttpUrlsFromText(message.content).reduce((sum, url) => sum + linkPreviewHeight(url), 0);
 }
 
@@ -792,10 +795,10 @@ export function ChatPane({
       const pins = g.msgs.filter((m) => m.pinned).length;
       const failed = g.msgs.filter((m) => m._state === "failed").length;
       const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
-      const embedsH = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 0 : messageEmbedHeight(m)), 0);
+      const embedsH = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 0 : messageEmbedHeight(m, e2eEnabled)), 0);
       return basePx + Math.max(textLines, 1) * linePx + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
     },
-    [rows, hiddenMessageIds]
+    [rows, hiddenMessageIds, e2eEnabled]
   );
 
   const handleSend = useCallback(
@@ -1605,7 +1608,7 @@ export function ChatPane({
                               className="msg-content"
                               style={{ color: "var(--text-secondary)", userSelect: "text", opacity: msg._state === "pending" ? 0.5 : 1 }}
                             >
-                              {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={!!(msg.embeds && msg.embeds.length)} />}
+                              {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={linkPreviewMode(msg, e2eEnabled) !== "client-fetch"} />}
                               {msg.edited_at && (
                                 <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 5 }}>(edited)</span>
                               )}
@@ -1620,7 +1623,7 @@ export function ChatPane({
                               {msg.attachments && msg.attachments.length > 0 && (
                                 <AttachmentList attachments={msg.attachments} />
                               )}
-                              {msg.embeds && msg.embeds.length > 0 && msg.embeds.map((em) => (
+                              {linkPreviewMode(msg, e2eEnabled) === "server-embeds" && msg.embeds?.map((em) => (
                                 <EmbedCard key={em.url} embed={em} />
                               ))}
                             </div>
