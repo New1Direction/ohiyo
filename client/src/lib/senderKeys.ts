@@ -13,6 +13,8 @@
 // only the protocol composition (the chain ratchet + distribution) is ours.
 
 const NS = "kc:sk:";
+// Furthest a received message may ratchet a peer's chain ahead of what we've stored.
+const MAX_RATCHET_SKIP = 2000;
 
 // ── Pluggable storage (localStorage in the browser; injectable for tests) ───────
 export type SenderKeyBackend = {
@@ -245,7 +247,8 @@ async function groupEncryptInner(groupId: string, plaintext: string): Promise<st
 /** Decrypt a group message from a member, verifying their signature. Ratchets that
  *  sender's chain forward to the message's iteration. Returns null if we don't hold
  *  the sender's key, the key id differs (rotated → needs redistribution), the message
- *  is older than our chain (already ratcheted past), or the signature fails. */
+ *  is older than our chain (already ratcheted past), its iteration is not a whole number
+ *  or is more than MAX_RATCHET_SKIP ahead, or the signature fails. */
 export async function groupDecrypt(groupId: string, fromUserId: string, wire: string): Promise<string | null> {
   if (!wire.startsWith("grp1.")) return null;
   const peer = getJson<PeerState>(peerKey(groupId, fromUserId));
@@ -260,12 +263,13 @@ export async function groupDecrypt(groupId: string, fromUserId: string, wire: st
   // for. A message from a newer epoch means the peer rekeyed and we await their fresh
   // SKDM; an older epoch is a generation we've rotated past. Either way → null.
   if ((env.ep ?? 0) !== (peer.epoch ?? 0)) return null;
+  // The iteration is sender-supplied and each step is an HMAC: accept only a whole,
+  // non-negative number within MAX_RATCHET_SKIP of our chain, so one message can't
+  // pin the CPU (or corrupt the stored iteration with a fraction).
+  if (!Number.isSafeInteger(env.it) || env.it < 0) return null;
   if (env.kid !== peer.keyId || env.it < peer.iteration) return null;
-  // Ratchet this sender's chain forward to the message's iteration.
-  let ck = unb64(peer.chainKey);
-  for (let i = peer.iteration; i < env.it; i++) ck = await nextChainOf(ck);
-  const mk = await messageKeyOf(ck);
-  // Verify the sender's signature over the ciphertext before decrypting.
+  if (env.it - peer.iteration > MAX_RATCHET_SKIP) return null;
+  // Verify the sender's signature over the ciphertext BEFORE any ratchet work.
   const verifyKey = await crypto.subtle.importKey(
     "raw",
     unb64(peer.verifyKey),
@@ -276,6 +280,10 @@ export async function groupDecrypt(groupId: string, fromUserId: string, wire: st
   const ctBuf = unb64(env.ct);
   const ok = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, verifyKey, unb64(env.sig), ctBuf);
   if (!ok) return null;
+  // Ratchet this sender's chain forward to the message's iteration.
+  let ck = unb64(peer.chainKey);
+  for (let i = peer.iteration; i < env.it; i++) ck = await nextChainOf(ck);
+  const mk = await messageKeyOf(ck);
   const derived = await deriveAes(mk);
   // New envelopes carry a random IV; legacy ones (no `iv`) used the deterministic one.
   const iv = env.iv ? new Uint8Array(unb64(env.iv)) : derived.iv;
