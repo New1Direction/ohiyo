@@ -122,6 +122,7 @@ fn seat_in_voice(w: &World, user: &AuthOk, name: &str) {
         video: false,
         screen: false,
         listen_only: false,
+        conn_id: 0,
     };
     w.srv
         .state

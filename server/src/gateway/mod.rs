@@ -223,6 +223,9 @@ pub struct VoiceMember {
     pub screen: bool,
     /// True when the participant joined with no microphone (receive-only).
     pub listen_only: bool,
+    /// The gateway connection that joined. Only that connection closing takes the user
+    /// out of the room, so another of their devices disconnecting leaves the call alone.
+    pub conn_id: u64,
 }
 
 // channel_id → (user_id → VoiceMember)
@@ -557,6 +560,7 @@ async fn handle_socket(
                         handle_client_event(
                             ev,
                             &user_id,
+                            conn_id,
                             me.as_ref(),
                             &state,
                             &mut last_heartbeat_touch,
@@ -572,8 +576,8 @@ async fn handle_socket(
 
     send_task.abort();
 
-    // Leave any voice channels we were in, notifying peers.
-    cleanup_voice(&state, &user_id, me.as_ref()).await;
+    // Leave any voice channels this connection joined, notifying peers.
+    cleanup_voice(&state, &user_id, conn_id, me.as_ref()).await;
 
     // Unregister THIS connection. Only when the user's last connection drops do we
     // clear activity + announce offline (otherwise closing one device flaps presence).
@@ -593,11 +597,12 @@ async fn handle_socket(
     }
 }
 
-/// Handle one client→server event. `last_heartbeat_touch` is this connection's
-/// throttle for heartbeat-driven `touch_active` writes.
+/// Handle one client→server event from connection `conn_id`. `last_heartbeat_touch` is
+/// this connection's throttle for heartbeat-driven `touch_active` writes.
 async fn handle_client_event(
     ev: ClientEvent,
     user_id: &str,
+    conn_id: u64,
     me: Option<&PublicUser>,
     state: &AppState,
     last_heartbeat_touch: &mut Option<Instant>,
@@ -647,6 +652,7 @@ async fn handle_client_event(
                             video,
                             screen: false,
                             listen_only,
+                            conn_id,
                         },
                     );
                     Some(peers)
@@ -1071,13 +1077,14 @@ pub async fn evict_from_server_voice(state: &AppState, server_id: &str, user_id:
     }
 }
 
-/// Remove a user from every voice channel on disconnect.
-async fn cleanup_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>) {
+/// On disconnect of connection `conn_id`, remove the user from every voice channel that
+/// connection joined. Rooms joined from the user's other connections are left alone.
+async fn cleanup_voice(state: &AppState, user_id: &str, conn_id: u64, me: Option<&PublicUser>) {
     let channels: Vec<String> = {
         let rooms = state.voice.read().unwrap_or_else(|e| e.into_inner());
         rooms
             .iter()
-            .filter(|(_, room)| room.contains_key(user_id))
+            .filter(|(_, room)| room.get(user_id).is_some_and(|m| m.conn_id == conn_id))
             .map(|(cid, _)| cid.clone())
             .collect()
     };
