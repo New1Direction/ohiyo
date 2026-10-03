@@ -129,7 +129,7 @@ fn check_auth_rate(state: &AppState, client_ip: &str) -> Result<(), (StatusCode,
     let key = format!("auth:{}", client_ip);
     if !state
         .rate
-        .check(&key, AUTH_MAX_PER_MIN, Duration::from_secs(60))
+        .check_unauth(&key, AUTH_MAX_PER_MIN, Duration::from_secs(60))
     {
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
@@ -235,7 +235,7 @@ pub async fn login(
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
     check_auth_rate(&state, &client_ip(&headers, &addr))?;
     // Exact username: usernames are case-sensitive, so this is one account's key.
-    if !state.rate.check(
+    if !state.rate.check_unauth(
         &format!("login-user:{}", body.username),
         LOGIN_MAX_PER_USERNAME_PER_MIN,
         Duration::from_secs(60),
@@ -383,7 +383,7 @@ pub async fn link_complete(
     Json(body): Json<LinkCompleteBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
     let ip = client_ip(&headers, &addr);
-    if !state.rate.check(
+    if !state.rate.check_unauth(
         &format!("link:{}", ip),
         LINK_MAX_PER_MIN,
         Duration::from_secs(60),

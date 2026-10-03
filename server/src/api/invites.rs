@@ -192,7 +192,7 @@ pub async fn get_invite(
         &format!("invite-preview:{}", auth.0),
         PREVIEW_RATE_MAX,
         INVITE_RATE_WINDOW,
-    ) || !state.rate.check(
+    ) || !state.rate.check_unauth(
         &format!("invite-preview-ip:{client}"),
         PREVIEW_RATE_MAX,
         INVITE_RATE_WINDOW,

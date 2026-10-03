@@ -80,3 +80,36 @@ async fn logins_for_one_username_are_limited_to_10_a_minute() {
         "other usernames are unaffected"
     );
 }
+
+#[tokio::test]
+async fn a_flood_of_address_keys_does_not_lock_out_signed_in_users() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("floodsurvivor", "password123").await;
+    let server: serde_json::Value = srv
+        .post_json_auth("/api/v1/servers", &alice.token, json!({ "name": "Flood" }))
+        .await
+        .json()
+        .await
+        .unwrap();
+    let channel_id = server["channels"][0]["id"].as_str().unwrap().to_owned();
+
+    // Made-up addresses and usernames fill the unauthenticated key map to its cap.
+    let window = std::time::Duration::from_secs(60);
+    for i in 0..100_000 {
+        srv.state
+            .rate
+            .check_unauth(&format!("auth:flood{i}"), 40, window);
+    }
+    assert!(
+        !srv.state.rate.check_unauth("auth:one-more", 40, window),
+        "the unauthenticated map is full"
+    );
+
+    // Alice's message-send key is new, and is accepted and limited as usual (30 / 10 s).
+    let path = format!("/api/v1/channels/{channel_id}/messages");
+    let send = || srv.post_json_auth(&path, &alice.token, json!({ "content": "still here" }));
+    for _ in 0..30 {
+        assert_eq!(send().await.status(), 200);
+    }
+    assert_eq!(send().await.status(), 429, "her own limit still applies");
+}
