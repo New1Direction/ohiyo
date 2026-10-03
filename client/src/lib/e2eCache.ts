@@ -27,6 +27,8 @@ type SyncStore = {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
   removeItem: (key: string) => void;
+  /** The desktop vault's batch removal: one write instead of one per key. */
+  removeMany?: (keys: string[]) => void;
 };
 
 // Prefer the encrypted vault on desktop; fall back to localStorage on web.
@@ -70,17 +72,22 @@ function dropExpired(s: SyncStore, now: number): void {
     idx = [];
   }
   let at = Infinity;
+  const expired: string[] = [];
   const kept = idx.filter((id) => {
     const raw = s.getItem(PREFIX + id);
     if (raw === null) return true;
     const entry = decodeEntry(raw);
     if (isExpired(entry, now)) {
-      s.removeItem(PREFIX + id);
+      expired.push(PREFIX + id);
       return false;
     }
     if (entry.expires_at !== null) at = Math.min(at, entry.expires_at);
     return true;
   });
+  if (expired.length > 0) {
+    if (s.removeMany) s.removeMany(expired);
+    else for (const key of expired) s.removeItem(key);
+  }
   if (kept.length !== idx.length) s.setItem(INDEX, JSON.stringify(kept));
   nextExpiry = { store: s, at };
 }

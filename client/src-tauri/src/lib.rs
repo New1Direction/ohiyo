@@ -33,6 +33,7 @@ pub fn run() {
             vault::vault_snapshot,
             vault::vault_set,
             vault::vault_remove,
+            vault::vault_remove_many,
             vault::vault_burn,
         ])
         .run(tauri::generate_context!())

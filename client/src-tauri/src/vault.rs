@@ -75,6 +75,17 @@ impl VaultState {
         }
     }
 
+    /// Remove every key, then seal and write the vault once. Each write fsyncs (a full
+    /// flush on macOS), so removing thousands of keys one call at a time froze the app.
+    fn remove_many(&self, keys: &[String]) -> Result<(), String> {
+        let mut v = self.unlocked()?.inner.lock().unwrap();
+        for key in keys {
+            v.remove(key);
+        }
+        self.persist(&v);
+        Ok(())
+    }
+
     /// Wipe RAM, stop further writes, and delete the sealed file plus any temp file an
     /// interrupted write left behind.
     fn burn_local(&self) {
@@ -246,6 +257,13 @@ pub fn vault_remove(state: State<VaultState>, key: String) -> Result<(), String>
 }
 
 /// The dead-man's switch: wipe RAM, delete the sealed blob, destroy the keychain key.
+/// Remove many keys with one write (logout cleanup, the plaintext-cache expiry sweep).
+/// Synchronous like the other commands, so writes keep their call order.
+#[tauri::command]
+pub fn vault_remove_many(state: State<VaultState>, keys: Vec<String>) -> Result<(), String> {
+    state.remove_many(&keys)
+}
+
 #[tauri::command]
 pub fn vault_burn(state: State<VaultState>) {
     state.burn_local();
@@ -403,6 +421,30 @@ mod tests {
         set_and_persist(&state, "kc:sig:identityKey", "id2");
         assert!(!state.path.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn batch_removal_drops_every_key_from_the_sealed_file() {
+        let dir = scratch_dir("remove-many");
+        let state = unlocked_state(dir.join(VAULT_FILE));
+        set_and_persist(&state, "kc:e2e-pt:m1", "one");
+        set_and_persist(&state, "kc:e2e-pt:m2", "two");
+        set_and_persist(&state, "kc:sig:identityKey", "id");
+        let keys = ["kc:e2e-pt:m1".to_string(), "kc:e2e-pt:m2".to_string()];
+        state.remove_many(&keys).unwrap();
+        let sealed = Vault::open(&std::fs::read(&state.path).unwrap(), &KEY).unwrap();
+        assert_eq!(sealed.keys(), vec!["kc:sig:identityKey".to_string()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn batch_removal_on_a_locked_vault_reports_it_locked() {
+        let state = VaultState {
+            path: PathBuf::from("unused"),
+            vault: Err("the OS keychain could not be read: denied".to_string()),
+        };
+        let err = state.remove_many(&["kc:outbox".to_string()]).unwrap_err();
+        assert!(err.starts_with(VAULT_LOCKED_PREFIX), "{err}");
     }
 
     #[test]

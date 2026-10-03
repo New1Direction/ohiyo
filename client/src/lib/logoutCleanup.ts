@@ -3,7 +3,8 @@
 // session keys stay, so signing back in here keeps the same identity and sessions. Works
 // on whatever stores it's given (localStorage, and the desktop vault) so it's unit-testable.
 
-export type ListableStore = { keys: () => string[]; removeItem: (key: string) => void };
+// removeMany: one write per store, since every desktop vault write re-seals and fsyncs.
+export type ListableStore = { keys: () => string[]; removeMany: (keys: string[]) => void };
 
 const CLEARED_PREFIXES = ["kc:e2e-pt:", "kc:draft:"];
 const CLEARED_KEYS = ["kc:e2e-pt-index", "kc:outbox"];
@@ -13,8 +14,7 @@ const isClearedOnLogout = (key: string): boolean =>
 
 export function clearLocalMessageData(stores: readonly ListableStore[]): void {
   for (const store of stores) {
-    for (const key of store.keys()) {
-      if (isClearedOnLogout(key)) store.removeItem(key);
-    }
+    const cleared = store.keys().filter(isClearedOnLogout);
+    if (cleared.length > 0) store.removeMany(cleared);
   }
 }

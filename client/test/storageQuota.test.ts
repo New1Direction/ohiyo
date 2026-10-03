@@ -78,3 +78,23 @@ test("saving the encrypted-mode chats never throws, and evicts the cache to fit"
   (globalThis as Record<string, unknown>).localStorage = storageLike(5);
   assert.doesNotThrow(() => saveEncryptedChannels(new Set(["c1", "c2"])));
 });
+
+test("eviction removes the cache in one batch when the store can batch", () => {
+  const s = quotaStore(100, { ...CACHE, "kc:sig:identityKey": "id" });
+  const batches: string[][] = [];
+  const single: string[] = [];
+  const store = {
+    ...s,
+    removeItem: (k: string) => {
+      single.push(k);
+      s.removeItem(k);
+    },
+    removeMany: (keys: string[]) => {
+      batches.push(keys);
+      for (const k of keys) s.removeItem(k);
+    },
+  };
+  setItemEvictingPlaintextCache(store, "kc:sig:session:u2.1", "s".repeat(40));
+  assert.deepEqual(batches, [["kc:e2e-pt:m1", "kc:e2e-pt-index"]]);
+  assert.deepEqual(single, []);
+});

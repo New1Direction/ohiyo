@@ -1,6 +1,8 @@
 // C-M2: signing out removes the decrypted-message cache, the outbox (which holds unsent
 // plaintext) and every composer draft from this device, in localStorage and in the
-// desktop vault, while identity and Signal session keys stay.
+// desktop vault, while identity and Signal session keys stay. Each store gets one batch
+// removal: on desktop every vault write re-seals and fsyncs, so one write per key froze
+// the app for seconds.
 //   node --experimental-strip-types --test test/logoutCleanup.test.ts
 
 import { test } from "node:test";
@@ -10,7 +12,20 @@ import { clearLocalMessageData } from "../src/lib/logoutCleanup.ts";
 
 function mapStore(entries: Record<string, string>) {
   const m = new Map(Object.entries(entries));
-  return { m, keys: () => [...m.keys()], removeItem: (k: string) => void m.delete(k) };
+  const writes: string[][] = [];
+  return {
+    m,
+    writes,
+    keys: () => [...m.keys()],
+    removeItem: (k: string) => {
+      writes.push([k]);
+      m.delete(k);
+    },
+    removeMany: (keys: string[]) => {
+      writes.push(keys);
+      for (const k of keys) m.delete(k);
+    },
+  };
 }
 
 const KEPT = {
@@ -40,10 +55,13 @@ test("logout removes plaintext cache, outbox and drafts and keeps identity and s
   clearLocalMessageData([local, vault]);
   assert.deepEqual(Object.fromEntries(local.m), KEPT);
   assert.deepEqual(Object.fromEntries(vault.m), { "kc:sig:identityKey": "id" });
+  assert.equal(local.writes.length, 1, "one batch for localStorage");
+  assert.equal(vault.writes.length, 1, "one batch for the vault");
 });
 
 test("keys that merely look similar are kept", () => {
   const local = mapStore({ "kc:drafts-seen": "1", "kc:outbox-hint": "1", "kc:e2e-ptx": "1" });
   clearLocalMessageData([local]);
   assert.equal(local.m.size, 3);
+  assert.equal(local.writes.length, 0, "nothing to remove, no write");
 });

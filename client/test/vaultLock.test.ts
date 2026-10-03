@@ -66,3 +66,18 @@ test("initVaultBackend hydrates from an unlocked vault", async () => {
   assert.equal(await bundle.mod.initVaultBackend(), true);
   assert.equal(bundle.mod.getVaultStore()?.getItem("kc:sig:identityKey"), "id");
 });
+
+test("removing many keys from the vault sends one batch call, not one write per key", async () => {
+  const calls: { cmd: string; args?: Record<string, unknown> }[] = [];
+  invoke = (cmd, args) => {
+    calls.push({ cmd, args });
+    return Promise.resolve(cmd === "vault_snapshot" ? { "kc:e2e-pt:m1": "a", "kc:e2e-pt:m2": "b", "kc:sig:identityKey": "id" } : null);
+  };
+  await bundle.mod.initVaultBackend();
+  calls.length = 0;
+  const store = bundle.mod.getVaultStore()!;
+  store.removeMany(["kc:e2e-pt:m1", "kc:e2e-pt:m2"]);
+  await new Promise((resolve) => setImmediate(resolve)); // the wrapper imports invoke() first
+  assert.deepEqual(calls, [{ cmd: "vault_remove_many", args: { keys: ["kc:e2e-pt:m1", "kc:e2e-pt:m2"] } }]);
+  assert.deepEqual(store.keys(), ["kc:sig:identityKey"]);
+});

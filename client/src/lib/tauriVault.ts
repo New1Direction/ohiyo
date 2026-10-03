@@ -48,6 +48,8 @@ export type VaultStore = {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
   removeItem: (key: string) => void;
+  /** Remove many keys with one vault write (each write re-seals and fsyncs the vault). */
+  removeMany: (keys: string[]) => void;
   keys: () => string[];
 };
 
@@ -103,6 +105,11 @@ export async function initVaultBackend(): Promise<boolean> {
       removeItem: (k: string): void => {
         m.delete(k);
         void invoke("vault_remove", { key: k });
+      },
+      removeMany: (keys: string[]): void => {
+        if (keys.length === 0) return;
+        for (const k of keys) m.delete(k);
+        void invoke("vault_remove_many", { keys });
       },
       keys: (): string[] => [...m.keys()],
     };

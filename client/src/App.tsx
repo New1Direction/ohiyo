@@ -110,7 +110,10 @@ applyActiveAppearance();
 // (desktop) the vault. Identity and session keys stay.
 function clearSignedOutMessageData(): void {
   try {
-    const browser = { keys: () => Object.keys(localStorage), removeItem: (k: string) => localStorage.removeItem(k) };
+    const browser = {
+      keys: () => Object.keys(localStorage),
+      removeMany: (keys: string[]) => keys.forEach((k) => localStorage.removeItem(k)),
+    };
     const vault = getVaultStore();
     clearLocalMessageData(vault ? [browser, vault] : [browser]);
   } catch {

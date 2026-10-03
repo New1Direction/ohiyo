@@ -6,6 +6,8 @@ export type EvictableStore = {
   keys: () => string[];
   setItem: (key: string, value: string) => void;
   removeItem: (key: string) => void;
+  /** The desktop vault's batch removal: one write instead of one per key. */
+  removeMany?: (keys: string[]) => void;
 };
 
 // The decrypted-message cache's keys (see e2eCache.ts).
@@ -26,7 +28,9 @@ export function setItemEvictingPlaintextCache(store: EvictableStore, key: string
   } catch (err) {
     if (!isQuotaExceeded(err)) throw err;
   }
-  for (const k of store.keys()) if (isPlaintextCacheKey(k)) store.removeItem(k);
+  const cache = store.keys().filter(isPlaintextCacheKey);
+  if (store.removeMany) store.removeMany(cache);
+  else for (const k of cache) store.removeItem(k);
   store.setItem(key, value);
 }
 
