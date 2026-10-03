@@ -885,6 +885,15 @@ pub async fn sweep_deadman(state: &AppState) {
     .unwrap_or_default();
 
     for (uid, scope) in tripped {
+        // A live gateway session means the user is online, whatever last_active_at says.
+        let online = state
+            .sessions
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(&uid);
+        if online {
+            continue;
+        }
         // Leave an audit trail in the logs before the irreversible wipe.
         tracing::warn!(user_id = %uid, scope = ?scope, "dead-man's switch tripped — wiping data");
         let _ = sqlx::query("DELETE FROM messages WHERE author_id = ?")

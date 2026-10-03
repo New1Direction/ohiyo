@@ -159,6 +159,10 @@ const MAX_WS_FRAME_BYTES: usize = 65_536;
 /// connection can't grow the shared map by spamming many channels.
 const MAX_TYPING_CHANNELS_PER_USER: usize = 64;
 
+/// Minimum gap between heartbeat-driven `last_active_at` writes on one connection.
+/// The dead-man's switch works in hours, so a minute of resolution costs nothing.
+const HEARTBEAT_TOUCH_INTERVAL: Duration = Duration::from_secs(60);
+
 /// A participant currently connected to a voice channel.
 #[derive(Clone)]
 pub struct VoiceMember {
@@ -369,6 +373,7 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     send_voice_snapshot(&state, &user_id, &tx).await;
 
     // Drain incoming messages: WebRTC signaling, voice state, heartbeats.
+    let mut last_heartbeat_touch: Option<Instant> = None;
     while let Some(Ok(msg)) = ws_rx.next().await {
         match msg {
             Message::Close(_) => break,
@@ -384,7 +389,16 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
                     continue;
                 }
                 match serde_json::from_str::<ClientEvent>(&t) {
-                    Ok(ev) => handle_client_event(ev, &user_id, me.as_ref(), &state).await,
+                    Ok(ev) => {
+                        handle_client_event(
+                            ev,
+                            &user_id,
+                            me.as_ref(),
+                            &state,
+                            &mut last_heartbeat_touch,
+                        )
+                        .await
+                    }
                     Err(e) => tracing::debug!("gateway: bad client frame from {user_id}: {e}"),
                 }
             }
@@ -428,12 +442,14 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     }
 }
 
-/// Handle one client→server event.
+/// Handle one client→server event. `last_heartbeat_touch` is this connection's
+/// throttle for heartbeat-driven `touch_active` writes.
 async fn handle_client_event(
     ev: ClientEvent,
     user_id: &str,
     me: Option<&PublicUser>,
     state: &AppState,
+    last_heartbeat_touch: &mut Option<Instant>,
 ) {
     match ev {
         ClientEvent::JoinVoice {
@@ -752,7 +768,14 @@ async fn handle_client_event(
             handle_watch_control(state, user_id, &channel_id, &action, url, position).await;
         }
 
-        ClientEvent::Heartbeat => {}
+        ClientEvent::Heartbeat => {
+            // A heartbeat proves the user is online: refresh the dead-man's-switch clock,
+            // at most once per HEARTBEAT_TOUCH_INTERVAL on this connection.
+            if last_heartbeat_touch.is_none_or(|t| t.elapsed() >= HEARTBEAT_TOUCH_INTERVAL) {
+                crate::api::users::touch_active(&state.db, user_id).await;
+                *last_heartbeat_touch = Some(Instant::now());
+            }
+        }
     }
 }
 
