@@ -98,6 +98,49 @@ impl RateLimiter {
         self.check_at(KeyMap::Unauth, key, max, window, Instant::now())
     }
 
+    /// Count one attempt against `key` and against `block`, a wider key it belongs to
+    /// (an address and its network), both or neither. The block is checked first: once
+    /// it is spent the request is refused without creating or touching `key`. Returns
+    /// false, recording nothing, when either is spent.
+    pub fn check_unauth_within(
+        &self,
+        block: &str,
+        block_max: usize,
+        key: &str,
+        max: usize,
+        window: Duration,
+    ) -> bool {
+        self.check_pair_at(
+            KeyMap::Unauth,
+            (block, block_max),
+            (key, max),
+            window,
+            Instant::now(),
+        )
+    }
+
+    fn check_pair_at(
+        &self,
+        map: KeyMap,
+        (block, block_max): (&str, usize),
+        (key, max): (&str, usize),
+        window: Duration,
+        now: Instant,
+    ) -> bool {
+        let (block, key) = (truncate_key(block), truncate_key(key));
+        let mut inner = self.map(map).lock().unwrap_or_else(|e| e.into_inner());
+
+        if inner.keys.len() > self.sweep_above {
+            inner.sweep_expired(now);
+        }
+        if inner.spent(block, block_max, window, now) || inner.spent(key, max, window, now) {
+            return false;
+        }
+        inner.record(block, window, now, self.max_keys);
+        inner.record(key, window, now, self.max_keys);
+        true
+    }
+
     /// How many keys the authenticated-user map holds right now.
     pub fn tracked_user_keys(&self) -> usize {
         let inner = self.user.lock().unwrap_or_else(|e| e.into_inner());
@@ -305,6 +348,47 @@ mod tests {
             "the user's own limit still applies"
         );
         assert_eq!(limiter.tracked_keys(KeyMap::User), ["msg:alice"]);
+    }
+
+    #[test]
+    fn a_spent_block_neither_creates_nor_touches_the_key_inside_it() {
+        let limiter = without_sweeps(MAX_KEYS);
+        let t0 = Instant::now();
+        let pair = |key| limiter.check_pair_at(KeyMap::Unauth, ("block", 2), (key, 5), MINUTE, t0);
+        assert!(pair("a"));
+        assert!(pair("a"));
+
+        assert!(!pair("b"), "the block is spent");
+        assert!(
+            !limiter
+                .tracked_keys(KeyMap::Unauth)
+                .contains(&"b".to_owned()),
+            "and no key was created for b"
+        );
+        for _ in 0..3 {
+            assert!(!pair("a"));
+        }
+        assert!(
+            limiter.check_at(KeyMap::Unauth, "a", 3, MINUTE, t0),
+            "refused retries didn't count against a (still 2 attempts)"
+        );
+    }
+
+    #[test]
+    fn a_spent_key_does_not_use_up_its_block() {
+        let limiter = without_sweeps(MAX_KEYS);
+        let t0 = Instant::now();
+        let pair = |key| limiter.check_pair_at(KeyMap::Unauth, ("block", 3), (key, 1), MINUTE, t0);
+        assert!(pair("a"));
+        for _ in 0..5 {
+            assert!(!pair("a"), "a is spent");
+        }
+        assert!(
+            pair("b"),
+            "a's refused retries left the block's budget alone"
+        );
+        assert!(pair("c"));
+        assert!(!pair("d"), "three attempts spend the block");
     }
 
     #[test]

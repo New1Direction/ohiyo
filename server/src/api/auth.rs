@@ -43,7 +43,9 @@ const V6_48_MULTIPLIER: usize = 10;
 /// Count one attempt from `ip` against the per-address limit `prefix`, keyed by
 /// [`rate_key_for`]. An IPv6 client also counts against its /48 at
 /// [`V6_48_MULTIPLIER`] times `max`, so rotating /64s within one allocation (a /48 is
-/// commonly one site's) doesn't multiply its budget.
+/// commonly one site's) doesn't multiply its budget. The /48 is checked first, and both
+/// count or neither: once the /48 is spent, a new /64 inside it adds no key, and
+/// refused retries use up neither budget.
 fn check_address_rate(
     rate: &crate::ratelimit::RateLimiter,
     ip: IpAddr,
@@ -51,14 +53,16 @@ fn check_address_rate(
     max: usize,
     window: Duration,
 ) -> bool {
-    if !rate.check_unauth(&format!("{prefix}:{}", rate_key_for(ip)), max, window) {
-        return false;
-    }
+    let key = format!("{prefix}:{}", rate_key_for(ip));
     match v6_48_key(ip) {
-        Some(block) => {
-            rate.check_unauth(&format!("{prefix}:{block}"), max * V6_48_MULTIPLIER, window)
-        }
-        None => true,
+        Some(block) => rate.check_unauth_within(
+            &format!("{prefix}:{block}"),
+            max * V6_48_MULTIPLIER,
+            &key,
+            max,
+            window,
+        ),
+        None => rate.check_unauth(&key, max, window),
     }
 }
 
@@ -601,6 +605,26 @@ mod client_ip_tests {
         assert!(
             check_address_rate(&rate, other_limit, "link", 2, window),
             "each limit has its own /48 count"
+        );
+    }
+
+    #[test]
+    fn once_a_48_is_spent_new_64s_inside_it_add_no_keys() {
+        let rate = crate::ratelimit::RateLimiter::new();
+        let window = Duration::from_secs(60);
+        for i in 0..20u16 {
+            let ip: IpAddr = format!("2001:db8:1:{i:x}::1").parse().unwrap();
+            assert!(check_address_rate(&rate, ip, "auth", 2, window), "{ip}");
+        }
+        let tracked = rate.tracked_unauth_keys();
+        for i in 100..150u16 {
+            let ip: IpAddr = format!("2001:db8:1:{i:x}::1").parse().unwrap();
+            assert!(!check_address_rate(&rate, ip, "auth", 2, window), "{ip}");
+        }
+        assert_eq!(
+            rate.tracked_unauth_keys(),
+            tracked,
+            "refused /64s inside a spent /48 add no keys"
         );
     }
 
