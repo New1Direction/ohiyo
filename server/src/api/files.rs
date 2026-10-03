@@ -346,8 +346,9 @@ const FILE_REFERENCES_SQL: &str = "SELECT
     + (SELECT COUNT(*) FROM servers WHERE instr(icon_url, '/files/' || ?) > 0)
     + (SELECT COUNT(*) FROM server_emojis WHERE file_id = ?)";
 
-/// Within the transaction that deleted the referencing message rows, delete each file
-/// in `file_ids` that nothing references any more. Returns the blob paths no remaining
+/// Within a write transaction (the one that deleted the referencing message, or one
+/// batch of [`release_files_in_batches`]), delete each file in `file_ids` that nothing
+/// references any more. Returns the blob paths no remaining
 /// `files` row points at; pass them to [`remove_blobs`] after the transaction commits.
 pub(crate) async fn delete_unreferenced_files(
     conn: &mut sqlx::SqliteConnection,
@@ -388,6 +389,33 @@ pub(crate) async fn delete_unreferenced_files(
         }
     }
     Ok(orphaned_blobs)
+}
+
+/// Most file ids [`release_files_in_batches`] handles in one write transaction. Each id
+/// costs a reference scan, so a small batch keeps the single SQLite writer free for others.
+const MAX_FILES_RELEASED_PER_TX: usize = 20;
+
+/// For many messages' files at once: after the referencing message rows are deleted
+/// and committed, delete each file in `file_ids` that nothing references any more, in
+/// separate transactions of at most [`MAX_FILES_RELEASED_PER_TX`] ids, removing each
+/// batch's blobs once it commits.
+pub(crate) async fn release_files_in_batches(
+    db: &sqlx::SqlitePool,
+    file_ids: &[String],
+) -> Result<(), sqlx::Error> {
+    let mut seen = std::collections::HashSet::new();
+    let unique: Vec<String> = file_ids
+        .iter()
+        .filter(|id| seen.insert(id.as_str()))
+        .cloned()
+        .collect();
+    for batch in unique.chunks(MAX_FILES_RELEASED_PER_TX) {
+        let mut tx = db.begin().await?;
+        let orphaned_blobs = delete_unreferenced_files(&mut tx, batch).await?;
+        tx.commit().await?;
+        remove_blobs(orphaned_blobs).await;
+    }
+    Ok(())
 }
 
 /// Remove blobs released by [`delete_unreferenced_files`], after its transaction has

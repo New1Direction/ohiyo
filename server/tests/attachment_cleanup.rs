@@ -256,3 +256,111 @@ async fn dead_man_wipe_takes_the_users_files() {
 
     assert_eq!(file_status(&w, &file_id).await, 404);
 }
+
+#[tokio::test]
+async fn a_message_carries_at_most_ten_attachments() {
+    let w = world().await;
+    let mut file_ids = Vec::new();
+    for _ in 0..10 {
+        file_ids.push(upload(&w, &unique_bytes()).await);
+    }
+    let path = format!("/api/v1/channels/{}/messages", w.channel_id);
+    let send_ids = |ids: Vec<String>| {
+        w.srv.post_json_auth(
+            &path,
+            &w.alice.token,
+            json!({ "content": "many files", "attachment_ids": ids }),
+        )
+    };
+
+    let mut eleven = file_ids.clone();
+    eleven.push(file_ids[0].clone());
+    let res = send_ids(eleven).await;
+    assert_eq!(res.status(), 400, "an eleventh attachment is refused");
+    assert!(res.text().await.unwrap().contains("max 10"));
+
+    let res = send_ids(file_ids).await;
+    assert_eq!(res.status(), 200, "ten attachments are accepted");
+    let msg: Value = res.json().await.unwrap();
+    assert_eq!(msg["attachments"].as_array().unwrap().len(), 10);
+}
+
+/// The dead-man wipe commits the message deletion first, then releases files in
+/// transactions of at most 20 ids. A trigger makes every file deletion fail once only 20
+/// of the user's 45 files remain, so the 26th deletion fails: the first transaction (20
+/// files) stays committed, the second rolls back, and the messages are gone regardless.
+#[tokio::test]
+async fn dead_man_wipe_deletes_messages_first_then_releases_files_in_small_batches() {
+    let w = world().await;
+    let blob_dir = std::env::temp_dir();
+    for i in 0..45 {
+        let file_id = format!("wipe-file-{i}-{}", uuid::Uuid::new_v4());
+        sqlx::query(
+            "INSERT INTO files (id, uploader_id, filename, content_type, size_bytes, sha256, path, created_at)
+             VALUES (?, ?, 'f.png', 'image/png', 1, ?, ?, 1)",
+        )
+        .bind(&file_id)
+        .bind(&w.alice.id)
+        .bind(&file_id)
+        .bind(blob_dir.join(&file_id).to_string_lossy().into_owned())
+        .execute(&w.db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO messages (id, channel_id, author_id, content, created_at, attachments)
+             VALUES (?, ?, ?, 'old', 1, ?)",
+        )
+        .bind(format!("wipe-msg-{i}"))
+        .bind(&w.channel_id)
+        .bind(&w.alice.id)
+        .bind(json!([file_id]).to_string())
+        .execute(&w.db)
+        .await
+        .unwrap();
+    }
+    sqlx::query(&format!(
+        "CREATE TRIGGER fail_late_release BEFORE DELETE ON files
+         WHEN (SELECT COUNT(*) FROM files WHERE uploader_id = '{}') <= 20
+         BEGIN SELECT RAISE(ABORT, 'simulated release failure'); END",
+        w.alice.id
+    ))
+    .execute(&w.db)
+    .await
+    .unwrap();
+    let res = w
+        .srv
+        .post_json_auth(
+            "/api/v1/users/@me/deadman",
+            &w.alice.token,
+            json!({ "seconds": 3600 }),
+        )
+        .await;
+    assert_eq!(res.status(), 204);
+    sqlx::query("UPDATE users SET last_active_at = ? WHERE id = ?")
+        .bind(common::now_unix() - 7200)
+        .bind(&w.alice.id)
+        .execute(&w.db)
+        .await
+        .unwrap();
+
+    server::api::users::sweep_deadman(&w.srv.state).await;
+
+    let messages: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE author_id = ?")
+        .bind(&w.alice.id)
+        .fetch_one(&w.db)
+        .await
+        .unwrap();
+    assert_eq!(
+        messages, 0,
+        "the message deletion commits before any file work"
+    );
+    let files_left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM files WHERE uploader_id = ?")
+        .bind(&w.alice.id)
+        .fetch_one(&w.db)
+        .await
+        .unwrap();
+    assert_eq!(
+        files_left, 25,
+        "the first batch of 20 stays released; only the failed batch rolls back"
+    );
+}

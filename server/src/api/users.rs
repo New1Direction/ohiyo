@@ -871,8 +871,11 @@ pub async fn set_deadman(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Delete every message a user wrote and, in the same transaction, each attached file
-/// that nothing else references any more; their blobs are removed after commit.
+/// Delete every message a user wrote, then release each attached file that nothing else
+/// references any more. The message deletion commits first and the files are released
+/// afterwards in small batches, so the write lock is never held for a whole history's
+/// reference scans. A crash between the two steps leaves unreferenced files behind,
+/// which only costs disk space.
 async fn wipe_authored_messages(state: &AppState, user_id: &str) -> Result<(), sqlx::Error> {
     let mut tx = state.db.begin().await?;
     let attachments: Vec<String> = sqlx::query_scalar(
@@ -885,14 +888,12 @@ async fn wipe_authored_messages(state: &AppState, user_id: &str) -> Result<(), s
         .bind(user_id)
         .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     let file_ids: Vec<String> = attachments
         .iter()
         .flat_map(|raw| crate::api::files::attachment_file_ids(Some(raw)))
         .collect();
-    let orphaned_blobs = crate::api::files::delete_unreferenced_files(&mut tx, &file_ids).await?;
-    tx.commit().await?;
-    crate::api::files::remove_blobs(orphaned_blobs).await;
-    Ok(())
+    crate::api::files::release_files_in_batches(&state.db, &file_ids).await
 }
 
 /// Wipe data for users whose dead-man's switch has tripped (inactive past their window).

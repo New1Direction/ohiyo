@@ -304,6 +304,10 @@ fn spawn_index(
 /// Most bytes of text a message may carry (a poll's question is its message text).
 pub const MAX_MESSAGE_BYTES: usize = 4000;
 
+/// Most attachments one message may carry. Deleting a message re-counts the references
+/// to each attached file under the write lock, so this also bounds that work.
+pub const MAX_ATTACHMENTS_PER_MESSAGE: usize = 10;
+
 /// In a DM, nothing from `sender` is delivered while either side has blocked the other.
 pub(crate) async fn ensure_dm_not_blocked(
     state: &AppState,
@@ -378,6 +382,12 @@ pub async fn send_message(
         return Err((
             StatusCode::BAD_REQUEST,
             "message too long (max 4000 chars)".into(),
+        ));
+    }
+    if body.attachment_ids.len() > MAX_ATTACHMENTS_PER_MESSAGE {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("too many attachments (max {MAX_ATTACHMENTS_PER_MESSAGE} per message)"),
         ));
     }
     if body.content.trim().is_empty() && body.attachment_ids.is_empty() {
