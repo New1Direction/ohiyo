@@ -38,6 +38,27 @@ fn client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
         .unwrap_or_else(|| addr.ip().to_string())
 }
 
+/// Argon2 runs at most this many at once: each takes 19 MiB and tens of milliseconds of CPU.
+static ARGON2_PERMITS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
+/// Run an Argon2 hash or verify on the blocking pool, so it never stalls the async
+/// executor. The permit moves into the blocking task, so a request dropped mid-hash
+/// can't free its slot before the hash is done.
+async fn run_argon2<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, (StatusCode, String)> {
+    let permit = ARGON2_PERMITS
+        .acquire()
+        .await
+        .map_err(crate::api::error::internal)?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        work()
+    })
+    .await
+    .map_err(crate::api::error::internal)
+}
+
 fn check_auth_rate(state: &AppState, client_ip: &str) -> Result<(), (StatusCode, String)> {
     let key = format!("auth:{}", client_ip);
     if !state
@@ -95,7 +116,10 @@ pub async fn register(
         return Err((StatusCode::CONFLICT, "username taken".into()));
     }
 
-    let hash = hash_password(&body.password).map_err(crate::api::error::internal)?;
+    let password = body.password.clone();
+    let hash = run_argon2(move || hash_password(&password))
+        .await?
+        .map_err(crate::api::error::internal)?;
 
     let id = new_id();
     let display_name = body.display_name.unwrap_or_else(|| body.username.clone());
@@ -152,7 +176,8 @@ pub async fn login(
 
     let user = user.ok_or((StatusCode::UNAUTHORIZED, "invalid credentials".into()))?;
 
-    if !verify_password(&body.password, &user.password_hash) {
+    let (password, hash) = (body.password, user.password_hash.clone());
+    if !run_argon2(move || verify_password(&password, &hash)).await? {
         return Err((StatusCode::UNAUTHORIZED, "invalid credentials".into()));
     }
 
