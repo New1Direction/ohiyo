@@ -12,7 +12,7 @@ const seenKey = (userId?: string) => `kc:welcome-manifesto-seen:${userId ?? "ano
 const recoveryNudgeKey = (userId?: string) => `kc:recovery-nudge-seen:${userId ?? "anon"}`;
 
 const SHARE_NOTE =
-  "I just switched to Ohiyo 🐿️ — a free, open chat with real end-to-end encryption and " +
+  "I just switched to Ohiyo 🐿️ — a free, open chat with optional end-to-end encrypted DMs and " +
   "nothing to sell you. No ads, no tracking, no paywall. Come hang out: https://github.com/New1Direction/ohiyo";
 
 type Props = {
@@ -65,12 +65,12 @@ export function ChannelWelcome({ channelName, isDM, userId, onSaveRecovery }: Pr
 
   const title = isDM ? "Start the private thread 👋" : channelName ? `Welcome to #${channelName}!` : "This channel's all quiet";
   const sub = isDM
-    ? "Send the first encrypted message, drop a private file, or just say hi. The server only relays sealed envelopes."
+    ? "Say hi, drop a file, or tap the lock first so the server only stores sealed envelopes."
     : channelName
       ? `This is the start of #${channelName}. Say hi, share a file, or hop into voice when text is too slow.`
       : "Say something, share a file, or start a call — it’s a great place to begin.";
   const suggestions = isDM
-    ? ["Say hi", "Drop an encrypted file", "Verify safety number later"]
+    ? ["Say hi", "Tap the lock to encrypt", "Verify safety number later"]
     : ["Say hi", "Share a file", "Start voice from the sidebar"];
 
   async function copyShare() {

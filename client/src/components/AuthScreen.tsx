@@ -22,7 +22,7 @@ const MAX_USERNAME = 32;
 const AUTH_FACTS = [
   "Chinchillas take dust baths to keep their fur soft.",
   "Sea otters hold hands so they don’t drift apart.",
-  "Ohiyo keeps your chats end-to-end encrypted.",
+  "Turn on the lock to end-to-end encrypt a DM or group chat.",
   "Red pandas use their tails like cozy blankets.",
   "Penguins recognize each other by voice.",
   "No ads. No tracking. Just your people.",
@@ -449,8 +449,8 @@ export function AuthScreen({ home, onAuth }: Props) {
           )}
         </p>
 
-        <p className="ohiyo-trust-text mt-4 text-center text-base leading-relaxed" aria-label="End-to-end encrypted. No ads. No tracking. Yours.">
-          <span className="ohiyo-trust-primary">End-to-end encrypted</span>
+        <p className="ohiyo-trust-text mt-4 text-center text-base leading-relaxed" aria-label="Optional end-to-end encrypted DMs. No ads. No tracking. Yours.">
+          <span className="ohiyo-trust-primary">Optional end-to-end encrypted DMs</span>
           <span className="ohiyo-trust-secondary">No ads · No tracking · Yours</span>
         </p>
       </div>

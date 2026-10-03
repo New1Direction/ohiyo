@@ -229,3 +229,30 @@ test("item I1: Edit stays for a decrypted message in encrypted mode, and for pla
   assert.equal(hasEditButton(ownMessage(true, true)), true);
   assert.equal(hasEditButton(ownMessage(false, false)), true);
 });
+
+// I3: in-app text says only what is true today. In an encrypted chat the server stores
+// ciphertext (it doesn't promise the server can never read anything), and an empty DM
+// doesn't claim to be encrypted before the lock is on.
+test("item I3: the encrypted-chat banner says the server stores only ciphertext", () => {
+  const text = banner(chat("dm", true, false));
+  assert.match(text, /the server stores only ciphertext/);
+  assert.doesNotMatch(text, /not even the server/);
+});
+
+test("item I3: an empty DM with the lock off doesn't claim its messages are encrypted", () => {
+  const html = renderChatPane({
+    channel: { id: "c1", server_id: null, name: "dm", channel_type: "dm", position: 0, topic: null, created_at: 0 },
+    messages: [],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s },
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    e2eEnabled: false,
+    onToggleE2e() {},
+  });
+  assert.doesNotMatch(html, /Send the first encrypted message|only relays sealed envelopes|Drop an encrypted file/);
+  assert.match(html, /tap the lock/i);
+});

@@ -1621,7 +1621,7 @@ function NotificationsTab({ token, onToast }: { token: string; onToast: (t: stri
     <div>
       <h2 className="mb-1 text-xl font-bold">Notifications &amp; mobile</h2>
       <p className="mb-6 max-w-3xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-        Ohiyo push is designed for sleeping Instant Servers: the server wakes to accept ciphertext, then the always-on relay sends a generic nudge. Push payloads do not include message text, filenames, channel names, or E2E keys.
+        Ohiyo push is designed for sleeping Instant Servers: the server wakes to accept the message, then the always-on relay sends a generic nudge. Push payloads do not include message text, filenames, channel names, or E2E keys.
       </p>
 
       <div className="mb-6 grid gap-3 md:grid-cols-2">
@@ -1958,7 +1958,7 @@ function SecurityTab({
     <div>
       <h2 className="mb-1 text-xl font-bold">Privacy &amp; Security</h2>
       <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
-        Your messages are end-to-end encrypted with the Signal protocol. These controls decide what
+        Chats with the lock on are end-to-end encrypted; server channels are not. These controls decide what
         happens to your data if you disappear — or on demand.
       </p>
 

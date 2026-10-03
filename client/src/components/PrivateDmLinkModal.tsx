@@ -108,7 +108,7 @@ export function PrivateDmLinkModal({
           One-time private DM link
         </h2>
         <p className="mt-1 text-sm leading-6" style={{ color: "var(--text-secondary)", maxWidth: 360 }}>
-          Let one person open an end-to-end encrypted DM with <strong>{currentUser.display_name}</strong> without making
+          Let one person open a DM you can end-to-end encrypt with <strong>{currentUser.display_name}</strong> without making
           your profile searchable first. The link expires and burns after the first successful use.
         </p>
       </div>
