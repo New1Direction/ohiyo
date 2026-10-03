@@ -78,7 +78,11 @@ fn client_rate_spent(
     let rate = &state.rate;
     rate.spent_unauth(&format!("{prefix}:{}", rate_key_for(ip)), max, window)
         || v6_48_key(ip).is_some_and(|block| {
-            rate.spent_unauth(&format!("{prefix}:{block}"), max * V6_48_MULTIPLIER, window)
+            rate.spent_unauth(
+                &format!("{prefix}:{block}"),
+                max.saturating_mul(V6_48_MULTIPLIER),
+                window,
+            )
         })
 }
 
@@ -99,7 +103,7 @@ fn check_address_rate(
     match v6_48_key(ip) {
         Some(block) => rate.check_unauth_within(
             &format!("{prefix}:{block}"),
-            max * V6_48_MULTIPLIER,
+            max.saturating_mul(V6_48_MULTIPLIER),
             &key,
             max,
             window,
@@ -713,6 +717,35 @@ mod client_ip_tests {
             tracked,
             "refused /64s inside a spent /48 add no keys"
         );
+    }
+
+    /// An operator can set `OHIYO_REGISTER_LIMIT_PER_HOUR` to anything; the /48 budget
+    /// (ten times it) must saturate rather than overflow.
+    #[test]
+    fn an_absurd_per_address_limit_saturates_when_counting() {
+        let rate = crate::ratelimit::RateLimiter::new();
+        let ip: IpAddr = "2001:db8:1::1".parse().unwrap();
+        assert!(check_address_rate(
+            &rate,
+            ip,
+            "register",
+            usize::MAX,
+            Duration::from_secs(60)
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_absurd_per_address_limit_saturates_when_checking_if_spent() {
+        let state = crate::build_state(sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap());
+        let addr: SocketAddr = "[2001:db8:1::1]:443".parse().unwrap();
+        assert!(!client_rate_spent(
+            &state,
+            &HeaderMap::new(),
+            &addr,
+            "register",
+            usize::MAX,
+            Duration::from_secs(60)
+        ));
     }
 
     #[test]
