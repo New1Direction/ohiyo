@@ -24,6 +24,10 @@ export type OhiyoHome = {
   name: string;
   url: string;
   token: string | null;
+  /** The account that last used this home on this device, recorded whenever a session is
+   *  confirmed (sign-in, Ready). Signing in as someone else clears the shared local
+   *  message data first (lib/signOut.ts). Null until known. */
+  lastUserId?: string | null;
 };
 
 const HOMES_KEY = "kc:homes:v1";
@@ -126,6 +130,7 @@ export function loadHomes(): OhiyoHome[] {
         // value left in the blob by an older build — prefer the store, fall back to it
         // (the trailing saveHomes() then migrates it into the store and strips the blob).
         token: readToken(h.id) ?? h.token ?? null,
+        lastUserId: typeof h.lastUserId === "string" ? h.lastUserId : null,
       }));
   } catch {
     homes = [];
@@ -180,12 +185,17 @@ export function upsertHome(homes: OhiyoHome[], input: { url: string; name?: stri
     url,
     name: input.name?.trim() || existing?.name || nameFromUrl(url),
     token: input.token ?? existing?.token ?? null,
+    lastUserId: existing?.lastUserId ?? null,
   };
   return dedupeHomes([home, ...homes.filter((h) => h.id !== id)]);
 }
 
 export function setHomeToken(homes: OhiyoHome[], id: string, token: string | null): OhiyoHome[] {
   return homes.map((h) => (h.id === id ? { ...h, token } : h));
+}
+
+export function setHomeLastUser(homes: OhiyoHome[], id: string, userId: string): OhiyoHome[] {
+  return homes.map((h) => (h.id === id ? { ...h, lastUserId: userId } : h));
 }
 
 function dedupeHomes(homes: OhiyoHome[]): OhiyoHome[] {
@@ -196,7 +206,7 @@ function dedupeHomes(homes: OhiyoHome[]): OhiyoHome[] {
     const id = h.id || homeIdForUrl(url);
     if (seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, url, name: h.name || nameFromUrl(url), token: h.token ?? null });
+    out.push({ id, url, name: h.name || nameFromUrl(url), token: h.token ?? null, lastUserId: h.lastUserId ?? null });
   }
   return out;
 }

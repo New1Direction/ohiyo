@@ -67,7 +67,7 @@ import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } fro
 import { parseVaultLocked, type VaultLocked } from "./lib/vaultLock";
 import { VaultLockedScreen } from "./components/VaultLockedScreen";
 import { SignOutDialog } from "./components/SignOutDialog";
-import { signOutRemovesLocalData } from "./lib/signOut";
+import { signInRemovesLocalDataNow, signOutRemovesLocalDataNow } from "./lib/signOut";
 import { clearLocalMessageData } from "./lib/logoutCleanup";
 import { onPlaintextCacheEvicted, saveEncryptedChannels } from "./lib/storageQuota";
 import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
@@ -90,6 +90,7 @@ import {
   loadHomes,
   saveActiveHomeId,
   saveHomes,
+  setHomeLastUser,
   setHomeToken,
   upsertHome,
   type OhiyoHome,
@@ -197,10 +198,23 @@ export default function App() {
     setActiveHomeId(next[0].id);
   }
 
-  // Persist the token to the active home so sessions survive reloads per server.
-  function handleAuth(newToken: string) {
+  // Persist the token to the active home so sessions survive reloads per server, and
+  // remember who signed in. A different user than the one who last used this home here,
+  // with no other home signed in, must not see the previous account's readable data:
+  // remove it now, before anything loads, flushes from the outbox or reads the cache.
+  function handleAuth(newToken: string, userId: string) {
     if (!activeHome) return;
-    persistHomes(setHomeToken(homes, activeHome.id, newToken));
+    if (signInRemovesLocalDataNow(activeHome.id, userId)) clearSignedOutMessageData();
+    persistHomes(setHomeLastUser(setHomeToken(homes, activeHome.id, newToken), activeHome.id, userId));
+  }
+
+  // Ready confirmed who this session belongs to: remember it (homes read fresh, so other
+  // homes' tokens are written back as they are stored).
+  function rememberHomeUser(userId: string) {
+    if (!activeHome || activeHome.lastUserId === userId) return;
+    const next = setHomeLastUser(loadHomes(), activeHome.id, userId);
+    setHomes(next);
+    saveHomes(next);
   }
 
   function signOut(removeLocalData: boolean) {
@@ -209,13 +223,19 @@ export default function App() {
     persistHomes(setHomeToken(homes, activeHome.id, null));
   }
 
-  // Every sign-out control (sidebar, BootSplash) comes here. Signing out of the last
-  // signed-in home removes this device's readable encrypted history, so it asks first;
-  // with another home still signed in, nothing is removed and nothing is asked.
+  // The sidebar's sign-out (the user chose to leave). Signing out of the last signed-in
+  // home removes this device's readable encrypted history, so it asks first; with another
+  // home still signed in (as stored now, so other tabs count), nothing is removed.
   function handleLogout() {
     if (!activeHome) return;
-    if (signOutRemovesLocalData(homes, activeHome.id)) setConfirmSignOut(true);
+    if (signOutRemovesLocalDataNow(activeHome.id)) setConfirmSignOut(true);
     else signOut(false);
+  }
+
+  // BootSplash's "Back to sign in": the session isn't working (expired after 30 days, or
+  // revoked). Removes nothing; a different user signing in is handled in handleAuth.
+  function handleBackToSignIn() {
+    signOut(false);
   }
 
   if (!activeHome) return null;
@@ -262,6 +282,8 @@ export default function App() {
         onAddHome={() => setShowAddHome(true)}
         onAddHomeUrl={addHome}
         onLogout={handleLogout}
+        onBackToSignIn={handleBackToSignIn}
+        onSessionUser={rememberHomeUser}
       />
       {addHomeModal}
       {confirmSignOut && (
@@ -343,6 +365,8 @@ function MainApp({
   onAddHome,
   onAddHomeUrl,
   onLogout,
+  onBackToSignIn,
+  onSessionUser,
 }: {
   token: string;
   homes: OhiyoHome[];
@@ -351,11 +375,22 @@ function MainApp({
   onAddHome: () => void;
   onAddHomeUrl: (url: string) => void;
   onLogout: () => void;
+  /** BootSplash's way back when the session isn't working; removes nothing. */
+  onBackToSignIn: () => void;
+  /** Ready confirmed the session's user: the home remembers it. */
+  onSessionUser: (userId: string) => void;
 }) {
   const { toasts, push: toast } = useToast();
   // A full localStorage removed the oldest decrypted messages to make room: say so once.
   useEffect(() => onPlaintextCacheEvicted((notice) => toast(notice)), [toast]);
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
+  // Remember who uses this home on this device once Ready confirms it (a later sign-in by
+  // someone else then clears the shared local message data first).
+  const onSessionUserRef = useRef(onSessionUser);
+  onSessionUserRef.current = onSessionUser;
+  useEffect(() => {
+    if (currentUser?.id) onSessionUserRef.current(currentUser.id);
+  }, [currentUser?.id]);
   const [activation, setActivation] = useState<ActivationState>(() => loadActivation(null));
   const [activationDismissed, setActivationDismissedState] = useState(false);
   // Whether this server runs the LiveKit SFU — fetched at runtime from /livekit/config,
@@ -2192,7 +2227,7 @@ function MainApp({
 
   // Until the first `Ready` payload lands, show a warm splash instead of empty chrome.
   if (!currentUser) {
-    return <BootSplash connStatus={connStatus} onLogout={onLogout} />;
+    return <BootSplash connStatus={connStatus} onLogout={onBackToSignIn} />;
   }
 
   // Arrived via an invite link → show the join screen before anything else.
