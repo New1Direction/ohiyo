@@ -123,4 +123,3 @@ export function unpackEncryptedMessagePlaintext(
 export function isEncryptedAttachment(att: AttachmentMeta): att is EncryptedAttachmentMeta {
   return (att as EncryptedAttachmentMeta).encrypted?.alg === "AES-256-GCM";
 }
-
