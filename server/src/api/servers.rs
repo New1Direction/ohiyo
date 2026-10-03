@@ -505,20 +505,9 @@ async fn fetch_full_inner(
             .await
             .unwrap_or_default();
     if let Some(user_id) = viewer_id {
-        let mut visible = Vec::with_capacity(channels.len());
-        for channel in channels {
-            if crate::api::roles::has_channel_perm(
-                state,
-                &channel.id,
-                user_id,
-                crate::api::roles::perm::VIEW_CHANNEL,
-            )
+        channels = crate::api::roles::viewable_channels(state, server_id, user_id, channels)
             .await
-            {
-                visible.push(channel);
-            }
-        }
-        channels = visible;
+            .map_err(crate::api::error::internal)?;
     }
 
     let members: Vec<User> = sqlx::query_as(

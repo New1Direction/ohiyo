@@ -111,3 +111,255 @@ async fn ready_omits_channels_and_unreads_the_member_cannot_view() {
         "hidden channel's unread count must not be in Ready"
     );
 }
+
+/// Pins which channels `Ready` lists across category and channel overwrites at every
+/// level (@everyone, the member's roles, another role, the member), and checks each
+/// against the per-channel access check REST uses for message history.
+#[tokio::test]
+async fn ready_applies_category_role_and_member_overwrites_like_rest() {
+    let srv = TestServer::start().await;
+    let owner = srv.register("pinowner", "supersecret123").await;
+    let member = srv.register("pinmember", "supersecret123").await;
+    let server: Value = srv
+        .post_json_auth("/api/v1/servers", &owner.token, json!({ "name": "Pins" }))
+        .await
+        .json()
+        .await
+        .unwrap();
+    let server_id = server["id"].as_str().unwrap().to_owned();
+    let invite: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{server_id}/invites"),
+            &owner.token,
+            json!({}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let code = invite["code"].as_str().unwrap();
+    assert_eq!(
+        srv.post_json_auth(&format!("/api/v1/invites/{code}"), &member.token, json!({}))
+            .await
+            .status(),
+        200
+    );
+    let roles_path = format!("/api/v1/servers/{server_id}/roles");
+    let create_role = |name: &'static str| {
+        srv.post_json_auth(
+            &roles_path,
+            &owner.token,
+            json!({ "name": name, "permissions": 0 }),
+        )
+    };
+    let staff: Value = create_role("Staff").await.json().await.unwrap();
+    let staff_id = staff["id"].as_str().unwrap().to_owned();
+    let other: Value = create_role("Other").await.json().await.unwrap();
+    let other_id = other["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        srv.put_json_auth(
+            &format!(
+                "/api/v1/servers/{server_id}/members/{}/roles/{staff_id}",
+                member.id
+            ),
+            &owner.token,
+            json!({}),
+        )
+        .await
+        .status(),
+        204
+    );
+    let category: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{server_id}/categories"),
+            &owner.token,
+            json!({ "name": "ops" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let category_id = category["id"].as_str().unwrap().to_owned();
+
+    let db = sqlx::SqlitePool::connect(srv.db_url()).await.unwrap();
+    let overwrite = |scope_type: &'static str,
+                     scope_id: String,
+                     target: (&'static str, Option<String>),
+                     allow: i64,
+                     deny: i64| {
+        sqlx::query(
+            "INSERT INTO permission_overwrites
+             (id, server_id, scope_type, scope_id, target_type, target_id, allow_permissions, deny_permissions, source, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'test', 1)",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(server_id.clone())
+        .bind(scope_type)
+        .bind(scope_id)
+        .bind(target.0)
+        .bind(target.1)
+        .bind(allow)
+        .bind(deny)
+        .execute(&db)
+    };
+    // The whole category is hidden from @everyone.
+    overwrite(
+        "category",
+        category_id.clone(),
+        ("everyone", None),
+        0,
+        VIEW_CHANNEL,
+    )
+    .await
+    .unwrap();
+
+    let everyone = || ("everyone", None);
+    let role = |id: &String| ("role", Some(id.clone()));
+    let me = || ("member", Some(member.id.clone()));
+    // (name, in the category?, channel overwrites as (target, allow, deny), visible?)
+    type Target = (&'static str, Option<String>);
+    type Case = (&'static str, bool, Vec<(Target, i64, i64)>, bool);
+    let cases: Vec<Case> = vec![
+        ("plain", false, vec![], true),
+        (
+            "everyone-denied",
+            false,
+            vec![(everyone(), 0, VIEW_CHANNEL)],
+            false,
+        ),
+        (
+            "staff-allowed",
+            false,
+            vec![
+                (everyone(), 0, VIEW_CHANNEL),
+                (role(&staff_id), VIEW_CHANNEL, 0),
+            ],
+            true,
+        ),
+        (
+            "other-role-allowed",
+            false,
+            vec![
+                (everyone(), 0, VIEW_CHANNEL),
+                (role(&other_id), VIEW_CHANNEL, 0),
+            ],
+            false,
+        ),
+        (
+            "staff-denied",
+            false,
+            vec![(role(&staff_id), 0, VIEW_CHANNEL)],
+            false,
+        ),
+        (
+            "staff-denied-member-allowed",
+            false,
+            vec![(role(&staff_id), 0, VIEW_CHANNEL), (me(), VIEW_CHANNEL, 0)],
+            true,
+        ),
+        (
+            "staff-allowed-member-denied",
+            false,
+            vec![
+                (everyone(), 0, VIEW_CHANNEL),
+                (role(&staff_id), VIEW_CHANNEL, 0),
+                (me(), 0, VIEW_CHANNEL),
+            ],
+            false,
+        ),
+        ("in-hidden-category", true, vec![], false),
+        (
+            "category-member-allowed",
+            true,
+            vec![(me(), VIEW_CHANNEL, 0)],
+            true,
+        ),
+        (
+            "category-staff-allowed",
+            true,
+            vec![(role(&staff_id), VIEW_CHANNEL, 0)],
+            true,
+        ),
+        (
+            "category-everyone-reallowed",
+            true,
+            vec![(everyone(), VIEW_CHANNEL, 0)],
+            true,
+        ),
+    ];
+
+    let mut expected = std::collections::HashMap::new();
+    for (name, in_category, overwrites, visible) in cases {
+        let channel: Value = srv
+            .post_json_auth(
+                &format!("/api/v1/servers/{server_id}/channels"),
+                &owner.token,
+                json!({
+                    "name": name,
+                    "category_id": if in_category { Some(category_id.clone()) } else { None },
+                }),
+            )
+            .await
+            .json()
+            .await
+            .unwrap();
+        let channel_id = channel["id"].as_str().unwrap().to_owned();
+        for (target, allow, deny) in overwrites {
+            overwrite("channel", channel_id.clone(), target, allow, deny)
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            srv.post_json_auth(
+                &format!("/api/v1/channels/{channel_id}/messages"),
+                &owner.token,
+                json!({ "content": "unread" }),
+            )
+            .await
+            .status(),
+            200
+        );
+        expected.insert(channel_id, (name, visible));
+    }
+
+    let mut gw = Gateway::connect(&srv, &member.token).await;
+    let ready = gw.wait_for(|ev| ev["t"] == "Ready").await;
+    let ready_server = ready["d"]["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == server_id)
+        .expect("member's server is in Ready")
+        .clone();
+    let listed: std::collections::HashSet<String> = ready_server["channels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap().to_owned())
+        .collect();
+    let unread = ready["d"]["unread"].as_object().unwrap();
+    for (channel_id, (name, visible)) in &expected {
+        assert_eq!(
+            listed.contains(channel_id),
+            *visible,
+            "{name}: listed in Ready"
+        );
+        assert_eq!(
+            unread.get(channel_id),
+            visible.then_some(&json!(1)),
+            "{name}: unread count in Ready"
+        );
+        let history = srv
+            .get_auth(
+                &format!("/api/v1/channels/{channel_id}/messages"),
+                &member.token,
+            )
+            .await
+            .status();
+        assert_eq!(
+            history == 200,
+            *visible,
+            "{name}: REST history access agrees"
+        );
+    }
+}

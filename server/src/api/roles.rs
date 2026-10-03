@@ -98,15 +98,18 @@ fn has_admin_override(permissions: i64) -> bool {
         || permissions & perm::LEGACY_MANAGE_ALL == perm::LEGACY_MANAGE_ALL
 }
 
+/// One permission overwrite: `(target_type, target_id, allow, deny)`.
+type Overwrite = (String, Option<String>, i64, i64);
+
 async fn apply_overwrite_scope(
     state: &AppState,
-    mut permissions: i64,
+    permissions: i64,
     scope_type: &str,
     scope_id: &str,
     user_id: &str,
     role_ids: &[String],
 ) -> i64 {
-    let rows: Vec<(String, Option<String>, i64, i64)> = sqlx::query_as(
+    let rows: Vec<Overwrite> = sqlx::query_as(
         "SELECT target_type, target_id, allow_permissions, deny_permissions
          FROM permission_overwrites
          WHERE scope_type = ? AND scope_id = ?",
@@ -116,10 +119,20 @@ async fn apply_overwrite_scope(
     .fetch_all(&state.db)
     .await
     .unwrap_or_default();
+    apply_overwrites(permissions, &rows, user_id, role_ids)
+}
 
+/// Apply one scope's overwrites: @everyone, then the member's roles combined, then the
+/// member; deny then allow at each level.
+fn apply_overwrites(
+    mut permissions: i64,
+    rows: &[Overwrite],
+    user_id: &str,
+    role_ids: &[String],
+) -> i64 {
     let mut deny = 0;
     let mut allow = 0;
-    for (target_type, _target_id, allow_permissions, deny_permissions) in &rows {
+    for (target_type, _target_id, allow_permissions, deny_permissions) in rows {
         if target_type == "everyone" {
             deny |= *deny_permissions;
             allow |= *allow_permissions;
@@ -130,7 +143,7 @@ async fn apply_overwrite_scope(
 
     deny = 0;
     allow = 0;
-    for (target_type, target_id, allow_permissions, deny_permissions) in &rows {
+    for (target_type, target_id, allow_permissions, deny_permissions) in rows {
         if target_type == "role" && target_id.as_ref().is_some_and(|id| role_ids.contains(id)) {
             deny |= *deny_permissions;
             allow |= *allow_permissions;
@@ -141,7 +154,7 @@ async fn apply_overwrite_scope(
 
     deny = 0;
     allow = 0;
-    for (target_type, target_id, allow_permissions, deny_permissions) in &rows {
+    for (target_type, target_id, allow_permissions, deny_permissions) in rows {
         if target_type == "member" && target_id.as_deref() == Some(user_id) {
             deny |= *deny_permissions;
             allow |= *allow_permissions;
@@ -207,6 +220,78 @@ pub async fn has_channel_perm(
     flag: i64,
 ) -> bool {
     channel_permissions(state, channel_id, user_id).await & flag != 0
+}
+
+/// The channels of `server_id` (as loaded from it) that `user_id` may view, by the same
+/// rules as [`channel_permissions`]. The member's base permissions are resolved once and
+/// the overwrites of every channel and category involved are read in one query, so the
+/// cost does not grow with the channel count. An error reading the overwrites returns
+/// the error rather than listing channels whose denies could not be checked.
+pub async fn viewable_channels(
+    state: &AppState,
+    server_id: &str,
+    user_id: &str,
+    channels: Vec<crate::types::Channel>,
+) -> Result<Vec<crate::types::Channel>, sqlx::Error> {
+    if is_owner(state, server_id, user_id).await {
+        return Ok(channels);
+    }
+    if !crate::api::servers::is_member(state, server_id, user_id).await {
+        return Ok(Vec::new());
+    }
+    let (role_ids, role_permissions) =
+        member_role_ids_and_permissions(state, server_id, user_id).await;
+    let base = everyone_permissions(state, server_id).await | role_permissions;
+    if has_admin_override(base) {
+        return Ok(channels);
+    }
+    let rows: Vec<(String, String, String, Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT scope_type, scope_id, target_type, target_id, allow_permissions, deny_permissions
+         FROM permission_overwrites
+         WHERE (scope_type = 'channel' AND scope_id IN (SELECT id FROM channels WHERE server_id = ?))
+            OR (scope_type = 'category'
+                AND scope_id IN (SELECT category_id FROM channels WHERE server_id = ?))",
+    )
+    .bind(server_id)
+    .bind(server_id)
+    .fetch_all(&state.db)
+    .await?;
+    let mut by_scope: std::collections::HashMap<(String, String), Vec<Overwrite>> =
+        std::collections::HashMap::new();
+    for (scope_type, scope_id, target_type, target_id, allow, deny) in rows {
+        by_scope.entry((scope_type, scope_id)).or_default().push((
+            target_type,
+            target_id,
+            allow,
+            deny,
+        ));
+    }
+    let scope = |scope_type: &str, scope_id: &str| -> &[Overwrite] {
+        by_scope
+            .get(&(scope_type.to_owned(), scope_id.to_owned()))
+            .map_or(&[], Vec::as_slice)
+    };
+    Ok(channels
+        .into_iter()
+        .filter(|channel| {
+            let mut permissions = base;
+            if let Some(category_id) = &channel.category_id {
+                permissions = apply_overwrites(
+                    permissions,
+                    scope("category", category_id),
+                    user_id,
+                    &role_ids,
+                );
+            }
+            permissions = apply_overwrites(
+                permissions,
+                scope("channel", &channel.id),
+                user_id,
+                &role_ids,
+            );
+            permissions & perm::VIEW_CHANNEL != 0
+        })
+        .collect())
 }
 
 /// A member's rank for hierarchy checks: the owner outranks everyone (i64::MAX),
