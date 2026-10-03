@@ -7,7 +7,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, withoutServerChannels } from "../src/lib/e2eMode.ts";
+import {
+  isWellFormedEnvelope,
+  pickDmPeer,
+  shouldEnterEncryptedMode,
+  shouldRecordRecoveryInventory,
+  withoutServerChannels,
+} from "../src/lib/e2eMode.ts";
 import { buildDistribution, groupEncrypt, setSenderKeyBackend } from "../src/lib/senderKeys.ts";
 
 const b64 = (s: string) => Buffer.from(s, "binary").toString("base64");
@@ -99,4 +105,16 @@ test("stored encrypted-mode entries for server channels are dropped; DMs and unk
   assert.deepEqual([...withoutServerChannels(stored, ready)].sort(), ["dm-1", "group-1", "unknown-1"]);
   const clean = new Set(["dm-1"]);
   assert.equal(withoutServerChannels(clean, ready), clean, "unchanged set is returned as-is");
+});
+
+test("the recovery inventory records well-formed envelopes only in DMs and group DMs", async () => {
+  const grp = await realGroupEnvelope();
+  // A server channel never writes the bounded inventory, so it can't evict real entries.
+  for (const type of ["text", "voice", undefined] as const) {
+    assert.equal(shouldRecordRecoveryInventory(type, SIG2), false);
+    assert.equal(shouldRecordRecoveryInventory(type, grp), false);
+  }
+  assert.equal(shouldRecordRecoveryInventory("dm", SIG2), true);
+  assert.equal(shouldRecordRecoveryInventory("group_dm", grp), true);
+  for (const fake of FAKES) assert.equal(shouldRecordRecoveryInventory("dm", fake), false, fake);
 });

@@ -72,6 +72,13 @@ export function shouldEnterEncryptedMode(
   return decryptedAny || contents.some(isWellFormedEnvelope);
 }
 
+/** Should this message go into the (bounded) recovery inventory? Only a well-formed
+ *  envelope, and only in a DM or group DM — a server channel's content must not be able
+ *  to evict real entries. */
+export function shouldRecordRecoveryInventory(channelType: ChannelType | undefined, content: string): boolean {
+  return isDirectChat(channelType) && isWellFormedEnvelope(content);
+}
+
 /** The peer of a 1:1 chat: the single participant who isn't me. Undefined when that
  *  isn't exactly one person or I don't know who I am. */
 export function pickDmPeer(participants: readonly { id: string }[], myId: string | undefined): string | undefined {

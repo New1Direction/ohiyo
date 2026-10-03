@@ -60,7 +60,7 @@ import {
 import { formatDuration } from "./lib/disappearing";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
 import { createDistributionTracker, encryptOutgoing, EncryptedSendError, forwardBlockReason } from "./lib/encryptedSend";
-import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, withoutServerChannels } from "./lib/e2eMode";
+import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { initVaultBackend } from "./lib/tauriVault";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
@@ -1435,7 +1435,7 @@ function MainApp({
       // Inventory encrypted-message headers durably before attempting decrypt, so the
       // restore preview can reason about messages loaded in a previous browser session.
       for (const m of msgs) {
-        if (!isWellFormedEnvelope(m.content)) continue;
+        if (!shouldRecordRecoveryInventory(channelType, m.content)) continue;
         if (isGroupCiphertext(m.content)) {
           const header = parseGroupCiphertextHeader(m.content);
           if (header) recordGroupSenderKeyMessage({ message_id: m.id, room_id: channelId, epoch: header.epoch, key_id: String(header.keyId) });
