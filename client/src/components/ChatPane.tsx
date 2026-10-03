@@ -135,7 +135,10 @@ export type ChatActivityNotice = {
 type MsgGroup = { author: Message["author"]; msgs: Message[]; isMe: boolean };
 type ChatRow = { kind: "messages"; group: MsgGroup } | { kind: "activity"; notice: ChatActivityNotice };
 
-const DIRECT_VIDEO_EXT_RE = /\.(mp4|m4v|mov|webm|ogv|ogg)(?:$|[?#])/i;
+// Shown wherever group encryption is offered (sender keys reach only connected members).
+const GROUP_E2E_NOTE = "Group encryption can miss messages sent while you were offline.";
+
+const DIRECT_VIDEO_EXT_RE =/\.(mp4|m4v|mov|webm|ogv|ogg)(?:$|[?#])/i;
 
 function extractSafeHttpUrlsFromText(text: string): string[] {
   const out: string[] = [];
@@ -1211,7 +1214,10 @@ export function ChatPane({
             onClick={onToggleE2e}
             aria-label={e2eEnabled ? "Turn off end-to-end encryption" : "Turn on end-to-end encryption"}
             aria-pressed={e2eEnabled}
-            title={e2eEnabled ? "End-to-end encrypted — click to turn off" : "Turn on end-to-end encryption"}
+            title={
+              (e2eEnabled ? "End-to-end encrypted — click to turn off" : "Turn on end-to-end encryption") +
+              (channel?.channel_type === "group_dm" ? ` (Experimental). ${GROUP_E2E_NOTE}` : "")
+            }
             className={`kc-icon-btn flex-shrink-0${e2eEnabled ? " active" : ""}`}
             style={e2eEnabled ? { color: "var(--accent)" } : undefined}
           >
@@ -1390,7 +1396,18 @@ export function ChatPane({
                 <strong>
                   {e2eTrust === "verified" ? "End-to-end encrypted · verified." : "Switched to end-to-end encrypted."}
                 </strong>{" "}
+                {channel?.channel_type === "group_dm" && (
+                  <>
+                    <span
+                      className="rounded px-1 font-bold uppercase"
+                      style={{ fontSize: 10, letterSpacing: "0.04em", border: "1px solid currentColor" }}
+                    >
+                      Experimental
+                    </span>{" "}
+                  </>
+                )}
                 Messages here are encrypted on your device — not even the server can read them.
+                {channel?.channel_type === "group_dm" && ` ${GROUP_E2E_NOTE}`}
               </span>
               {e2eTrust === "verified" && (
                 <span
