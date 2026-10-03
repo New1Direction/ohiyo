@@ -58,7 +58,7 @@ fn split_urls(raw: &str) -> Vec<String> {
 }
 
 pub async fn ice_servers(
-    AuthUser(user_id): AuthUser,
+    AuthUser(user_id, _): AuthUser,
 ) -> Result<Json<IceServersResponse>, (StatusCode, &'static str)> {
     let stun_urls =
         split_urls(&std::env::var("STUN_URLS").unwrap_or_else(|_| DEFAULT_STUN_URLS.to_owned()));

@@ -62,13 +62,12 @@ pub struct WsTicketResponse {
 /// POST /api/v1/ws/ticket — exchange the JWT (Authorization header) for a
 /// one-time ticket used to open the gateway socket.
 pub async fn create_ws_ticket(
-    auth: auth::AuthUser,
+    auth::AuthUser(user_id, token_version): auth::AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<WsTicketResponse>, (StatusCode, String)> {
-    let token_version = current_token_version(&state, &auth.0)
-        .await
-        .map_err(crate::api::error::internal)?
-        .ok_or((StatusCode::UNAUTHORIZED, "unknown user".to_owned()))?;
+    // Stamped with the version of the JWT that asked, not the account's current one:
+    // if "log out everywhere" lands after that JWT passed the auth check, the ticket is
+    // already stale and is refused on redeem.
     let ticket: String = rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
         .take(32)
@@ -79,7 +78,7 @@ pub async fn create_ws_ticket(
     tickets.insert(
         ticket.clone(),
         WsTicket {
-            user_id: auth.0,
+            user_id,
             token_version,
             issued: Instant::now(),
         },

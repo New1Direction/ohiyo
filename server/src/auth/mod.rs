@@ -80,8 +80,10 @@ pub fn verify_token(token: &str, secret: &str) -> Result<Claims> {
 
 // ── Extractor: pulls user_id from Bearer token ────────────────────────────────
 
+/// The authenticated caller: their user id, and the token version of the JWT that
+/// authenticated this request.
 #[derive(Debug, Clone)]
-pub struct AuthUser(pub String);
+pub struct AuthUser(pub String, pub i64);
 
 impl<S> FromRequestParts<S> for AuthUser
 where
@@ -121,7 +123,7 @@ where
                 })?;
 
         match current {
-            Some(v) if claims.token_version >= v => Ok(AuthUser(claims.sub)),
+            Some(v) if claims.token_version >= v => Ok(AuthUser(claims.sub, claims.token_version)),
             Some(_) => Err((axum::http::StatusCode::UNAUTHORIZED, "token revoked")),
             None => Err((axum::http::StatusCode::UNAUTHORIZED, "invalid token")),
         }

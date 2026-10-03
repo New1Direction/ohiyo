@@ -86,3 +86,27 @@ async fn a_ticket_issued_before_logout_everywhere_is_refused() {
         .expect("the stale ticket must not open a socket");
     assert!(head.starts_with("HTTP/1.1 401"), "{head}");
 }
+
+#[tokio::test]
+async fn a_ticket_carries_the_version_of_the_jwt_that_asked_for_it() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("ticketversion", "password123").await;
+    let res = srv
+        .post_empty_auth("/api/v1/auth/logout-everywhere", &alice.token)
+        .await;
+    assert_eq!(res.status(), 204);
+
+    // Logout everywhere landed between a stale JWT passing the auth check and its ticket
+    // being issued: the handler sees a version-0 caller on a version-1 account.
+    let stale_caller = server::auth::AuthUser(alice.id.clone(), 0);
+    let axum::Json(issued) =
+        server::gateway::create_ws_ticket(stale_caller, axum::extract::State(srv.state.clone()))
+            .await
+            .expect("ticket issued");
+
+    let head = Gateway::open(&srv, &issued.ticket)
+        .await
+        .err()
+        .expect("a ticket asked for with a revoked JWT must not open a socket");
+    assert!(head.starts_with("HTTP/1.1 401"), "{head}");
+}
