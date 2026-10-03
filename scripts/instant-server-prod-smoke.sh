@@ -34,7 +34,12 @@ fi
 
 instance_id=""
 subdomain=""
+create_out=""
 cleanup() {
+  # Every exit path, including a curl failure that `set -e` turns into an exit.
+  if [[ -n "$create_out" ]]; then
+    rm -f "$create_out"
+  fi
   if [[ "$KEEP" != "1" && -n "$instance_id" ]]; then
     echo "Cleaning up instance $instance_id ..."
     curl -fsS -X DELETE "$API_BASE/instances/$instance_id" -H "authorization: Bearer $token" >/dev/null || \
@@ -46,7 +51,7 @@ trap cleanup EXIT
 echo "Creating Instant Server instance ..."
 # Keep the response body: a bare `curl -f` hid the reason behind every failed run.
 create_out="$(mktemp)"
-create_status="$(curl -sS -o "$create_out" -w '%{http_code}' "$API_BASE/instances" \
+create_status="$(curl -sS --max-time 120 -o "$create_out" -w '%{http_code}' "$API_BASE/instances" \
   -H 'content-type: application/json' \
   -H "authorization: Bearer $token" \
   --data "$(jq -cn --arg name "$NAME" '{name:$name}')")"
