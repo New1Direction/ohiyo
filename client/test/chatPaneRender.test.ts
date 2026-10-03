@@ -256,3 +256,30 @@ test("item I3: an empty DM with the lock off doesn't claim its messages are encr
   assert.doesNotMatch(html, /Send the first encrypted message|only relays sealed envelopes|Drop an encrypted file/);
   assert.match(html, /tap the lock/i);
 });
+
+// M3: a watch party's video URL goes to the server unencrypted, so it isn't offered in an
+// encrypted chat (like polls).
+function watchableChat(type: "dm" | "group_dm", e2eEnabled: boolean): string {
+  return renderChatPane({
+    channel: { id: "c1", server_id: null, name: "chat", channel_type: type, position: 0, topic: null, created_at: 0 },
+    messages: [],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s },
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    onWatchControl() {},
+    isLoading: false,
+    e2eEnabled,
+    onToggleE2e() {},
+  });
+}
+
+const hasWatchButton = (html: string) => html.includes('aria-label="Watch party"');
+
+test("item M3: no watch party in encrypted mode; offered otherwise", () => {
+  assert.equal(hasWatchButton(watchableChat("dm", true)), false);
+  assert.equal(hasWatchButton(watchableChat("group_dm", true)), false);
+  assert.ok(hasWatchButton(watchableChat("dm", false)));
+});

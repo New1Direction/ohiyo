@@ -1198,7 +1198,8 @@ export function ChatPane({
             )}
           </div>
         )}
-        {onWatchControl && (
+        {/* A watch party's video URL goes to the server unencrypted: not in encrypted chats. */}
+        {onWatchControl && !e2eEnabled && (
           <button
             type="button"
             onClick={() => setWatchInput((v) => (v === null ? "" : null))}
@@ -1479,7 +1480,7 @@ export function ChatPane({
       )}
 
       {/* Watch party — synced video for this channel */}
-      {watchInput !== null && onWatchControl && (
+      {watchInput !== null && onWatchControl && !e2eEnabled && (
         <form
           className="mx-3 mt-2 flex items-center gap-2"
           onSubmit={(e) => {
