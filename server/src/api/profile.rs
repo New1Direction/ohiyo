@@ -242,6 +242,10 @@ pub async fn update_profile(
     State(state): State<AppState>,
     Json(body): Json<UpdateProfileBody>,
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
+    // Checked before any field is written, so a rejected update changes nothing.
+    if let Some(bio) = &body.bio {
+        crate::api::limits::check_len("bio", bio, crate::api::limits::BIO)?;
+    }
     if let Some(name) = &body.display_name {
         crate::api::limits::check_len("display name", name, crate::api::limits::DISPLAY_NAME)?;
         sqlx::query("UPDATE users SET display_name = ? WHERE id = ?")

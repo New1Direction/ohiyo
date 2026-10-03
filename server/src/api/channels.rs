@@ -165,6 +165,7 @@ pub async fn create_category(
     if name.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "category name required".into()));
     }
+    crate::api::limits::check_len("category name", name, crate::api::limits::CATEGORY_NAME)?;
     let position: i64 = sqlx::query_scalar(
         "SELECT COALESCE(MAX(position), 0) + 1 FROM categories WHERE server_id = ?",
     )

@@ -117,3 +117,53 @@ async fn event_titles_and_descriptions_are_capped() {
         assert_eq!(res.status(), status);
     }
 }
+
+#[tokio::test]
+async fn category_names_are_capped_at_100_characters() {
+    let srv = TestServer::start().await;
+    let owner = srv.register("limitowner", "password123").await;
+    let server_id = create_server(&srv, &owner).await;
+    for (name, status) in [(chars(101), 400), (chars(100), 200)] {
+        let res = srv
+            .post_json_auth(
+                &format!("/api/v1/servers/{server_id}/categories"),
+                &owner.token,
+                json!({ "name": name }),
+            )
+            .await;
+        assert_eq!(res.status(), status);
+    }
+}
+
+#[tokio::test]
+async fn group_dm_names_are_capped_at_100_characters() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("limitalice", "password123").await;
+    let bob = srv.register("limitbob", "password123").await;
+    for (name, status) in [(chars(101), 400), (chars(100), 200)] {
+        let res = srv
+            .post_json_auth(
+                "/api/v1/users/@me/group-dms",
+                &alice.token,
+                json!({ "recipient_ids": [bob.id], "name": name }),
+            )
+            .await;
+        assert_eq!(res.status(), status);
+    }
+}
+
+#[tokio::test]
+async fn bios_are_capped_at_500_characters() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("limitalice", "password123").await;
+    for (bio, status) in [(chars(501), 400), (chars(500), 200)] {
+        let res = srv
+            .patch_json_auth(
+                "/api/v1/users/@me/profile",
+                &alice.token,
+                json!({ "bio": bio }),
+            )
+            .await;
+        assert_eq!(res.status(), status);
+    }
+}

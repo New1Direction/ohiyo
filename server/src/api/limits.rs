@@ -6,8 +6,11 @@
 use axum::http::StatusCode;
 
 pub const DISPLAY_NAME: usize = 64;
+pub const BIO: usize = 500;
 pub const SERVER_NAME: usize = 100;
+pub const CATEGORY_NAME: usize = 100;
 pub const CHANNEL_NAME: usize = 100;
+pub const GROUP_DM_NAME: usize = 100;
 pub const CHANNEL_TOPIC: usize = 1024;
 pub const ROLE_NAME: usize = 100;
 pub const EVENT_TITLE: usize = 200;

@@ -459,6 +459,9 @@ pub async fn open_group_dm(
     ) {
         return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
     }
+    if let Some(name) = &body.name {
+        crate::api::limits::check_len("group name", name, crate::api::limits::GROUP_DM_NAME)?;
+    }
     let mut members: Vec<String> = body
         .recipient_ids
         .into_iter()
