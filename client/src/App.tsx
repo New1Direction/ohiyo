@@ -63,6 +63,7 @@ import { createDistributionTracker, encryptOutgoing, EncryptedSendError, forward
 import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { initVaultBackend } from "./lib/tauriVault";
+import { vaultLockedReason } from "./lib/vaultLock";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -116,6 +117,8 @@ export default function App() {
   // asynchronously. Until it's ready we can't tell "logged out" from "token still
   // sealed", so the UI is gated on this flag. Web has no vault → ready immediately.
   const [vaultReady, setVaultReady] = useState(() => !isDesktop());
+  // Desktop: why the vault couldn't be unlocked (keychain or sealed-file failure), if so.
+  const [vaultLocked, setVaultLocked] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeHome) setServerOrigin(activeHome.url);
@@ -127,11 +130,15 @@ export default function App() {
   useEffect(() => {
     if (!isDesktop()) return; // web: tokens already came from localStorage synchronously
     let cancelled = false;
-    void initVaultBackend().finally(() => {
-      if (cancelled) return;
-      setHomes(loadHomes());
-      setVaultReady(true);
-    });
+    void initVaultBackend()
+      .catch((err: unknown) => {
+        if (!cancelled) setVaultLocked(vaultLockedReason(err) ?? String(err));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setHomes(loadHomes());
+        setVaultReady(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -171,6 +178,18 @@ export default function App() {
     // Desktop only: a brief wait while the encrypted vault unlocks and the session token
     // hydrates, so an already-signed-in user never flashes the login screen.
     return <div className="fixed inset-0 grid place-items-center text-sm opacity-60">Unlocking…</div>;
+  }
+  if (vaultLocked !== null) {
+    // Desktop only: don't start with an empty vault, which would replace the saved keys.
+    return (
+      <div role="alert" className="fixed inset-0 grid place-items-center p-6 text-center text-sm">
+        <div className="max-w-md">
+          <p className="mb-2 font-semibold">Ohiyo couldn&apos;t unlock your encrypted key vault.</p>
+          <p className="mb-2 opacity-70">{vaultLocked}</p>
+          <p className="opacity-70">Nothing was deleted. Unlock your system keychain, then restart Ohiyo.</p>
+        </div>
+      </div>
+    );
   }
   const addHomeModal = showAddHome ? (
     <AddHomeModal
