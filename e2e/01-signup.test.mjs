@@ -140,6 +140,11 @@ try {
 
   // ── Logout → login flow with remembered username + friendly error ─
   await page.click('[title="Log out"]');
+  // Signing out of the last account asks first, because it removes local message data.
+  const signOutDialog = '[role="dialog"][aria-labelledby="kc-sign-out-title"]';
+  await page.waitForSelector(signOutDialog, { timeout: 8000 });
+  log("sign-out asks before removing local message data ✓");
+  await page.click(`${signOutDialog} button:has-text("Sign out")`);
   await page.waitForSelector('input[autocomplete="username"]', { timeout: 8000 });
   const remembered = await page.inputValue('input[autocomplete="username"]');
   if (remembered !== USER) console.warn(`  WARN: username not remembered (${remembered})`), warnings++;
