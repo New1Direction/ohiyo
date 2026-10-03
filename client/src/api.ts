@@ -345,7 +345,6 @@ export type DiscrawlArchiveUploadResponse = {
 
 export type DiscrawlImportRequest = {
   db_path: string;
-  media_root?: string | null;
   guild_id?: string | null;
   history?: ImportHistoryWindow | null;
 };
