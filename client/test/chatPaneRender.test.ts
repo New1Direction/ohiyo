@@ -239,8 +239,8 @@ test("item I3: the encrypted-chat banner says the server stores only ciphertext"
   assert.doesNotMatch(text, /not even the server/);
 });
 
-test("item I3: an empty DM with the lock off doesn't claim its messages are encrypted", () => {
-  const html = renderChatPane({
+function emptyDm(e2eEnabled: boolean): string {
+  return renderChatPane({
     channel: { id: "c1", server_id: null, name: "dm", channel_type: "dm", position: 0, topic: null, created_at: 0 },
     messages: [],
     currentUserId: "u1",
@@ -250,11 +250,24 @@ test("item I3: an empty DM with the lock off doesn't claim its messages are encr
     onSend() {},
     onToast() {},
     isLoading: false,
-    e2eEnabled: false,
+    e2eEnabled,
     onToggleE2e() {},
   });
+}
+
+test("item I3: an empty DM with the lock off doesn't claim its messages are encrypted", () => {
+  const html = emptyDm(false);
   assert.doesNotMatch(html, /Send the first encrypted message|only relays sealed envelopes|Drop an encrypted file/);
   assert.match(html, /tap the lock/i);
+});
+
+// N1: with the lock already on, tapping it would turn encryption off, so the welcome says
+// encryption is on instead of suggesting the lock.
+test("item N1: an empty DM with the lock on says encryption is on and doesn't suggest the lock", () => {
+  const html = emptyDm(true);
+  assert.doesNotMatch(html, /tap the lock/i);
+  assert.match(html, /Encryption is on: the server stores only ciphertext for what you send here\./);
+  assert.match(html, /<span>Encryption is on<\/span>/);
 });
 
 // M3: a watch party's video URL goes to the server unencrypted, so it isn't offered in an

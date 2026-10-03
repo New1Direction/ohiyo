@@ -20,13 +20,15 @@ type Props = {
   channelName?: string;
   /** A DM or group DM, so we greet a conversation instead of a #channel. */
   isDM?: boolean;
+  /** The chat is in encrypted mode (its lock is on). Tapping the lock would turn it off. */
+  encrypted?: boolean;
   /** Current user id, so the one-time manifesto is per-account, not per-device. */
   userId?: string;
   /** Opens Settings → Backup & recovery; when present, a one-time recovery-code nudge shows. */
   onSaveRecovery?: () => void;
 };
 
-export function ChannelWelcome({ channelName, isDM, userId, onSaveRecovery }: Props) {
+export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRecovery }: Props) {
   // Full manifesto only the first time THIS account sees an empty channel.
   const [showManifesto] = useState(() => {
     try {
@@ -65,12 +67,14 @@ export function ChannelWelcome({ channelName, isDM, userId, onSaveRecovery }: Pr
 
   const title = isDM ? "Start the private thread 👋" : channelName ? `Welcome to #${channelName}!` : "This channel's all quiet";
   const sub = isDM
-    ? "Say hi, drop a file, or tap the lock first so the server only stores sealed envelopes."
+    ? encrypted
+      ? "Say hi or drop a file. Encryption is on: the server stores only ciphertext for what you send here."
+      : "Say hi, drop a file, or tap the lock first so the server only stores sealed envelopes."
     : channelName
       ? `This is the start of #${channelName}. Say hi, share a file, or hop into voice when text is too slow.`
       : "Say something, share a file, or start a call — it’s a great place to begin.";
   const suggestions = isDM
-    ? ["Say hi", "Tap the lock to encrypt", "Verify safety number later"]
+    ? ["Say hi", encrypted ? "Encryption is on" : "Tap the lock to encrypt", "Verify safety number later"]
     : ["Say hi", "Share a file", "Start voice from the sidebar"];
 
   async function copyShare() {

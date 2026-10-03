@@ -1545,6 +1545,7 @@ export function ChatPane({
           <ChannelWelcome
             channelName={channel?.name && channel.name !== "dm" ? channel.name : undefined}
             isDM={channel?.channel_type === "dm" || channel?.channel_type === "group_dm"}
+            encrypted={e2eEnabled}
             userId={currentUserId}
             onSaveRecovery={onSaveRecovery}
           />
