@@ -1421,7 +1421,7 @@ export function ChatPane({
                     </span>{" "}
                   </>
                 )}
-                Messages here are encrypted on your device — the server stores only ciphertext.
+                Encryption is on. The server stores only ciphertext for what you send here.
                 {channel?.channel_type === "group_dm" && ` ${GROUP_E2E_NOTE}`}
               </span>
               {e2eTrust === "verified" && (

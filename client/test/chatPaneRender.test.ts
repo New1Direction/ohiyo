@@ -233,10 +233,12 @@ test("item I1: Edit stays for a decrypted message in encrypted mode, and for pla
 // I3: in-app text says only what is true today. In an encrypted chat the server stores
 // ciphertext (it doesn't promise the server can never read anything), and an empty DM
 // doesn't claim to be encrypted before the lock is on.
-test("item I3: the encrypted-chat banner says the server stores only ciphertext", () => {
+// N4: the banner speaks only for what you send here (earlier history, or the other
+// person's messages while their lock is off, may be plain text).
+test("item I3/N4: the encrypted-chat banner says the server stores only ciphertext for what you send", () => {
   const text = banner(chat("dm", true, false));
-  assert.match(text, /the server stores only ciphertext/);
-  assert.doesNotMatch(text, /not even the server/);
+  assert.match(text, /Encryption is on\. The server stores only ciphertext for what you send here\./);
+  assert.doesNotMatch(text, /not even the server|Messages here are encrypted/);
 });
 
 function emptyDm(e2eEnabled: boolean): string {

@@ -208,7 +208,7 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
             {guide.guide.raw_data_export_url && (
               <div className="mt-3 rounded-2xl p-3 text-xs leading-5" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
                 Raw Server Pack endpoint: <code style={{ color: "var(--text-primary)" }}>{guide.guide.raw_data_export_url}</code><br />
-                Sign in on that home as the owner before downloading. It restores the database and files: encrypted chats stay ciphertext; server-channel messages are plain text.
+                Sign in on that home as the owner before downloading. It restores the database and files: chats with the lock on stay ciphertext; server channels, unlocked DMs and group DMs, and their files are plain text.
               </div>
             )}
             <pre className="mt-3 overflow-x-auto rounded-2xl p-3 text-xs" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}>{guide.guide.one_liner}</pre>
