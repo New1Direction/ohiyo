@@ -1418,9 +1418,6 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
 mod tests {
     use super::*;
 
-    /// Browsers wake timers in a long-hidden tab about once a minute, so a backgrounded
-    /// client's 20 s heartbeat can arrive a minute late, or two minutes when a wake-up
-    /// slips. Closing before then would drop backgrounded web clients.
     /// State over a fresh migrated database holding user `u1` at `token_version`.
     async fn state_with_user(token_version: i64) -> AppState {
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -1473,6 +1470,9 @@ mod tests {
             .is_some_and(|conns| conns.contains_key(&1)));
     }
 
+    /// Browsers wake timers in a long-hidden tab about once a minute, so a backgrounded
+    /// client's 20 s heartbeat can arrive a minute late, or two minutes when a wake-up
+    /// slips. Closing before then would drop backgrounded web clients.
     #[test]
     fn idle_limit_outlasts_heartbeats_from_a_throttled_background_tab() {
         let throttled_wakeup = Duration::from_secs(60);
