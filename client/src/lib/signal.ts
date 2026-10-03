@@ -12,6 +12,7 @@ import {
 import { api } from "../api";
 import { recordKeySeen, setIdentityTrustBackend } from "./identityTrust";
 import { computeSafetyNumber } from "./safetyNumber";
+import { fanOut } from "./signalFanout";
 
 const NS = "kc:sig:";
 const PREKEY_BATCH = 100;
@@ -376,30 +377,26 @@ async function ensureSession(addr: SignalProtocolAddress, bundle: Bundle): Promi
 }
 
 /** Encrypt for a peer, fanning out a copy to EVERY one of the peer's devices and our
- *  own other devices (multi-device). Returns a `sig2.<b64(json)>` envelope, or null if
- *  no Signal-capable recipient device exists yet. */
+ *  own other devices (multi-device). Device lists come from the identity-key directory
+ *  on every send; prekey bundles (one one-time prekey per device) are fetched only when
+ *  a device has no session yet — see signalFanout.ts. Returns a `sig2.<b64(json)>`
+ *  envelope, or null if no Signal-capable recipient device exists yet. */
 export async function encryptFor(token: string, peerId: string, plaintext: string): Promise<string | null> {
   if (!isValidUserId(peerId)) return null;
   const myId = ownUserId();
   const myDevice = getDeviceId();
   const uids = myId && myId !== peerId ? [peerId, myId] : [peerId];
   const buf = new TextEncoder().encode(plaintext).buffer;
-  const r: Record<string, { t: number; b: string }> = {};
-  for (const uid of uids) {
-    let bundles: Bundle[];
-    try {
-      bundles = await api.getPrekeyBundles(token, uid);
-    } catch {
-      bundles = [];
-    }
-    for (const b of bundles) {
-      if (uid === myId && b.device_id === myDevice) continue; // never to ourselves
-      const addr = new SignalProtocolAddress(uid, b.device_id);
-      if (!(await ensureSession(addr, b))) continue;
-      const msg = await new SessionCipher(store, addr).encrypt(buf);
-      r[`${uid}.${b.device_id}`] = { t: msg.type, b: btoa(msg.body as string) };
-    }
-  }
+  const r = await fanOut<Bundle>(uids, { userId: myId, deviceId: myDevice }, {
+    listDevices: async (uid) => (await api.getIdentityKeys(token, uid)).map((k) => k.device_id),
+    fetchBundles: (uid) => api.getPrekeyBundles(token, uid),
+    hasSession: async (uid, d) => Boolean(await store.loadSession(new SignalProtocolAddress(uid, d).toString())),
+    startSession: (uid, b) => ensureSession(new SignalProtocolAddress(uid, b.device_id), b),
+    encrypt: async (uid, d) => {
+      const msg = await new SessionCipher(store, new SignalProtocolAddress(uid, d)).encrypt(buf);
+      return { t: msg.type, b: btoa(msg.body as string) };
+    },
+  });
   if (Object.keys(r).length === 0) return null;
   return `sig2.${btoa(JSON.stringify({ s: myDevice, r }))}`;
 }
