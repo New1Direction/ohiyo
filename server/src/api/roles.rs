@@ -352,18 +352,28 @@ pub async fn delete_role(
     if !has_perm(&state, &server_id, &auth.0, perm::MANAGE_ROLES).await {
         return Err((StatusCode::FORBIDDEN, "you can't manage roles".into()));
     }
-    let is_everyone: Option<bool> =
-        sqlx::query_scalar("SELECT is_everyone FROM roles WHERE id = ? AND server_id = ?")
+    let role: Option<(bool, i64)> =
+        sqlx::query_as("SELECT is_everyone, position FROM roles WHERE id = ? AND server_id = ?")
             .bind(&role_id)
             .bind(&server_id)
             .fetch_optional(&state.db)
             .await
             .map_err(crate::api::error::internal)?;
-    if is_everyone == Some(true) {
+    if role.is_some_and(|(is_everyone, _)| is_everyone) {
         return Err((
             StatusCode::BAD_REQUEST,
             "@everyone cannot be deleted".into(),
         ));
+    }
+    // Same hierarchy rule as assign_role: only roles ranked below your own top role.
+    // The owner is exempt — member_top_position → i64::MAX.
+    if let Some((_, role_position)) = role {
+        if role_position >= member_top_position(&state, &server_id, &auth.0).await {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "you can't delete a role ranked at or above your own".into(),
+            ));
+        }
     }
     sqlx::query("DELETE FROM roles WHERE id = ? AND server_id = ?")
         .bind(&role_id)
@@ -458,6 +468,28 @@ pub async fn unassign_role(
 ) -> Result<StatusCode, (StatusCode, String)> {
     if !has_perm(&state, &server_id, &auth.0, perm::MANAGE_ROLES).await {
         return Err((StatusCode::FORBIDDEN, "you can't manage roles".into()));
+    }
+    // Same hierarchy rule as assign_role (the owner is exempt via i64::MAX): the role
+    // must rank below your own top role, and so must the member, unless it's you.
+    let role_position: Option<i64> =
+        sqlx::query_scalar("SELECT position FROM roles WHERE id = ? AND server_id = ?")
+            .bind(&role_id)
+            .bind(&server_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    let actor_top = member_top_position(&state, &server_id, &auth.0).await;
+    if role_position.is_some_and(|position| position >= actor_top) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't remove a role ranked at or above your own".into(),
+        ));
+    }
+    if user_id != auth.0 && member_top_position(&state, &server_id, &user_id).await >= actor_top {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "that member ranks too high for you to act on".into(),
+        ));
     }
     sqlx::query("DELETE FROM member_roles WHERE server_id = ? AND user_id = ? AND role_id = ?")
         .bind(&server_id)
