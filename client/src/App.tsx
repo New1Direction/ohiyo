@@ -71,7 +71,7 @@ import { signOutRemovesLocalData } from "./lib/signOut";
 import { clearLocalMessageData } from "./lib/logoutCleanup";
 import { onPlaintextCacheEvicted, saveEncryptedChannels } from "./lib/storageQuota";
 import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
-import { deviceLimitMessage } from "./lib/apiErrors";
+import { badRequestMessage, deviceLimitMessage } from "./lib/apiErrors";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -1673,7 +1673,9 @@ function MainApp({
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         removeFromOutbox(tempId);
       } catch (err) {
+        const refused = badRequestMessage(err); // e.g. more attachments than the server allows
         if (err instanceof EncryptedSendError && err.reason === "unencrypted-attachment") toast(err.message, "error");
+        else if (refused) toast(`Couldn't send: ${refused}`, "error");
         // Keep the message visible in a failed state (persisted) so it can be retried.
         setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _state: "failed" } : m)));
         setOutboxState(tempId, "failed");
@@ -1706,7 +1708,9 @@ function MainApp({
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
         removeFromOutbox(msg.id);
       } catch (err) {
+        const refused = badRequestMessage(err); // e.g. more attachments than the server allows
         if (err instanceof EncryptedSendError && err.reason === "unencrypted-attachment") toast(err.message, "error");
+        else if (refused) toast(`Couldn't send: ${refused}`, "error");
         setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, _state: "failed" } : m)));
         setOutboxState(msg.id, "failed");
       }

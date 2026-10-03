@@ -25,3 +25,9 @@ export function deviceLimitMessage(err: unknown): string | null {
     ? "This account already has the maximum of 10 devices. Remove one in Settings → Privacy & security → Linked devices, then reopen Ohiyo."
     : null;
 }
+
+/** The server's reason when it refused a request as invalid (400), such as "too many
+ *  attachments (max 10 per message)", else null. */
+export function badRequestMessage(err: unknown): string | null {
+  return apiStatus(err) === 400 && err instanceof Error && err.message.trim() ? err.message : null;
+}

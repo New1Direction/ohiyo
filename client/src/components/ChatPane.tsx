@@ -23,6 +23,7 @@ import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode } from "../lib/linkPreviews";
 import { loadDraft, persistDraft } from "../lib/drafts";
 import { editBlockReason, pendingAttachmentsToKeep, REATTACH_MESSAGE } from "../lib/encryptedSend";
+import { filesThatFit, TOO_MANY_ATTACHMENTS } from "../lib/attachmentLimit";
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 
@@ -413,6 +414,11 @@ export function ChatPane({
   const [showPoll, setShowPoll] = useState(false);
   const lastTypingRef = useRef(0);
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([]);
+  // Files attached or still uploading, so a drop can't push a message past the server's
+  // attachment limit (read by onDrop, which keeps a stable identity).
+  const pendingFilesRef = useRef(pendingFiles);
+  pendingFilesRef.current = pendingFiles;
+  const uploadingCountRef = useRef(0);
   const [_uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [emojiPickerFor, setEmojiPickerFor] = useState<string | null>(null);
@@ -847,10 +853,14 @@ export function ChatPane({
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       if (!token) return;
+      const { fit, leftOut } = filesThatFit(pendingFilesRef.current.length + uploadingCountRef.current, acceptedFiles);
+      if (leftOut > 0) onToast(TOO_MANY_ATTACHMENTS, "error");
+      if (fit.length === 0) return;
+      uploadingCountRef.current += fit.length;
       setUploading(true);
 
       const results: UploadedFile[] = [];
-      for (const file of acceptedFiles) {
+      for (const file of fit) {
         const formData = new FormData();
         const encryptedUpload = e2eEnabled ? await encryptAttachmentFile(file) : null;
         const uploadFile = encryptedUpload
@@ -916,6 +926,7 @@ export function ChatPane({
       }
 
       setPendingFiles((prev) => [...prev, ...results]);
+      uploadingCountRef.current -= fit.length;
       setUploading(false);
     },
     [token, onToast, e2eEnabled]
