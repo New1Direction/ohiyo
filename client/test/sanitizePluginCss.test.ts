@@ -69,6 +69,7 @@ test("rejects every listed construct, in any case, and after removing comments",
     '@font-face { font-family: x; src: local("x"); }',
     'a { background: src("https://evil.test/p.png"); }',
     "a { width: EXPRESSION(alert(1)); }",
+    "a { background: url (x.png); width: expression (alert(1)); }",
     "a { background: ur/**/l(https://evil.test/p.png); }",
     "@im/* hidden */port 'https://evil.test/x.css';",
   ];
