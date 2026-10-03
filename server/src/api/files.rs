@@ -354,7 +354,9 @@ pub(crate) async fn delete_unreferenced_files(
     file_ids: &[String],
 ) -> Result<Vec<String>, sqlx::Error> {
     let mut orphaned_blobs = Vec::new();
-    for id in file_ids {
+    // Dedup hands identical uploads one id, so a batch can repeat ids: count each once.
+    let mut seen = std::collections::HashSet::new();
+    for id in file_ids.iter().filter(|id| seen.insert(id.as_str())) {
         let references: i64 = sqlx::query_scalar(FILE_REFERENCES_SQL)
             .bind(id)
             .bind(id)
@@ -366,7 +368,7 @@ pub(crate) async fn delete_unreferenced_files(
         if references > 0 {
             continue;
         }
-        // None if an earlier id in this batch was the same file and already went.
+        // None if the file row is already gone.
         let path: Option<String> = sqlx::query_scalar("SELECT path FROM files WHERE id = ?")
             .bind(id)
             .fetch_optional(&mut *conn)
