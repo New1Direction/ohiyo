@@ -371,6 +371,50 @@ async fn removed_group_dm_recipients_are_evicted_from_its_voice_room() {
     }
 }
 
+/// Once a recipient's participant row is gone they leave the call, even when a later
+/// step of the removal fails (here the rekey epoch bump, made to fail by a trigger).
+#[tokio::test]
+async fn a_group_dm_removal_that_fails_later_still_takes_the_recipient_out_of_the_call() {
+    let w = world().await;
+    let removed = w.srv.register("groupfailremoved", "supersecret123").await;
+    let group: Value = w
+        .srv
+        .post_json_auth(
+            "/api/v1/users/@me/group-dms",
+            &w.owner.token,
+            json!({ "recipient_ids": [removed.id], "name": "call" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let group_id = group["id"].as_str().unwrap().to_owned();
+    seat_in_room(&w, &group_id, &w.owner, "removalowner");
+    seat_in_room(&w, &group_id, &removed, "groupfailremoved");
+    let db = sqlx::SqlitePool::connect(w.srv.db_url()).await.unwrap();
+    sqlx::query(
+        "CREATE TRIGGER fail_epoch_bump BEFORE UPDATE OF epoch ON channels
+         BEGIN SELECT RAISE(ABORT, 'simulated failure after the removal'); END",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let res = w
+        .srv
+        .delete_auth(
+            &format!("/api/v1/channels/{group_id}/recipients/{}", removed.id),
+            &w.owner.token,
+        )
+        .await;
+    assert_eq!(res.status(), 500, "the epoch bump fails after the removal");
+    assert!(
+        !in_room(&w, &group_id, &removed),
+        "the removed recipient is out of the call anyway"
+    );
+    assert!(in_room(&w, &group_id, &w.owner));
+}
+
 #[tokio::test]
 async fn voice_keys_only_reach_recipients_who_can_view_the_channel() {
     let w = world().await;
