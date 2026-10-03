@@ -129,8 +129,9 @@ fn from_hex(s: &str) -> Option<[u8; 32]> {
     Some(k)
 }
 
-/// What to do about the master key, given what the keychain returned.
-#[derive(Debug, PartialEq)]
+/// What to do about the master key, given what the keychain returned. Debug only in tests,
+/// so the key bytes can't end up in a log.
+#[cfg_attr(test, derive(Debug, PartialEq))]
 enum MasterKey {
     Existing([u8; 32]),
     CreateNew,
