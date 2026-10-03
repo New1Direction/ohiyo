@@ -1,4 +1,4 @@
-//! S-H8: a user can be connected from several devices, and only one of them is in a
+//! S-H5: a user can be connected from several devices, and only one of them is in a
 //! call. When a connection closes (idle, network loss or a normal close), the user leaves
 //! a voice room only if that connection is the one that joined it, so a second device
 //! going to sleep never drops the call running on the first.
