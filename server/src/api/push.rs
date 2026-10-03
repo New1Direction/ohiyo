@@ -516,7 +516,7 @@ pub async fn dispatch_queued(state: &AppState, limit: i64) -> Result<DispatchRes
     .await?;
 
     let mut result = DispatchResult::default();
-    let http = Client::new();
+    let http = dispatch_client();
     for job in rows {
         result.attempted += 1;
         let Some(platform) = job.platform.as_deref() else {
@@ -569,6 +569,19 @@ pub async fn dispatch_queued(state: &AppState, limit: i64) -> Result<DispatchRes
         }
     }
     Ok(result)
+}
+
+/// How long one provider request may take before dispatch gives up on it.
+const DISPATCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The HTTP client for provider requests: bounded in time, and it never follows a
+/// redirect, so a provider response can't send the relay somewhere else.
+fn dispatch_client() -> Client {
+    Client::builder()
+        .timeout(DISPATCH_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("push dispatch http client")
 }
 
 async fn send_job(http: &Client, job: &DeliveryJob, platform: &str) -> ProviderSendResult {
@@ -1108,6 +1121,59 @@ mod tests {
     fn web_push_keys_accept_browser_base64_and_base64url() {
         assert_eq!(web_push_key("abcd+/=="), "abcd-_");
         assert_eq!(web_push_key("abcd-_"), "abcd-_");
+    }
+
+    /// A loopback HTTP server. `/landed` answers 200; any other path redirects to
+    /// `/landed`, unless `stall` is set, in which case nothing is ever answered.
+    async fn loopback_server(stall: bool) -> std::net::SocketAddr {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let n = socket.read(&mut buf).await.unwrap_or(0);
+                    if stall {
+                        std::future::pending::<()>().await;
+                    }
+                    let request = String::from_utf8_lossy(&buf[..n]);
+                    let response = if request.contains(" /landed ") {
+                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    } else {
+                        "HTTP/1.1 302 Found\r\nLocation: /landed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    };
+                    let _ = socket.write_all(response.as_bytes()).await;
+                });
+            }
+        });
+        addr
+    }
+
+    #[tokio::test]
+    async fn dispatch_client_does_not_follow_redirects() {
+        let addr = loopback_server(false).await;
+        let res = dispatch_client()
+            .post(format!("http://{addr}/push"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status().as_u16(), 302);
+    }
+
+    #[tokio::test]
+    async fn dispatch_client_gives_up_on_a_provider_after_ten_seconds() {
+        let addr = loopback_server(true).await;
+        let started = std::time::Instant::now();
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            dispatch_client().post(format!("http://{addr}/push")).send(),
+        )
+        .await
+        .expect("the client must time out on its own");
+        let err = outcome.expect_err("a stalled provider is an error");
+        assert!(err.is_timeout(), "{err}");
+        assert!(started.elapsed() >= std::time::Duration::from_secs(10));
     }
 
     #[test]
