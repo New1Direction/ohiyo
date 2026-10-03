@@ -60,7 +60,7 @@ import {
 import { formatDuration, messageExpiry } from "./lib/disappearing";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
 import { createDistributionTracker, editBlockReason, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
-import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
+import { isWellFormedEnvelope, resolveDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { decryptEach } from "./lib/decryptEach";
 import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
@@ -1374,6 +1374,17 @@ function MainApp({
       dmPeerRef.current.get(channelId) ?? dmUsersRef.current[channelId]?.id,
     []
   );
+  // The DM's peer as known, else learned from its participant list (never from message
+  // authors) and remembered. After a reload nothing is known for a DM whose loaded page
+  // has no ciphertext.
+  const learnDmPeer = useCallback(
+    async (channelId: string): Promise<string | undefined> => {
+      const peer = await resolveDmPeer(dmPeerId(channelId), () => api.listRecipients(token, channelId), currentUserRef.current?.id);
+      if (peer) dmPeerRef.current.set(channelId, peer);
+      return peer;
+    },
+    [dmPeerId, token]
+  );
 
   // Verification state for the open DM's peer — drives the "safety number changed"
   // warning + the Verified badge. identityTrust is an external store; subscribing
@@ -1456,11 +1467,11 @@ function MainApp({
           return wire;
         },
         pairwiseEncrypt: async (pt) => {
-          const peerId = dmPeerId(channelId);
+          const peerId = await learnDmPeer(channelId);
           return peerId ? encryptFor(token, peerId, pt) : null;
         },
       }),
-    [token, dmPeerId, distributeMySenderKey]
+    [token, learnDmPeer, distributeMySenderKey]
   );
 
   const decryptMessages = useCallback(
@@ -1487,15 +1498,8 @@ function MainApp({
       const wellFormed = shouldEnterEncryptedMode(channelType, contents, false);
       if (wellFormed) enterEncryptedMode();
       // The 1:1 peer comes from the channel's participant list, never message authors.
-      if (channelType === "dm" && !dmPeerId(channelId)) {
-        try {
-          const peer = pickDmPeer(await api.listRecipients(token, channelId), currentUserRef.current?.id);
-          if (peer) dmPeerRef.current.set(channelId, peer);
-        } catch {
-          /* offline — Signal messages stay undecryptable until the next load */
-        }
-      }
-      const peerId = channelType === "dm" ? dmPeerId(channelId) : undefined;
+      // Offline, Signal messages stay undecryptable until the next load.
+      const peerId = channelType === "dm" ? await learnDmPeer(channelId) : undefined;
       const decryptStateFor = (messageId: string): "unknown" | "not_covered" | "restore_failed" => {
         const coverage = coverageForMessage(messageId);
         if (
@@ -1574,7 +1578,7 @@ function MainApp({
       if (!wellFormed && shouldEnterEncryptedMode(channelType, contents, decryptedAny)) enterEncryptedMode();
       return out;
     },
-    [getDmKey, dmPeerId, channelTypeOf, token]
+    [getDmKey, learnDmPeer, channelTypeOf]
   );
 
   // Flip a DM into (or out of) end-to-end encrypted mode — persisted; the chat shifts

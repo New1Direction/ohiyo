@@ -87,6 +87,23 @@ export function pickDmPeer(participants: readonly { id: string }[], myId: string
   return others.length === 1 ? others[0].id : undefined;
 }
 
+/** The peer of a 1:1 chat: the one already known, else learned from the chat's
+ *  participant list (after a reload nothing is known yet when the loaded page has no
+ *  ciphertext). Undefined when it can't be learned (offline, or not exactly one other
+ *  person). */
+export async function resolveDmPeer(
+  known: string | undefined,
+  listParticipants: () => Promise<readonly { id: string }[]>,
+  myId: string | undefined,
+): Promise<string | undefined> {
+  if (known) return known;
+  try {
+    return pickDmPeer(await listParticipants(), myId);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Drop stored encrypted-mode entries for channels positively known to be server
  *  channels (earlier builds could mark one). DMs, group DMs and ids we don't recognise
  *  are kept. Returns `stored` itself when nothing changes. */
