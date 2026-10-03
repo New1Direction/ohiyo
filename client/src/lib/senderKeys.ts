@@ -269,26 +269,30 @@ export async function groupDecrypt(groupId: string, fromUserId: string, wire: st
   if (!Number.isSafeInteger(env.it) || env.it < 0) return null;
   if (env.kid !== peer.keyId || env.it < peer.iteration) return null;
   if (env.it - peer.iteration > MAX_RATCHET_SKIP) return null;
-  // Verify the sender's signature over the ciphertext BEFORE any ratchet work.
-  const verifyKey = await crypto.subtle.importKey(
-    "raw",
-    unb64(peer.verifyKey),
-    { name: "ECDSA", namedCurve: "P-256" },
-    false,
-    ["verify"]
-  );
-  const ctBuf = unb64(env.ct);
-  const ok = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, verifyKey, unb64(env.sig), ctBuf);
-  if (!ok) return null;
-  // Ratchet this sender's chain forward to the message's iteration.
-  let ck = unb64(peer.chainKey);
-  for (let i = peer.iteration; i < env.it; i++) ck = await nextChainOf(ck);
-  const mk = await messageKeyOf(ck);
-  const derived = await deriveAes(mk);
-  // New envelopes carry a random IV; legacy ones (no `iv`) used the deterministic one.
-  const iv = env.iv ? new Uint8Array(unb64(env.iv)) : derived.iv;
+  // A stored distribution's keys arrive unvalidated (installDistribution), and the
+  // envelope's fields are sender-supplied: anything malformed means "can't decrypt this
+  // one" (null), never a throw that would stop the rest of the channel loading.
+  let ck: ArrayBuffer;
   let plaintext: string;
   try {
+    // Verify the sender's signature over the ciphertext BEFORE any ratchet work.
+    const verifyKey = await crypto.subtle.importKey(
+      "raw",
+      unb64(peer.verifyKey),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"]
+    );
+    const ctBuf = unb64(env.ct);
+    const ok = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, verifyKey, unb64(env.sig), ctBuf);
+    if (!ok) return null;
+    // Ratchet this sender's chain forward to the message's iteration.
+    ck = unb64(peer.chainKey);
+    for (let i = peer.iteration; i < env.it; i++) ck = await nextChainOf(ck);
+    const mk = await messageKeyOf(ck);
+    const derived = await deriveAes(mk);
+    // New envelopes carry a random IV; legacy ones (no `iv`) used the deterministic one.
+    const iv = env.iv ? new Uint8Array(unb64(env.iv)) : derived.iv;
     plaintext = td.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, derived.key, ctBuf));
   } catch {
     return null;

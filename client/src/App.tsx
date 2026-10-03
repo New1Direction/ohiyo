@@ -62,6 +62,7 @@ import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type En
 import { createDistributionTracker, editBlockReason, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
 import { isWellFormedEnvelope, pickDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
+import { decryptEach } from "./lib/decryptEach";
 import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
 import { parseVaultLocked, type VaultLocked } from "./lib/vaultLock";
 import { VaultLockedScreen } from "./components/VaultLockedScreen";
@@ -1526,20 +1527,20 @@ function MainApp({
       }
       // Legacy static key only fetched if any v1 messages are present.
       const legacyKey = msgs.some((m) => isEncrypted(m.content)) ? await getDmKey(channelId) : null;
-      // Sequential: the Double Ratchet requires in-order processing of new messages.
-      const out: Message[] = [];
+      // Sequential: the Double Ratchet requires in-order processing of new messages. A
+      // message whose decrypt throws shows as undecryptable; the rest still load.
       let decryptedAny = false;
-      for (const m of msgs) {
+      const undecryptable = (m: Message): Message => ({ ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
+      const out = await decryptEach(msgs, async (m) => {
         if ((isGroupCiphertext(m.content) || isSignalCiphertext(m.content)) && !isWellFormedEnvelope(m.content)) {
           // Only looks like ciphertext: show it as undecryptable and touch nothing else.
-          out.push({ ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
+          return undecryptable(m);
         } else if (isGroupCiphertext(m.content)) {
           // Group sender-key message — decrypt from the message author's sender key.
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
             decryptedAny = true;
-            out.push(messageFromDecryptedPlaintext(m, cached));
-            continue;
+            return messageFromDecryptedPlaintext(m, cached);
           }
           const pt = await groupDecrypt(channelId, m.author.id, m.content);
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
@@ -1547,13 +1548,12 @@ function MainApp({
             cachePlaintext(m.id, plain, messageExpiry(m));
             decryptedAny = true;
           }
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
+          return plain !== null ? messageFromDecryptedPlaintext(m, plain) : undecryptable(m);
         } else if (isSignalCiphertext(m.content)) {
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
             decryptedAny = true;
-            out.push(messageFromDecryptedPlaintext(m, cached));
-            continue;
+            return messageFromDecryptedPlaintext(m, cached);
           }
           const pt = peerId ? await decryptFrom(peerId, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
@@ -1561,16 +1561,15 @@ function MainApp({
             cachePlaintext(m.id, plain, messageExpiry(m));
             decryptedAny = true;
           }
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
+          return plain !== null ? messageFromDecryptedPlaintext(m, plain) : undecryptable(m);
         } else if (isEncrypted(m.content)) {
           const pt = legacyKey ? await decryptMessage(legacyKey, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
           if (plain !== null) decryptedAny = true;
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
-        } else {
-          out.push(m);
+          return plain !== null ? messageFromDecryptedPlaintext(m, plain) : undecryptable(m);
         }
-      }
+        return m;
+      }, undecryptable);
       // E.g. a legacy static-key message that decrypted here (no sig/grp envelope).
       if (!wellFormed && shouldEnterEncryptedMode(channelType, contents, decryptedAny)) enterEncryptedMode();
       return out;
