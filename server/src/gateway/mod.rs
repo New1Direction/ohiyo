@@ -170,9 +170,11 @@ const MAX_WS_FRAME_BYTES: usize = 65_536;
 /// default is 64 MiB). Anything bigger fails the read and ends the connection.
 const MAX_WS_TRANSPORT_BYTES: usize = 256 * 1024;
 
-/// A socket that sends nothing for three client heartbeats (the client sends one every
-/// 20 s: `HEARTBEAT_MS` in client/src/gateway.ts) is presumed half-open and closed.
-pub const IDLE_TIMEOUT: Duration = Duration::from_secs(3 * 20);
+/// A socket that sends nothing for this long is presumed half-open and closed. The
+/// client heartbeats every 20 s (`HEARTBEAT_MS` in client/src/gateway.ts), but browsers
+/// throttle timers in long-hidden tabs to about one per minute, so a backgrounded web
+/// client's heartbeats can arrive a minute or more apart. 150 s outlasts two of those.
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(150);
 
 /// Most live gateway sockets one user may hold across tabs and devices. A connection
 /// over the cap is closed straight away (policy violation) without a Ready.
@@ -432,7 +434,7 @@ async fn handle_socket(mut socket: WebSocket, user_id: String, state: AppState) 
                 Ok(Some(Ok(msg))) => msg,
                 // Closed, or a read error such as a message over the transport cap.
                 Ok(_) => break,
-                // Nothing at all for three heartbeats: presume the socket is half-open.
+                // Nothing at all for the idle limit: presume the socket is half-open.
                 Err(_) => {
                     tracing::debug!("gateway: closing idle connection for {user_id}");
                     break;
@@ -1325,4 +1327,21 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
         dms,
         unread,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Browsers wake timers in a long-hidden tab about once a minute, so a backgrounded
+    /// client's 20 s heartbeat can arrive a minute late, or two minutes when a wake-up
+    /// slips. Closing before then would drop backgrounded web clients.
+    #[test]
+    fn idle_limit_outlasts_heartbeats_from_a_throttled_background_tab() {
+        let throttled_wakeup = Duration::from_secs(60);
+        assert!(
+            IDLE_TIMEOUT > 2 * throttled_wakeup,
+            "idle limit {IDLE_TIMEOUT:?}"
+        );
+    }
 }

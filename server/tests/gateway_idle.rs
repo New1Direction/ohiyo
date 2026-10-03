@@ -1,7 +1,7 @@
 //! A half-open gateway socket must not hold its session forever: a live session entry
 //! keeps the dead-man's switch from firing (S-H5), so a connection that sends no frame
-//! for three client heartbeats is closed, and the normal disconnect cleanup runs. The
-//! tests shorten the timeout instead of waiting out the production one.
+//! for the idle limit is closed, and the normal disconnect cleanup runs. The tests run
+//! the production timings scaled down 200 times instead of waiting them out.
 
 mod common;
 
@@ -10,7 +10,11 @@ use std::time::Duration;
 use common::{ws::Gateway, TestServer};
 use serde_json::json;
 
-const SHORT_IDLE: Duration = Duration::from_millis(400);
+/// The 150 s production idle limit, scaled down.
+const SHORT_IDLE: Duration = Duration::from_millis(750);
+
+/// A long-hidden browser tab's heartbeat, about once a minute, scaled down the same way.
+const THROTTLED_HEARTBEAT: Duration = Duration::from_millis(300);
 
 async fn start() -> TestServer {
     TestServer::start_with(|state| state.gateway_idle_timeout = SHORT_IDLE).await
@@ -32,16 +36,16 @@ async fn a_silent_socket_is_closed_and_its_session_cleaned_up() {
 }
 
 #[tokio::test]
-async fn heartbeats_keep_a_socket_open() {
+async fn throttled_background_heartbeats_keep_a_socket_open() {
     let srv = start().await;
     let alice = srv.register("chatty", "password123").await;
     let mut gw = Gateway::connect(&srv, &alice.token).await;
     gw.wait_for(|e| e["t"] == "Ready").await;
 
-    // Four idle periods' worth of time, never silent for more than a quarter of one.
-    for _ in 0..16 {
+    // Over three idle periods, heartbeating only as often as a throttled tab does.
+    for _ in 0..8 {
         gw.send(&json!({ "t": "Heartbeat" })).await;
-        tokio::time::sleep(SHORT_IDLE / 4).await;
+        tokio::time::sleep(THROTTLED_HEARTBEAT).await;
     }
 
     assert!(
