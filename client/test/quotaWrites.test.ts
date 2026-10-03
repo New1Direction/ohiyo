@@ -52,3 +52,12 @@ test("saving the homes list never throws, even when it can't be saved at all", (
   g.localStorage = storageLike(10);
   assert.doesNotThrow(() => saveHomes([{ id: "h1", name: "Home", url: "https://home.example", token: null }]));
 });
+
+// N3: a new sign-in token on a full store frees space too; before, it was silently not
+// saved and the user was signed out after a reload.
+test("a session token on a full store frees space and is saved", () => {
+  const s = storageLike(1700, cache(8)); // room for the homes list, not the token too
+  g.localStorage = s;
+  saveHomes([{ id: "h1", name: "Home", url: "https://home.example", token: "a".repeat(200) }]);
+  assert.equal(s["kc:tok:h1"], "a".repeat(200));
+});

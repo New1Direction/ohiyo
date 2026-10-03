@@ -69,8 +69,11 @@ function readToken(id: string): string | null {
 
 function writeToken(id: string, token: string | null): void {
   try {
-    if (token) tokenStore().setItem(TOKEN_PREFIX + id, token);
-    else tokenStore().removeItem(TOKEN_PREFIX + id);
+    // A full web store frees old decrypted messages first, so a new sign-in survives a
+    // reload (the desktop vault never fills up).
+    const store = tokenStore();
+    if (token) setItemEvictingPlaintextCache({ ...localStorageStore(), setItem: (k, v) => store.setItem(k, v) }, TOKEN_PREFIX + id, token);
+    else store.removeItem(TOKEN_PREFIX + id);
   } catch {
     /* best-effort: a failed token persist just means re-login, never a crash */
   }
