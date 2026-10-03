@@ -782,6 +782,13 @@ pub async fn remove_recipient(
         &target,
         &members_event(&channel_id, epoch, participants),
     );
+    // Out of the group's call too, as a server kick takes them out of its voice rooms.
+    crate::gateway::evict_from_voice_rooms(
+        &state,
+        &std::collections::HashSet::from([channel_id]),
+        &target,
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 

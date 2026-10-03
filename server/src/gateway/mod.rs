@@ -1071,11 +1071,18 @@ pub async fn evict_from_server_voice(state: &AppState, server_id: &str, user_id:
             })
             .into_iter()
             .collect();
+    evict_from_voice_rooms(state, &server_channels, user_id).await;
+}
+
+/// Remove a user from the voice rooms of `channels` they can no longer access (a server
+/// they were kicked or banned from or left, or a group DM they were removed from),
+/// announcing each departure exactly like a normal leave.
+pub async fn evict_from_voice_rooms(state: &AppState, channels: &HashSet<String>, user_id: &str) {
     let seats: Vec<(String, PublicUser)> = {
         let rooms = state.voice.read().unwrap_or_else(|e| e.into_inner());
         rooms
             .iter()
-            .filter(|(channel_id, _)| server_channels.contains(*channel_id))
+            .filter(|(channel_id, _)| channels.contains(*channel_id))
             .filter_map(|(channel_id, room)| {
                 room.get(user_id)
                     .map(|m| (channel_id.clone(), m.user.clone()))

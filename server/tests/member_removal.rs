@@ -111,6 +111,10 @@ async fn member_roles(w: &World, user: &AuthOk) -> Value {
 }
 
 fn seat_in_voice(w: &World, user: &AuthOk, name: &str) {
+    seat_in_room(w, &w.voice_id, user, name);
+}
+
+fn seat_in_room(w: &World, channel_id: &str, user: &AuthOk, name: &str) {
     let member = VoiceMember {
         user: PublicUser {
             id: user.id.clone(),
@@ -129,18 +133,22 @@ fn seat_in_voice(w: &World, user: &AuthOk, name: &str) {
         .voice
         .write()
         .unwrap()
-        .entry(w.voice_id.clone())
+        .entry(channel_id.to_owned())
         .or_default()
         .insert(user.id.clone(), member);
 }
 
 fn in_voice(w: &World, user: &AuthOk) -> bool {
+    in_room(w, &w.voice_id, user)
+}
+
+fn in_room(w: &World, channel_id: &str, user: &AuthOk) -> bool {
     w.srv
         .state
         .voice
         .read()
         .unwrap()
-        .get(&w.voice_id)
+        .get(channel_id)
         .is_some_and(|room| room.contains_key(&user.id))
 }
 
@@ -299,6 +307,65 @@ async fn removed_members_are_evicted_from_the_servers_voice_rooms() {
             left.iter().any(|ev| ev["d"]["user_id"] == user.id.as_str()
                 && ev["d"]["channel_id"] == w.voice_id.as_str()),
             "peers are told {} left the call",
+            user.id
+        );
+    }
+}
+
+#[tokio::test]
+async fn removed_group_dm_recipients_are_evicted_from_its_voice_room() {
+    let w = world().await;
+    let removed = w.srv.register("groupremoved", "supersecret123").await;
+    let leaver = w.srv.register("groupleaver", "supersecret123").await;
+    let group: Value = w
+        .srv
+        .post_json_auth(
+            "/api/v1/users/@me/group-dms",
+            &w.owner.token,
+            json!({ "recipient_ids": [removed.id, leaver.id], "name": "call" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let group_id = group["id"].as_str().unwrap().to_owned();
+    for (user, name) in [
+        (&w.owner, "removalowner"),
+        (&removed, "groupremoved"),
+        (&leaver, "groupleaver"),
+    ] {
+        seat_in_room(&w, &group_id, user, name);
+    }
+    let mut owner_rx = listen(&w, &w.owner);
+
+    let recipient = |user: &AuthOk| format!("/api/v1/channels/{group_id}/recipients/{}", user.id);
+    let res = w
+        .srv
+        .delete_auth(&recipient(&removed), &w.owner.token)
+        .await;
+    assert_eq!(res.status(), 204, "the owner removes a recipient");
+    let res = w.srv.delete_auth(&recipient(&leaver), &leaver.token).await;
+    assert_eq!(res.status(), 204, "a recipient leaves");
+
+    assert!(
+        !in_room(&w, &group_id, &removed),
+        "removed recipient left the call"
+    );
+    assert!(
+        !in_room(&w, &group_id, &leaver),
+        "departed recipient left the call"
+    );
+    assert!(in_room(&w, &group_id, &w.owner), "everyone else stays");
+
+    let left: Vec<Value> = drain(&mut owner_rx)
+        .into_iter()
+        .filter(|ev| ev["t"] == "VoiceState" && ev["d"]["joined"] == false)
+        .collect();
+    for user in [&removed, &leaver] {
+        assert!(
+            left.iter().any(|ev| ev["d"]["user_id"] == user.id.as_str()
+                && ev["d"]["channel_id"] == group_id.as_str()),
+            "the rest of the call is told {} left",
             user.id
         );
     }
