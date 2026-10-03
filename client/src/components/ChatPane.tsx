@@ -2020,17 +2020,38 @@ export function ChatPane({
       )}
 
       {/* Poll composer */}
-      {showPoll && channel && !e2eEnabled && (
-        <PollComposer
-          token={token}
-          channelId={channel.id}
-          onClose={() => setShowPoll(false)}
-          onError={(m) => onToast(m, "error")}
-        />
-      )}
+      <PollComposerSlot
+        open={showPoll}
+        e2eEnabled={e2eEnabled}
+        channelId={channel?.id}
+        token={token}
+        onClose={() => setShowPoll(false)}
+        onError={(m) => onToast(m, "error")}
+      />
     </div>
     </OgAuthTokenContext.Provider>
   );
+}
+
+/** The poll composer, once opened — never in a chat in encrypted mode, because a poll is
+ *  stored unencrypted. Exported so the gate can be render-tested. */
+export function PollComposerSlot({
+  open,
+  e2eEnabled,
+  channelId,
+  token,
+  onClose,
+  onError,
+}: {
+  open: boolean;
+  e2eEnabled: boolean;
+  channelId: string | undefined;
+  token: string;
+  onClose: () => void;
+  onError: (message: string) => void;
+}) {
+  if (!open || !channelId || e2eEnabled) return null;
+  return <PollComposer token={token} channelId={channelId} onClose={onClose} onError={onError} />;
 }
 
 // ── Auto-sized virtual list ───────────────────────────────────────────────────
