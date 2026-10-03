@@ -187,13 +187,15 @@ pub async fn get_invite(
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<InvitePreview>, (StatusCode, String)> {
-    let client = crate::api::auth::client_ip(&headers, &addr);
     if !state.rate.check(
         &format!("invite-preview:{}", auth.0),
         PREVIEW_RATE_MAX,
         INVITE_RATE_WINDOW,
-    ) || !state.rate.check_unauth(
-        &format!("invite-preview-ip:{client}"),
+    ) || !crate::api::auth::check_client_rate(
+        &state,
+        &headers,
+        &addr,
+        "invite-preview-ip",
         PREVIEW_RATE_MAX,
         INVITE_RATE_WINDOW,
     ) {

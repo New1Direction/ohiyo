@@ -23,13 +23,54 @@ const AUTH_MAX_PER_MIN: usize = 40;
 /// can lock a known username out of login for up to a minute.
 const LOGIN_MAX_PER_USERNAME_PER_MIN: usize = 10;
 
-/// Rate-limit key for the requesting client (see [`resolve_client_ip`], [`rate_key_for`]).
-pub(crate) fn client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
-    rate_key_for(resolve_client_ip(
-        headers,
-        addr.ip(),
-        &ProxyTrust::from_env(),
-    ))
+/// Count one attempt by the requesting client against the per-address limit `prefix`
+/// (see [`resolve_client_ip`], [`check_address_rate`]). False when it is spent.
+pub(crate) fn check_client_rate(
+    state: &AppState,
+    headers: &HeaderMap,
+    addr: &SocketAddr,
+    prefix: &str,
+    max: usize,
+    window: Duration,
+) -> bool {
+    let ip = resolve_client_ip(headers, addr.ip(), &ProxyTrust::from_env());
+    check_address_rate(&state.rate, ip, prefix, max, window)
+}
+
+/// An IPv6 /48 may make this many times a per-address limit, however many /64s it uses.
+const V6_48_MULTIPLIER: usize = 10;
+
+/// Count one attempt from `ip` against the per-address limit `prefix`, keyed by
+/// [`rate_key_for`]. An IPv6 client also counts against its /48 at
+/// [`V6_48_MULTIPLIER`] times `max`, so rotating /64s within one allocation (a /48 is
+/// commonly one site's) doesn't multiply its budget.
+fn check_address_rate(
+    rate: &crate::ratelimit::RateLimiter,
+    ip: IpAddr,
+    prefix: &str,
+    max: usize,
+    window: Duration,
+) -> bool {
+    if !rate.check_unauth(&format!("{prefix}:{}", rate_key_for(ip)), max, window) {
+        return false;
+    }
+    match v6_48_key(ip) {
+        Some(block) => {
+            rate.check_unauth(&format!("{prefix}:{block}"), max * V6_48_MULTIPLIER, window)
+        }
+        None => true,
+    }
+}
+
+/// The /48 an IPv6 client belongs to; None for IPv4 (including IPv4-mapped IPv6).
+fn v6_48_key(ip: IpAddr) -> Option<String> {
+    match ip {
+        IpAddr::V6(v6) if v6.to_ipv4_mapped().is_none() => {
+            let s = v6.segments();
+            Some(format!("{:x}:{:x}:{:x}::/48", s[0], s[1], s[2]))
+        }
+        _ => None,
+    }
 }
 
 /// Which proxy-set client-address headers this deployment may believe. Any client can
@@ -125,12 +166,19 @@ async fn run_argon2<T: Send + 'static>(
     .map_err(crate::api::error::internal)
 }
 
-fn check_auth_rate(state: &AppState, client_ip: &str) -> Result<(), (StatusCode, String)> {
-    let key = format!("auth:{}", client_ip);
-    if !state
-        .rate
-        .check_unauth(&key, AUTH_MAX_PER_MIN, Duration::from_secs(60))
-    {
+fn check_auth_rate(
+    state: &AppState,
+    headers: &HeaderMap,
+    addr: &SocketAddr,
+) -> Result<(), (StatusCode, String)> {
+    if !check_client_rate(
+        state,
+        headers,
+        addr,
+        "auth",
+        AUTH_MAX_PER_MIN,
+        Duration::from_secs(60),
+    ) {
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
             "too many attempts — give it a moment and try again".into(),
@@ -158,7 +206,7 @@ pub async fn register(
     headers: HeaderMap,
     Json(body): Json<RegisterBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
-    check_auth_rate(&state, &client_ip(&headers, &addr))?;
+    check_auth_rate(&state, &headers, &addr)?;
     if body.username.len() < 2 || body.username.len() > 32 {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -233,7 +281,7 @@ pub async fn login(
     headers: HeaderMap,
     Json(body): Json<LoginBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
-    check_auth_rate(&state, &client_ip(&headers, &addr))?;
+    check_auth_rate(&state, &headers, &addr)?;
     let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
         .bind(&body.username)
         .fetch_optional(&state.db)
@@ -384,9 +432,11 @@ pub async fn link_complete(
     headers: HeaderMap,
     Json(body): Json<LinkCompleteBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
-    let ip = client_ip(&headers, &addr);
-    if !state.rate.check_unauth(
-        &format!("link:{}", ip),
+    if !check_client_rate(
+        &state,
+        &headers,
+        &addr,
+        "link",
         LINK_MAX_PER_MIN,
         Duration::from_secs(60),
     ) {
@@ -528,6 +578,43 @@ mod client_ip_tests {
             (None, None),
         ] {
             assert_eq!(parse_proxy_hops(raw), hops, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn rotating_64s_inside_one_48_hits_the_48_limit() {
+        let rate = crate::ratelimit::RateLimiter::new();
+        let window = Duration::from_secs(60);
+        // 2 a minute per /64, so 20 a minute per /48.
+        for i in 0..20u16 {
+            let ip: IpAddr = format!("2001:db8:1:{i:x}::1").parse().unwrap();
+            assert!(check_address_rate(&rate, ip, "auth", 2, window), "{ip}");
+        }
+        let fresh_64: IpAddr = "2001:db8:1:ff::1".parse().unwrap();
+        assert!(
+            !check_address_rate(&rate, fresh_64, "auth", 2, window),
+            "a 21st attempt from one /48 is refused, whatever its /64"
+        );
+        let other_48: IpAddr = "2001:db8:2::1".parse().unwrap();
+        assert!(check_address_rate(&rate, other_48, "auth", 2, window));
+        let other_limit: IpAddr = "2001:db8:1:ff::1".parse().unwrap();
+        assert!(
+            check_address_rate(&rate, other_limit, "link", 2, window),
+            "each limit has its own /48 count"
+        );
+    }
+
+    #[test]
+    fn a_64_keeps_its_own_limit_and_ipv4_counts_per_address_only() {
+        let rate = crate::ratelimit::RateLimiter::new();
+        let window = Duration::from_secs(60);
+        let ip: IpAddr = "2001:db8:1::1".parse().unwrap();
+        assert!(check_address_rate(&rate, ip, "auth", 2, window));
+        assert!(check_address_rate(&rate, ip, "auth", 2, window));
+        assert!(!check_address_rate(&rate, ip, "auth", 2, window));
+        for i in 1..=50u8 {
+            let v4: IpAddr = format!("198.51.100.{i}").parse().unwrap();
+            assert!(check_address_rate(&rate, v4, "auth", 2, window), "{v4}");
         }
     }
 
