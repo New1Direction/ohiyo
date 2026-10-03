@@ -868,6 +868,30 @@ pub async fn set_deadman(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Delete every message a user wrote and, in the same transaction, each attached file
+/// that nothing else references any more; their blobs are removed after commit.
+async fn wipe_authored_messages(state: &AppState, user_id: &str) -> Result<(), sqlx::Error> {
+    let mut tx = state.db.begin().await?;
+    let attachments: Vec<String> = sqlx::query_scalar(
+        "SELECT attachments FROM messages WHERE author_id = ? AND attachments IS NOT NULL",
+    )
+    .bind(user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM messages WHERE author_id = ?")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    let file_ids: Vec<String> = attachments
+        .iter()
+        .flat_map(|raw| crate::api::files::attachment_file_ids(Some(raw)))
+        .collect();
+    let orphaned_blobs = crate::api::files::delete_unreferenced_files(&mut tx, &file_ids).await?;
+    tx.commit().await?;
+    crate::api::files::remove_blobs(orphaned_blobs).await;
+    Ok(())
+}
+
 /// Wipe data for users whose dead-man's switch has tripped (inactive past their window).
 /// Driven by the periodic task in `main`. 'history' deletes their authored messages;
 /// 'keys' also clears their server-side Signal directory + legacy public key.
@@ -896,10 +920,9 @@ pub async fn sweep_deadman(state: &AppState) {
         }
         // Leave an audit trail in the logs before the irreversible wipe.
         tracing::warn!(user_id = %uid, scope = ?scope, "dead-man's switch tripped — wiping data");
-        let _ = sqlx::query("DELETE FROM messages WHERE author_id = ?")
-            .bind(&uid)
-            .execute(&state.db)
-            .await;
+        if let Err(e) = wipe_authored_messages(state, &uid).await {
+            tracing::error!(user_id = %uid, "dead-man's switch: message wipe failed: {e}");
+        }
         if scope.as_deref() == Some("keys") {
             for q in [
                 "DELETE FROM signal_identity WHERE user_id = ?",

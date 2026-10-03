@@ -243,6 +243,91 @@ pub async fn upload_file(
     Ok(Json(results))
 }
 
+// ── Releasing files when their messages go ────────────────────────────────────
+
+/// File ids attached to a message, read from its `attachments` JSON. Native sends store
+/// `[{"id": .., ..}]`; Discord imports store bare ids `["..", ..]`. Both are read.
+pub(crate) fn attachment_file_ids(raw: Option<&str>) -> Vec<String> {
+    let Some(items) = raw.and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(s).ok())
+    else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| match item {
+            serde_json::Value::String(id) => Some(id.clone()),
+            other => other
+                .get("id")
+                .and_then(|id| id.as_str())
+                .map(str::to_owned),
+        })
+        .collect()
+}
+
+/// How many places still reference a file id: message attachments (either JSON shape;
+/// ids are UUIDs, so a substring match is exact), avatars, banners, server icons (all
+/// stored as `…/files/<id>…` URLs) and server emoji.
+const FILE_REFERENCES_SQL: &str = "SELECT
+      (SELECT COUNT(*) FROM messages WHERE instr(attachments, ?) > 0)
+    + (SELECT COUNT(*) FROM users
+         WHERE instr(avatar_url, '/files/' || ?) > 0 OR instr(banner_url, '/files/' || ?) > 0)
+    + (SELECT COUNT(*) FROM servers WHERE instr(icon_url, '/files/' || ?) > 0)
+    + (SELECT COUNT(*) FROM server_emojis WHERE file_id = ?)";
+
+/// Within the transaction that deleted the referencing message rows, delete each file
+/// in `file_ids` that nothing references any more. Returns the blob paths no remaining
+/// `files` row points at; pass them to [`remove_blobs`] after the transaction commits.
+pub(crate) async fn delete_unreferenced_files(
+    conn: &mut sqlx::SqliteConnection,
+    file_ids: &[String],
+) -> Result<Vec<String>, sqlx::Error> {
+    let mut orphaned_blobs = Vec::new();
+    for id in file_ids {
+        let references: i64 = sqlx::query_scalar(FILE_REFERENCES_SQL)
+            .bind(id)
+            .bind(id)
+            .bind(id)
+            .bind(id)
+            .bind(id)
+            .fetch_one(&mut *conn)
+            .await?;
+        if references > 0 {
+            continue;
+        }
+        // None if an earlier id in this batch was the same file and already went.
+        let path: Option<String> = sqlx::query_scalar("SELECT path FROM files WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await?;
+        let Some(path) = path else { continue };
+        sqlx::query("DELETE FROM files WHERE id = ?")
+            .bind(id)
+            .execute(&mut *conn)
+            .await?;
+        let rows_sharing_blob: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM files WHERE path = ?")
+                .bind(&path)
+                .fetch_one(&mut *conn)
+                .await?;
+        if rows_sharing_blob == 0 {
+            orphaned_blobs.push(path);
+        }
+    }
+    Ok(orphaned_blobs)
+}
+
+/// Remove blobs released by [`delete_unreferenced_files`], after its transaction has
+/// committed. A failure only leaks disk space, so it is logged rather than surfaced.
+pub(crate) async fn remove_blobs(paths: Vec<String>) {
+    for path in paths {
+        if let Err(e) = tokio::fs::remove_file(&path).await {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!("couldn't remove released upload blob {path}: {e}");
+            }
+        }
+    }
+}
+
 /// Optional capability signature on a `/files/{id}` request. The server appends
 /// `?s=<sig>` to every file URL it emits (see `crate::signed_file_path` /
 /// `signed_file_url`); enforcement of that signature is gated by
@@ -449,6 +534,17 @@ mod tests {
         assert!(!is_inline_safe("application/pdf"));
         assert!(!is_inline_safe("application/octet-stream"));
         assert!(!is_inline_safe(""));
+    }
+
+    #[test]
+    fn attachment_ids_read_both_json_shapes_and_nothing_from_garbage() {
+        let native = r#"[{"id":"f1","url":"/files/f1?s=x"},{"id":"f2"}]"#;
+        assert_eq!(attachment_file_ids(Some(native)), ["f1", "f2"]);
+        assert_eq!(attachment_file_ids(Some(r#"["f3","f4"]"#)), ["f3", "f4"]);
+        // Unreadable JSON releases nothing rather than guessing.
+        assert!(attachment_file_ids(None).is_empty());
+        assert!(attachment_file_ids(Some("not json")).is_empty());
+        assert!(attachment_file_ids(Some(r#"[{"name":"no id"}]"#)).is_empty());
     }
 
     #[test]

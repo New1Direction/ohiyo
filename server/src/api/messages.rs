@@ -904,9 +904,7 @@ pub async fn delete_message(
         }
     }
 
-    sqlx::query("DELETE FROM messages WHERE id = ?")
-        .bind(&id)
-        .execute(&state.db)
+    delete_message_and_files(&state, &id, msg.attachments.as_deref())
         .await
         .map_err(crate::api::error::internal)?;
 
@@ -1131,13 +1129,32 @@ pub async fn distribute_voice_key(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Delete one message and, in the same transaction, each attached file that nothing
+/// else references any more; their blobs are removed after commit.
+async fn delete_message_and_files(
+    state: &AppState,
+    id: &str,
+    attachments: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    let mut tx = state.db.begin().await?;
+    sqlx::query("DELETE FROM messages WHERE id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    let file_ids = crate::api::files::attachment_file_ids(attachments);
+    let orphaned_blobs = crate::api::files::delete_unreferenced_files(&mut tx, &file_ids).await?;
+    tx.commit().await?;
+    crate::api::files::remove_blobs(orphaned_blobs).await;
+    Ok(())
+}
+
 /// Delete disappearing messages whose TTL has lapsed and tell connected clients.
 /// Driven by a periodic task in `main`. Bounded per pass so a huge backlog can't
 /// monopolize the connection (the next pass picks up the rest).
 pub async fn sweep_expired(state: &AppState) {
     let now = now_unix();
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT id, channel_id FROM messages
+    let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, channel_id, attachments FROM messages
          WHERE expires_at IS NOT NULL AND expires_at <= ? LIMIT 500",
     )
     .bind(now)
@@ -1147,13 +1164,9 @@ pub async fn sweep_expired(state: &AppState) {
     if rows.is_empty() {
         return;
     }
-    for (id, channel_id) in rows {
-        if sqlx::query("DELETE FROM messages WHERE id = ?")
-            .bind(&id)
-            .execute(&state.db)
-            .await
-            .is_err()
-        {
+    for (id, channel_id, attachments) in rows {
+        if let Err(e) = delete_message_and_files(state, &id, attachments.as_deref()).await {
+            tracing::warn!("sweep_expired: couldn't delete message {id}: {e}");
             continue;
         }
         if crate::search::search_enabled() {
