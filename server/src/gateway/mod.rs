@@ -356,38 +356,103 @@ pub async fn ws_handler(
         Ok(_) => return (StatusCode::UNAUTHORIZED, "Invalid or expired ticket").into_response(),
         Err(e) => return crate::api::error::internal(e).into_response(),
     }
-    let user_id = ticket.user_id;
+    let WsTicket {
+        user_id,
+        token_version,
+        ..
+    } = ticket;
     ws.max_message_size(MAX_WS_TRANSPORT_BYTES)
         .max_frame_size(MAX_WS_TRANSPORT_BYTES)
-        .on_upgrade(move |socket| handle_socket(socket, user_id, state))
+        .on_upgrade(move |socket| handle_socket(socket, user_id, token_version, state))
 }
 
-async fn handle_socket(mut socket: WebSocket, user_id: String, state: AppState) {
+/// What happened when a new connection tried to join the session map.
+enum Registration {
+    /// In the map: broadcasts reach it, and "log out everywhere" will close it.
+    Registered,
+    /// The user already holds `MAX_CONNECTIONS_PER_USER` sockets.
+    AtCap,
+    /// The account's token version moved on since the ticket was issued; the connection
+    /// was taken back out of the map.
+    Revoked,
+}
+
+/// Add connection `conn_id` to the user's sessions (multi-device: a user can have many
+/// at once), unless the user is at the cap or `token_version` (the version of the
+/// ticket that opened it) is no longer current.
+async fn register_connection(
+    state: &AppState,
+    user_id: &str,
+    conn_id: u64,
+    tx: broadcast::Sender<GatewayEvent>,
+    token_version: i64,
+) -> Registration {
+    {
+        // One step under the lock, so racing connects can't overshoot.
+        let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
+        let conns = map.entry(user_id.to_owned()).or_default();
+        if conns.len() >= MAX_CONNECTIONS_PER_USER {
+            return Registration::AtCap;
+        }
+        conns.insert(conn_id, tx);
+    }
+    // "Log out everywhere" closes the sockets it finds in the map. One that landed after
+    // this ticket was redeemed but before the connection joined the map had nothing to
+    // close, so check again now that it is in: any later logout will find it.
+    match current_token_version(state, user_id).await {
+        Ok(Some(v)) if v == token_version => Registration::Registered,
+        outcome => {
+            if let Err(e) = outcome {
+                tracing::warn!("gateway: token version re-check failed for {user_id}: {e}");
+            }
+            unregister_connection(state, user_id, conn_id);
+            Registration::Revoked
+        }
+    }
+}
+
+/// Take connection `conn_id` out of the session map. True if it was the user's last.
+fn unregister_connection(state: &AppState, user_id: &str, conn_id: u64) -> bool {
+    let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
+    if let Some(conns) = map.get_mut(user_id) {
+        conns.remove(&conn_id);
+        if conns.is_empty() {
+            map.remove(user_id);
+            true
+        } else {
+            false
+        }
+    } else {
+        true
+    }
+}
+
+async fn handle_socket(
+    mut socket: WebSocket,
+    user_id: String,
+    token_version: i64,
+    state: AppState,
+) {
     // Generous capacity — WebRTC ICE trickle is chatty (dozens of candidates/sec).
     let (tx, mut rx) = broadcast::channel::<GatewayEvent>(1024);
 
-    // Register this connection (multi-device: a user can have many at once), or refuse it
-    // when the user is at the cap. One step under the lock, so racing connects can't
-    // overshoot.
     let conn_id = next_conn_id();
-    let registered = {
-        let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
-        let conns = map.entry(user_id.clone()).or_default();
-        if conns.len() >= MAX_CONNECTIONS_PER_USER {
-            false
-        } else {
-            conns.insert(conn_id, tx.clone());
-            true
+    match register_connection(&state, &user_id, conn_id, tx.clone(), token_version).await {
+        Registration::Registered => {}
+        Registration::AtCap => {
+            let _ = socket
+                .send(Message::Close(Some(CloseFrame {
+                    code: close_code::POLICY,
+                    reason: "too many connections".into(),
+                })))
+                .await;
+            return;
         }
-    };
-    if !registered {
-        let _ = socket
-            .send(Message::Close(Some(CloseFrame {
-                code: close_code::POLICY,
-                reason: "too many connections".into(),
-            })))
-            .await;
-        return;
+        Registration::Revoked => {
+            // Closed the way "log out everywhere" closes a live socket.
+            let _ = socket.send(Message::Close(None)).await;
+            return;
+        }
     }
 
     // Connecting counts as activity → refresh the dead-man's-switch liveness clock.
@@ -512,20 +577,7 @@ async fn handle_socket(mut socket: WebSocket, user_id: String, state: AppState) 
 
     // Unregister THIS connection. Only when the user's last connection drops do we
     // clear activity + announce offline (otherwise closing one device flaps presence).
-    let last_connection = {
-        let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
-        if let Some(conns) = map.get_mut(&user_id) {
-            conns.remove(&conn_id);
-            if conns.is_empty() {
-                map.remove(&user_id);
-                true
-            } else {
-                false
-            }
-        } else {
-            true
-        }
-    };
+    let last_connection = unregister_connection(&state, &user_id, conn_id);
     if last_connection {
         state
             .activities
@@ -1369,6 +1421,58 @@ mod tests {
     /// Browsers wake timers in a long-hidden tab about once a minute, so a backgrounded
     /// client's 20 s heartbeat can arrive a minute late, or two minutes when a wake-up
     /// slips. Closing before then would drop backgrounded web clients.
+    /// State over a fresh migrated database holding user `u1` at `token_version`.
+    async fn state_with_user(token_version: i64) -> AppState {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, display_name, password_hash, created_at, token_version)
+             VALUES ('u1', 'u1', 'U1', 'h', 0, ?)",
+        )
+        .bind(token_version)
+        .execute(&pool)
+        .await
+        .unwrap();
+        crate::build_state(pool)
+    }
+
+    /// The ticket was redeemed at version 0, then "log out everywhere" moved the account
+    /// to 1 while the map held nothing of this connection's to close.
+    #[tokio::test]
+    async fn a_connection_that_joins_after_logout_everywhere_is_dropped() {
+        let state = state_with_user(1).await;
+        let (tx, _rx) = broadcast::channel(1);
+        let outcome = register_connection(&state, "u1", 1, tx, 0).await;
+        assert!(!matches!(outcome, Registration::Registered));
+        assert!(
+            !state
+                .sessions
+                .read()
+                .unwrap()
+                .get("u1")
+                .is_some_and(|conns| conns.contains_key(&1)),
+            "the connection is not left in the session map"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_connection_whose_version_is_current_stays_registered() {
+        let state = state_with_user(1).await;
+        let (tx, _rx) = broadcast::channel(1);
+        let outcome = register_connection(&state, "u1", 1, tx, 1).await;
+        assert!(matches!(outcome, Registration::Registered));
+        assert!(state
+            .sessions
+            .read()
+            .unwrap()
+            .get("u1")
+            .is_some_and(|conns| conns.contains_key(&1)));
+    }
+
     #[test]
     fn idle_limit_outlasts_heartbeats_from_a_throttled_background_tab() {
         let throttled_wakeup = Duration::from_secs(60);
