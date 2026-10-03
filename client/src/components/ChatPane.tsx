@@ -1860,15 +1860,18 @@ export function ChatPane({
           >
             <Icon name="plus" size={18} />
           </button>
-          <button
-            type="button"
-            onClick={() => setShowPoll(true)}
-            className="kc-icon-btn flex-shrink-0 text-base"
-            title="Create a poll"
-            aria-label="Create a poll"
-          >
-            <Icon name="poll" />
-          </button>
+          {/* Polls are stored unencrypted, so there are none in an encrypted chat. */}
+          {!e2eEnabled && (
+            <button
+              type="button"
+              onClick={() => setShowPoll(true)}
+              className="kc-icon-btn flex-shrink-0 text-base"
+              title="Create a poll"
+              aria-label="Create a poll"
+            >
+              <Icon name="poll" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -2000,7 +2003,7 @@ export function ChatPane({
       )}
 
       {/* Poll composer */}
-      {showPoll && channel && (
+      {showPoll && channel && !e2eEnabled && (
         <PollComposer
           token={token}
           channelId={channel.id}
