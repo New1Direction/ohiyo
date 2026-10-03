@@ -109,14 +109,15 @@ pub async fn list_messages(
     // Never serve an already-expired disappearing message, even in the window before
     // the background sweeper physically deletes it.
     let now = now_unix();
+    // Pages are ordered by (created_at, rowid). `created_at` is whole seconds, so rowid
+    // (insertion order) breaks ties; ids are random UUID v4 and would reorder them.
     let messages: Vec<Message> = if let Some(before) = q.before {
-        // Cursor by time — ids are random UUID v4, so `id < ?` is NOT time-ordered.
         sqlx::query_as(
             "SELECT * FROM messages
              WHERE channel_id = ?
-               AND created_at < (SELECT created_at FROM messages WHERE id = ?)
+               AND (created_at, rowid) < (SELECT created_at, rowid FROM messages WHERE id = ?)
                AND (expires_at IS NULL OR expires_at > ?)
-             ORDER BY created_at DESC LIMIT ?",
+             ORDER BY created_at DESC, rowid DESC LIMIT ?",
         )
         .bind(&channel_id)
         .bind(&before)
@@ -128,7 +129,7 @@ pub async fn list_messages(
         sqlx::query_as(
             "SELECT * FROM messages WHERE channel_id = ?
                AND (expires_at IS NULL OR expires_at > ?)
-             ORDER BY created_at DESC LIMIT ?",
+             ORDER BY created_at DESC, rowid DESC LIMIT ?",
         )
         .bind(&channel_id)
         .bind(now)
