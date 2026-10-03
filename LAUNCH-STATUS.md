@@ -30,6 +30,12 @@ Set these before or with the deploy:
   number of proxies in front of the server, or every client shares one rate-limit
   bucket.
 - `OHIYO_REGISTER_LIMIT_PER_HOUR`: defaults to 10 new accounts an hour per address.
+  That is tight for a campus or a mobile carrier on launch day; consider raising it.
+- `OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE`: defaults to 10. Someone who keeps
+  sending attempts can keep a known username from logging in while they continue;
+  raise it or set `0` if that is used against your users.
+
+Rolling back needs one SQL statement first; see "Rolling back" in `DEPLOY.md`.
 
 The web app now ships a Cloudflare Pages `_headers` file (frame blocking and HSTS).
 After the deploy, confirm with `curl -sI https://app.ohiyo.gg | grep -i -E

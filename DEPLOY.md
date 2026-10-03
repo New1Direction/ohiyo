@@ -84,11 +84,25 @@ Login, registration and other limits are keyed on the client's address.
 - **Registration** is limited to 10 new accounts per hour per address
   (`OHIYO_REGISTER_LIMIT_PER_HOUR`, `0` turns it off). People registering from one
   shared address, such as a classroom, will hit it.
-- **Login** is also limited to 10 attempts per minute per username. A side effect:
-  anyone can lock a known username out of logging in for up to a minute. Existing
-  sessions are not affected.
+- **Login** is also limited to 10 attempts per minute per username
+  (`OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE`, `0` turns it off). A side effect:
+  someone who keeps sending attempts for a known username can keep that account from
+  logging in for as long as they continue. Existing sessions are not affected. If
+  that is used against your users, raise the limit or turn it off; the per-address
+  limit still applies.
 - **Local Discrawl import** reads media only from `OHIYO_DISCRAWL_MEDIA_ROOT`; the
   request can no longer choose the folder.
+
+### Rolling back
+
+The launch-hardening release adds migration 40 (indexes only). An older server image
+refuses to start against a database that has a migration it does not know. Before
+rolling back to an image from before that release, run this once on the database (the
+indexes themselves can stay):
+
+```sql
+DELETE FROM _sqlx_migrations WHERE version = 40;
+```
 
 ### Backups — set this up before you have real users
 
