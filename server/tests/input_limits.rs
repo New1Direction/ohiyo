@@ -153,6 +153,41 @@ async fn group_dm_names_are_capped_at_100_characters() {
 }
 
 #[tokio::test]
+async fn pronouns_are_capped_at_40_characters_and_custom_status_at_128() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("limitalice", "password123").await;
+    for (field, max) in [("pronouns", 40), ("custom_status", 128)] {
+        for (value, status) in [(chars(max + 1), 400), (chars(max), 200)] {
+            let mut body = serde_json::Map::new();
+            body.insert(field.to_owned(), json!(value));
+            let res = srv
+                .patch_json_auth("/api/v1/users/@me/profile", &alice.token, body.into())
+                .await;
+            assert_eq!(res.status(), status, "{field}");
+        }
+    }
+}
+
+/// Emoji names were already capped at 32 bytes, which is never more than 32 characters,
+/// so that stricter cap stays: 17 two-byte characters (34 bytes) are refused too.
+#[tokio::test]
+async fn emoji_names_keep_their_existing_32_byte_cap() {
+    let srv = TestServer::start().await;
+    let owner = srv.register("limitowner", "password123").await;
+    let server_id = create_server(&srv, &owner).await;
+    for name in ["a".repeat(33), chars(17)] {
+        let res = srv
+            .post_json_auth(
+                &format!("/api/v1/servers/{server_id}/emojis"),
+                &owner.token,
+                json!({ "name": name, "file_id": "none" }),
+            )
+            .await;
+        assert_eq!(res.status(), 400, "{name}");
+    }
+}
+
+#[tokio::test]
 async fn bios_are_capped_at_500_characters() {
     let srv = TestServer::start().await;
     let alice = srv.register("limitalice", "password123").await;

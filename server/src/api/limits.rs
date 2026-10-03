@@ -7,6 +7,8 @@ use axum::http::StatusCode;
 
 pub const DISPLAY_NAME: usize = 64;
 pub const BIO: usize = 500;
+pub const PRONOUNS: usize = 40;
+pub const CUSTOM_STATUS: usize = 128;
 pub const SERVER_NAME: usize = 100;
 pub const CATEGORY_NAME: usize = 100;
 pub const CHANNEL_NAME: usize = 100;

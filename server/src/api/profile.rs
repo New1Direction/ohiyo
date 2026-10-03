@@ -246,6 +246,12 @@ pub async fn update_profile(
     if let Some(bio) = &body.bio {
         crate::api::limits::check_len("bio", bio, crate::api::limits::BIO)?;
     }
+    if let Some(pronouns) = &body.pronouns {
+        crate::api::limits::check_len("pronouns", pronouns, crate::api::limits::PRONOUNS)?;
+    }
+    if let Some(status) = &body.custom_status {
+        crate::api::limits::check_len("custom status", status, crate::api::limits::CUSTOM_STATUS)?;
+    }
     if let Some(name) = &body.display_name {
         crate::api::limits::check_len("display name", name, crate::api::limits::DISPLAY_NAME)?;
         sqlx::query("UPDATE users SET display_name = ? WHERE id = ?")
