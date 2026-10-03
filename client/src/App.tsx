@@ -65,6 +65,8 @@ import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding
 import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
 import { parseVaultLocked, type VaultLocked } from "./lib/vaultLock";
 import { VaultLockedScreen } from "./components/VaultLockedScreen";
+import { SignOutDialog } from "./components/SignOutDialog";
+import { signOutRemovesLocalData } from "./lib/signOut";
 import { clearLocalMessageData } from "./lib/logoutCleanup";
 import { saveEncryptedChannels } from "./lib/storageQuota";
 import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
@@ -133,6 +135,8 @@ export default function App() {
   const activeHome = homes.find((h) => h.id === activeHomeId) ?? homes[0];
   const token = activeHome?.token ?? null;
   const [showAddHome, setShowAddHome] = useState(false);
+  // Asking before signing out of the last signed-in home (it removes local message data).
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   // Desktop: the session token lives in the encrypted vault, which hydrates
   // asynchronously. Until it's ready we can't tell "logged out" from "token still
   // sealed", so the UI is gated on this flag. Web has no vault → ready immediately.
@@ -164,8 +168,9 @@ export default function App() {
     };
   }, []);
 
-  // Set by handleLogout. Clearing waits for the signed-out render to commit: the chat
-  // saves its draft as it unmounts, and effects run after every unmount cleanup.
+  // Set by signOut when the sign-out removes local data. Clearing waits for the
+  // signed-out render to commit: the chat saves its draft as it unmounts, and effects run
+  // after every unmount cleanup.
   const logoutCleanupPendingRef = useRef(false);
   useEffect(() => {
     if (!logoutCleanupPendingRef.current) return;
@@ -197,10 +202,19 @@ export default function App() {
     persistHomes(setHomeToken(homes, activeHome.id, newToken));
   }
 
+  function signOut(removeLocalData: boolean) {
+    if (!activeHome) return;
+    logoutCleanupPendingRef.current = removeLocalData;
+    persistHomes(setHomeToken(homes, activeHome.id, null));
+  }
+
+  // Every sign-out control (sidebar, BootSplash) comes here. Signing out of the last
+  // signed-in home removes this device's readable encrypted history, so it asks first;
+  // with another home still signed in, nothing is removed and nothing is asked.
   function handleLogout() {
     if (!activeHome) return;
-    logoutCleanupPendingRef.current = true;
-    persistHomes(setHomeToken(homes, activeHome.id, null));
+    if (signOutRemovesLocalData(homes, activeHome.id)) setConfirmSignOut(true);
+    else signOut(false);
   }
 
   if (!activeHome) return null;
@@ -249,6 +263,15 @@ export default function App() {
         onLogout={handleLogout}
       />
       {addHomeModal}
+      {confirmSignOut && (
+        <SignOutDialog
+          onCancel={() => setConfirmSignOut(false)}
+          onConfirm={() => {
+            setConfirmSignOut(false);
+            signOut(true);
+          }}
+        />
+      )}
     </>
   );
 }
