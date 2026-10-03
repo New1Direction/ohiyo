@@ -133,3 +133,40 @@ async fn a_login_for_an_unknown_username_creates_no_username_key() {
         assert_eq!(res.status(), 401);
     }
 }
+
+/// Registrations allowed per client address per hour.
+const REGISTER_MAX_PER_HOUR: usize = 10;
+
+#[tokio::test]
+async fn registration_is_limited_to_10_an_hour_per_address_and_login_is_not() {
+    std::env::remove_var("FLY_APP_NAME");
+    std::env::remove_var("TRUSTED_PROXY_HOPS");
+    let srv = TestServer::start().await;
+    let register = |i: usize| {
+        srv.post_json(
+            "/api/v1/auth/register",
+            json!({ "username": format!("newcomer{i}"), "password": "password123" }),
+        )
+    };
+
+    for i in 0..REGISTER_MAX_PER_HOUR {
+        assert_eq!(register(i).await.status(), 200, "registration {}", i + 1);
+    }
+    assert_eq!(
+        register(REGISTER_MAX_PER_HOUR).await.status(),
+        429,
+        "the 11th registration from one address in an hour"
+    );
+
+    let res = srv
+        .post_json(
+            "/api/v1/auth/login",
+            json!({ "username": "newcomer0", "password": "password123" }),
+        )
+        .await;
+    assert_eq!(
+        res.status(),
+        200,
+        "logging in from that address still works"
+    );
+}

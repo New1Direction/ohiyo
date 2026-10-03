@@ -23,6 +23,11 @@ const AUTH_MAX_PER_MIN: usize = 40;
 /// can lock a known username out of login for up to a minute.
 const LOGIN_MAX_PER_USERNAME_PER_MIN: usize = 10;
 
+/// Registrations per hour per client address (IPv6: per /64, and ten times that per
+/// /48), on top of the shared auth limit. Accounts are otherwise cheap, and each one can
+/// create per-user rate-limit keys.
+const REGISTER_MAX_PER_HOUR: usize = 10;
+
 /// Count one attempt by the requesting client against the per-address limit `prefix`
 /// (see [`resolve_client_ip`], [`check_address_rate`]). False when it is spent.
 pub(crate) fn check_client_rate(
@@ -211,6 +216,19 @@ pub async fn register(
     Json(body): Json<RegisterBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
     check_auth_rate(&state, &headers, &addr)?;
+    if !check_client_rate(
+        &state,
+        &headers,
+        &addr,
+        "register",
+        REGISTER_MAX_PER_HOUR,
+        Duration::from_secs(60 * 60),
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many new accounts from your network — try again later".into(),
+        ));
+    }
     if body.username.len() < 2 || body.username.len() > 32 {
         return Err((
             StatusCode::BAD_REQUEST,
