@@ -1113,6 +1113,11 @@ pub async fn distribute_voice_key(
         if envelope.len() > 20_000 || !in_room.contains(&uid) {
             continue;
         }
+        // A recipient who lost access after joining lingers in the room until they
+        // disconnect; re-check, as the signal relay does, so no key reaches them.
+        if !user_can_access(&state, &channel_id, &uid).await {
+            continue;
+        }
         crate::gateway::broadcast_to_user(
             &state.sessions,
             &uid,

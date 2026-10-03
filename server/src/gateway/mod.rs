@@ -865,6 +865,38 @@ async fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, c
     }
 }
 
+/// Remove a user from every voice room in one server (they were kicked, banned or left),
+/// announcing each departure exactly like a normal leave.
+pub async fn evict_from_server_voice(state: &AppState, server_id: &str, user_id: &str) {
+    let server_channels: HashSet<String> =
+        sqlx::query_scalar("SELECT id FROM channels WHERE server_id = ?")
+            .bind(server_id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    "evict_from_server_voice channels query failed for {server_id}: {e}"
+                );
+                Vec::new()
+            })
+            .into_iter()
+            .collect();
+    let seats: Vec<(String, PublicUser)> = {
+        let rooms = state.voice.read().unwrap_or_else(|e| e.into_inner());
+        rooms
+            .iter()
+            .filter(|(channel_id, _)| server_channels.contains(*channel_id))
+            .filter_map(|(channel_id, room)| {
+                room.get(user_id)
+                    .map(|m| (channel_id.clone(), m.user.clone()))
+            })
+            .collect()
+    };
+    for (channel_id, user) in seats {
+        leave_voice(state, user_id, Some(&user), &channel_id).await;
+    }
+}
+
 /// Remove a user from every voice channel on disconnect.
 async fn cleanup_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>) {
     let channels: Vec<String> = {

@@ -199,23 +199,9 @@ pub async fn leave_server(
         ));
     }
 
-    // Announce before removing so the leaver still receives it as a member.
-    broadcast_to_server(
-        &state,
-        &id,
-        &GatewayEvent::MemberLeave {
-            server_id: id.clone(),
-            user_id: auth.0.clone(),
-        },
-    )
-    .await;
-
-    sqlx::query("DELETE FROM server_members WHERE server_id = ? AND user_id = ?")
-        .bind(&id)
-        .bind(&auth.0)
-        .execute(&state.db)
-        .await
-        .map_err(crate::api::error::internal)?;
+    // Same teardown as a kick: announce (the leaver still receives it as a member),
+    // then drop the membership with its roles and voice seats.
+    remove_member(&state, &id, &auth.0).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -255,7 +241,9 @@ async fn require_mod_action(
     Ok(())
 }
 
-/// Remove a member from a server, announcing it before the row disappears.
+/// Remove a member from a server, announcing it before the row disappears. Their roles
+/// go in the same transaction (so rejoining starts from @everyone), and they are
+/// evicted from the server's live voice rooms.
 async fn remove_member(
     state: &AppState,
     server_id: &str,
@@ -270,12 +258,25 @@ async fn remove_member(
         },
     )
     .await;
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(crate::api::error::internal)?;
     sqlx::query("DELETE FROM server_members WHERE server_id = ? AND user_id = ?")
         .bind(server_id)
         .bind(target_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(crate::api::error::internal)?;
+    sqlx::query("DELETE FROM member_roles WHERE server_id = ? AND user_id = ?")
+        .bind(server_id)
+        .bind(target_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
+    crate::gateway::evict_from_server_voice(state, server_id, target_id).await;
     Ok(())
 }
 
