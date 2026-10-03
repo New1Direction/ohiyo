@@ -102,6 +102,65 @@ impl Gateway {
         }
     }
 
+    /// Read until the server ends the connection: a close frame, EOF or a reset. Returns
+    /// the close code, if a close frame carried one, and the events that arrived first.
+    /// Panics if the connection stays open past the wait limit.
+    pub async fn wait_closed(&mut self) -> (Option<u16>, Vec<Value>) {
+        let mut events = Vec::new();
+        let ended = tokio::time::timeout(WAIT_LIMIT, async {
+            loop {
+                if let Some((opcode, payload)) = self.take_frame() {
+                    match opcode {
+                        0x1 => events.push(serde_json::from_slice(&payload).expect("event json")),
+                        0x8 => return payload.get(..2).map(|c| u16::from_be_bytes([c[0], c[1]])),
+                        _ => {}
+                    }
+                    continue;
+                }
+                let mut chunk = [0u8; 65536];
+                match self.stream.read(&mut chunk).await {
+                    Ok(0) | Err(_) => return None,
+                    Ok(n) => self.buf.extend_from_slice(&chunk[..n]),
+                }
+            }
+        })
+        .await
+        .expect("gateway did not close the connection");
+        (ended, events)
+    }
+
+    /// One complete frame (opcode, payload) from what has already arrived, if any.
+    fn take_frame(&mut self) -> Option<(u8, Vec<u8>)> {
+        let (header, len) = match *self.buf.get(1)? & 0x7f {
+            126 => (
+                4,
+                u16::from_be_bytes([*self.buf.get(2)?, *self.buf.get(3)?]) as usize,
+            ),
+            127 => {
+                let len = u64::from_be_bytes(self.buf.get(2..10)?.try_into().unwrap());
+                (10, len as usize)
+            }
+            n => (2, n as usize),
+        };
+        if self.buf.len() < header + len {
+            return None;
+        }
+        let opcode = self.buf[0] & 0x0f;
+        Some((
+            opcode,
+            self.buf.drain(..header + len).skip(header).collect(),
+        ))
+    }
+
+    /// Send one text frame of `len` bytes, ignoring write errors: the server is expected
+    /// to drop the connection before it has read the whole frame.
+    pub async fn send_oversized(&mut self, len: usize) {
+        let _ = self
+            .stream
+            .write_all(&masked_text_frame(&vec![b' '; len]))
+            .await;
+    }
+
     /// Read events until one satisfies `pred`, and return it.
     pub async fn wait_for(&mut self, pred: impl Fn(&Value) -> bool) -> Value {
         loop {
@@ -115,21 +174,29 @@ impl Gateway {
     /// Send a client event as a single masked text frame.
     pub async fn send(&mut self, event: &Value) {
         let payload = serde_json::to_vec(event).expect("encode client event");
-        let mut frame = vec![0x81u8];
-        match payload.len() {
-            n if n < 126 => frame.push(0x80 | n as u8),
-            n if n <= 0xffff => {
-                frame.push(0x80 | 126);
-                frame.extend_from_slice(&(n as u16).to_be_bytes());
-            }
-            n => {
-                frame.push(0x80 | 127);
-                frame.extend_from_slice(&(n as u64).to_be_bytes());
-            }
-        }
-        let mask = [0x5a, 0x17, 0xc3, 0x09];
-        frame.extend_from_slice(&mask);
-        frame.extend(payload.iter().enumerate().map(|(i, b)| b ^ mask[i % 4]));
-        self.stream.write_all(&frame).await.expect("send frame");
+        self.stream
+            .write_all(&masked_text_frame(&payload))
+            .await
+            .expect("send frame");
     }
+}
+
+/// A complete client text frame: FIN + text opcode, length, mask, masked payload.
+fn masked_text_frame(payload: &[u8]) -> Vec<u8> {
+    let mut frame = vec![0x81u8];
+    match payload.len() {
+        n if n < 126 => frame.push(0x80 | n as u8),
+        n if n <= 0xffff => {
+            frame.push(0x80 | 126);
+            frame.extend_from_slice(&(n as u16).to_be_bytes());
+        }
+        n => {
+            frame.push(0x80 | 127);
+            frame.extend_from_slice(&(n as u64).to_be_bytes());
+        }
+    }
+    let mask = [0x5a, 0x17, 0xc3, 0x09];
+    frame.extend_from_slice(&mask);
+    frame.extend(payload.iter().enumerate().map(|(i, b)| b ^ mask[i % 4]));
+    frame
 }

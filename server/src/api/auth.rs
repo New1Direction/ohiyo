@@ -195,6 +195,12 @@ pub async fn logout_everywhere(
         .execute(&state.db)
         .await
         .map_err(crate::api::error::internal)?;
+    // Close the user's live gateway sockets: each one ends when its sender leaves the map.
+    state
+        .sessions
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&auth.0);
     Ok(StatusCode::NO_CONTENT)
 }
 

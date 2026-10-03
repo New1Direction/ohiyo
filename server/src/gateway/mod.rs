@@ -6,7 +6,7 @@ use std::{
 
 use axum::{
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
+        ws::{close_code, CloseFrame, Message, WebSocket, WebSocketUpgrade},
         Query, State,
     },
     http::StatusCode,
@@ -155,6 +155,14 @@ const TYPING_COOLDOWN: Duration = Duration::from_secs(2);
 /// short metadata); 64 KiB leaves generous headroom.
 const MAX_WS_FRAME_BYTES: usize = 65_536;
 
+/// Largest inbound WebSocket message or frame the transport will buffer at all (the
+/// default is 64 MiB). Anything bigger fails the read and ends the connection.
+const MAX_WS_TRANSPORT_BYTES: usize = 256 * 1024;
+
+/// Most live gateway sockets one user may hold across tabs and devices. A connection
+/// over the cap is closed straight away (policy violation) without a Ready.
+const MAX_CONNECTIONS_PER_USER: usize = 20;
+
 /// Cap on how many distinct typing-cooldown entries a single user may pin, so one
 /// connection can't grow the shared map by spamming many channels.
 const MAX_TYPING_CHANNELS_PER_USER: usize = 64;
@@ -299,20 +307,37 @@ pub async fn ws_handler(
             _ => return (StatusCode::UNAUTHORIZED, "Invalid or expired ticket").into_response(),
         }
     };
-    ws.on_upgrade(move |socket| handle_socket(socket, user_id, state))
+    ws.max_message_size(MAX_WS_TRANSPORT_BYTES)
+        .max_frame_size(MAX_WS_TRANSPORT_BYTES)
+        .on_upgrade(move |socket| handle_socket(socket, user_id, state))
 }
 
-async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
+async fn handle_socket(mut socket: WebSocket, user_id: String, state: AppState) {
     // Generous capacity — WebRTC ICE trickle is chatty (dozens of candidates/sec).
     let (tx, mut rx) = broadcast::channel::<GatewayEvent>(1024);
 
-    // Register this connection (multi-device: a user can have many at once).
+    // Register this connection (multi-device: a user can have many at once), or refuse it
+    // when the user is at the cap. One step under the lock, so racing connects can't
+    // overshoot.
     let conn_id = next_conn_id();
-    {
+    let registered = {
         let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
-        map.entry(user_id.clone())
-            .or_default()
-            .insert(conn_id, tx.clone());
+        let conns = map.entry(user_id.clone()).or_default();
+        if conns.len() >= MAX_CONNECTIONS_PER_USER {
+            false
+        } else {
+            conns.insert(conn_id, tx.clone());
+            true
+        }
+    };
+    if !registered {
+        let _ = socket
+            .send(Message::Close(Some(CloseFrame {
+                code: close_code::POLICY,
+                reason: "too many connections".into(),
+            })))
+            .await;
+        return;
     }
 
     // Connecting counts as activity → refresh the dead-man's-switch liveness clock.
@@ -347,7 +372,7 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
 
     // Forward broadcast events to this WS connection. A lagging receiver (slow
     // client during ICE trickle) drops events but must NOT tear down the stream.
-    let send_task = tokio::spawn(async move {
+    let mut send_task = tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(event) => {
@@ -362,7 +387,11 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!("gateway: receiver lagged, dropped {n} events");
                 }
-                Err(broadcast::error::RecvError::Closed) => break,
+                // This connection's sender left the session map (logout everywhere).
+                Err(broadcast::error::RecvError::Closed) => {
+                    let _ = ws_tx.send(Message::Close(None)).await;
+                    break;
+                }
             }
         }
     });
@@ -371,10 +400,21 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     // (and their activity) so presence shows immediately, not just on the next change.
     send_presence_snapshot(&state, &user_id, &tx).await;
     send_voice_snapshot(&state, &user_id, &tx).await;
+    // From here the session map holds the only sender, so removing it closes the socket.
+    drop(tx);
 
     // Drain incoming messages: WebRTC signaling, voice state, heartbeats.
     let mut last_heartbeat_touch: Option<Instant> = None;
-    while let Some(Ok(msg)) = ws_rx.next().await {
+    loop {
+        let msg = tokio::select! {
+            // The forwarder only stops once the socket is closed or unwritable.
+            _ = &mut send_task => break,
+            msg = ws_rx.next() => match msg {
+                Some(Ok(msg)) => msg,
+                // Closed, or a read error such as a message over the transport cap.
+                _ => break,
+            },
+        };
         match msg {
             Message::Close(_) => break,
             Message::Text(t) => {
