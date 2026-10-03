@@ -12,6 +12,8 @@
 //! and silenced.
 #![allow(dead_code)]
 
+pub mod ws;
+
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Once;
@@ -55,6 +57,9 @@ static JWT: Once = Once::new();
 pub struct TestServer {
     pub base: String,
     pub client: reqwest::Client,
+    /// The live application state the server runs on (shared `Arc` maps), so a test can
+    /// seed or inspect in-memory gateway state and drive background sweeps directly.
+    pub state: server::AppState,
     db: TempDb,
 }
 
@@ -77,7 +82,8 @@ impl TestServer {
         let pool = server::db::connect(&db.url)
             .await
             .expect("connect + migrate test database");
-        let app = server::build_app(server::build_state(pool));
+        let state = server::build_state(pool);
+        let app = server::build_app(state.clone());
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -95,6 +101,7 @@ impl TestServer {
         TestServer {
             base: format!("http://{addr}"),
             client: reqwest::Client::new(),
+            state,
             db,
         }
     }
