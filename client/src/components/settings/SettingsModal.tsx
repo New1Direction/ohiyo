@@ -1947,8 +1947,11 @@ function SecurityTab({
 
   async function burn() {
     setConfirmBurn(false);
-    await burnVault();
-    onToast("Vault burned — E2E keys wiped from this device.", "success");
+    try {
+      await burnVault(); // restarts Ohiyo on success
+    } catch (err) {
+      onToast(`Couldn't burn the keys: ${errorMessage(err, "something went wrong")}`, "error");
+    }
   }
 
   return (
@@ -2214,6 +2217,11 @@ function SecurityTab({
             This destroys them (and the keychain key) immediately; you&apos;ll re-establish encryption
             from scratch.
           </p>
+          {confirmBurn && (
+            <p className="mb-3 text-xs font-semibold" style={{ color: "var(--danger)" }}>
+              Ohiyo will restart and sign you out on this device.
+            </p>
+          )}
           {confirmBurn ? (
             <div className="flex gap-2">
               <button

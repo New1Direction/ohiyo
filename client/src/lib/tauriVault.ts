@@ -189,14 +189,15 @@ export async function resetVaultAndRestart(): Promise<void> {
 /**
  * The dead-man's switch: burn the vault — wipe the locked RAM, delete the sealed
  * on-disk blob, and destroy the keychain master key. After this the keys are gone for
- * good and the user re-establishes E2E from scratch.
+ * good and the user re-establishes E2E from scratch. On success the app restarts, which
+ * also clears key copies from this webview's memory and signs this device out (its
+ * session token was in the vault); without that, signing in again would publish an
+ * identity lost at the next launch. If something couldn't be deleted, this rejects with
+ * what is left and nothing restarts.
  */
 export async function burnVault(): Promise<void> {
   if (!isDesktop()) return;
-  try {
-    await invoke("vault_burn");
-    mirror?.clear();
-  } catch {
-    /* ignore */
-  }
+  await invoke("vault_burn");
+  mirror?.clear();
+  await restartApp();
 }

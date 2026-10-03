@@ -110,3 +110,17 @@ test("removing many keys from the vault sends one batch call, not one write per 
   assert.deepEqual(calls, [{ cmd: "vault_remove_many", args: { keys: ["kc:e2e-pt:m1", "kc:e2e-pt:m2"] } }]);
   assert.deepEqual(store.keys(), ["kc:sig:identityKey"]);
 });
+
+test("burning the vault restarts the app once the keys are deleted", async () => {
+  const calls: string[] = [];
+  invoke = (cmd) => (calls.push(cmd), Promise.resolve(null));
+  await bundle.mod.burnVault();
+  assert.deepEqual(calls, ["vault_burn", "app_restart"]);
+});
+
+test("a burn that couldn't delete everything doesn't restart, and says what is left", async () => {
+  const calls: string[] = [];
+  invoke = (cmd) => (calls.push(cmd), cmd === "vault_burn" ? Promise.reject("couldn't delete the keychain key (denied)") : Promise.resolve(null));
+  await assert.rejects(bundle.mod.burnVault(), (err: unknown) => errorMessage(err, "fallback") === "couldn't delete the keychain key (denied)");
+  assert.deepEqual(calls, ["vault_burn"]);
+});
