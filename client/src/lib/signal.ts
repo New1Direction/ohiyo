@@ -102,8 +102,9 @@ class SignalStore {
     return s === null ? undefined : dec(s);
   }
   private put(key: string, v: unknown) {
-    // A full store drops the decrypted-message cache and retries once; if the key still
-    // can't be saved, this throws and the operation that needed it fails.
+    // A full store evicts the oldest quarter of the decrypted-message cache and retries,
+    // until the key fits or the cache is empty; if it still can't be saved, this throws and
+    // the operation that needed it fails.
     setItemEvictingPlaintextCache(this.activeBackend(), NS + key, enc(v));
   }
   private del(key: string) {
