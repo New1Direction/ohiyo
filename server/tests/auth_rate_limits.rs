@@ -100,8 +100,9 @@ async fn a_flood_of_address_keys_does_not_lock_out_signed_in_users() {
             .rate
             .check_unauth(&format!("auth:flood{i}"), 40, window);
     }
-    assert!(
-        !srv.state.rate.check_unauth("auth:one-more", 40, window),
+    assert_eq!(
+        srv.state.rate.tracked_unauth_keys(),
+        100_000,
         "the unauthenticated map is full"
     );
 

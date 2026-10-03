@@ -1,11 +1,12 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-/// Most distinct keys each map tracks at once. What happens to a new key once a map is
-/// full and nothing in it has expired depends on the map; see [`KeyMap`].
+/// Most distinct keys each map tracks at once. A new key arriving at the cap evicts the
+/// oldest-inserted key, so a map never refuses a request or stops limiting because it is
+/// full.
 const MAX_KEYS: usize = 100_000;
 
 /// Above this many keys, expired ones are swept, at most once per [`SWEEP_INTERVAL`].
@@ -18,12 +19,16 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(10);
 /// on a character boundary; keys sharing their first 128 bytes share a counter.
 const MAX_KEY_BYTES: usize = 128;
 
+/// Stale entries the eviction queue may carry beyond twice the live keys before it is
+/// compacted, so compaction stays amortised O(1) per insert.
+const QUEUE_SLACK: usize = 1024;
+
 /// A tiny in-memory sliding-window rate limiter keyed by an arbitrary string
 /// (e.g. "login:1.2.3.4" or "msg:<user_id>"). Good enough to blunt brute-force
 /// and spam on a single-node deployment; swap for Redis if you scale out.
 ///
-/// Keys live in two independent maps, each with its own cap and sweep, so a flood of
-/// keys in one can never cause a refusal in the other.
+/// Keys live in two independent maps, each with its own cap, sweep and eviction queue,
+/// so a flood of keys in one never touches the other.
 #[derive(Clone)]
 pub struct RateLimiter {
     user: Arc<Mutex<Inner>>,
@@ -32,27 +37,32 @@ pub struct RateLimiter {
     sweep_above: usize,
 }
 
+/// Both maps follow the same policy: at the cap, a new key evicts the oldest-inserted
+/// key (a key whose window lapsed and restarted counts as inserted when it restarted),
+/// and the new key is tracked and limited normally.
 #[derive(Clone, Copy)]
 enum KeyMap {
-    /// Keys derived from an authenticated user id. When full, a new key is let through
-    /// untracked: making these keys needs an account each, and refusing them would lock
-    /// real users out.
+    /// Keys derived from an authenticated user id.
     User,
-    /// Keys derived from a client address or a caller-supplied string, which anyone can
-    /// mint cheaply. When full, a new key is refused.
+    /// Keys derived from a client address or a caller-supplied string.
     Unauth,
 }
 
 #[derive(Default)]
 struct Inner {
     keys: HashMap<String, Hits>,
+    /// Keys in insertion order, each with the start of the window it was queued for.
+    /// An entry whose start no longer matches the key's (it was swept, evicted or
+    /// restarted since) is stale and skipped.
+    queue: VecDeque<(String, Instant)>,
     last_sweep: Option<Instant>,
 }
 
-/// One key's recent attempts, and the window they count in.
+/// One key's recent attempts, the window they count in, and when that window began.
 struct Hits {
     times: Vec<Instant>,
     window: Duration,
+    since: Instant,
 }
 
 impl Default for RateLimiter {
@@ -94,6 +104,12 @@ impl RateLimiter {
         inner.keys.len()
     }
 
+    /// How many keys the address and caller-supplied map holds right now.
+    pub fn tracked_unauth_keys(&self) -> usize {
+        let inner = self.unauth.lock().unwrap_or_else(|e| e.into_inner());
+        inner.keys.len()
+    }
+
     fn map(&self, map: KeyMap) -> &Mutex<Inner> {
         match map {
             KeyMap::User => &self.user,
@@ -108,23 +124,10 @@ impl RateLimiter {
         if inner.keys.len() > self.sweep_above {
             inner.sweep_expired(now);
         }
-        if inner.keys.len() >= self.max_keys && !inner.keys.contains_key(key) {
-            return match map {
-                KeyMap::User => true,
-                KeyMap::Unauth => false,
-            };
-        }
-
-        let hits = inner.keys.entry(key.to_owned()).or_insert_with(|| Hits {
-            times: Vec::new(),
-            window,
-        });
-        hits.window = window;
-        hits.times.retain(|t| now.duration_since(*t) < window);
-        if hits.times.len() >= max {
+        if inner.spent(key, max, window, now) {
             return false;
         }
-        hits.times.push(now);
+        inner.record(key, window, now, self.max_keys);
         true
     }
 
@@ -136,6 +139,64 @@ impl RateLimiter {
 }
 
 impl Inner {
+    /// Whether `key` has already used its `max` attempts within `window`. Forgets
+    /// attempts that have left the window; never creates the key.
+    fn spent(&mut self, key: &str, max: usize, window: Duration, now: Instant) -> bool {
+        match self.keys.get_mut(key) {
+            Some(hits) => {
+                hits.times.retain(|t| now.duration_since(*t) < window);
+                hits.times.len() >= max
+            }
+            None => max == 0,
+        }
+    }
+
+    /// Record one attempt for `key`. A new key, or one whose window lapsed (no attempts
+    /// left in it), starts a window now and joins the back of the eviction queue; a new
+    /// key at the cap first evicts the oldest-inserted one.
+    fn record(&mut self, key: &str, window: Duration, now: Instant, max_keys: usize) {
+        let restarting = match self.keys.get(key) {
+            Some(hits) => hits.times.is_empty(),
+            None => {
+                self.evict_oldest_while_full(max_keys);
+                true
+            }
+        };
+        let hits = self.keys.entry(key.to_owned()).or_insert_with(|| Hits {
+            times: Vec::new(),
+            window,
+            since: now,
+        });
+        hits.window = window;
+        hits.times.push(now);
+        if restarting {
+            hits.since = now;
+            self.queue.push_back((key.to_owned(), now));
+            if self.queue.len() > 2 * self.keys.len() + QUEUE_SLACK {
+                self.drop_stale_queue_entries();
+            }
+        }
+    }
+
+    /// Evict oldest-inserted keys until there is room for one more. O(1) amortised:
+    /// each queue entry is popped once, and stale ones are skipped.
+    fn evict_oldest_while_full(&mut self, max_keys: usize) {
+        while self.keys.len() >= max_keys {
+            let Some((key, since)) = self.queue.pop_front() else {
+                return;
+            };
+            if self.keys.get(&key).is_some_and(|hits| hits.since == since) {
+                self.keys.remove(&key);
+            }
+        }
+    }
+
+    /// Keep only the queue entries that still match their key's current window.
+    fn drop_stale_queue_entries(&mut self) {
+        let Inner { keys, queue, .. } = self;
+        queue.retain(|(key, since)| keys.get(key).is_some_and(|hits| hits.since == *since));
+    }
+
     /// Drop keys with no attempt inside their own window, unless the last sweep was
     /// under [`SWEEP_INTERVAL`] ago.
     fn sweep_expired(&mut self, now: Instant) {
@@ -151,6 +212,7 @@ impl Inner {
                 .last()
                 .is_some_and(|t| now.duration_since(*t) < hits.window)
         });
+        self.drop_stale_queue_entries();
     }
 }
 
@@ -170,33 +232,69 @@ mod tests {
     const MINUTE: Duration = Duration::from_secs(60);
     const SECOND: Duration = Duration::from_secs(1);
 
+    /// No sweeps (the threshold is above the cap), so only eviction removes keys.
+    fn without_sweeps(max_keys: usize) -> RateLimiter {
+        RateLimiter::with_limits(max_keys, usize::MAX)
+    }
+
     #[test]
-    fn a_flood_of_distinct_keys_cannot_grow_past_the_cap() {
-        let limiter = RateLimiter::with_limits(8, 2);
+    fn a_full_map_evicts_its_oldest_key_to_track_a_new_one() {
+        for map in [KeyMap::User, KeyMap::Unauth] {
+            let limiter = without_sweeps(4);
+            let t0 = Instant::now();
+            for i in 0..4 {
+                assert!(limiter.check_at(map, &format!("live{i}"), 5, MINUTE, t0));
+            }
+
+            assert!(
+                limiter.check_at(map, "newcomer", 1, MINUTE, t0),
+                "a new key is accepted at the cap"
+            );
+            let mut keys = limiter.tracked_keys(map);
+            keys.sort();
+            assert_eq!(keys, ["live1", "live2", "live3", "newcomer"], "live0 went");
+            assert!(
+                !limiter.check_at(map, "newcomer", 1, MINUTE, t0),
+                "and the new key is tracked and limited"
+            );
+        }
+    }
+
+    #[test]
+    fn a_key_refreshed_after_its_window_is_not_evicted_ahead_of_older_live_keys() {
+        let limiter = without_sweeps(4);
         let t0 = Instant::now();
-        for i in 0..8 {
+        assert!(limiter.check_at(KeyMap::Unauth, "restarted", 5, SECOND, t0));
+        for i in 0..3 {
             assert!(limiter.check_at(KeyMap::Unauth, &format!("live{i}"), 5, MINUTE, t0));
         }
+        // Its window lapsed and a new one began: it goes to the back of the queue.
+        assert!(limiter.check_at(KeyMap::Unauth, "restarted", 5, SECOND, t0 + 2 * SECOND));
 
-        assert!(
-            !limiter.check_at(KeyMap::Unauth, "one-too-many", 5, MINUTE, t0),
-            "a new key is refused while every tracked key is live"
-        );
-        assert_eq!(limiter.tracked_keys(KeyMap::Unauth).len(), 8);
-        assert!(
-            limiter.check_at(KeyMap::Unauth, "live0", 5, MINUTE, t0),
-            "existing keys keep working"
-        );
+        assert!(limiter.check_at(KeyMap::Unauth, "newcomer", 5, MINUTE, t0 + 2 * SECOND));
+        let mut keys = limiter.tracked_keys(KeyMap::Unauth);
+        keys.sort();
+        assert_eq!(keys, ["live1", "live2", "newcomer", "restarted"]);
+    }
+
+    #[test]
+    fn a_tracked_key_over_its_limit_is_still_refused_while_the_map_is_full() {
+        let limiter = without_sweeps(4);
+        let t0 = Instant::now();
+        for i in 0..4 {
+            assert!(limiter.check_at(KeyMap::User, &format!("msg:user{i}"), 2, MINUTE, t0));
+        }
+        assert!(limiter.check_at(KeyMap::User, "msg:user3", 2, MINUTE, t0));
+        assert!(!limiter.check_at(KeyMap::User, "msg:user3", 2, MINUTE, t0));
     }
 
     #[test]
     fn a_full_unauthenticated_map_does_not_touch_user_keys() {
-        let limiter = RateLimiter::with_limits(8, 2);
+        let limiter = without_sweeps(8);
         let t0 = Instant::now();
-        for i in 0..8 {
+        for i in 0..20 {
             assert!(limiter.check_at(KeyMap::Unauth, &format!("auth:10.0.0.{i}"), 5, MINUTE, t0));
         }
-        assert!(!limiter.check_at(KeyMap::Unauth, "auth:10.0.1.1", 5, MINUTE, t0));
 
         // A user key not yet tracked is accepted, then limited normally.
         for _ in 0..2 {
@@ -210,23 +308,37 @@ mod tests {
     }
 
     #[test]
-    fn a_full_user_map_lets_new_user_keys_through_untracked() {
-        let limiter = RateLimiter::with_limits(8, 2);
+    fn restarting_keys_do_not_grow_the_eviction_queue_without_bound() {
+        let limiter = without_sweeps(MAX_KEYS);
         let t0 = Instant::now();
-        for i in 0..8 {
-            assert!(limiter.check_at(KeyMap::User, &format!("msg:user{i}"), 5, MINUTE, t0));
+        // Each check lands after the last window lapsed, so each one re-queues the key.
+        for i in 0..10_000u32 {
+            assert!(limiter.check_at(KeyMap::User, "msg:restarts", 1, SECOND, t0 + i * 2 * SECOND));
         }
-
-        for _ in 0..3 {
-            assert!(
-                limiter.check_at(KeyMap::User, "msg:newcomer", 1, MINUTE, t0),
-                "a new user key is allowed, untracked, while the map is full"
-            );
-        }
-        assert_eq!(limiter.tracked_keys(KeyMap::User).len(), 8);
+        let queued = limiter.user.lock().unwrap().queue.len();
         assert!(
-            limiter.check_at(KeyMap::Unauth, "auth:10.0.0.1", 5, MINUTE, t0),
-            "and the unauthenticated map is unaffected"
+            queued <= 2 + QUEUE_SLACK,
+            "{queued} queue entries for one key"
+        );
+    }
+
+    #[test]
+    fn inserting_at_the_cap_does_not_scan_the_map() {
+        let limiter = RateLimiter::new();
+        let t0 = Instant::now();
+        for i in 0..MAX_KEYS {
+            limiter.check_at(KeyMap::User, &format!("msg:user{i}"), 5, MINUTE, t0);
+        }
+        let started = Instant::now();
+        for i in 0..10_000 {
+            assert!(limiter.check_at(KeyMap::User, &format!("msg:new{i}"), 5, MINUTE, t0));
+        }
+        let took = started.elapsed();
+        assert_eq!(limiter.tracked_keys(KeyMap::User).len(), MAX_KEYS);
+        // A scan of 100,000 keys per insert would take minutes here.
+        assert!(
+            took < Duration::from_secs(2),
+            "10,000 inserts took {took:?}"
         );
     }
 
