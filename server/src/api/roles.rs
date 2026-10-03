@@ -224,9 +224,11 @@ pub async fn has_channel_perm(
 
 /// The channels of `server_id` (as loaded from it) that `user_id` may view, by the same
 /// rules as [`channel_permissions`]. The member's base permissions are resolved once and
-/// the overwrites of every channel and category involved are read in one query, so the
-/// cost does not grow with the channel count. An error reading the overwrites returns
-/// the error rather than listing channels whose denies could not be checked.
+/// the overwrites of every channel and category in `channels` are read in one query, so
+/// the cost does not grow with the channel count. The query takes its scopes from
+/// `channels` itself, so a channel moved or deleted since the list was loaded is still
+/// judged with the overwrites it had in that list. An error reading the overwrites
+/// returns the error rather than listing channels whose denies could not be checked.
 pub async fn viewable_channels(
     state: &AppState,
     server_id: &str,
@@ -245,15 +247,23 @@ pub async fn viewable_channels(
     if has_admin_override(base) {
         return Ok(channels);
     }
+    let json_list =
+        |ids: Vec<&str>| serde_json::to_string(&ids).map_err(|e| sqlx::Error::Encode(Box::new(e)));
+    let channel_ids = json_list(channels.iter().map(|c| c.id.as_str()).collect())?;
+    let category_ids = json_list(
+        channels
+            .iter()
+            .filter_map(|c| c.category_id.as_deref())
+            .collect(),
+    )?;
     let rows: Vec<(String, String, String, Option<String>, i64, i64)> = sqlx::query_as(
         "SELECT scope_type, scope_id, target_type, target_id, allow_permissions, deny_permissions
          FROM permission_overwrites
-         WHERE (scope_type = 'channel' AND scope_id IN (SELECT id FROM channels WHERE server_id = ?))
-            OR (scope_type = 'category'
-                AND scope_id IN (SELECT category_id FROM channels WHERE server_id = ?))",
+         WHERE (scope_type = 'channel' AND scope_id IN (SELECT value FROM json_each(?)))
+            OR (scope_type = 'category' AND scope_id IN (SELECT value FROM json_each(?)))",
     )
-    .bind(server_id)
-    .bind(server_id)
+    .bind(channel_ids)
+    .bind(category_ids)
     .fetch_all(&state.db)
     .await?;
     let mut by_scope: std::collections::HashMap<(String, String), Vec<Overwrite>> =

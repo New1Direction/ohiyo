@@ -363,3 +363,97 @@ async fn ready_applies_category_role_and_member_overwrites_like_rest() {
         );
     }
 }
+
+/// The View Channel filter judges the channel list it was given. If the last channel of a
+/// hidden category moves out between loading the list and reading the overwrites, the
+/// channel as loaded (inside the hidden category) must still be judged with that
+/// category's overwrites, not listed because the category no longer has channels.
+#[tokio::test]
+async fn the_view_filter_uses_the_overwrites_of_the_channel_list_it_was_given() {
+    let srv = TestServer::start().await;
+    let owner = srv.register("staleowner", "supersecret123").await;
+    let member = srv.register("stalemember", "supersecret123").await;
+    let server: Value = srv
+        .post_json_auth("/api/v1/servers", &owner.token, json!({ "name": "Stale" }))
+        .await
+        .json()
+        .await
+        .unwrap();
+    let server_id = server["id"].as_str().unwrap().to_owned();
+    let invite: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{server_id}/invites"),
+            &owner.token,
+            json!({}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let code = invite["code"].as_str().unwrap();
+    assert_eq!(
+        srv.post_json_auth(&format!("/api/v1/invites/{code}"), &member.token, json!({}))
+            .await
+            .status(),
+        200
+    );
+    let category: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{server_id}/categories"),
+            &owner.token,
+            json!({ "name": "hidden" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let category_id = category["id"].as_str().unwrap().to_owned();
+    let secret: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{server_id}/channels"),
+            &owner.token,
+            json!({ "name": "secret", "category_id": category_id }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let secret_id = secret["id"].as_str().unwrap().to_owned();
+    let db = sqlx::SqlitePool::connect(srv.db_url()).await.unwrap();
+    sqlx::query(
+        "INSERT INTO permission_overwrites
+         (id, server_id, scope_type, scope_id, target_type, target_id, allow_permissions, deny_permissions, source, created_at)
+         VALUES ('ow_hidden_category', ?, 'category', ?, 'everyone', NULL, 0, ?, 'test', 1)",
+    )
+    .bind(&server_id)
+    .bind(&category_id)
+    .bind(VIEW_CHANNEL)
+    .execute(&db)
+    .await
+    .unwrap();
+
+    let loaded: Vec<server::types::Channel> =
+        sqlx::query_as("SELECT * FROM channels WHERE server_id = ? ORDER BY position")
+            .bind(&server_id)
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    // The category's only channel moves out after the list was loaded.
+    sqlx::query("UPDATE channels SET category_id = NULL WHERE id = ?")
+        .bind(&secret_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let visible = server::api::roles::viewable_channels(&srv.state, &server_id, &member.id, loaded)
+        .await
+        .unwrap();
+    assert!(
+        !visible.iter().any(|c| c.id == secret_id),
+        "a channel loaded inside a hidden category stays hidden"
+    );
+    assert!(
+        !visible.is_empty(),
+        "the server's other channels are still listed"
+    );
+}
