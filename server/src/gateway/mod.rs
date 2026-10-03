@@ -625,12 +625,15 @@ async fn handle_client_event(
 
             // Build the roster of peers already present (before adding ourselves),
             // then register ourselves. Single lock, no await inside. Returns None
-            // if we're already in this room (duplicate join → ignore, don't
-            // re-send the roster which would trigger a second offer wave).
+            // if we're already in this room (duplicate join → don't re-send the roster,
+            // which would trigger a second offer wave, and announce nothing). The seat
+            // does move to this connection: after a reconnect during a call, the old
+            // connection closing must not take the user out of the call.
             let roster: Option<Vec<VoicePeer>> = {
                 let mut rooms = state.voice.write().unwrap_or_else(|e| e.into_inner());
                 let room = rooms.entry(channel_id.clone()).or_default();
-                if room.contains_key(user_id) {
+                if let Some(seat) = room.get_mut(user_id) {
+                    seat.conn_id = conn_id;
                     None
                 } else {
                     let peers = room
