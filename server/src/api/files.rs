@@ -123,6 +123,10 @@ pub async fn upload_file(
 
         // Stream field bytes through SHA-256 hasher to a temp file.
         let tmp_path = upload_root.join(format!("tmp-{}", new_id()));
+        // Declared before the file so the file is closed before the guard unlinks it.
+        let mut tmp_guard = TempFileGuard {
+            path: Some(tmp_path.clone()),
+        };
         let mut tmp_file = tokio::fs::File::create(&tmp_path)
             .await
             .map_err(crate::api::error::internal)?;
@@ -145,9 +149,6 @@ pub async fn upload_file(
             // Abort the moment this upload would push the user over quota — so an
             // over-limit file is never fully written to disk in the first place.
             if used_u.saturating_add(size_bytes) > quota_u {
-                tmp_file.flush().await.ok();
-                drop(tmp_file);
-                tokio::fs::remove_file(&tmp_path).await.ok();
                 return Err((
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "upload quota exceeded".into(),
@@ -192,6 +193,7 @@ pub async fn upload_file(
             tokio::fs::rename(&tmp_path, &final_path)
                 .await
                 .map_err(crate::api::error::internal)?;
+            tmp_guard.disarm();
 
             // Read image pixel dimensions (cheap header parse; None for non-images).
             // `imagesize::size` does synchronous file I/O, so run it on the blocking
@@ -241,6 +243,76 @@ pub async fn upload_file(
     }
 
     Ok(Json(results))
+}
+
+/// Startup sweep: delete `tmp-*` files in the upload root older than an hour.
+pub async fn sweep_stale_temp_files() {
+    remove_stale_temp_files(&upload_dir(), STALE_TEMP_AGE).await;
+}
+
+const STALE_TEMP_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Delete top-level `tmp-*` files in `root` last modified more than `max_age` ago. Younger
+/// ones may belong to an upload still in flight. Failures are logged and skipped.
+async fn remove_stale_temp_files(root: &std::path::Path, max_age: std::time::Duration) {
+    let mut entries = match tokio::fs::read_dir(root).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            tracing::warn!(
+                "couldn't list upload dir {} for temp sweep: {e}",
+                root.display()
+            );
+            return;
+        }
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        if !entry.file_name().to_string_lossy().starts_with("tmp-") {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .await
+            .ok()
+            .filter(|meta| meta.is_file())
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > max_age);
+        if stale {
+            if let Err(e) = tokio::fs::remove_file(entry.path()).await {
+                tracing::warn!(
+                    "couldn't remove stale upload temp file {:?}: {e}",
+                    entry.path()
+                );
+            }
+        }
+    }
+}
+
+/// Removes an upload's temp file when dropped, so every early return (a malformed or
+/// aborted body, a write error, the quota check, a dropped request) cleans up. Disarmed
+/// once the file has been renamed into place.
+struct TempFileGuard {
+    path: Option<PathBuf>,
+}
+
+impl TempFileGuard {
+    fn disarm(&mut self) {
+        self.path = None;
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Some(path) = self.path.take() {
+            // Drop can't await; unlinking one directory entry is quick.
+            if let Err(e) = std::fs::remove_file(&path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!("couldn't remove upload temp file {}: {e}", path.display());
+                }
+            }
+        }
+    }
 }
 
 // ── Releasing files when their messages go ────────────────────────────────────
@@ -534,6 +606,30 @@ mod tests {
         assert!(!is_inline_safe("application/pdf"));
         assert!(!is_inline_safe("application/octet-stream"));
         assert!(!is_inline_safe(""));
+    }
+
+    #[tokio::test]
+    async fn stale_temp_files_are_swept_and_everything_else_is_kept() {
+        let root = std::env::temp_dir().join(format!("ohiyo-sweep-{}", new_id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let two_hours_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+        for name in ["tmp-old", "old-blob"] {
+            std::fs::File::create(root.join(name))
+                .unwrap()
+                .set_modified(two_hours_ago)
+                .unwrap();
+        }
+        std::fs::File::create(root.join("tmp-in-flight")).unwrap();
+
+        remove_stale_temp_files(&root, STALE_TEMP_AGE).await;
+
+        let mut left: Vec<String> = std::fs::read_dir(&root)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["old-blob", "tmp-in-flight"]);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

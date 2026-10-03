@@ -29,6 +29,9 @@ async fn main() -> anyhow::Result<()> {
         search::ensure_index().await;
     }
 
+    // Temp files left by uploads cut off by a crash or restart are never renamed into place.
+    api::files::sweep_stale_temp_files().await;
+
     let state = build_state(db);
 
     // Disappearing messages, the dead-man's switch, and link-token GC run on a periodic
