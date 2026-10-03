@@ -116,6 +116,13 @@ async fn load_persisted_privacy_mode(state: &AppState, user_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Whether a user is in metadata Privacy Mode, for checks outside a live socket (REST):
+/// on if switched on live over the gateway, or saved in their prefs — the latter covers
+/// users who have not connected since this process started.
+pub async fn privacy_mode_on(state: &AppState, user_id: &str) -> bool {
+    privacy_enabled(state, user_id) || load_persisted_privacy_mode(state, user_id).await
+}
+
 fn set_privacy_mode(state: &AppState, user_id: &str, enabled: bool) {
     let mut private = state.privacy.write().unwrap_or_else(|e| e.into_inner());
     if enabled {

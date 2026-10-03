@@ -603,14 +603,18 @@ pub async fn list_reads(
     .await
     .map_err(crate::api::error::internal)?;
 
-    let cursors = rows
-        .into_iter()
-        .map(|(user_id, last_read_message_id, last_read_at)| ReadCursor {
+    // Privacy Mode hides a reader's cursor ("Seen") from everyone but themselves.
+    let mut cursors = Vec::with_capacity(rows.len());
+    for (user_id, last_read_message_id, last_read_at) in rows {
+        if user_id != auth.0 && crate::gateway::privacy_mode_on(&state, &user_id).await {
+            continue;
+        }
+        cursors.push(ReadCursor {
             user_id,
             last_read_message_id,
             last_read_at,
-        })
-        .collect();
+        });
+    }
     Ok(Json(cursors))
 }
 

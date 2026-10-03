@@ -212,7 +212,7 @@ pub async fn get_profile(
 }
 
 pub async fn get_user_profile(
-    _auth: AuthUser,
+    auth: AuthUser,
     axum::extract::Path(user_id): axum::extract::Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
@@ -227,6 +227,13 @@ pub async fn get_user_profile(
     .await
     .map_err(|_| (StatusCode::NOT_FOUND, "user not found".into()))?;
 
+    // Privacy Mode hides "last seen" from everyone but the user themselves.
+    if user_id != auth.0 && crate::gateway::privacy_mode_on(&state, &user_id).await {
+        return Ok(Json(ProfileResponse {
+            last_active_at: None,
+            ..row.into()
+        }));
+    }
     Ok(Json(row.into()))
 }
 
