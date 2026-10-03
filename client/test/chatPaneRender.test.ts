@@ -1,7 +1,8 @@
 // Render checks for what a chat in encrypted mode shows. ChatPane is bundled with Vite
 // and rendered with react-dom/server (both already client dependencies), so these run
 // under plain `node --test`:
-//   - C-H2: a decrypted message gets no link-preview card and no embed card
+//   - C-H2: a decrypted message, or any message in a chat in encrypted mode, gets no
+//     link-preview card and no embed card
 //     (no /og request, no YouTube iframe), while the links stay clickable;
 //   - item 7: no poll button and no poll composer (polls are stored unencrypted);
 //   - item 8: group encryption is labelled Experimental, with the offline caveat.
@@ -134,17 +135,21 @@ function banner(html: string): string {
   return start === -1 ? "" : html.slice(start, html.indexOf("</div>", start));
 }
 
-for (const [where, html] of [
-  ["in an encrypted chat", () => chat("dm", true, true)],
-  ["even outside encrypted mode", () => chat("dm", false, true)],
+for (const [what, html] of [
+  ["a decrypted message in an encrypted chat", () => chat("dm", true, true)],
+  ["a decrypted message even outside encrypted mode", () => chat("dm", false, true)],
+  // Encrypted mode alone must suppress previews, without relying on `_encrypted`.
+  ["a message not marked decrypted, in a chat in encrypted mode,", () => chat("dm", true, false)],
 ] as const) {
-  test(`C-H2: a decrypted message ${where} renders no link-preview card`, () => {
+  test(`C-H2: ${what} renders no link-preview card`, () => {
     const out = html();
     assert.equal(hasPreviewCard(out), false, "no link-preview card / YouTube iframe");
     assert.ok(linksClickable(out), "links stay clickable");
   });
-  test(`C-H2: a decrypted message ${where} renders no embed card`, () => {
-    assert.equal(hasEmbedCard(html()), false);
+  test(`C-H2: ${what} renders no embed card`, () => {
+    const out = html();
+    assert.equal(hasEmbedCard(out), false);
+    assert.ok(linksClickable(out), "links stay clickable");
   });
 }
 
