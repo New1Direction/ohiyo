@@ -67,6 +67,7 @@ import { parseVaultLocked, type VaultLocked } from "./lib/vaultLock";
 import { VaultLockedScreen } from "./components/VaultLockedScreen";
 import { clearLocalMessageData } from "./lib/logoutCleanup";
 import { saveEncryptedChannels } from "./lib/storageQuota";
+import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
 import { deviceLimitMessage } from "./lib/apiErrors";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
@@ -1456,6 +1457,7 @@ function MainApp({
           const next = new Set(prev);
           next.add(channelId);
           saveEncryptedChannels(next);
+          dropDraftsEnteringEncryptedMode(prev, next);
           return next;
         });
       const wellFormed = shouldEnterEncryptedMode(channelType, contents, false);
@@ -1575,6 +1577,7 @@ function MainApp({
           }
         }
         saveEncryptedChannels(next);
+        dropDraftsEnteringEncryptedMode(prev, next);
         return next;
       });
     },

@@ -1,12 +1,13 @@
 // C-M3: a draft for a chat in encrypted mode stays in memory only. Saving it never
 // writes localStorage, and removes a plaintext draft stored before encryption was on.
-// Drafts for other chats still persist so they survive a reload.
+// Drafts for other chats still persist so they survive a reload. When a chat enters
+// encrypted mode, its stored draft goes even if that chat isn't open.
 //   node --experimental-strip-types --test test/drafts.test.ts
 
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { loadDraft, persistDraft } from "../src/lib/drafts.ts";
+import { dropDraftsEnteringEncryptedMode, loadDraft, persistDraft } from "../src/lib/drafts.ts";
 
 const stored = new Map<string, string>();
 (globalThis as Record<string, unknown>).localStorage = {
@@ -38,4 +39,20 @@ test("saving an encrypted chat's draft removes a plaintext draft stored earlier"
   persistDraft("c1", "typed before encryption", true);
   assert.equal(stored.size, 0);
   assert.equal(loadDraft("c1"), "");
+});
+
+test("a chat entering encrypted mode loses its stored draft even when it isn't open", () => {
+  persistDraft("c1", "already encrypted chat", false);
+  persistDraft("c2", "typed before encryption", false);
+  persistDraft("c3", "unencrypted chat", false);
+  dropDraftsEnteringEncryptedMode(new Set(["c1"]), new Set(["c1", "c2"]));
+  assert.equal(loadDraft("c2"), "");
+  assert.equal(loadDraft("c1"), "already encrypted chat");
+  assert.equal(loadDraft("c3"), "unencrypted chat");
+});
+
+test("a chat leaving encrypted mode keeps whatever is stored", () => {
+  persistDraft("c1", "kept", false);
+  dropDraftsEnteringEncryptedMode(new Set(["c1", "c2"]), new Set(["c2"]));
+  assert.equal(loadDraft("c1"), "kept");
 });

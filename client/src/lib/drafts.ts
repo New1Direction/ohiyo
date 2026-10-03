@@ -19,3 +19,10 @@ export function loadDraft(channelId: string): string {
     return "";
   }
 }
+
+/** Remove the stored drafts of chats that just entered encrypted mode (in `next`, not in
+ *  `prev`): a plaintext draft saved before must not stay on disk, even for a chat that
+ *  isn't open (ChatPane only clears the open one). */
+export function dropDraftsEnteringEncryptedMode(prev: ReadonlySet<string>, next: ReadonlySet<string>) {
+  for (const id of next) if (!prev.has(id)) persistDraft(id, "", true);
+}
