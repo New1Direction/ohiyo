@@ -98,3 +98,15 @@ export function withoutServerChannels(
   if (![...stored].some((id) => server.has(id))) return stored;
   return new Set([...stored].filter((id) => !server.has(id)));
 }
+
+/** The channels worth scanning for recovery inventory: DMs and group DMs, the only ones
+ *  whose messages can ever be recorded. */
+export function recoveryScanChannels<C extends { channel_type: ChannelType }>(channels: readonly C[]): C[] {
+  return channels.filter((c) => isDirectChat(c.channel_type));
+}
+
+/** The messages of a channel to record in the recovery inventory (see
+ *  shouldRecordRecoveryInventory). */
+export function recoverableMessages<M extends { content: string }>(channelType: ChannelType | undefined, messages: readonly M[]): M[] {
+  return messages.filter((m) => shouldRecordRecoveryInventory(channelType, m.content));
+}

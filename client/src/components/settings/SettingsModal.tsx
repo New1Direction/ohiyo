@@ -26,6 +26,7 @@ import { generateRecoveryCode, encryptBackup, decryptBackup, backupSummary, back
 import { missingSenderKeys, recordGroupSenderKeyMessage, recordSignalMessage, saveCoverageResults, signalMessagesForRecovery } from "../../lib/recoveryCoverage";
 import { isSignalCiphertext, parseSignalCiphertextHeader, previewSignalRestoreFromMaterial } from "../../lib/signal";
 import { isGroupCiphertext, parseGroupCiphertextHeader } from "../../lib/senderKeys";
+import { recoverableMessages, recoveryScanChannels } from "../../lib/e2eMode";
 import {
   ACCENT_PRESETS,
   APPEARANCE_CHANGED_EVENT,
@@ -194,7 +195,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
           {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} onCurrentUserUpdate={onCurrentUserUpdate} />}
           {tab === "profile" && <ProfileTab token={token} onToast={onToast} />}
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
-          {tab === "security" && <SecurityTab token={token} servers={servers} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} />}
+          {tab === "security" && <SecurityTab token={token} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} />}
           {tab === "notifications" && <NotificationsTab token={token} onToast={onToast} />}
           {tab === "emoji" && <EmojiTab token={token} servers={servers} onToast={onToast} />}
         </div>
@@ -1716,14 +1717,12 @@ type RestorePreview = {
 
 function SecurityTab({
   token,
-  servers,
   dms,
   onToast,
   privacyPrefs,
   onPrivacyPrefsChange,
 }: {
   token: string;
-  servers: ServerWithChannels[];
   dms: Channel[];
   onToast: (t: string, type?: "info" | "success" | "error") => void;
   privacyPrefs: PrivacyPrefs;
@@ -1781,9 +1780,11 @@ function SecurityTab({
     }
   }
 
-  function recordRecoveryMetadata(messages: Message[], channelId: string): number {
+  function recordRecoveryMetadata(messages: Message[], channel: Channel): number {
+    const channelId = channel.id;
     let scanned = 0;
-    for (const message of messages) {
+    // Same gate as the chat's own writer: only well-formed envelopes in DMs and group DMs.
+    for (const message of recoverableMessages(channel.channel_type, messages)) {
       if (isGroupCiphertext(message.content)) {
         const header = parseGroupCiphertextHeader(message.content);
         if (!header) continue;
@@ -1806,15 +1807,13 @@ function SecurityTab({
   }
 
   async function scanRecentRecoveryMetadata(): Promise<number> {
-    const channels = [
-      ...servers.flatMap((server) => server.channels),
-      ...dms,
-    ].filter((channel) => ["text", "dm", "group_dm"].includes(channel.channel_type));
+    // Server channels never hold recoverable messages, so they aren't scanned at all.
+    const channels = recoveryScanChannels(dms);
     let scanned = 0;
     for (const channel of channels) {
       try {
         const messages = await api.listMessages(token, channel.id, 100);
-        scanned += recordRecoveryMetadata(messages, channel.id);
+        scanned += recordRecoveryMetadata(messages, channel);
       } catch {
         /* best-effort: one inaccessible/offline channel should not block restore */
       }
@@ -1841,8 +1840,7 @@ function SecurityTab({
         results[item.message_id] = await backupCoversSenderKey(code, blob, item.room_id, item.epoch, item.key_id);
       }
       const recentMessagesById = new Map<string, Message>();
-      for (const channel of [...servers.flatMap((server) => server.channels), ...dms]) {
-        if (!["text", "dm", "group_dm"].includes(channel.channel_type)) continue;
+      for (const channel of recoveryScanChannels(dms)) {
         try {
           for (const message of await api.listMessages(token, channel.id, 100)) recentMessagesById.set(message.id, message);
         } catch {
