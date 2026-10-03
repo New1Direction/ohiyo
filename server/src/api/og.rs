@@ -4,7 +4,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use crate::{auth::AuthUser, AppState};
 
@@ -12,9 +12,9 @@ use crate::{auth::AuthUser, AppState};
 /// unspecified/broadcast). Blocks cloud metadata at 169.254.169.254, localhost, and
 /// internal services.
 fn is_public_ip(ip: IpAddr) -> bool {
-    // An IPv4-mapped IPv6 address (::ffff:a.b.c.d) reaches the IPv4 host: judge it as one.
+    // An IPv6 address that carries an IPv4 one reaches that IPv4 host: judge it as one.
     let ip = match ip {
-        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+        IpAddr::V6(v6) => embedded_ipv4(v6).map_or(ip, IpAddr::V4),
         v4 => v4,
     };
     match ip {
@@ -26,6 +26,7 @@ fn is_public_ip(ip: IpAddr) -> bool {
                 || v4.is_unspecified()
                 || v4.is_broadcast()
                 || v4.is_multicast()
+                || v4.is_documentation() // 192.0.2/24, 198.51.100/24, 203.0.113/24
                 || a == 0
                 || (a == 100 && (b & 0xc0) == 64) // shared address space 100.64.0.0/10
                 || (a == 192 && b == 0 && c == 0) // IETF protocol assignments 192.0.0.0/24
@@ -41,6 +42,23 @@ fn is_public_ip(ip: IpAddr) -> bool {
                 || (s[0] == 0x3fff && (s[1] & 0xf000) == 0)) // documentation 3fff::/20
         }
     }
+}
+
+/// The IPv4 address inside an IPv4-mapped (::ffff:0:0/96), NAT64 (64:ff9b::/96) or
+/// 6to4 (2002::/16) IPv6 address.
+fn embedded_ipv4(v6: Ipv6Addr) -> Option<Ipv4Addr> {
+    if let Some(v4) = v6.to_ipv4_mapped() {
+        return Some(v4);
+    }
+    let s = v6.segments();
+    let o = v6.octets();
+    if s[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
+        return Some(Ipv4Addr::new(o[12], o[13], o[14], o[15]));
+    }
+    if s[0] == 0x2002 {
+        return Some(Ipv4Addr::new(o[2], o[3], o[4], o[5]));
+    }
+    None
 }
 
 /// Resolve `url`'s host and return `(host, port, validated_addrs)` ONLY if every
@@ -418,6 +436,10 @@ mod tests {
             "100.63.255.255",
             "100.128.0.0",
             "198.20.0.1",
+            // Just outside the documentation ranges.
+            "192.0.3.0",
+            "198.51.101.0",
+            "203.0.114.0",
         ] {
             assert!(public(ip), "{ip}");
         }
@@ -425,8 +447,56 @@ mod tests {
             "2606:4700:4700::1111",
             "2a00:1450:4001::200e",
             "::ffff:8.8.8.8",
+            // NAT64 and 6to4 addresses embedding a public IPv4 address.
+            "64:ff9b::8.8.8.8",
+            "2002:808:808::1",
         ] {
             assert!(public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn ipv4_documentation_ranges_are_not_public() {
+        for ip in [
+            // TEST-NET-1, 192.0.2.0/24.
+            "192.0.2.0",
+            "192.0.2.255",
+            // TEST-NET-2, 198.51.100.0/24.
+            "198.51.100.0",
+            "198.51.100.255",
+            // TEST-NET-3, 203.0.113.0/24.
+            "203.0.113.0",
+            "203.0.113.255",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn nat64_is_judged_by_its_embedded_ipv4_address() {
+        // 64:ff9b::/96 carries the IPv4 address in its last 32 bits.
+        for ip in [
+            "64:ff9b::127.0.0.1",
+            "64:ff9b::10.0.0.1",
+            "64:ff9b::169.254.169.254",
+            "64:ff9b::192.168.1.1",
+            "64:ff9b::100.64.0.1",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn six_to_four_is_judged_by_its_embedded_ipv4_address() {
+        // 2002::/16 carries the IPv4 address in bits 16..48.
+        for ip in [
+            "2002:7f00:1::",      // 127.0.0.1
+            "2002:a00:1::1",      // 10.0.0.1
+            "2002:a9fe:a9fe::1",  // 169.254.169.254
+            "2002:c0a8:101:1::1", // 192.168.1.1
+            "2002:c000:201::1",   // 192.0.2.1, documentation
+        ] {
+            assert!(!public(ip), "{ip}");
         }
     }
 
