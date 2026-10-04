@@ -3,8 +3,9 @@
 
 The page is a day in a valley: dawn at the top, a starry night behind the privacy section,
 sunrise behind the mission, morning at the end. Each scene is a gouache painting from
-site/assets/scenery with a few small moving things on top (a glow on the sun, mist, birds,
-twinkling stars, fireflies, and Kikka on her hill). Run this after changing a scene:
+site/assets/scenery with small living things on top: birds that flap, butterflies, drifting
+seeds, a rabbit that peeks over the hill, a shooting star, fireflies, turning sun rays, and Kikka
+breathing on her hill. Run this after changing a scene:
 
     python3 scripts/site-scenery.py           # rewrite the scenes
     python3 scripts/site-scenery.py --check   # exit 1 if the page is out of step with this file
@@ -17,8 +18,32 @@ import sys
 from pathlib import Path
 
 PAGE = Path(__file__).resolve().parent.parent / "site" / "index.html"
-BIRD = "q7-9 14 0q7-9 14 0"
-BIRDS = f'<svg class="birds" viewBox="0 0 120 44"><path d="M4 30{BIRD}M46 12{BIRD}M82 34{BIRD}"/></svg>'
+
+
+def flock(kind, count):
+    """Birds whose two wings are separate strokes, so CSS can flap them around the body."""
+    bird = '<svg class="bird bird--{i}" viewBox="-16 -12 32 24"><path class="wing wing--l" d="M0 0Q-6-8-14-2"/><path class="wing wing--r" d="M0 0Q6-8 14-2"/></svg>'
+    return f'<div class="flock flock--{kind}">' + "".join(bird.format(i=i) for i in range(1, count + 1)) + "</div>"
+
+
+def butterflies(*numbers):
+    wing = '<svg class="butterfly butterfly--{i}" viewBox="-10 -8 20 16"><path class="bw bw--l" d="M0 0C-3-8-10-7-9-1C-10 4-4 6 0 0Z"/><path class="bw bw--r" d="M0 0C3-8 10-7 9-1C10 4 4 6 0 0Z"/></svg>'
+    return "".join(wing.format(i=i) for i in numbers)
+
+
+def seeds(count):
+    return "".join(f'<i class="seed seed--{i}"></i>' for i in range(1, count + 1))
+
+
+# A rabbit that peeks up from behind the hill at the bottom of the first scene.
+RABBIT = (
+    '<svg class="rabbit" viewBox="0 0 48 60">'
+    '<g class="rabbit__ear"><path fill="#b99b7c" d="M17 30C10 18 11 4 16 3s8 12 7 26z"/><path fill="#f1cdb9" d="M17 26c-3-8-3-16-1-18s4 8 4 17z"/></g>'
+    '<path fill="#b99b7c" d="M31 30c7-12 6-26 1-27s-8 12-7 26z"/><path fill="#f1cdb9" d="M31 26c3-8 3-16 1-18s-4 8-4 17z"/>'
+    '<path fill="#b99b7c" d="M8 60V44c0-11 7-18 16-18s16 7 16 18v16z"/>'
+    '<circle cx="18" cy="42" r="2.2" fill="#2a221c"/><circle cx="30" cy="42" r="2.2" fill="#2a221c"/>'
+    '<path d="M22 48q2 2 4 0" fill="none" stroke="#2a221c" stroke-width="1.6" stroke-linecap="round"/></svg>'
+)
 
 
 def painting(name, first=False):
@@ -51,22 +76,24 @@ def scene(name, stage, extra=""):
 
 
 def dawn():
-    return scene("dawn", painting("dawn", first=True) + '<i class="scene__glow"></i><i class="scene__mist"></i>', BIRDS)
+    stage = painting("dawn", first=True) + '<i class="scene__glow"></i><i class="scene__mist"></i>' + seeds(7) + butterflies(1, 2, 3)
+    return scene("dawn", stage, flock("far", 5) + flock("near", 3) + RABBIT)
 
 
 def night():
     sky = f'<svg class="scene__sky" width="100%" height="100%">{stars(3, 44)}</svg>'
-    flies = "".join(f'<i class="firefly firefly--{i}"></i>' for i in range(1, 6))
-    return scene("night", painting("night"), sky + flies)
+    flies = "".join(f'<i class="firefly firefly--{i}"></i>' for i in range(1, 10))
+    return scene("night", painting("night") + '<i class="scene__glow"></i>', sky + '<i class="shooting-star"></i>' + flies)
 
 
 def sunrise():
-    return scene("sunrise", painting("sunrise") + '<i class="scene__glow"></i>')
+    rays = '<div class="scene__rays"><i class="rays"></i></div>'
+    return scene("sunrise", painting("sunrise") + rays + '<i class="scene__glow"></i>', flock("sun", 4))
 
 
 def morning():
     kikka = '<img class="scene__kikka" src="assets/kikka-color.svg" width="746" height="700" alt="" loading="lazy" />'
-    return scene("morning", painting("morning") + kikka, BIRDS)
+    return scene("morning", painting("morning") + kikka + butterflies(4, 5), flock("far", 4))
 
 
 def main():

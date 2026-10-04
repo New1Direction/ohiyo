@@ -115,6 +115,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
+- **ohiyo.gg comes alive:** the birds now flap their wings and fly in two flocks, near and far.
+  Butterflies and drifting seeds move over the meadow, a rabbit peeks over the hill now and
+  then, a shooting star crosses the night sky, sun rays turn slowly behind the sunrise, and
+  Kikka breathes on her hill. Scenes hold still while they are off screen, and everything stops
+  for people who ask for reduced motion.
 - **ohiyo.gg scenery:** the landing page now looks like a day in a valley, painted in
   gouache. A dawn valley behind the top of the page, a starry night behind the privacy
   section, a sunrise behind the mission, and Kikka on a hill in the morning at the end. A few
