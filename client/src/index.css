@@ -713,8 +713,8 @@ button:disabled,
   background:
     radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--accent) 10%, transparent), transparent 28rem),
     color-mix(in oklch, var(--bg-base) 76%, black 12%);
-  backdrop-filter: blur(12px) saturate(0.92);
   -webkit-backdrop-filter: blur(12px) saturate(0.92);
+  backdrop-filter: blur(12px) saturate(0.92);
   animation: kc-backdrop-in var(--dur-base) var(--ease-out) both;
 }
 .kc-modal {
@@ -3619,6 +3619,8 @@ button:disabled,
 }
 .kc-watch--dream .kc-watch-media > div:has(video) { width: 100%; }
 .kc-watch--dream video { max-height: calc(100dvh - 132px) !important; object-fit: contain; }
+/* Keep `-webkit-backdrop-filter` BEFORE `backdrop-filter`. The production build keeps only the
+   later of the two when the values match, and Chrome/Edge/Firefox ignore the -webkit- one. */
 .kc-watch-ambient {
   position: fixed;
   inset: 0;
@@ -3626,8 +3628,8 @@ button:disabled,
   pointer-events: none;
   visibility: hidden;
   background: transparent;
-  backdrop-filter: blur(100px) saturate(1.05);
   -webkit-backdrop-filter: blur(100px) saturate(1.05);
+  backdrop-filter: blur(100px) saturate(1.05);
   mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);
   mask-size: 100% 100%, var(--halo-width) var(--halo-height);
   mask-position: 0 0, var(--halo-x) var(--halo-y);
