@@ -361,6 +361,8 @@ a:hover { text-decoration-color: currentColor; }
 
 /* ── Scenery (paintings in assets/scenery, markup from scripts/site-scenery.py) ── */
 .scene { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+/* Scenes that are off screen hold still (site.js marks the ones in view). */
+.js .scene:not(.is-live) *, .js .scene:not(.is-live) *::before { animation-play-state: paused !important; }
 /* The stage is the painting's own box, pinned to the bottom right. Everything placed on it uses
    percentages, so the glow stays on the sun and Kikka stays on her hill at any width. */
 .scene__stage { position: absolute; right: 0; bottom: 0; width: max(100%, 40rem); aspect-ratio: 1672 / 941; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 24%), #000 calc(100% - var(--fade-bottom, 0%)), transparent); mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 24%), #000 calc(100% - var(--fade-bottom, 0%)), transparent); }
@@ -370,29 +372,99 @@ a:hover { text-decoration-color: currentColor; }
 .scene__glow { position: absolute; width: 24%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; background: radial-gradient(circle, rgb(255 240 190 / 70%) 0%, rgb(255 224 160 / 30%) 38%, transparent 70%); animation: breathe 9s ease-in-out infinite alternate; }
 .scene--dawn .scene__glow { left: 80.3%; top: 52%; }
 .scene--sunrise .scene__glow { left: 82%; top: 72%; width: 46%; }
+.scene--night .scene__glow { left: 94.6%; top: 11%; width: 16%; background: radial-gradient(circle, rgb(253 243 207 / 34%) 0%, rgb(253 243 207 / 10%) 40%, transparent 70%); animation-duration: 6s; }
 .scene__mist { position: absolute; left: -12%; right: -12%; top: 59%; height: 9%; background: linear-gradient(to bottom, transparent, rgb(255 255 255 / 45%), transparent); filter: blur(8px); animation: drift 40s ease-in-out infinite alternate; }
-.scene__kikka { position: absolute; right: 7%; bottom: 16%; width: 17%; height: auto; }
 .scene__sky { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.birds { position: absolute; top: 19%; left: 0; width: clamp(3rem, 5vw, 5rem); fill: none; stroke: #4f6f86; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; animation: fly 58s linear infinite; }
-.scene--morning .birds { top: 26%; animation-duration: 70s; animation-delay: -30s; }
+
+/* Birds: each wing is its own stroke and turns around the body. */
+.flock { position: absolute; left: 0; top: 17%; width: 9rem; height: 4.5rem; animation: fly 44s linear infinite; }
+.flock--far { top: 31%; width: 6.5rem; height: 2.6rem; opacity: 0.55; animation-duration: 96s; animation-delay: -38s; }
+.flock--sun { top: 44%; width: 8rem; animation-duration: 60s; animation-delay: -22s; }
+.scene--morning .flock--far { top: 22%; animation-delay: -64s; }
+.bird { position: absolute; width: 1.9rem; overflow: visible; fill: none; stroke: #3d586d; stroke-width: 2.3; stroke-linecap: round; animation: bob 2.6s ease-in-out infinite alternate; }
+.flock--far .bird { width: 0.95rem; stroke-width: 3; }
+.flock--sun .bird { width: 1.5rem; stroke: #9a4a2a; }
+.bird--1 { left: 0; top: 42%; }
+.bird--2 { left: 36%; top: 0; animation-delay: -0.9s; }
+.bird--3 { left: 70%; top: 54%; animation-delay: -1.7s; }
+.bird--4 { left: 18%; top: 78%; animation-delay: -0.4s; }
+.bird--5 { left: 56%; top: 30%; animation-delay: -1.3s; }
+.wing--l { animation: flap-l 0.44s ease-in-out infinite alternate; }
+.wing--r { animation: flap-r 0.44s ease-in-out infinite alternate; }
+.bird--2 .wing { animation-duration: 0.5s; animation-delay: -0.2s; }
+.bird--3 .wing { animation-duration: 0.39s; animation-delay: -0.1s; }
+.bird--4 .wing { animation-duration: 0.47s; animation-delay: -0.3s; }
+.bird--5 .wing { animation-duration: 0.42s; animation-delay: -0.15s; }
+
+/* Butterflies: the wings close and open, the body wanders. */
+.butterfly { position: absolute; width: clamp(0.95rem, 1.5vw, 1.4rem); overflow: visible; animation: flit 15s ease-in-out infinite alternate; }
+.bw { fill: #fff3c9; }
+.bw--l, .bw--r { animation: flutter 0.2s ease-in-out infinite alternate; }
+.butterfly--1 { left: 13%; bottom: 17%; }
+.butterfly--2 { left: 47%; bottom: 22%; animation-duration: 19s; animation-delay: -6s; }
+.butterfly--2 .bw { fill: #f8bd8e; }
+.butterfly--3 { left: 68%; bottom: 15%; animation-duration: 17s; animation-delay: -11s; }
+.butterfly--3 .bw { fill: #d9ecfb; }
+.butterfly--4 { left: 70%; bottom: 33%; animation-duration: 13s; }
+.butterfly--5 { left: 58%; bottom: 18%; animation-duration: 18s; animation-delay: -7s; }
+.butterfly--5 .bw { fill: #f8bd8e; }
+
+/* Seeds lifting off the meadow. */
+.seed { position: absolute; bottom: 16%; width: 4px; height: 4px; border-radius: 50%; background: rgb(255 255 255 / 90%); opacity: 0; animation: lift 13s linear infinite; }
+.seed--1 { left: 8%; }
+.seed--2 { left: 21%; bottom: 24%; animation-delay: -3s; animation-duration: 16s; }
+.seed--3 { left: 33%; animation-delay: -7s; }
+.seed--4 { left: 52%; bottom: 20%; animation-delay: -1.5s; animation-duration: 15s; }
+.seed--5 { left: 64%; animation-delay: -9s; }
+.seed--6 { left: 78%; bottom: 22%; animation-delay: -5s; animation-duration: 17s; }
+.seed--7 { left: 91%; animation-delay: -11s; }
+
+/* The rabbit waits below the hill line and comes up for a look. */
+.rabbit { position: absolute; left: 17%; bottom: calc(var(--wave) * 0.7); width: clamp(1.9rem, 3.2vw, 2.9rem); height: auto; transform: translateY(108%); animation: peek 17s ease-in-out infinite; }
+.rabbit__ear { transform-origin: 18px 30px; animation: twitch 17s ease-in-out infinite; }
+
+.scene__kikka { position: absolute; right: 7%; bottom: 16%; width: 17%; height: auto; transform-origin: 50% 100%; animation: breathing 4.8s ease-in-out infinite alternate; }
+
+/* Night. */
 .stars { fill: #fff3cf; }
 .stars--1 { animation: twinkle 4.2s ease-in-out infinite alternate; }
 .stars--2 { animation: twinkle 5.8s ease-in-out -2s infinite alternate; }
 .stars--3 { animation: twinkle 7.4s ease-in-out -1s infinite alternate; }
+.shooting-star { position: absolute; top: 5%; left: 70%; width: clamp(5rem, 9vw, 8rem); height: 2px; border-radius: 2px; background: linear-gradient(to right, transparent, #fff8e0); opacity: 0; rotate: 24deg; animation: shoot 13s ease-in infinite 3s; }
 .firefly { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #ffe9a3; box-shadow: 0 0 10px 3px rgb(255 226 140 / 50%); animation: wander 15s ease-in-out infinite alternate, glimmer 3.4s ease-in-out infinite alternate; }
 .firefly--1 { left: 7%; bottom: 9%; }
 .firefly--2 { left: 29%; bottom: 5%; animation-delay: -5s, -1.2s; }
 .firefly--3 { left: 52%; bottom: 8%; animation-delay: -9s, -2.1s; }
 .firefly--4 { left: 71%; bottom: 4%; animation-delay: -3s, -0.6s; }
 .firefly--5 { left: 90%; bottom: 10%; animation-delay: -11s, -2.8s; }
+.firefly--6 { left: 17%; bottom: 13%; animation-delay: -7s, -1.9s; }
+.firefly--7 { left: 41%; bottom: 3%; animation-delay: -2s, -0.3s; }
+.firefly--8 { left: 62%; bottom: 12%; animation-delay: -13s, -2.4s; }
+.firefly--9 { left: 82%; bottom: 6%; animation-delay: -6s, -1.5s; }
 /* One column of text has no star-free side, so the twinkling stars step back. */
 @media (max-width: 900px) { .scene--night .scene__sky { opacity: 0.35; } }
+
+/* Sunrise: rays turn slowly behind the sun, cut off where the hill starts. */
+.scene__rays { position: absolute; inset: 0; clip-path: polygon(0 0, 100% 0, 100% 74%, 80% 79%, 62% 86%, 40% 94%, 24% 100%, 0 100%); }
+.rays { position: absolute; left: 82%; top: 71%; width: 96%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; background: repeating-conic-gradient(rgb(255 246 208 / 26%) 0deg 5deg, transparent 5deg 18deg); -webkit-mask-image: radial-gradient(circle, transparent 0 15%, #000 19%, transparent 62%); mask-image: radial-gradient(circle, transparent 0 15%, #000 19%, transparent 62%); animation: turn 150s linear infinite; }
+
 @keyframes drift { from { transform: translateX(-3%); } to { transform: translateX(4%); } }
-@keyframes fly { from { transform: translate(-12vw, 5vh); } to { transform: translate(112vw, -9vh); } }
+@keyframes fly { from { transform: translate(-14vw, 6vh); } to { transform: translate(114vw, -10vh); } }
+@keyframes bob { from { translate: 0 -3px; } to { translate: 0 4px; } }
+@keyframes flap-l { from { transform: rotate(26deg); } to { transform: rotate(-30deg); } }
+@keyframes flap-r { from { transform: rotate(-26deg); } to { transform: rotate(30deg); } }
+@keyframes flutter { from { transform: scaleX(1); } to { transform: scaleX(0.18); } }
+@keyframes flit { 0% { translate: 0 0; rotate: -8deg; } 22% { translate: 3rem -2.2rem; rotate: 12deg; } 47% { translate: 6.2rem -0.5rem; rotate: -6deg; } 71% { translate: 8.6rem -3.1rem; rotate: 10deg; } 100% { translate: 11.5rem -1.2rem; rotate: -10deg; } }
+@keyframes lift { 0% { translate: 0 0; opacity: 0; } 12% { opacity: 0.9; } 70% { opacity: 0.7; } 100% { translate: 7rem -11rem; opacity: 0; } }
+@keyframes peek { 0%, 54%, 94%, 100% { transform: translateY(108%); } 60%, 88% { transform: translateY(8%); } }
+@keyframes twitch { 0%, 66%, 74%, 100% { transform: rotate(0deg); } 68% { transform: rotate(-14deg); } 70% { transform: rotate(4deg); } 72% { transform: rotate(-10deg); } }
+@keyframes breathing { from { transform: scale(1); } to { transform: scale(1.022, 1.03); } }
 @keyframes breathe { from { opacity: 0.55; scale: 0.94; } to { opacity: 1; scale: 1.06; } }
 @keyframes twinkle { from { opacity: 0.2; } to { opacity: 1; } }
+@keyframes shoot { 0% { translate: 0 0; opacity: 0; } 2% { opacity: 1; } 9% { translate: 13rem 5.8rem; opacity: 0; } 100% { translate: 13rem 5.8rem; opacity: 0; } }
 @keyframes wander { 0% { transform: translate(0, 0); } 50% { transform: translate(34px, -26px); } 100% { transform: translate(-18px, -50px); } }
 @keyframes glimmer { from { opacity: 0.12; } to { opacity: 1; } }
+@keyframes turn { to { rotate: 360deg; } }
 /* The valley falls behind a little as you scroll. Browsers without scroll timelines skip it. */
 @supports (animation-timeline: scroll()) {
   .scene--dawn .scene__stage { animation: sink linear both; animation-timeline: scroll(root); animation-range: 0 90vh; }
@@ -408,7 +480,9 @@ a:hover { text-decoration-color: currentColor; }
 .bubble { animation: pop 420ms var(--ease-pop) 700ms both; transform-origin: 100% 70%; }
 .kikka-hello:hover .kikka { animation: wiggle 600ms var(--ease); }
 @keyframes wiggle { 25% { transform: rotate(-5deg); } 60% { transform: rotate(4deg); } }
-.js .reveal { opacity: 0; transform: translateY(18px); transition: opacity 600ms var(--ease), transform 600ms var(--ease); }
+.step, .card, .also { transition: translate var(--normal) var(--ease), box-shadow var(--normal) var(--ease); }
+@media (hover: hover) { .step:hover, .card:hover, .also:hover { translate: 0 -4px; box-shadow: var(--shadow-l); } }
+.js .reveal { opacity: 0; transform: translateY(18px); transition: opacity 600ms var(--ease), transform 600ms var(--ease), translate var(--normal) var(--ease), box-shadow var(--normal) var(--ease); }
 .js .reveal.is-in { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

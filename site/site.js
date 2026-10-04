@@ -29,6 +29,17 @@
     reveals.forEach((el) => io.observe(el));
   }
 
+  // Scenery only moves while it is on screen.
+  const scenes = document.querySelectorAll(".scene");
+  if ("IntersectionObserver" in window) {
+    const live = new IntersectionObserver((entries) => {
+      for (const entry of entries) entry.target.classList.toggle("is-live", entry.isIntersecting);
+    }, { rootMargin: "120px 0px" });
+    scenes.forEach((scene) => live.observe(scene));
+  } else {
+    scenes.forEach((scene) => scene.classList.add("is-live"));
+  }
+
   // The lock demo works with CSS alone. This only adds the scramble when the lock turns on.
   const toggle = document.getElementById("lock-toggle");
   const cipher = document.getElementById("cipher");
