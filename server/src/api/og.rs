@@ -4,7 +4,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use crate::{auth::AuthUser, AppState};
 
@@ -12,29 +12,63 @@ use crate::{auth::AuthUser, AppState};
 /// unspecified/broadcast). Blocks cloud metadata at 169.254.169.254, localhost, and
 /// internal services.
 fn is_public_ip(ip: IpAddr) -> bool {
+    // An IPv6 address that carries an IPv4 one reaches that IPv4 host: judge it as one.
+    let ip = match ip {
+        IpAddr::V6(v6) => embedded_ipv4(v6).map_or(ip, IpAddr::V4),
+        v4 => v4,
+    };
     match ip {
         IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
             !(v4.is_loopback()
                 || v4.is_private()
                 || v4.is_link_local()
                 || v4.is_unspecified()
                 || v4.is_broadcast()
-                || v4.octets()[0] == 0)
+                || v4.is_multicast()
+                || v4.is_documentation() // 192.0.2/24, 198.51.100/24, 203.0.113/24
+                || a == 0
+                || (a == 100 && (b & 0xc0) == 64) // shared address space 100.64.0.0/10
+                || (a == 192 && b == 0 && c == 0) // IETF protocol assignments 192.0.0.0/24
+                || (a == 198 && (b & 0xfe) == 18) // benchmarking 198.18.0.0/15
+                || a >= 240) // reserved 240.0.0.0/4
         }
         IpAddr::V6(v6) => {
             let s = v6.segments();
-            !(v6.is_loopback() || v6.is_unspecified()
+            !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast()
+                || (s[0] == 0x2001 && s[1] == 0) // Teredo 2001::/32
+                || s[..4] == [0x100, 0, 0, 0] // discard 100::/64
+                || s[..3] == [0x64, 0xff9b, 1] // local-use NAT64 64:ff9b:1::/48
                 || (s[0] & 0xfe00) == 0xfc00 // unique-local fc00::/7
-                || (s[0] & 0xffc0) == 0xfe80) // link-local fe80::/10
+                || (s[0] & 0xffc0) == 0xfe80 // link-local fe80::/10
+                || (s[0] == 0x2001 && s[1] == 0x0db8) // documentation 2001:db8::/32
+                || (s[0] == 0x3fff && (s[1] & 0xf000) == 0)) // documentation 3fff::/20
         }
     }
+}
+
+/// The IPv4 address inside an IPv4-mapped (::ffff:0:0/96), IPv4-compatible (::/96),
+/// NAT64 (64:ff9b::/96) or 6to4 (2002::/16) IPv6 address.
+fn embedded_ipv4(v6: Ipv6Addr) -> Option<Ipv4Addr> {
+    if let Some(v4) = v6.to_ipv4_mapped() {
+        return Some(v4);
+    }
+    let s = v6.segments();
+    let o = v6.octets();
+    if s[..6] == [0x64, 0xff9b, 0, 0, 0, 0] || s[..6] == [0, 0, 0, 0, 0, 0] {
+        return Some(Ipv4Addr::new(o[12], o[13], o[14], o[15]));
+    }
+    if s[0] == 0x2002 {
+        return Some(Ipv4Addr::new(o[2], o[3], o[4], o[5]));
+    }
+    None
 }
 
 /// Resolve `url`'s host and return `(host, port, validated_addrs)` ONLY if every
 /// resolved address is public. Returns `None` if the URL is malformed, resolution
 /// fails, or ANY resolved address is private/loopback/link-local — so an attacker
 /// can't slip an internal IP into a multi-record DNS answer.
-async fn resolve_public_addrs(url: &str) -> Option<(String, u16, Vec<SocketAddr>)> {
+pub(crate) async fn resolve_public_addrs(url: &str) -> Option<(String, u16, Vec<SocketAddr>)> {
     let parsed = url::Url::parse(url).ok()?;
     let host = parsed.host_str()?.to_owned();
     let port = parsed.port_or_known_default().unwrap_or(443);
@@ -392,6 +426,207 @@ fn extract_attr(tag: &str, attr: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn public(ip: &str) -> bool {
+        is_public_ip(ip.parse().unwrap())
+    }
+
+    #[test]
+    fn ordinary_public_addresses_are_public() {
+        for ip in [
+            "8.8.8.8",
+            "1.1.1.1",
+            "100.63.255.255",
+            "100.128.0.0",
+            "198.20.0.1",
+            // Just outside the documentation ranges.
+            "192.0.3.0",
+            "198.51.101.0",
+            "203.0.114.0",
+        ] {
+            assert!(public(ip), "{ip}");
+        }
+        for ip in [
+            "2606:4700:4700::1111",
+            "2a00:1450:4001::200e",
+            "::ffff:8.8.8.8",
+            // NAT64 and 6to4 addresses embedding a public IPv4 address.
+            "64:ff9b::8.8.8.8",
+            "2002:808:808::1",
+        ] {
+            assert!(public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn ipv4_documentation_ranges_are_not_public() {
+        for ip in [
+            // TEST-NET-1, 192.0.2.0/24.
+            "192.0.2.0",
+            "192.0.2.255",
+            // TEST-NET-2, 198.51.100.0/24.
+            "198.51.100.0",
+            "198.51.100.255",
+            // TEST-NET-3, 203.0.113.0/24.
+            "203.0.113.0",
+            "203.0.113.255",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn nat64_is_judged_by_its_embedded_ipv4_address() {
+        // 64:ff9b::/96 carries the IPv4 address in its last 32 bits.
+        for ip in [
+            "64:ff9b::127.0.0.1",
+            "64:ff9b::10.0.0.1",
+            "64:ff9b::169.254.169.254",
+            "64:ff9b::192.168.1.1",
+            "64:ff9b::100.64.0.1",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn six_to_four_is_judged_by_its_embedded_ipv4_address() {
+        // 2002::/16 carries the IPv4 address in bits 16..48.
+        for ip in [
+            "2002:7f00:1::",      // 127.0.0.1
+            "2002:a00:1::1",      // 10.0.0.1
+            "2002:a9fe:a9fe::1",  // 169.254.169.254
+            "2002:c0a8:101:1::1", // 192.168.1.1
+            "2002:c000:201::1",   // 192.0.2.1, documentation
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn ipv4_compatible_is_judged_by_its_embedded_ipv4_address() {
+        // ::/96 carries the IPv4 address in its last 32 bits.
+        for ip in [
+            "::127.0.0.1",
+            "::10.0.0.1",
+            "::169.254.169.254",
+            "::192.168.1.1",
+            "::100.64.0.1",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+        assert!(public("::8.8.8.8"));
+    }
+
+    #[test]
+    fn local_use_nat64_is_never_public() {
+        // 64:ff9b:1::/48 is local-use, never a public site's address, whatever it embeds
+        // and wherever (RFC 6052 allows several positions inside it).
+        for ip in [
+            "64:ff9b:1::127.0.0.1",
+            "64:ff9b:1::10.0.0.1",
+            "64:ff9b:1::169.254.169.254",
+            "64:ff9b:1:ffff:ffff:ffff:192.168.1.1",
+            "64:ff9b:1::8.8.8.8",
+            "64:ff9b:1:ffff:ffff:ffff:8.8.8.8",
+            // The /64 form of 10.0.0.8, whose last 32 bits read as 8.0.0.0.
+            "64:ff9b:1:0:a:0:800:0",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+        // The well-known prefix is still judged by its embedded address.
+        assert!(public("64:ff9b::8.8.8.8"));
+    }
+
+    #[test]
+    fn teredo_is_not_public() {
+        // 2001::/32, whatever it embeds.
+        for ip in [
+            "2001::",
+            "2001::1",
+            "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+            "2001:0:ffff:ffff:ffff:ffff:ffff:ffff",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+        assert!(public("2001:4860:4860::8888"), "outside 2001::/32");
+    }
+
+    #[test]
+    fn the_discard_prefix_is_not_public() {
+        // 100::/64.
+        for ip in ["100::", "100::1", "100::ffff:ffff:ffff:ffff"] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn ipv4_mapped_ipv6_is_judged_as_the_ipv4_address() {
+        for ip in [
+            "::ffff:127.0.0.1",
+            "::ffff:10.0.0.1",
+            "::ffff:169.254.169.254",
+            "::ffff:192.168.1.1",
+            "::ffff:100.64.0.1",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn reserved_ipv4_ranges_are_not_public() {
+        for ip in [
+            // Already blocked: loopback, private, link-local, unspecified, broadcast, 0/8.
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.0.1",
+            "169.254.169.254",
+            "0.0.0.0",
+            "255.255.255.255",
+            // Shared address space (carrier-grade NAT), 100.64.0.0/10.
+            "100.64.0.0",
+            "100.127.255.255",
+            // IETF protocol assignments, 192.0.0.0/24.
+            "192.0.0.0",
+            "192.0.0.255",
+            // Benchmarking, 198.18.0.0/15.
+            "198.18.0.0",
+            "198.19.255.255",
+            // Reserved, 240.0.0.0/4.
+            "240.0.0.1",
+            "254.255.255.255",
+            // Multicast, 224.0.0.0/4.
+            "224.0.0.1",
+            "239.255.255.255",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
+
+    #[test]
+    fn reserved_ipv6_ranges_are_not_public() {
+        for ip in [
+            "::1",
+            "::",
+            // Unique local, fc00::/7.
+            "fc00::1",
+            "fdff:ffff::1",
+            // Link-local, fe80::/10.
+            "fe80::1",
+            "febf::1",
+            // Multicast, ff00::/8.
+            "ff02::1",
+            "ff0e::1",
+            // Documentation, 2001:db8::/32 and 3fff::/20.
+            "2001:db8::1",
+            "2001:db8:ffff::1",
+            "3fff::1",
+            "3fff:0fff::1",
+        ] {
+            assert!(!public(ip), "{ip}");
+        }
+    }
 
     #[test]
     fn detects_youtube_url_shapes() {

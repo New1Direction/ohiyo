@@ -17,11 +17,17 @@
 //       blob itself remains the synchronous source of truth to keep startup unbroken.
 //   Net: no behavior change, no broken async, and the token namespace is vault-aware.
 
+import { localStorageStore, setItemEvictingPlaintextCache } from "./storageQuota.ts";
+
 export type OhiyoHome = {
   id: string;
   name: string;
   url: string;
   token: string | null;
+  /** The account that last used this home on this device, recorded whenever a session is
+   *  confirmed (sign-in, Ready). Signing in as someone else clears the shared local
+   *  message data first (lib/signOut.ts). Null until known. */
+  lastUserId?: string | null;
 };
 
 const HOMES_KEY = "kc:homes:v1";
@@ -39,8 +45,8 @@ type KvStore = {
 // On DESKTOP, tauriVault points this at the encrypted locked-RAM vault via
 // setHomesTokenStore() once it hydrates (sealed-at-rest); on WEB — no OS secure store in
 // a browser sandbox — it stays localStorage (the inherent, accepted web tradeoff). The
-// setter inversion (rather than importing the vault here) keeps homes a dependency-free
-// leaf and mirrors setSignalBackend()/setSenderKeyBackend(). Before the desktop vault
+// setter inversion (rather than importing the vault here) keeps homes free of the vault
+// (it imports only the storageQuota leaf) and mirrors setSignalBackend()/setSenderKeyBackend(). Before the desktop vault
 // hydrates, reads miss and App.tsx waits on a vault-ready gate (then re-loads), so the
 // token never has to sit in the plaintext blob just to survive startup.
 let tokenBackend: KvStore | null = null;
@@ -63,8 +69,11 @@ function readToken(id: string): string | null {
 
 function writeToken(id: string, token: string | null): void {
   try {
-    if (token) tokenStore().setItem(TOKEN_PREFIX + id, token);
-    else tokenStore().removeItem(TOKEN_PREFIX + id);
+    // A full web store frees old decrypted messages first, so a new sign-in survives a
+    // reload (the desktop vault never fills up).
+    const store = tokenStore();
+    if (token) setItemEvictingPlaintextCache({ ...localStorageStore(), setItem: (k, v) => store.setItem(k, v) }, TOKEN_PREFIX + id, token);
+    else store.removeItem(TOKEN_PREFIX + id);
   } catch {
     /* best-effort: a failed token persist just means re-login, never a crash */
   }
@@ -124,6 +133,7 @@ export function loadHomes(): OhiyoHome[] {
         // value left in the blob by an older build — prefer the store, fall back to it
         // (the trailing saveHomes() then migrates it into the store and strips the blob).
         token: readToken(h.id) ?? h.token ?? null,
+        lastUserId: typeof h.lastUserId === "string" ? h.lastUserId : null,
       }));
   } catch {
     homes = [];
@@ -149,7 +159,14 @@ export function saveHomes(homes: OhiyoHome[]) {
   // plaintext blob — the blob is persisted with every token nulled out.
   for (const h of deduped) writeToken(h.id, h.token);
   const blob = deduped.map((h) => ({ ...h, token: null }));
-  localStorage.setItem(HOMES_KEY, JSON.stringify(blob));
+  // Never throws (this can run while rendering): a full store frees old decrypted
+  // messages first; if it still can't save, the homes in memory stay right and the next
+  // change saves them.
+  try {
+    setItemEvictingPlaintextCache(localStorageStore(), HOMES_KEY, JSON.stringify(blob));
+  } catch {
+    /* still full or storage off */
+  }
 }
 
 export function loadActiveHomeId(homes: OhiyoHome[]): string {
@@ -171,12 +188,17 @@ export function upsertHome(homes: OhiyoHome[], input: { url: string; name?: stri
     url,
     name: input.name?.trim() || existing?.name || nameFromUrl(url),
     token: input.token ?? existing?.token ?? null,
+    lastUserId: existing?.lastUserId ?? null,
   };
   return dedupeHomes([home, ...homes.filter((h) => h.id !== id)]);
 }
 
 export function setHomeToken(homes: OhiyoHome[], id: string, token: string | null): OhiyoHome[] {
   return homes.map((h) => (h.id === id ? { ...h, token } : h));
+}
+
+export function setHomeLastUser(homes: OhiyoHome[], id: string, userId: string): OhiyoHome[] {
+  return homes.map((h) => (h.id === id ? { ...h, lastUserId: userId } : h));
 }
 
 function dedupeHomes(homes: OhiyoHome[]): OhiyoHome[] {
@@ -187,7 +209,7 @@ function dedupeHomes(homes: OhiyoHome[]): OhiyoHome[] {
     const id = h.id || homeIdForUrl(url);
     if (seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, url, name: h.name || nameFromUrl(url), token: h.token ?? null });
+    out.push({ id, url, name: h.name || nameFromUrl(url), token: h.token ?? null, lastUserId: h.lastUserId ?? null });
   }
   return out;
 }

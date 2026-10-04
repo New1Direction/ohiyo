@@ -13,6 +13,7 @@ import {
   type ManagedDiscordImportJob,
   type ServerWithChannels,
 } from "../api";
+import { discrawlRequest, importOptions } from "../lib/discordImport";
 import { ModalShell } from "./ModalShell";
 
 type Props = {
@@ -38,7 +39,6 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   const [availableGuilds, setAvailableGuilds] = useState<DiscordGuildInfo[]>([]);
   const [showArchiveFallback, setShowArchiveFallback] = useState(false);
   const [dbPath, setDbPath] = useState("");
-  const [mediaRoot, setMediaRoot] = useState("");
   const [guildId, setGuildId] = useState("");
   const [history, setHistory] = useState<"All" | "Last90Days">("All");
   const [preview, setPreview] = useState<DiscrawlPreview | null>(null);
@@ -85,12 +85,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   }, [busy]);
 
   function body(): DiscrawlImportRequest {
-    return {
-      db_path: dbPath.trim(),
-      media_root: mediaRoot.trim() || null,
-      guild_id: guildId.trim() || null,
-      history,
-    };
+    return discrawlRequest({ dbPath, guildId, history });
   }
 
   function resetRunState() {
@@ -106,12 +101,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
     resetRunState();
     try {
       const uploaded = await api.uploadDiscrawlArchive(token, file);
-      const uploadedBody: DiscrawlImportRequest = {
-        db_path: uploaded.db_path,
-        media_root: mediaRoot.trim() || null,
-        guild_id: guildId.trim() || null,
-        history,
-      };
+      const uploadedBody = discrawlRequest({ dbPath: uploaded.db_path, guildId, history });
       setDbPath(uploaded.db_path);
       setUploadedArchive({ filename: uploaded.filename, size_bytes: uploaded.size_bytes });
       setBusy("preview");
@@ -222,8 +212,7 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
   }
 
   const capabilityLoading = !capability && !capabilityError;
-  const importEnabled = capability?.enabled ?? false;
-  const managedEnabled = capability?.managed_enabled ?? false;
+  const { archive: importEnabled, managed: managedEnabled } = importOptions(capability);
   const canPreview = importEnabled && busy === null && dbPath.trim().length > 0 && result === null;
   const canImport = canPreview && preview !== null;
   const canManagedImport = managedEnabled && busy === null && /^\d{5,}$/.test(managedGuildId.trim()) && result === null;
@@ -500,15 +489,6 @@ export function DiscordImportModal({ token, onImported, onClose }: Props) {
                       value={guildId}
                       onChange={(e) => { setGuildId(e.target.value); resetRunState(); }}
                       placeholder="auto-select first guild"
-                      className="kc-field px-3.5 py-3 text-sm outline-none"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm font-semibold md:col-span-2" style={{ color: "var(--text-primary)" }}>
-                    Media root optional
-                    <input
-                      value={mediaRoot}
-                      onChange={(e) => { setMediaRoot(e.target.value); resetRunState(); }}
-                      placeholder="/data/discrawl/media"
                       className="kc-field px-3.5 py-3 text-sm outline-none"
                     />
                   </label>

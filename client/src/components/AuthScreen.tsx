@@ -3,11 +3,13 @@ import { api } from "../api";
 import type { OhiyoHome } from "../lib/homes";
 import { BirdMark } from "./BirdMark";
 import { markActivation } from "../lib/activation";
+import { rateLimitMessage } from "../lib/apiErrors";
 
 type Props = {
   home: OhiyoHome;
   homes: OhiyoHome[];
-  onAuth: (token: string) => void;
+  /** Signed in: the session token and who it belongs to. */
+  onAuth: (token: string, userId: string) => void;
   onSwitchHome: (id: string) => void;
   onAddHome: () => void;
 };
@@ -21,7 +23,7 @@ const MAX_USERNAME = 32;
 const AUTH_FACTS = [
   "Chinchillas take dust baths to keep their fur soft.",
   "Sea otters hold hands so they don’t drift apart.",
-  "Ohiyo keeps your chats end-to-end encrypted.",
+  "Turn on the lock to end-to-end encrypt a DM or group chat.",
   "Red pandas use their tails like cozy blankets.",
   "Penguins recognize each other by voice.",
   "No ads. No tracking. Just your people.",
@@ -100,9 +102,9 @@ export function AuthScreen({ home, onAuth }: Props) {
           : await api.register(username.trim(), password, displayName.trim() || undefined);
       localStorage.setItem(LAST_USERNAME_KEY, username.trim());
       if (mode === "register") markActivation(res.user.id, "account");
-      onAuth(res.token);
+      onAuth(res.token, res.user.id);
     } catch (err) {
-      setError(friendlyError(err instanceof Error ? err.message : "", mode));
+      setError(rateLimitMessage(err) ?? friendlyError(err instanceof Error ? err.message : "", mode));
       setLoading(false);
     }
   }
@@ -115,7 +117,7 @@ export function AuthScreen({ home, onAuth }: Props) {
     setLoading(true);
     try {
       const res = await api.completeDeviceLink(code);
-      onAuth(res.token);
+      onAuth(res.token, res.user.id);
     } catch (err) {
       const m = err instanceof Error ? err.message.toLowerCase() : "";
       setError(
@@ -448,8 +450,8 @@ export function AuthScreen({ home, onAuth }: Props) {
           )}
         </p>
 
-        <p className="ohiyo-trust-text mt-4 text-center text-base leading-relaxed" aria-label="End-to-end encrypted. No ads. No tracking. Yours.">
-          <span className="ohiyo-trust-primary">End-to-end encrypted</span>
+        <p className="ohiyo-trust-text mt-4 text-center text-base leading-relaxed" aria-label="Optional end-to-end encrypted DMs. No ads. No tracking. Yours.">
+          <span className="ohiyo-trust-primary">Optional end-to-end encrypted DMs</span>
           <span className="ohiyo-trust-secondary">No ads · No tracking · Yours</span>
         </p>
       </div>

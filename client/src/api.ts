@@ -345,7 +345,6 @@ export type DiscrawlArchiveUploadResponse = {
 
 export type DiscrawlImportRequest = {
   db_path: string;
-  media_root?: string | null;
   guild_id?: string | null;
   history?: ImportHistoryWindow | null;
 };
@@ -502,6 +501,16 @@ export type RegisterPushDeviceBody = {
   device_name?: string | null;
 };
 
+/** A failed request: the message is the server's text, `status` its HTTP status (read it
+ *  with lib/apiErrors.ts apiStatus). */
+class ApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -520,7 +529,7 @@ async function request<T>(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
+    throw new ApiError(res.status, text || `HTTP ${res.status}`);
   }
 
   if (res.status === 204) return undefined as T;
@@ -598,8 +607,6 @@ export const api = {
     request<HostedInstance>(`/instances/${id}/sleep`, { method: "POST" }, token),
   wakeInstance: (id: string, token: string) =>
     request<HostedInstance>(`/instances/${id}/wake`, { method: "POST" }, token),
-  setInstanceTier: (id: string, tier: "free" | "paid", token: string) =>
-    request<HostedInstance>(`/instances/${id}/tier`, { method: "PATCH", body: JSON.stringify({ tier }) }, token),
   getInstanceExport: (id: string, token: string) =>
     request<InstanceExport>(`/instances/${id}/export`, {}, token),
   getGraduateGuide: (id: string, token: string) =>

@@ -46,6 +46,9 @@ pub enum ProvisionError {
 }
 
 /// Abstracts the cloud that runs per-community instances.
+// `async_trait` marks each generated method `#[must_use]`, and the boxed future it
+// returns is `must_use` already; newer clippy releases flag the pair.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait MachineProvisioner: Send + Sync {
     async fn provision(&self, req: ProvisionRequest) -> Result<ProvisionedMachine, ProvisionError>;
@@ -269,25 +272,32 @@ pub async fn wake_instance(
     update_instance_status(db, id, "healthy").await
 }
 
+/// Change an instance's billing tier. Deliberately not owner-scoped: the caller must
+/// already be authorised as an operator (`auth::is_operator`), and an operator may
+/// change any instance. Owners can't upgrade themselves.
 pub async fn set_instance_tier(
     db: &sqlx::SqlitePool,
-    owner_id: &str,
     id: &str,
     tier: &str,
 ) -> Result<HostedInstance, (StatusCode, String)> {
     if !matches!(tier, "free" | "paid") {
         return Err((StatusCode::BAD_REQUEST, "tier must be free or paid".into()));
     }
-    let _ = owner_instance(db, owner_id, id).await?;
-    sqlx::query("UPDATE hosted_instances SET tier=?, updated_at=? WHERE id=? AND owner_id=?")
+    let updated = sqlx::query("UPDATE hosted_instances SET tier=?, updated_at=? WHERE id=?")
         .bind(tier)
         .bind(now_unix())
         .bind(id)
-        .bind(owner_id)
         .execute(db)
         .await
         .map_err(crate::api::error::internal)?;
-    owner_instance(db, owner_id, id).await
+    if updated.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "instance not found".to_string()));
+    }
+    sqlx::query_as::<_, HostedInstance>("SELECT * FROM hosted_instances WHERE id = ?")
+        .bind(id)
+        .fetch_one(db)
+        .await
+        .map_err(crate::api::error::internal)
 }
 
 async fn update_instance_status(
@@ -487,9 +497,7 @@ mod create_tests {
         assert_eq!(woke.status, "healthy");
         assert_eq!(p.status(&machine_id).await.unwrap(), MachineState::Started);
 
-        let paid = set_instance_tier(&db, "u1", &inst.id, "paid")
-            .await
-            .unwrap();
+        let paid = set_instance_tier(&db, &inst.id, "paid").await.unwrap();
         assert_eq!(paid.tier, "paid");
     }
 

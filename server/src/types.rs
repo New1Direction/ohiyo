@@ -361,6 +361,9 @@ pub enum GatewayEvent {
         channel_id: String,
         session: Option<WatchSession>,
     },
+    /// Reply to a client `Heartbeat`, sent on that connection only, so a quiet but
+    /// healthy socket still receives a frame and the client does not treat it as dead.
+    HeartbeatAck,
 }
 
 /// A participant already present in a voice channel.

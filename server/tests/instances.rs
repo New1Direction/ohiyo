@@ -123,6 +123,8 @@ async fn owner_can_sleep_wake_export_graduate_and_open_billing() {
     let woke_body: Value = woke.json().await.unwrap();
     assert_eq!(woke_body["status"], "healthy");
 
+    // Owning an instance does not let you upgrade it yourself (S-M15): only an
+    // operator can change the tier.
     let tier = srv
         .patch_json_auth(
             &format!("/api/v1/instances/{id}/tier"),
@@ -130,9 +132,14 @@ async fn owner_can_sleep_wake_export_graduate_and_open_billing() {
             json!({ "tier": "paid" }),
         )
         .await;
-    assert_eq!(tier.status(), 200);
-    let tier_body: Value = tier.json().await.unwrap();
-    assert_eq!(tier_body["tier"], "paid");
+    assert_eq!(tier.status(), 403);
+    let unchanged: Value = srv
+        .get_auth(&format!("/api/v1/instances/{id}"), &alice.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(unchanged["tier"], "free");
 
     let export: Value = srv
         .get_auth(&format!("/api/v1/instances/{id}/export"), &alice.token)
@@ -277,4 +284,70 @@ async fn other_user_cannot_read_my_instance() {
         0,
         "list endpoint must be owner-scoped"
     );
+}
+
+/// S-M15: only users listed in `OHIYO_OPERATOR_USER_IDS` may change a tier, on any
+/// instance. This is the only test in this binary that touches the variable, and it
+/// runs its phases in order so "unset" really is unset.
+#[tokio::test]
+async fn instance_tier_changes_are_operator_only() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("alice", "supersecret123").await;
+    let operator = srv.register("operator", "supersecret123").await;
+    let inst: Value = srv
+        .post_json_auth(
+            "/api/v1/instances",
+            &alice.token,
+            json!({ "name": "Alice HQ" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let id = inst["id"].as_str().unwrap().to_owned();
+    let set_tier = |token: String, instance: String| {
+        let srv = &srv;
+        async move {
+            srv.patch_json_auth(
+                &format!("/api/v1/instances/{instance}/tier"),
+                &token,
+                json!({ "tier": "paid" }),
+            )
+            .await
+            .status()
+        }
+    };
+
+    // Unset: nobody is an operator, not even the owner.
+    std::env::remove_var("OHIYO_OPERATOR_USER_IDS");
+    assert_eq!(set_tier(alice.token.clone(), id.clone()).await, 403);
+    assert_eq!(set_tier(operator.token.clone(), id.clone()).await, 403);
+
+    std::env::set_var(
+        "OHIYO_OPERATOR_USER_IDS",
+        format!(" someone-else , {} ", operator.id),
+    );
+    assert_eq!(
+        set_tier(alice.token.clone(), id.clone()).await,
+        403,
+        "an owner who is not an operator still can't change the tier"
+    );
+    assert_eq!(
+        set_tier(operator.token.clone(), "no-such-instance".into()).await,
+        404
+    );
+    assert_eq!(
+        set_tier(operator.token.clone(), id.clone()).await,
+        200,
+        "an operator can change the tier of someone else's instance"
+    );
+    std::env::remove_var("OHIYO_OPERATOR_USER_IDS");
+
+    let upgraded: Value = srv
+        .get_auth(&format!("/api/v1/instances/{id}"), &alice.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(upgraded["tier"], "paid");
 }

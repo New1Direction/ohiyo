@@ -82,12 +82,13 @@ const BOOTSTRAP = `
     log: function () { post("log", Array.prototype.slice.call(arguments).map(String).join(" ")); },
   };
   // Strip all ambient I/O so a sandboxed plugin literally cannot phone home.
-  // These globals live on WorkerGlobalScope.prototype, so we overwrite the
-  // OWNING prototype property AND pin a non-configurable own shadow on self —
-  // both bare access (\`fetch(...)\`) and prototype access (self.__proto__.fetch)
-  // then resolve to undefined, and the originals become unreachable.
-  function nuke(name) {
-    var o = self;
+  // These globals live on WorkerGlobalScope.prototype (and WorkerNavigator.prototype),
+  // so we overwrite the OWNING prototype property AND pin a non-configurable own shadow
+  // on the object — both bare access (\`fetch(...)\`) and prototype access
+  // (self.__proto__.fetch) then resolve to undefined, and the originals become
+  // unreachable. Accessors such as navigator.locks can't be removed by assignment.
+  function nuke(target, name) {
+    var o = target;
     while (o) {
       if (Object.prototype.hasOwnProperty.call(o, name)) {
         try { Object.defineProperty(o, name, { value: undefined, writable: true, configurable: true }); }
@@ -95,11 +96,16 @@ const BOOTSTRAP = `
       }
       o = Object.getPrototypeOf(o);
     }
-    try { Object.defineProperty(self, name, { value: undefined, writable: false, configurable: false }); } catch (e) {}
+    try { Object.defineProperty(target, name, { value: undefined, writable: false, configurable: false }); } catch (e) {}
   }
-  var kill = ["fetch","XMLHttpRequest","WebSocket","EventSource","importScripts","Worker","SharedWorker","Request","Response","caches","indexedDB","BroadcastChannel","RTCPeerConnection","WebTransport"];
-  for (var i = 0; i < kill.length; i++) { nuke(kill[i]); }
-  try { if (self.navigator) self.navigator.sendBeacon = undefined; } catch (e) {}
+  // Notification: its icon fetch is allowed by the page's img-src. navigator.locks: a
+  // plugin holding the Signal key-setup lock would block initSignal forever.
+  var kill = ["fetch","XMLHttpRequest","WebSocket","WebSocketStream","EventSource","importScripts","Worker","SharedWorker","Request","Response","caches","indexedDB","BroadcastChannel","RTCPeerConnection","RTCDataChannel","WebTransport","FontFace","fonts","Notification"];
+  for (var i = 0; i < kill.length; i++) { nuke(self, kill[i]); }
+  if (self.navigator) {
+    var killNavigator = ["sendBeacon","locks","storage"];
+    for (var j = 0; j < killNavigator.length; j++) { nuke(self.navigator, killNavigator[j]); }
+  }
   function safe(fn, arg) { if (typeof fn === "function") { try { return fn(arg); } catch (e) { post("error", String((e && e.message) || e)); } } }
   self.onmessage = function (e) {
     var d = e.data || {};
@@ -137,25 +143,21 @@ function sanitizeEvent(event: PluginEventName, data: unknown): unknown {
   }
 }
 
-/** Remove CSS exfiltration / code-execution vectors — the one channel a
- *  networkless worker (or even a "trusted" custom-CSS plugin) could still abuse
- *  via the host applying its CSS. We do NOT try to tell "safe" url()s apart:
- *  even `url(data:...)` and same-origin/relative `url()` are exfiltration or
- *  request-forgery vectors, so EVERY url(...) is neutralized. We also strip any
- *  remaining @import, legacy IE `expression(...)`, and Gecko `-moz-binding`. */
+// Anything in plugin CSS that can make a request or run code, plus the backslash: CSS
+// escapes (`u\72l(`, `\75rl(`) spell these past any text match, so no escape is allowed.
+const UNSAFE_CSS = /\\|@import|@font-face|url\s*\(|-webkit-image-set\s*\(|image-set\s*\(|image\s*\(|src\s*\(|expression\s*\(/i;
+
+/** Plugin CSS, or "" if it contains anything that could exfiltrate data or run code —
+ *  the one channel a networkless worker (or a "trusted" custom-CSS plugin) could still
+ *  abuse via the host applying its CSS. Rejecting the whole stylesheet, rather than
+ *  rewriting parts of it, leaves nothing for an obfuscated form to slip through. Comments
+ *  are removed first, so the text checked is exactly the text returned. */
 export function sanitizePluginCss(css: string): string {
   if (typeof css !== "string") return "";
-  return css
-    // Any @import (url or string form) — drop the whole at-rule up to ; or EOL.
-    .replace(/@import[^;]*;?/gi, "")
-    // Every url(...) regardless of scheme (http(s), //, data:, blob:, relative).
-    .replace(/url\(\s*(?:'[^']*'|"[^"]*"|[^)]*)\)/gi, "none")
-    // A bare `url(` with no closing paren (truncated/obfuscated) — neutralize too.
-    .replace(/url\s*\(/gi, "none(")
-    // IE expression() — arbitrary JS in legacy engines.
-    .replace(/expression\s*\(/gi, "void(")
-    // Gecko XBL binding — can load remote bindings / scripts.
-    .replace(/-moz-binding\b/gi, "-x-disabled-binding");
+  const uncommented = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  if (UNSAFE_CSS.test(uncommented)) return "";
+  // Gecko XBL binding — can load remote bindings / scripts.
+  return uncommented.replace(/-moz-binding\b/gi, "-x-disabled-binding");
 }
 
 export class SandboxHost {

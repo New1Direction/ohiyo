@@ -13,9 +13,9 @@ Ohiyo Server Pack export is the raw ownership handoff for a single hosted/self-h
 
 ## Privacy boundary
 
-The pack restores **infrastructure + ciphertext**. It does not make everyone’s readable history available to the exporting admin. Readable E2E history still depends on each user’s own device keys or personal recovery backup.
+The pack restores **infrastructure and messages as stored**. Server-channel messages are stored as readable text, and so are DMs and group chats without encryption turned on, so the pack contains them in readable form. End-to-end encrypted DM and group messages are in the pack only as ciphertext; reading those still depends on each user's own device keys or personal recovery backup.
 
-The pack may contain server metadata, ciphertext messages, encrypted/key-backup rows, and uploaded blobs. Do not describe it as an anonymous or plaintext-free artifact; describe it as an encrypted/ciphertext ownership export.
+The pack may contain server metadata, readable server-channel messages and unencrypted DMs, ciphertext for encrypted DMs and groups, encrypted/key-backup rows, and uploaded blobs. Do not describe it as an anonymous, plaintext-free or fully encrypted artifact; describe it as an ownership export.
 
 ## Enablement and authorization
 

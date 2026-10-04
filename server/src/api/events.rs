@@ -106,6 +106,14 @@ pub async fn create_event(
     if title.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "give your event a name".into()));
     }
+    crate::api::limits::check_len("event title", title, crate::api::limits::EVENT_TITLE)?;
+    if let Some(description) = &body.description {
+        crate::api::limits::check_len(
+            "event description",
+            description,
+            crate::api::limits::EVENT_DESCRIPTION,
+        )?;
+    }
     sqlx::query(
         "INSERT INTO events (id, server_id, title, description, starts_at, created_by, created_at)
          VALUES (?,?,?,?,?,?,?)",

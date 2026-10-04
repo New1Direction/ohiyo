@@ -159,6 +159,118 @@ test("two sends at the SAME chain iteration (cross-tab race) use different IVs â
   assert.equal(await groupDecrypt(G, ALICE, w1!), "from tab 1");
 });
 
+// Re-encode an envelope with some fields replaced (simulates a forged/tampered message).
+function forge(wire: string, patch: Record<string, unknown>): string {
+  const env = { ...envelopeOf(wire), ...patch };
+  return `grp1.${Buffer.from(JSON.stringify(env), "utf8").toString("base64")}`;
+}
+
+// Bootstrap: B holds Alice's sender key; returns both stores.
+async function pair(): Promise<{ a: Store; b: Store }> {
+  const a = memStore();
+  const b = memStore();
+  use(a);
+  const skdm = await buildDistribution(G);
+  use(b);
+  installDistribution(G, ALICE, skdm);
+  return { a, b };
+}
+
+// Count HMAC signs (each chain-ratchet step is one) while `fn` runs.
+async function countHmacs(fn: () => Promise<unknown>): Promise<number> {
+  const subtle = crypto.subtle as SubtleCrypto & { sign: SubtleCrypto["sign"] };
+  const orig = subtle.sign;
+  let n = 0;
+  subtle.sign = ((alg: AlgorithmIdentifier, key: CryptoKey, data: BufferSource) => {
+    if ((typeof alg === "string" ? alg : alg.name) === "HMAC") n++;
+    return orig.call(subtle, alg, key, data);
+  }) as SubtleCrypto["sign"];
+  try {
+    await fn();
+  } finally {
+    subtle.sign = orig;
+  }
+  return n;
+}
+
+test("a huge sender-supplied iteration (it = 4e9) is refused in under 100 ms", async () => {
+  const { a, b } = await pair();
+  use(a);
+  const wire = await groupEncrypt(G, "hello");
+  use(b);
+  const started = performance.now();
+  const timedOut = Symbol("timed out");
+  const result = await Promise.race([
+    groupDecrypt(G, ALICE, forge(wire!, { it: 4e9 })),
+    new Promise<symbol>((resolve) => setTimeout(() => resolve(timedOut), 100)),
+  ]);
+  assert.notEqual(result, timedOut, "groupDecrypt must not ratchet billions of steps");
+  assert.equal(result, null);
+  assert.ok(performance.now() - started < 100);
+});
+
+test("an iteration more than 2000 steps ahead of the stored chain is refused without ratcheting", async () => {
+  const { a, b } = await pair();
+  use(a);
+  const wire = await groupEncrypt(G, "hello");
+  use(b);
+  const hmacs = await countHmacs(async () => {
+    assert.equal(await groupDecrypt(G, ALICE, forge(wire!, { it: 2001 })), null);
+  });
+  assert.equal(hmacs, 0, "no ratchet step may run past the 2000-step cap");
+  // A genuine message a few steps ahead still decrypts.
+  use(a);
+  for (let i = 0; i < 4; i++) await groupEncrypt(G, `skipped ${i}`);
+  const ahead = await groupEncrypt(G, "five ahead");
+  use(b);
+  assert.equal(await groupDecrypt(G, ALICE, ahead!), "five ahead");
+});
+
+test("the signature is verified before any ratchet work", async () => {
+  const { a, b } = await pair();
+  use(a);
+  const first = await groupEncrypt(G, "first");
+  const second = await groupEncrypt(G, "second");
+  use(b);
+  // `first`'s ciphertext with `second`'s signature: well-formed but not authentic.
+  const tampered = forge(first!, { sig: envelopeOf(second!).sig, it: 5 });
+  const hmacs = await countHmacs(async () => {
+    assert.equal(await groupDecrypt(G, ALICE, tampered), null);
+  });
+  assert.equal(hmacs, 0, "a bad signature must be rejected before ratcheting the chain");
+});
+
+test("a bad signature does not advance the stored chain", async () => {
+  const { a, b } = await pair();
+  use(a);
+  const first = await groupEncrypt(G, "first");
+  const second = await groupEncrypt(G, "second");
+  use(b);
+  const peerStateKey = `kc:sk:peer:${G}:${ALICE}`;
+  const before = b.getItem(peerStateKey);
+  assert.equal(await groupDecrypt(G, ALICE, forge(second!, { sig: envelopeOf(first!).sig })), null);
+  assert.equal(b.getItem(peerStateKey), before, "stored state must be untouched");
+  // The genuine messages still decrypt in order.
+  assert.equal(await groupDecrypt(G, ALICE, first!), "first");
+  assert.equal(await groupDecrypt(G, ALICE, second!), "second");
+});
+
+test("a non-integer or negative iteration is rejected", async () => {
+  const { a, b } = await pair();
+  use(a);
+  await groupEncrypt(G, "iteration 0");
+  const atOne = await groupEncrypt(G, "iteration 1");
+  use(b);
+  const peerStateKey = `kc:sk:peer:${G}:${ALICE}`;
+  const before = b.getItem(peerStateKey);
+  // 0.5 would ratchet one step and decrypt iteration 1's message, then store iteration 1.5.
+  assert.equal(await groupDecrypt(G, ALICE, forge(atOne!, { it: 0.5 })), null);
+  assert.equal(await groupDecrypt(G, ALICE, forge(atOne!, { it: -1 })), null);
+  assert.equal(await groupDecrypt(G, ALICE, forge(atOne!, { it: "1" })), null);
+  assert.equal(b.getItem(peerStateKey), before, "stored state must be untouched");
+  assert.equal(await groupDecrypt(G, ALICE, atOne!), "iteration 1");
+});
+
 test("installDistribution ignores a replayed/older-epoch SKDM (no clobber of a newer chain)", async () => {
   const a = memStore();
   const b = memStore();

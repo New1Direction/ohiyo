@@ -92,6 +92,7 @@ pub struct DispatchResult {
     pub disabled_devices: i64,
     pub skipped_missing_device: i64,
     pub skipped_missing_provider: i64,
+    pub skipped_invalid_endpoint: i64,
 }
 
 #[derive(Debug)]
@@ -113,6 +114,54 @@ fn public_device(row: PushDevice) -> PushDevice {
 
 fn valid_platform(platform: &str) -> bool {
     matches!(platform, "web" | "apns" | "fcm")
+}
+
+/// Web push services a `platform=web` endpoint may name exactly.
+const WEB_PUSH_HOSTS: &[&str] = &[
+    "fcm.googleapis.com",
+    "jmt17.google.com",
+    "updates.push.services.mozilla.com",
+    "web.push.apple.com",
+];
+
+/// Web push services a `platform=web` endpoint may name any subdomain of.
+const WEB_PUSH_HOST_SUFFIXES: &[&str] = &[
+    ".push.services.mozilla.com",
+    ".notify.windows.com",
+    ".push.apple.com",
+];
+
+/// An `https` URL on a known web push service. The relay POSTs to whatever a device
+/// registers, so anything else would let a user point it at internal addresses.
+fn is_web_push_endpoint(endpoint: &str) -> bool {
+    let Ok(url) = url::Url::parse(endpoint) else {
+        return false;
+    };
+    if url.scheme() != "https" {
+        return false;
+    }
+    let Some(url::Host::Domain(host)) = url.host() else {
+        return false;
+    };
+    WEB_PUSH_HOSTS.contains(&host)
+        || WEB_PUSH_HOST_SUFFIXES
+            .iter()
+            .any(|suffix| host.len() > suffix.len() && host.ends_with(suffix))
+}
+
+/// APNs device tokens are hex; the token becomes part of the provider URL path.
+fn is_apns_token(token: &str) -> bool {
+    !token.is_empty() && token.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Whether the relay may deliver to `endpoint` on `platform`. Checked when a device
+/// registers and again at dispatch, for rows stored before the check existed.
+fn endpoint_allowed(platform: &str, endpoint: &str) -> bool {
+    match platform {
+        "web" => is_web_push_endpoint(endpoint),
+        "apns" => is_apns_token(endpoint),
+        _ => true,
+    }
 }
 
 fn env_truthy(name: &str) -> bool {
@@ -225,6 +274,24 @@ pub async fn register_device(
     }
     if endpoint.is_empty() || endpoint.len() > 2048 {
         return Err((StatusCode::BAD_REQUEST, "endpoint is required".into()));
+    }
+    if !endpoint_allowed(&platform, endpoint) {
+        if platform == "web" {
+            // The host only, so a push service missing from the allowlist shows up in the
+            // logs; the rest of the URL is the subscription's secret and is never logged.
+            let url = url::Url::parse(endpoint).ok();
+            let host = url.as_ref().and_then(|u| u.host_str()).unwrap_or("(none)");
+            tracing::warn!(host, "push: refused a web push endpoint");
+        }
+        return Err((
+            StatusCode::BAD_REQUEST,
+            if platform == "apns" {
+                "APNs device token must be hex"
+            } else {
+                "web push endpoint must be an https URL on a known push service"
+            }
+            .into(),
+        ));
     }
     if platform == "web"
         && (body.p256dh.as_deref().unwrap_or_default().is_empty()
@@ -457,7 +524,7 @@ pub async fn dispatch_queued(state: &AppState, limit: i64) -> Result<DispatchRes
     .await?;
 
     let mut result = DispatchResult::default();
-    let http = Client::new();
+    let http = dispatch_client();
     for job in rows {
         result.attempted += 1;
         let Some(platform) = job.platform.as_deref() else {
@@ -466,6 +533,13 @@ pub async fn dispatch_queued(state: &AppState, limit: i64) -> Result<DispatchRes
             result.failed += 1;
             continue;
         };
+        // Skipped, not deleted: the device row stays as it is.
+        if !endpoint_allowed(platform, job.endpoint.as_deref().unwrap_or_default()) {
+            mark_failed(state, &job, now, "push endpoint not allowed", false, false).await?;
+            result.skipped_invalid_endpoint += 1;
+            result.failed += 1;
+            continue;
+        }
         let send_result = send_job(&http, &job, platform).await;
         match send_result {
             ProviderSendResult::Sent => {
@@ -503,6 +577,19 @@ pub async fn dispatch_queued(state: &AppState, limit: i64) -> Result<DispatchRes
         }
     }
     Ok(result)
+}
+
+/// How long one provider request may take before dispatch gives up on it.
+const DISPATCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The HTTP client for provider requests: bounded in time, and it never follows a
+/// redirect, so a provider response can't send the relay somewhere else.
+fn dispatch_client() -> Client {
+    Client::builder()
+        .timeout(DISPATCH_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("push dispatch http client")
 }
 
 async fn send_job(http: &Client, job: &DeliveryJob, platform: &str) -> ProviderSendResult {
@@ -650,26 +737,8 @@ async fn send_apns(http: &Client, job: &DeliveryJob) -> ProviderSendResult {
     let Some(token) = job.endpoint.as_deref() else {
         return ProviderSendResult::Failed(permanent("APNs token missing"));
     };
-    let mut header = Header::new(Algorithm::ES256);
-    header.kid = Some(key_id);
-    let encoding_key = match EncodingKey::from_ec_pem(p8.as_bytes()) {
-        Ok(key) => key,
-        Err(_) => {
-            return ProviderSendResult::MissingProvider("APNs private key invalid".to_owned())
-        }
-    };
-    let jwt = match jsonwebtoken::encode(
-        &header,
-        &ApnsClaims {
-            iss: team_id,
-            iat: now_unix(),
-        },
-        &encoding_key,
-    ) {
-        Ok(jwt) => jwt,
-        Err(_) => {
-            return ProviderSendResult::MissingProvider("APNs private key invalid".to_owned())
-        }
+    let Some(jwt) = apns_jwt(key_id, team_id, &p8, now_unix()) else {
+        return ProviderSendResult::MissingProvider("APNs private key invalid".to_owned());
     };
     let host = if env_truthy("OHIYO_APNS_SANDBOX") {
         "https://api.sandbox.push.apple.com"
@@ -713,6 +782,15 @@ async fn send_apns(http: &Client, job: &DeliveryJob) -> ProviderSendResult {
         }
         .to_owned(),
     })
+}
+
+/// The ES256 provider token APNs expects, signed with the `.p8` key: `kid` is the key
+/// id, `iss` the team id. None if the key can't sign.
+fn apns_jwt(key_id: String, team_id: String, p8: &str, iat: i64) -> Option<String> {
+    let mut header = Header::new(Algorithm::ES256);
+    header.kid = Some(key_id);
+    let encoding_key = EncodingKey::from_ec_pem(p8.as_bytes()).ok()?;
+    jsonwebtoken::encode(&header, &ApnsClaims { iss: team_id, iat }, &encoding_key).ok()
 }
 
 fn apns_payload(kind: &str) -> serde_json::Value {
@@ -820,15 +898,12 @@ fn fcm_service_account() -> Result<Option<FcmServiceAccount>, serde_json::Error>
     Ok(None)
 }
 
-async fn fcm_access_token(http: &Client, account: &FcmServiceAccount) -> Result<String, String> {
-    let token_uri = account
-        .token_uri
-        .as_deref()
-        .unwrap_or("https://oauth2.googleapis.com/token");
-    let now = now_unix();
+/// The RS256 assertion, signed with the service account key, that `token_uri` exchanges
+/// for an FCM access token.
+fn fcm_assertion(account: &FcmServiceAccount, token_uri: &str, now: i64) -> Result<String, String> {
     let mut header = Header::new(Algorithm::RS256);
     header.typ = Some("JWT".to_owned());
-    let assertion = jsonwebtoken::encode(
+    jsonwebtoken::encode(
         &header,
         &FcmClaims {
             iss: &account.client_email,
@@ -840,7 +915,15 @@ async fn fcm_access_token(http: &Client, account: &FcmServiceAccount) -> Result<
         &EncodingKey::from_rsa_pem(account.private_key.as_bytes())
             .map_err(|_| "FCM private key invalid".to_owned())?,
     )
-    .map_err(|_| "FCM JWT signing failed".to_owned())?;
+    .map_err(|_| "FCM JWT signing failed".to_owned())
+}
+
+async fn fcm_access_token(http: &Client, account: &FcmServiceAccount) -> Result<String, String> {
+    let token_uri = account
+        .token_uri
+        .as_deref()
+        .unwrap_or("https://oauth2.googleapis.com/token");
+    let assertion = fcm_assertion(account, token_uri, now_unix())?;
     let res = http
         .post(token_uri)
         .form(&[
@@ -1042,6 +1125,124 @@ mod tests {
     fn web_push_keys_accept_browser_base64_and_base64url() {
         assert_eq!(web_push_key("abcd+/=="), "abcd-_");
         assert_eq!(web_push_key("abcd-_"), "abcd-_");
+    }
+
+    /// A loopback HTTP server. `/landed` answers 200; any other path redirects to
+    /// `/landed`, unless `stall` is set, in which case nothing is ever answered.
+    async fn loopback_server(stall: bool) -> std::net::SocketAddr {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let n = socket.read(&mut buf).await.unwrap_or(0);
+                    if stall {
+                        std::future::pending::<()>().await;
+                    }
+                    let request = String::from_utf8_lossy(&buf[..n]);
+                    let response = if request.contains(" /landed ") {
+                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    } else {
+                        "HTTP/1.1 302 Found\r\nLocation: /landed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    };
+                    let _ = socket.write_all(response.as_bytes()).await;
+                });
+            }
+        });
+        addr
+    }
+
+    #[tokio::test]
+    async fn dispatch_client_does_not_follow_redirects() {
+        let addr = loopback_server(false).await;
+        let res = dispatch_client()
+            .post(format!("http://{addr}/push"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status().as_u16(), 302);
+    }
+
+    #[tokio::test]
+    async fn dispatch_client_gives_up_on_a_provider_after_ten_seconds() {
+        let addr = loopback_server(true).await;
+        let started = std::time::Instant::now();
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            dispatch_client().post(format!("http://{addr}/push")).send(),
+        )
+        .await
+        .expect("the client must time out on its own");
+        let err = outcome.expect_err("a stalled provider is an error");
+        assert!(err.is_timeout(), "{err}");
+        assert!(started.elapsed() >= std::time::Duration::from_secs(10));
+    }
+
+    // Keys generated for these tests only (`openssl genpkey`, PKCS#8 as Apple and Google
+    // issue them). They sign nothing anywhere else.
+    const TEST_ONLY_APNS_P8: &str =
+        include_str!("../../tests/fixtures/test-only-apns-es256-private.p8");
+    const TEST_ONLY_APNS_PUBLIC: &str =
+        include_str!("../../tests/fixtures/test-only-apns-es256-public.pem");
+    const TEST_ONLY_FCM_PRIVATE: &str =
+        include_str!("../../tests/fixtures/test-only-fcm-rs256-private.pem");
+    const TEST_ONLY_FCM_PUBLIC: &str =
+        include_str!("../../tests/fixtures/test-only-fcm-rs256-public.pem");
+
+    #[test]
+    fn apns_provider_token_is_es256_signed_with_the_p8_key() {
+        let jwt = apns_jwt(
+            "KEYID12345".to_owned(),
+            "TEAMID1234".to_owned(),
+            TEST_ONLY_APNS_P8,
+            1_700_000_000,
+        )
+        .expect("a PKCS#8 P-256 key signs");
+        let header = jsonwebtoken::decode_header(&jwt).unwrap();
+        assert_eq!(header.alg, Algorithm::ES256);
+        assert_eq!(header.kid.as_deref(), Some("KEYID12345"));
+        let mut validation = jsonwebtoken::Validation::new(Algorithm::ES256);
+        validation.validate_exp = false;
+        validation.required_spec_claims.clear();
+        let public =
+            jsonwebtoken::DecodingKey::from_ec_pem(TEST_ONLY_APNS_PUBLIC.as_bytes()).unwrap();
+        let claims = jsonwebtoken::decode::<serde_json::Value>(&jwt, &public, &validation)
+            .expect("the signature verifies with the matching public key")
+            .claims;
+        assert_eq!(claims["iss"], "TEAMID1234");
+        assert_eq!(claims["iat"], 1_700_000_000);
+    }
+
+    #[test]
+    fn fcm_assertion_is_rs256_signed_with_the_service_account_key() {
+        let account = FcmServiceAccount {
+            project_id: "test-project".to_owned(),
+            client_email: "push@test-project.iam.gserviceaccount.com".to_owned(),
+            private_key: TEST_ONLY_FCM_PRIVATE.to_owned(),
+            token_uri: None,
+        };
+        let token_uri = "https://oauth2.googleapis.com/token";
+        let now = now_unix();
+        let assertion = fcm_assertion(&account, token_uri, now).expect("a PKCS#8 RSA key signs");
+        let header = jsonwebtoken::decode_header(&assertion).unwrap();
+        assert_eq!(header.alg, Algorithm::RS256);
+        assert_eq!(header.typ.as_deref(), Some("JWT"));
+        let mut validation = jsonwebtoken::Validation::new(Algorithm::RS256);
+        validation.set_audience(&[token_uri]);
+        let public =
+            jsonwebtoken::DecodingKey::from_rsa_pem(TEST_ONLY_FCM_PUBLIC.as_bytes()).unwrap();
+        let claims = jsonwebtoken::decode::<serde_json::Value>(&assertion, &public, &validation)
+            .expect("the signature verifies with the matching public key")
+            .claims;
+        assert_eq!(claims["iss"], account.client_email);
+        assert_eq!(
+            claims["scope"],
+            "https://www.googleapis.com/auth/firebase.messaging"
+        );
+        assert_eq!(claims["iat"], now);
+        assert_eq!(claims["exp"], now + 3600);
     }
 
     #[test]

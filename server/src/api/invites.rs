@@ -1,6 +1,8 @@
+use std::net::SocketAddr;
+
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{ConnectInfo, Path, State},
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use rand::Rng;
@@ -16,12 +18,17 @@ use crate::{
 
 // Unambiguous code alphabet — no 0/O/1/l/I to keep links easy to read aloud.
 const CODE_CHARS: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
-const CODE_LEN: usize = 8;
+/// 12 characters from 31 is about 59 bits. Codes minted when this was 8 keep working.
+const CODE_LEN: usize = 12;
 
 /// Per-user invite create/redeem throttle: 20 per minute (generous for humans,
 /// blunts code churn and brute-force redemption).
 const INVITE_RATE_MAX: usize = 20;
 const INVITE_RATE_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Invite previews per minute, per user and per client address, so codes can't be
+/// enumerated through the preview endpoint.
+const PREVIEW_RATE_MAX: usize = 30;
 
 fn gen_code() -> String {
     let mut rng = rand::thread_rng();
@@ -176,8 +183,27 @@ pub struct InvitePreview {
 pub async fn get_invite(
     auth: AuthUser,
     Path(code): Path<String>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<InvitePreview>, (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("invite-preview:{}", auth.0),
+        PREVIEW_RATE_MAX,
+        INVITE_RATE_WINDOW,
+    ) || !crate::api::auth::check_client_rate(
+        &state,
+        &headers,
+        &addr,
+        "invite-preview-ip",
+        PREVIEW_RATE_MAX,
+        INVITE_RATE_WINDOW,
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "you're looking up invites too fast".into(),
+        ));
+    }
     let inv = lookup_alive_invite(&state, &code).await?;
 
     let server: Server = sqlx::query_as("SELECT * FROM servers WHERE id = ?")

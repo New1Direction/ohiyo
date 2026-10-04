@@ -103,19 +103,21 @@ pub async fn list_messages(
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
-    let limit = q.limit.min(100);
+    // SQLite reads a negative LIMIT as "no limit", so clamp from below too.
+    let limit = q.limit.clamp(1, 100);
 
     // Never serve an already-expired disappearing message, even in the window before
     // the background sweeper physically deletes it.
     let now = now_unix();
+    // Pages are ordered by (created_at, rowid). `created_at` is whole seconds, so rowid
+    // (insertion order) breaks ties; ids are random UUID v4 and would reorder them.
     let messages: Vec<Message> = if let Some(before) = q.before {
-        // Cursor by time — ids are random UUID v4, so `id < ?` is NOT time-ordered.
         sqlx::query_as(
             "SELECT * FROM messages
              WHERE channel_id = ?
-               AND created_at < (SELECT created_at FROM messages WHERE id = ?)
+               AND (created_at, rowid) < (SELECT created_at, rowid FROM messages WHERE id = ?)
                AND (expires_at IS NULL OR expires_at > ?)
-             ORDER BY created_at DESC LIMIT ?",
+             ORDER BY created_at DESC, rowid DESC LIMIT ?",
         )
         .bind(&channel_id)
         .bind(&before)
@@ -127,7 +129,7 @@ pub async fn list_messages(
         sqlx::query_as(
             "SELECT * FROM messages WHERE channel_id = ?
                AND (expires_at IS NULL OR expires_at > ?)
-             ORDER BY created_at DESC LIMIT ?",
+             ORDER BY created_at DESC, rowid DESC LIMIT ?",
         )
         .bind(&channel_id)
         .bind(now)
@@ -299,6 +301,55 @@ fn spawn_index(
     });
 }
 
+/// Most bytes of text a message may carry (a poll's question is its message text).
+pub const MAX_MESSAGE_BYTES: usize = 4000;
+
+/// Most attachments one message may carry. Deleting a message re-counts the references
+/// to each attached file under the write lock, so this also bounds that work.
+pub const MAX_ATTACHMENTS_PER_MESSAGE: usize = 10;
+
+/// In a DM, nothing from `sender` is delivered while either side has blocked the other.
+pub(crate) async fn ensure_dm_not_blocked(
+    state: &AppState,
+    channel_id: &str,
+    sender: &str,
+) -> Result<(), (StatusCode, String)> {
+    let dm_peers: Vec<String> = sqlx::query_scalar(
+        "SELECT dp.user_id FROM dm_participants dp
+         JOIN channels c ON c.id = dp.channel_id
+         WHERE dp.channel_id = ? AND c.server_id IS NULL AND dp.user_id != ?",
+    )
+    .bind(channel_id)
+    .bind(sender)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+    for peer in dm_peers {
+        if crate::api::abuse::is_blocked_pair(state, sender, &peer).await {
+            return Err((StatusCode::FORBIDDEN, "you can't message this user".into()));
+        }
+    }
+    Ok(())
+}
+
+/// Disappearing messages: if the channel has a TTL, a message created at `now`
+/// self-destructs at the returned time.
+pub(crate) async fn disappearing_expiry(
+    state: &AppState,
+    channel_id: &str,
+    now: i64,
+) -> Option<i64> {
+    let disappearing: Option<i64> =
+        sqlx::query_scalar("SELECT disappearing_seconds FROM channels WHERE id = ?")
+            .bind(channel_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+    disappearing.filter(|s| *s > 0).map(|s| now + s)
+}
+
 pub async fn send_message(
     auth: AuthUser,
     Path(channel_id): Path<String>,
@@ -314,21 +365,7 @@ pub async fn send_message(
             "you can't send messages in this channel".into(),
         ));
     }
-    let dm_peers: Vec<String> = sqlx::query_scalar(
-        "SELECT dp.user_id FROM dm_participants dp
-         JOIN channels c ON c.id = dp.channel_id
-         WHERE dp.channel_id = ? AND c.server_id IS NULL AND dp.user_id != ?",
-    )
-    .bind(&channel_id)
-    .bind(&auth.0)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
-    for peer in dm_peers {
-        if crate::api::abuse::is_blocked_pair(&state, &auth.0, &peer).await {
-            return Err((StatusCode::FORBIDDEN, "you can't message this user".into()));
-        }
-    }
+    ensure_dm_not_blocked(&state, &channel_id, &auth.0).await?;
     // Refresh liveness so an active user never trips their dead-man's switch.
     crate::api::users::touch_active(&state.db, &auth.0).await;
     // Per-user spam throttle (generous for humans, blocks flooders).
@@ -341,10 +378,16 @@ pub async fn send_message(
             "you're sending messages too fast".into(),
         ));
     }
-    if body.content.len() > 4000 {
+    if body.content.len() > MAX_MESSAGE_BYTES {
         return Err((
             StatusCode::BAD_REQUEST,
             "message too long (max 4000 chars)".into(),
+        ));
+    }
+    if body.attachment_ids.len() > MAX_ATTACHMENTS_PER_MESSAGE {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("too many attachments (max {MAX_ATTACHMENTS_PER_MESSAGE} per message)"),
         ));
     }
     if body.content.trim().is_empty() && body.attachment_ids.is_empty() {
@@ -393,16 +436,7 @@ pub async fn send_message(
     let now = now_unix();
     let content = body.content.trim().to_owned();
 
-    // Disappearing messages: if the channel has a TTL, this message self-destructs.
-    let disappearing: Option<i64> =
-        sqlx::query_scalar("SELECT disappearing_seconds FROM channels WHERE id = ?")
-            .bind(&channel_id)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten()
-            .flatten();
-    let expires_at = disappearing.filter(|s| *s > 0).map(|s| now + s);
+    let expires_at = disappearing_expiry(&state, &channel_id, now).await;
 
     // Only honour a reply target that actually exists in this channel.
     let reply_to: Option<String> = match body.reply_to.filter(|s| !s.is_empty()) {
@@ -603,14 +637,18 @@ pub async fn list_reads(
     .await
     .map_err(crate::api::error::internal)?;
 
-    let cursors = rows
-        .into_iter()
-        .map(|(user_id, last_read_message_id, last_read_at)| ReadCursor {
+    // Privacy Mode hides a reader's cursor ("Seen") from everyone but themselves.
+    let mut cursors = Vec::with_capacity(rows.len());
+    for (user_id, last_read_message_id, last_read_at) in rows {
+        if user_id != auth.0 && crate::gateway::privacy_mode_on(&state, &user_id).await {
+            continue;
+        }
+        cursors.push(ReadCursor {
             user_id,
             last_read_message_id,
             last_read_at,
-        })
-        .collect();
+        });
+    }
     Ok(Json(cursors))
 }
 
@@ -900,9 +938,7 @@ pub async fn delete_message(
         }
     }
 
-    sqlx::query("DELETE FROM messages WHERE id = ?")
-        .bind(&id)
-        .execute(&state.db)
+    delete_message_and_files(&state, &id, msg.attachments.as_deref())
         .await
         .map_err(crate::api::error::internal)?;
 
@@ -1109,6 +1145,11 @@ pub async fn distribute_voice_key(
         if envelope.len() > 20_000 || !in_room.contains(&uid) {
             continue;
         }
+        // A recipient who lost access after joining lingers in the room until they
+        // disconnect; re-check, as the signal relay does, so no key reaches them.
+        if !user_can_access(&state, &channel_id, &uid).await {
+            continue;
+        }
         crate::gateway::broadcast_to_user(
             &state.sessions,
             &uid,
@@ -1122,13 +1163,32 @@ pub async fn distribute_voice_key(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Delete one message and, in the same transaction, each attached file that nothing
+/// else references any more; their blobs are removed after commit.
+async fn delete_message_and_files(
+    state: &AppState,
+    id: &str,
+    attachments: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    let mut tx = state.db.begin().await?;
+    sqlx::query("DELETE FROM messages WHERE id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    let file_ids = crate::api::files::attachment_file_ids(attachments);
+    let orphaned_blobs = crate::api::files::delete_unreferenced_files(&mut tx, &file_ids).await?;
+    tx.commit().await?;
+    crate::api::files::remove_blobs(orphaned_blobs).await;
+    Ok(())
+}
+
 /// Delete disappearing messages whose TTL has lapsed and tell connected clients.
 /// Driven by a periodic task in `main`. Bounded per pass so a huge backlog can't
 /// monopolize the connection (the next pass picks up the rest).
 pub async fn sweep_expired(state: &AppState) {
     let now = now_unix();
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT id, channel_id FROM messages
+    let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, channel_id, attachments FROM messages
          WHERE expires_at IS NOT NULL AND expires_at <= ? LIMIT 500",
     )
     .bind(now)
@@ -1138,13 +1198,9 @@ pub async fn sweep_expired(state: &AppState) {
     if rows.is_empty() {
         return;
     }
-    for (id, channel_id) in rows {
-        if sqlx::query("DELETE FROM messages WHERE id = ?")
-            .bind(&id)
-            .execute(&state.db)
-            .await
-            .is_err()
-        {
+    for (id, channel_id, attachments) in rows {
+        if let Err(e) = delete_message_and_files(state, &id, attachments.as_deref()).await {
+            tracing::warn!("sweep_expired: couldn't delete message {id}: {e}");
             continue;
         }
         if crate::search::search_enabled() {

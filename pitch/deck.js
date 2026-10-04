@@ -123,7 +123,7 @@
       desc: "Everything a real community needs — and none of it locked behind a subscription.",
       feats: [
         ["Servers, channels, categories", "organize at any scale"],
-        ["DMs & group DMs", "encrypted by default"],
+        ["DMs & group DMs", "end-to-end encryption, opt-in"],
         ["Roles & permissions", "granular, per-channel gates"],
         ["Polls, events, reactions", "@everyone / @here mentions"],
         ["Pins, saved, forward, drafts", "read receipts too"],

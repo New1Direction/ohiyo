@@ -59,6 +59,14 @@ pub struct AppState {
     pub provisioner: std::sync::Arc<dyn provision::MachineProvisioner>,
     /// Unix timestamp when this process state was built; used for public status uptime.
     pub started_at: i64,
+    /// How long a gateway socket may send nothing before it is closed as half-open.
+    pub gateway_idle_timeout: std::time::Duration,
+    /// Registrations allowed per hour per client address; 0 turns that limit off. Read
+    /// once at startup from `OHIYO_REGISTER_LIMIT_PER_HOUR`.
+    pub register_limit_per_hour: usize,
+    /// Login attempts allowed per minute per username; 0 turns that limit off. Read once
+    /// at startup from `OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE`.
+    pub login_limit_per_username_per_minute: usize,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
@@ -87,7 +95,79 @@ pub fn build_state(db: SqlitePool) -> AppState {
         watch: gateway::new_watch_sessions(),
         provisioner,
         started_at: types::now_unix(),
+        gateway_idle_timeout: gateway::IDLE_TIMEOUT,
+        register_limit_per_hour: api::auth::register_limit_from_env(),
+        login_limit_per_username_per_minute: api::auth::login_limit_from_env(),
     }
+}
+
+// ── Background tasks ──────────────────────────────────────────────────────────
+
+/// How often the background sweeps and the push dispatcher wake up.
+pub const BACKGROUND_INTERVAL: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Run `tick` every `period`, forever. Each tick is wrapped in catch_unwind so a panic
+/// is logged and the loop survives to the next tick — a background task that silently
+/// dies would let ciphertext, lapsed accounts, and stale codes accumulate forever.
+fn spawn_periodic<F, Fut>(period: std::time::Duration, mut tick: F) -> tokio::task::JoinHandle<()>
+where
+    F: FnMut() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    use futures_util::FutureExt;
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(period).await;
+            if std::panic::AssertUnwindSafe(tick())
+                .catch_unwind()
+                .await
+                .is_err()
+            {
+                tracing::error!("a background task panicked — continuing the loop");
+            }
+        }
+    })
+}
+
+/// Disappearing messages, the dead-man's switch, and link-token GC, every `period`.
+pub fn spawn_sweeper(state: AppState, period: std::time::Duration) -> tokio::task::JoinHandle<()> {
+    spawn_periodic(period, move || {
+        let state = state.clone();
+        async move {
+            api::messages::sweep_expired(&state).await;
+            // Account-level dead-man's switch: wipe data for users gone too long.
+            api::users::sweep_deadman(&state).await;
+            // Drop expired device-link codes so the table can't grow unbounded.
+            api::auth::sweep_link_tokens(&state).await;
+            // Push delivery cleanup is safe even when provider dispatch is disabled.
+            api::push::sweep_stale_push_rows(&state).await;
+        }
+    })
+}
+
+/// Content-free push delivery, every `period`, on its own task: a slow push provider
+/// delays only the next dispatch, never the sweeps.
+pub fn spawn_push_dispatcher(
+    state: AppState,
+    period: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
+    spawn_periodic(period, move || {
+        let state = state.clone();
+        async move {
+            // Real outbound push delivery is opt-in: self-hosters without provider
+            // credentials can keep content-free queueing without burning attempts.
+            if !api::push::dispatcher_should_run() {
+                return;
+            }
+            match api::push::dispatch_queued(&state, 100).await {
+                Ok(result) if result.attempted > 0 => {
+                    tracing::info!(?result, "content-free push dispatch batch complete");
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!("content-free push dispatch failed: {e}"),
+            }
+        }
+    })
 }
 
 /// Shortest acceptable production `JWT_SECRET`. Anything weaker is treated as
@@ -397,6 +477,26 @@ mod config_tests {
 
     const STRONG: &str = "0123456789abcdef0123456789abcdef"; // 32 chars
     const URL: &str = "https://example.com";
+
+    #[tokio::test]
+    async fn the_registration_limit_is_read_into_state_at_startup() {
+        // The only test that touches this variable.
+        std::env::set_var("OHIYO_REGISTER_LIMIT_PER_HOUR", "3");
+        let pool = SqlitePool::connect_lazy("sqlite::memory:").unwrap();
+        let state = build_state(pool);
+        std::env::remove_var("OHIYO_REGISTER_LIMIT_PER_HOUR");
+        assert_eq!(state.register_limit_per_hour, 3);
+    }
+
+    #[tokio::test]
+    async fn the_login_limit_is_read_into_state_at_startup() {
+        // The only test that touches this variable.
+        std::env::set_var("OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE", "4");
+        let pool = SqlitePool::connect_lazy("sqlite::memory:").unwrap();
+        let state = build_state(pool);
+        std::env::remove_var("OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE");
+        assert_eq!(state.login_limit_per_username_per_minute, 4);
+    }
 
     #[test]
     fn release_rejects_missing_or_weak_jwt_secret() {

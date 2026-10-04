@@ -29,7 +29,7 @@ async fn user_can_register_list_and_delete_content_free_push_device() {
             &alice.token,
             json!({
                 "platform": "web",
-                "endpoint": "https://push.example/device-a",
+                "endpoint": "https://fcm.googleapis.com/fcm/send/device-a",
                 "p256dh": "p256dh-key",
                 "auth": "auth-key",
                 "device_name": "Mobile PWA"
@@ -164,6 +164,136 @@ async fn dispatcher_retries_without_provider_and_never_adds_content() {
 }
 
 #[tokio::test]
+async fn web_push_endpoints_must_be_https_urls_on_known_push_services() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("webendpoints", "supersecret123").await;
+    let register = |endpoint: &str| {
+        srv.put_json_auth(
+            "/api/v1/push/devices",
+            &alice.token,
+            json!({ "platform": "web", "endpoint": endpoint, "p256dh": "k", "auth": "a" }),
+        )
+    };
+
+    for endpoint in [
+        "https://fcm.googleapis.com/fcm/send/abc",
+        "https://updates.push.services.mozilla.com/wpush/v2/abc",
+        "https://other.push.services.mozilla.com/wpush/v2/abc",
+        "https://wns2-par02p.notify.windows.com/w/?token=abc",
+        "https://web.push.apple.com/abc",
+        "https://api.push.apple.com/abc",
+        "https://FCM.googleapis.com/fcm/send/upper",
+        "https://jmt17.google.com/fcm/send/abc",
+    ] {
+        assert_eq!(register(endpoint).await.status(), 200, "{endpoint}");
+    }
+    for endpoint in [
+        // Not https.
+        "http://fcm.googleapis.com/fcm/send/abc",
+        // Hosts that are not push services, including internal ones.
+        "https://push.example/device",
+        "https://127.0.0.1/abc",
+        "https://[::1]/abc",
+        "https://169.254.169.254/latest/meta-data",
+        "https://localhost/abc",
+        // Look-alikes: a suffix without the dot, a listed name as a prefix, the bare
+        // parent of a wildcard entry, and a subdomain of an exact-only entry.
+        "https://evilpush.apple.com/abc",
+        "https://fcm.googleapis.com.evil.example/abc",
+        "https://push.apple.com/abc",
+        "https://notify.windows.com/abc",
+        "https://x.fcm.googleapis.com/abc",
+        "https://x.jmt17.google.com/abc",
+        "not a url",
+    ] {
+        assert_eq!(register(endpoint).await.status(), 400, "{endpoint}");
+    }
+}
+
+#[tokio::test]
+async fn apns_device_tokens_must_be_hex() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("apnstokens", "supersecret123").await;
+    let register = |token: &str| {
+        srv.put_json_auth(
+            "/api/v1/push/devices",
+            &alice.token,
+            json!({ "platform": "apns", "endpoint": token }),
+        )
+    };
+    assert_eq!(register("0123456789abcdefABCDEF").await.status(), 200);
+    for token in ["abc/../../x", "zz", "00ff 00ff", "00ff?x=1", "0x00ff"] {
+        assert_eq!(register(token).await.status(), 400, "{token}");
+    }
+}
+
+#[tokio::test]
+async fn dispatch_skips_stored_endpoints_that_no_longer_validate_and_keeps_the_devices() {
+    std::env::set_var("OHIYO_PUSH_RELAY_SECRET", "push-test-secret");
+    let srv = TestServer::start().await;
+    let alice = srv.register("staleendpoints", "supersecret123").await;
+    let pool = db(&srv).await;
+
+    // Rows written before endpoints were validated: an internal web endpoint and an
+    // APNs "token" that would rewrite the provider URL path.
+    for (id, platform, endpoint) in [
+        ("dev-web", "web", "http://127.0.0.1:9/push"),
+        ("dev-apns", "apns", "../../x"),
+    ] {
+        sqlx::query(
+            "INSERT INTO push_devices (id, user_id, platform, endpoint, p256dh, auth, enabled, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'k', 'a', 1, 0, 0)",
+        )
+        .bind(id)
+        .bind(&alice.id)
+        .bind(platform)
+        .bind(endpoint)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO push_deliveries (id, user_id, device_id, kind, status, attempts, created_at)
+             VALUES (?, ?, ?, 'message', 'queued', 0, 0)",
+        )
+        .bind(format!("job-{id}"))
+        .bind(&alice.id)
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let dispatched = srv
+        .post_json_bearer("/api/v1/push/dispatch", "push-test-secret", json!({}))
+        .await;
+    assert_eq!(dispatched.status(), 200);
+    let body: Value = dispatched.json().await.unwrap();
+    assert_eq!(body["attempted"], 2);
+    assert_eq!(body["skipped_invalid_endpoint"], 2);
+    assert_eq!(body["retried"], 0);
+
+    let jobs: Vec<(String, String)> =
+        sqlx::query_as("SELECT status, COALESCE(last_error, '') FROM push_deliveries ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    for (status, error) in jobs {
+        assert_eq!(status, "failed");
+        assert!(error.contains("not allowed"), "{error}");
+    }
+    let devices: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM push_devices WHERE user_id = ? AND enabled = 1")
+            .bind(&alice.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        devices, 2,
+        "the devices are skipped, not deleted or disabled"
+    );
+}
+
+#[tokio::test]
 async fn dispatch_endpoint_requires_relay_secret() {
     std::env::set_var("OHIYO_PUSH_RELAY_SECRET", "push-test-secret");
     let srv = TestServer::start().await;
@@ -183,7 +313,7 @@ async fn message_send_queues_content_free_push_for_offline_recipient() {
             &bob.token,
             json!({
                 "platform": "web",
-                "endpoint": "https://push.example/bob",
+                "endpoint": "https://fcm.googleapis.com/fcm/send/bob",
                 "p256dh": "p256dh-key",
                 "auth": "auth-key",
                 "device_name": "Bob phone"

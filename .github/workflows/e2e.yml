@@ -56,6 +56,7 @@ jobs:
           BIND_ADDR: 127.0.0.1:3000
           DATABASE_URL: sqlite:/tmp/ohiyo-${{ matrix.client_mode }}.db
           JWT_SECRET: ci-e2e-secret-not-for-production-0123456789
+          OHIYO_REGISTER_LIMIT_PER_HOUR: "0" # every suite registers from one address
           VITE_SERVER_URL: http://localhost:3000
           KIKKA_ORIGIN: http://localhost:1420
           KIKKA_SHOTS: /tmp/kikka-shots-${{ matrix.client_mode }}

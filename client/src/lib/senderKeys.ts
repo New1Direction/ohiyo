@@ -12,7 +12,11 @@
 // All primitives are the browser's NATIVE crypto.subtle (HMAC, HKDF, AES-GCM, ECDSA);
 // only the protocol composition (the chain ratchet + distribution) is ours.
 
+import { localStorageStore, setItemEvictingPlaintextCache } from "./storageQuota.ts";
+
 const NS = "kc:sk:";
+// Furthest a received message may ratchet a peer's chain ahead of what we've stored.
+const MAX_RATCHET_SKIP = 2000;
 
 // ── Pluggable storage (localStorage in the browser; injectable for tests) ───────
 export type SenderKeyBackend = {
@@ -25,6 +29,13 @@ let backend: SenderKeyBackend = {
 };
 export function setSenderKeyBackend(b: SenderKeyBackend) {
   backend = b;
+}
+
+// Every sender-key write. A full localStorage (web) frees the oldest decrypted-message
+// cache entries and retries, like the Signal store; if the key still can't be saved this
+// throws and the operation that needed it fails. The desktop vault never fills up.
+function put(k: string, v: string): void {
+  setItemEvictingPlaintextCache({ ...localStorageStore(), setItem: (key, value) => backend.setItem(key, value) }, k, v);
 }
 
 const b64 = (ab: ArrayBuffer): string => {
@@ -91,7 +102,7 @@ const getJson = <T,>(k: string): T | null => {
   const s = backend.getItem(k);
   return s ? (JSON.parse(s) as T) : null;
 };
-const putJson = (k: string, v: unknown) => backend.setItem(k, JSON.stringify(v));
+const putJson = (k: string, v: unknown) => put(k, JSON.stringify(v));
 
 /** Is stored content a group sender-key ciphertext envelope? */
 export function isGroupCiphertext(s: string): boolean {
@@ -123,7 +134,7 @@ export function getGroupEpoch(groupId: string): number {
 }
 // Persist the known epoch, never decreasing (the server's epoch only goes up).
 function rememberEpoch(groupId: string, epoch: number): void {
-  if (epoch > getGroupEpoch(groupId)) backend.setItem(epochKey(groupId), String(epoch));
+  if (epoch > getGroupEpoch(groupId)) put(epochKey(groupId), String(epoch));
 }
 
 // Mint a fresh sender key (random chain + ECDSA signing pair + key id) at `epoch`,
@@ -245,7 +256,8 @@ async function groupEncryptInner(groupId: string, plaintext: string): Promise<st
 /** Decrypt a group message from a member, verifying their signature. Ratchets that
  *  sender's chain forward to the message's iteration. Returns null if we don't hold
  *  the sender's key, the key id differs (rotated → needs redistribution), the message
- *  is older than our chain (already ratcheted past), or the signature fails. */
+ *  is older than our chain (already ratcheted past), its iteration is not a whole number
+ *  or is more than MAX_RATCHET_SKIP ahead, or the signature fails. */
 export async function groupDecrypt(groupId: string, fromUserId: string, wire: string): Promise<string | null> {
   if (!wire.startsWith("grp1.")) return null;
   const peer = getJson<PeerState>(peerKey(groupId, fromUserId));
@@ -260,27 +272,36 @@ export async function groupDecrypt(groupId: string, fromUserId: string, wire: st
   // for. A message from a newer epoch means the peer rekeyed and we await their fresh
   // SKDM; an older epoch is a generation we've rotated past. Either way → null.
   if ((env.ep ?? 0) !== (peer.epoch ?? 0)) return null;
+  // The iteration is sender-supplied and each step is an HMAC: accept only a whole,
+  // non-negative number within MAX_RATCHET_SKIP of our chain, so one message can't
+  // pin the CPU (or corrupt the stored iteration with a fraction).
+  if (!Number.isSafeInteger(env.it) || env.it < 0) return null;
   if (env.kid !== peer.keyId || env.it < peer.iteration) return null;
-  // Ratchet this sender's chain forward to the message's iteration.
-  let ck = unb64(peer.chainKey);
-  for (let i = peer.iteration; i < env.it; i++) ck = await nextChainOf(ck);
-  const mk = await messageKeyOf(ck);
-  // Verify the sender's signature over the ciphertext before decrypting.
-  const verifyKey = await crypto.subtle.importKey(
-    "raw",
-    unb64(peer.verifyKey),
-    { name: "ECDSA", namedCurve: "P-256" },
-    false,
-    ["verify"]
-  );
-  const ctBuf = unb64(env.ct);
-  const ok = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, verifyKey, unb64(env.sig), ctBuf);
-  if (!ok) return null;
-  const derived = await deriveAes(mk);
-  // New envelopes carry a random IV; legacy ones (no `iv`) used the deterministic one.
-  const iv = env.iv ? new Uint8Array(unb64(env.iv)) : derived.iv;
+  if (env.it - peer.iteration > MAX_RATCHET_SKIP) return null;
+  // A stored distribution's keys arrive unvalidated (installDistribution), and the
+  // envelope's fields are sender-supplied: anything malformed means "can't decrypt this
+  // one" (null), never a throw that would stop the rest of the channel loading.
+  let ck: ArrayBuffer;
   let plaintext: string;
   try {
+    // Verify the sender's signature over the ciphertext BEFORE any ratchet work.
+    const verifyKey = await crypto.subtle.importKey(
+      "raw",
+      unb64(peer.verifyKey),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"]
+    );
+    const ctBuf = unb64(env.ct);
+    const ok = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, verifyKey, unb64(env.sig), ctBuf);
+    if (!ok) return null;
+    // Ratchet this sender's chain forward to the message's iteration.
+    ck = unb64(peer.chainKey);
+    for (let i = peer.iteration; i < env.it; i++) ck = await nextChainOf(ck);
+    const mk = await messageKeyOf(ck);
+    const derived = await deriveAes(mk);
+    // New envelopes carry a random IV; legacy ones (no `iv`) used the deterministic one.
+    const iv = env.iv ? new Uint8Array(unb64(env.iv)) : derived.iv;
     plaintext = td.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, derived.key, ctBuf));
   } catch {
     return null;
@@ -294,5 +315,5 @@ export async function groupDecrypt(groupId: string, fromUserId: string, wire: st
 
 /** Forget all sender-key state for a group (e.g. on membership change → rotate). */
 export function resetGroup(groupId: string): void {
-  backend.setItem(ownKey(groupId), "");
+  put(ownKey(groupId), "");
 }

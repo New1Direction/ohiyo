@@ -32,6 +32,7 @@ const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
 const DEFAULT_MAX_DISCRAWL_DB_UPLOAD_BYTES: i64 = 2 * 1024 * 1024 * 1024; // 2 GiB
 const DEFAULT_DISCORD_BOT_PERMISSIONS: &str = "66560"; // View Channels + Read Message History
 const MANAGED_DISCRAWL_TIMEOUT_SECS: u64 = 60 * 60 * 4;
+const MAX_TEMPLATE_IMPORTS_PER_HOUR: usize = 3;
 
 #[derive(Debug, Deserialize)]
 pub struct DiscrawlArchiveBody {
@@ -39,9 +40,9 @@ pub struct DiscrawlArchiveBody {
     /// behind `OHIYO_ENABLE_LOCAL_DISCRAWL_IMPORT=1` because arbitrary host paths are
     /// appropriate for local/admin import tooling, not public multi-tenant traffic.
     pub db_path: String,
-    /// Optional base directory for downloaded Discrawl media. Relative
-    /// `message_attachments.media_path` values are resolved against this directory.
-    pub media_root: Option<String>,
+    // There is deliberately no `media_root` here: a request naming its own root could
+    // re-host any host file. The root comes from `OHIYO_DISCRAWL_MEDIA_ROOT`, and a
+    // `media_root` a client still sends is ignored.
     /// Optional Discord guild snowflake. If omitted, the first non-`@me` guild is used.
     pub guild_id: Option<String>,
     pub history: Option<HistoryWindow>,
@@ -166,10 +167,11 @@ pub struct DiscordImportAssetReview {
 }
 
 pub async fn discrawl_import_capability(
-    _auth: AuthUser,
+    auth: AuthUser,
 ) -> Result<Json<DiscrawlImportCapability>, (StatusCode, String)> {
-    let enabled = local_discrawl_import_enabled();
-    let managed_enabled = managed_discord_import_enabled();
+    // Reported for this caller, so a client never offers an import that would be refused.
+    let enabled = local_discrawl_import_enabled() && crate::auth::is_operator(&auth.0);
+    let managed_enabled = managed_discord_import_available_to(&auth);
     Ok(Json(DiscrawlImportCapability {
         enabled,
         managed_enabled,
@@ -189,9 +191,9 @@ pub async fn discrawl_import_capability(
 }
 
 pub async fn discord_connect_info(
-    _auth: AuthUser,
+    auth: AuthUser,
 ) -> Result<Json<DiscordConnectInfo>, (StatusCode, String)> {
-    let managed_enabled = managed_discord_import_enabled();
+    let managed_enabled = managed_discord_import_available_to(&auth);
     Ok(Json(DiscordConnectInfo {
         managed_enabled,
         invite_url: discord_bot_invite_url(),
@@ -204,9 +206,10 @@ pub async fn discord_connect_info(
 }
 
 pub async fn list_discord_guilds(
-    _auth: AuthUser,
+    auth: AuthUser,
 ) -> Result<Json<Vec<DiscordGuildInfo>>, (StatusCode, String)> {
     require_managed_discord_import_enabled()?;
+    require_operator(&auth)?;
     let guilds = fetch_bot_guilds().await?;
     Ok(Json(guilds))
 }
@@ -217,6 +220,7 @@ pub async fn start_managed_discord_import_job(
     Json(body): Json<ManagedDiscordImportBody>,
 ) -> Result<Json<ManagedDiscordImportJobStartResponse>, (StatusCode, String)> {
     require_managed_discord_import_enabled()?;
+    require_operator(&auth)?;
     // One import at a time per user: reject if a Queued/Running job already exists, so a
     // user can't spawn unbounded concurrent Discrawl clones (each is heavy + long-running).
     if owner_has_active_job(&auth.0) {
@@ -285,6 +289,7 @@ pub async fn get_managed_discord_import_job(
     auth: AuthUser,
     AxumPath(job_id): AxumPath<String>,
 ) -> Result<Json<ManagedDiscordImportJob>, (StatusCode, String)> {
+    require_operator(&auth)?;
     get_import_job(&auth.0, &job_id)
         .map(Json)
         .ok_or((StatusCode::NOT_FOUND, "import job not found".to_owned()))
@@ -295,6 +300,7 @@ pub async fn upload_discrawl_archive(
     mut multipart: Multipart,
 ) -> Result<Json<DiscrawlArchiveUploadResponse>, (StatusCode, String)> {
     require_local_discrawl_import_enabled()?;
+    require_operator(&auth)?;
     tokio::fs::create_dir_all(IMPORT_UPLOAD_DIR)
         .await
         .map_err(crate::api::error::internal)?;
@@ -386,6 +392,7 @@ pub async fn run_managed_discord_import(
     Json(body): Json<ManagedDiscordImportBody>,
 ) -> Result<Json<DiscrawlImportResponse>, (StatusCode, String)> {
     require_managed_discord_import_enabled()?;
+    require_operator(&auth)?;
     let guild_id = validate_guild_id(&body.guild_id)?;
     let history = body.history.unwrap_or(HistoryWindow::All);
     run_managed_discord_import_inner(auth.0, state, guild_id, history, |_, _| {})
@@ -437,6 +444,18 @@ pub async fn run_discord_template_import(
     State(state): State<AppState>,
     Json(body): Json<DiscordTemplateImportBody>,
 ) -> Result<Json<DiscrawlImportResponse>, (StatusCode, String)> {
+    // Open to every user, but each import fetches from Discord and builds a whole
+    // server, so it is rationed per user.
+    if !state.rate.check(
+        &format!("discord-template:{}", auth.0),
+        MAX_TEMPLATE_IMPORTS_PER_HOUR,
+        Duration::from_secs(60 * 60),
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many Discord template imports — try again later".into(),
+        ));
+    }
     let guild = import::discord_template::fetch_template_source(&body.template)
         .await
         .map_err(|e| {
@@ -944,11 +963,12 @@ const DISCORD_PERMISSION_FLAGS: &[(u32, &str)] = &[
 ];
 
 pub async fn preview_discrawl_import(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(_state): State<AppState>,
     Json(body): Json<DiscrawlArchiveBody>,
 ) -> Result<Json<DiscrawlPreview>, (StatusCode, String)> {
     require_local_discrawl_import_enabled()?;
+    require_operator(&auth)?;
     validate_db_path(&body.db_path).await?;
     let preview = discrawl::preview(&body.db_path, read_opts(&body))
         .await
@@ -962,6 +982,7 @@ pub async fn run_discrawl_import(
     Json(body): Json<DiscrawlArchiveBody>,
 ) -> Result<Json<DiscrawlImportResponse>, (StatusCode, String)> {
     require_local_discrawl_import_enabled()?;
+    require_operator(&auth)?;
     validate_db_path(&body.db_path).await?;
     let guild = discrawl::read_source_guild(&body.db_path, read_opts(&body))
         .await
@@ -986,8 +1007,17 @@ pub async fn run_discrawl_import(
 fn read_opts(body: &DiscrawlArchiveBody) -> DiscrawlReadOptions {
     DiscrawlReadOptions {
         guild_id: body.guild_id.clone(),
-        media_root: body.media_root.as_ref().map(PathBuf::from),
+        media_root: discrawl_media_root(),
     }
+}
+
+/// Base directory for Discrawl-downloaded media in local imports, from
+/// `OHIYO_DISCRAWL_MEDIA_ROOT`. Unset or empty: attachments are not imported.
+fn discrawl_media_root() -> Option<PathBuf> {
+    std::env::var("OHIYO_DISCRAWL_MEDIA_ROOT")
+        .ok()
+        .filter(|root| !root.trim().is_empty())
+        .map(PathBuf::from)
 }
 
 fn now_ts() -> i64 {
@@ -1415,6 +1445,25 @@ fn require_local_discrawl_import_enabled() -> Result<(), (StatusCode, String)> {
     }
 }
 
+/// Local and managed imports act with the server's own reach (host files, the shared
+/// Discord bot, archive-supplied URLs), so only operators named in
+/// `OHIYO_OPERATOR_USER_IDS` may use them. Unset means nobody.
+fn require_operator(auth: &AuthUser) -> Result<(), (StatusCode, String)> {
+    if crate::auth::is_operator(&auth.0) {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::FORBIDDEN,
+            "only an operator of this server can run Discord imports".into(),
+        ))
+    }
+}
+
+/// Managed import is on and `auth` is an operator, the two things its routes require.
+fn managed_discord_import_available_to(auth: &AuthUser) -> bool {
+    managed_discord_import_enabled() && crate::auth::is_operator(&auth.0)
+}
+
 fn validate_guild_id(guild_id: &str) -> Result<String, (StatusCode, String)> {
     let trimmed = guild_id.trim();
     if trimmed.len() < 5 || !trimmed.bytes().all(|b| b.is_ascii_digit()) {
@@ -1507,6 +1556,22 @@ mod tests {
         // Cleanup.
         tokio::fs::remove_file(&valid).await.ok();
         tokio::fs::remove_file(&secret).await.ok();
+    }
+
+    #[test]
+    fn local_import_takes_the_media_root_from_the_environment_not_the_request() {
+        // The only test that touches this variable.
+        let body: DiscrawlArchiveBody = serde_json::from_value(serde_json::json!({
+            "db_path": "import-uploads/discord/a.db",
+            "media_root": "/",
+        }))
+        .unwrap();
+        std::env::remove_var("OHIYO_DISCRAWL_MEDIA_ROOT");
+        assert_eq!(read_opts(&body).media_root, None, "unset: no media");
+        std::env::set_var("OHIYO_DISCRAWL_MEDIA_ROOT", "/srv/discrawl-media");
+        let configured = read_opts(&body).media_root;
+        std::env::remove_var("OHIYO_DISCRAWL_MEDIA_ROOT");
+        assert_eq!(configured, Some(PathBuf::from("/srv/discrawl-media")));
     }
 
     #[test]

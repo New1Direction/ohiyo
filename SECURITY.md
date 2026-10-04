@@ -53,20 +53,33 @@ key-handling code, authentication, and the deploy configuration in this repo.
 Out of scope: vulnerabilities in third-party dependencies (please report those
 upstream, though a heads-up is welcome), issues that require a fully compromised
 device or a malicious server operator, and findings against infrastructure you
-don't own. There is no public hosted backend to test against — please run your
+don't own. Please do not test against the hosted service at ohiyo.gg — run your
 own local or self-hosted instance for testing.
 
 ## A note on the cryptography
 
-Ohiyo does **not** roll its own crypto. End-to-end encryption is built on the
-**Signal Protocol** (X3DH + Double Ratchet) via an established libsignal
-implementation. Reports about how we *use* the protocol — key handling, session
-management, trust and verification flows, metadata exposure, or sandbox
-escapes — are exactly the kind of thing we want to hear about.
+Ohiyo builds on standard primitives rather than inventing ciphers, but parts of the
+design are our own and none of it has had an external audit. One-to-one encryption
+uses the **Signal Protocol** (X3DH + Double Ratchet) through
+`@privacyresearch/libsignal-protocol-typescript`, a community TypeScript port, not
+Signal's own libsignal. Group encryption (sender keys), the voice-key exchange, the
+safety number, attachment encryption and the recovery backup are Ohiyo's own
+constructions on WebCrypto (AES-256-GCM, ECDSA P-256, PBKDF2); the desktop vault is our
+own Rust code (an AES-256-GCM sealed file whose key lives in the OS keychain). Reports
+about how we *use* the protocol — key handling, session management, trust and
+verification flows, metadata exposure, or sandbox escapes — are exactly the kind of
+thing we want to hear about.
 
 Voice/video is encrypted media (LiveKit FrameCryptor when the SFU is on, DTLS-SRTP
 on the peer-to-peer mesh), but the WebRTC **signaling** channel rides the gateway:
 establishing a call assumes the server relays offers/answers honestly. A malicious
 server operator could disrupt or man-in-the-middle *call setup* — consistent with
 the out-of-scope note above — so the integrity guarantee for voice is "honest
-server," whereas message content holds even against a dishonest one.
+server."
+
+Message content has a narrower guarantee than Signal's today: encryption is opt-in per
+conversation, and a new device for a contact is trusted on first use without a
+warning, so a malicious server (or someone holding a stolen session) could add a
+device and read messages sent after that. Compare safety numbers out of band for
+conversations that matter. The current limits are listed in the
+[README](README.md#known-limits-of-the-encryption).

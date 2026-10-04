@@ -1,6 +1,9 @@
 use std::net::SocketAddr;
 
-use server::{api, build_app, build_state, db, search, validate_config};
+use server::{
+    api, build_app, build_state, db, search, spawn_push_dispatcher, spawn_sweeper, validate_config,
+    BACKGROUND_INTERVAL,
+};
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -29,47 +32,15 @@ async fn main() -> anyhow::Result<()> {
         search::ensure_index().await;
     }
 
+    // Temp files left by uploads cut off by a crash or restart are never renamed into place.
+    api::files::sweep_stale_temp_files().await;
+
     let state = build_state(db);
 
-    // Disappearing messages, the dead-man's switch, and link-token GC run on a periodic
-    // sweeper. Each iteration is wrapped in catch_unwind so a panic in one sweep is
-    // logged and the loop survives to the next tick — a background task that silently
-    // dies would let ciphertext, lapsed accounts, and stale codes accumulate forever.
-    {
-        use futures_util::FutureExt;
-        let sweep_state = state.clone();
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(std::time::Duration::from_secs(20)).await;
-                let iteration = std::panic::AssertUnwindSafe(async {
-                    api::messages::sweep_expired(&sweep_state).await;
-                    // Account-level dead-man's switch: wipe data for users gone too long.
-                    api::users::sweep_deadman(&sweep_state).await;
-                    // Drop expired device-link codes so the table can't grow unbounded.
-                    api::auth::sweep_link_tokens(&sweep_state).await;
-                    // Push delivery cleanup is safe even when provider dispatch is disabled.
-                    api::push::sweep_stale_push_rows(&sweep_state).await;
-                    // Real outbound push delivery is opt-in: self-hosters without provider
-                    // credentials can keep content-free queueing without burning attempts.
-                    if api::push::dispatcher_should_run() {
-                        match api::push::dispatch_queued(&sweep_state, 100).await {
-                            Ok(result) if result.attempted > 0 => {
-                                tracing::info!(
-                                    ?result,
-                                    "content-free push dispatch batch complete"
-                                );
-                            }
-                            Ok(_) => {}
-                            Err(e) => tracing::warn!("content-free push dispatch failed: {e}"),
-                        }
-                    }
-                });
-                if iteration.catch_unwind().await.is_err() {
-                    tracing::error!("a background sweep panicked — continuing the loop");
-                }
-            }
-        });
-    }
+    // Periodic sweeps (disappearing messages, the dead-man's switch, link-token GC) and
+    // content-free push dispatch, each on its own task.
+    spawn_sweeper(state.clone(), BACKGROUND_INTERVAL);
+    spawn_push_dispatcher(state.clone(), BACKGROUND_INTERVAL);
 
     let app = build_app(state);
 

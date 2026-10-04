@@ -6,7 +6,7 @@ use std::{
 
 use axum::{
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
+        ws::{close_code, CloseFrame, Message, WebSocket, WebSocketUpgrade},
         Query, State,
     },
     http::StatusCode,
@@ -31,8 +31,24 @@ pub struct WsQuery {
 
 /// Short-lived, single-use gateway tickets so the long-lived JWT never rides in
 /// the WebSocket URL (which leaks into proxy/access logs, devtools, referrers).
-pub type WsTickets = Arc<Mutex<HashMap<String, (String, Instant)>>>;
+pub type WsTickets = Arc<Mutex<HashMap<String, WsTicket>>>;
 const TICKET_TTL: Duration = Duration::from_secs(30);
+
+/// Who a ticket opens a socket for, and the user's token version when it was issued:
+/// "log out everywhere" bumps the version, which voids tickets issued before it.
+pub struct WsTicket {
+    user_id: String,
+    token_version: i64,
+    issued: Instant,
+}
+
+/// The user's current token version (None if the user is gone).
+async fn current_token_version(state: &AppState, user_id: &str) -> sqlx::Result<Option<i64>> {
+    sqlx::query_scalar("SELECT token_version FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+}
 
 pub fn new_ws_tickets() -> WsTickets {
     Arc::new(Mutex::new(HashMap::new()))
@@ -46,18 +62,28 @@ pub struct WsTicketResponse {
 /// POST /api/v1/ws/ticket — exchange the JWT (Authorization header) for a
 /// one-time ticket used to open the gateway socket.
 pub async fn create_ws_ticket(
-    auth: auth::AuthUser,
+    auth::AuthUser(user_id, token_version): auth::AuthUser,
     State(state): State<AppState>,
-) -> Json<WsTicketResponse> {
+) -> Result<Json<WsTicketResponse>, (StatusCode, String)> {
+    // Stamped with the version of the JWT that asked, not the account's current one:
+    // if "log out everywhere" lands after that JWT passed the auth check, the ticket is
+    // already stale and is refused on redeem.
     let ticket: String = rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
         .take(32)
         .map(char::from)
         .collect();
     let mut tickets = state.tickets.lock().unwrap_or_else(|e| e.into_inner());
-    tickets.retain(|_, (_, issued)| issued.elapsed() < TICKET_TTL); // prune expired
-    tickets.insert(ticket.clone(), (auth.0, Instant::now()));
-    Json(WsTicketResponse { ticket })
+    tickets.retain(|_, t| t.issued.elapsed() < TICKET_TTL); // prune expired
+    tickets.insert(
+        ticket.clone(),
+        WsTicket {
+            user_id,
+            token_version,
+            issued: Instant::now(),
+        },
+    );
+    Ok(Json(WsTicketResponse { ticket }))
 }
 
 // user_id → (connection_id → sender). A user can be connected from several devices /
@@ -103,17 +129,35 @@ fn privacy_enabled(state: &AppState, user_id: &str) -> bool {
         .contains(user_id)
 }
 
-async fn load_persisted_privacy_mode(state: &AppState, user_id: &str) -> bool {
+/// The user's saved Privacy Mode preference. Each caller decides what a database error
+/// means for it.
+async fn load_persisted_privacy_mode(state: &AppState, user_id: &str) -> sqlx::Result<bool> {
     let row: Option<(String,)> =
         sqlx::query_as("SELECT prefs_json FROM user_prefs WHERE user_id = ?")
             .bind(user_id)
             .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten();
-    row.and_then(|(s,)| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .await?;
+    Ok(row
+        .and_then(|(s,)| serde_json::from_str::<serde_json::Value>(&s).ok())
         .and_then(|v| v.pointer("/privacy/metadataMode").and_then(|b| b.as_bool()))
-        .unwrap_or(false)
+        .unwrap_or(false))
+}
+
+/// Whether a user is in metadata Privacy Mode, for checks outside a live socket (REST):
+/// on if switched on live over the gateway, or saved in their prefs — the latter covers
+/// users who have not connected since this process started. Fails closed: if the saved
+/// preference can't be read, it counts as on, so a transient error never exposes a
+/// read cursor or last-seen time.
+pub async fn privacy_mode_on(state: &AppState, user_id: &str) -> bool {
+    if privacy_enabled(state, user_id) {
+        return true;
+    }
+    load_persisted_privacy_mode(state, user_id)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("privacy mode lookup failed for {user_id}, treating as on: {e}");
+            true
+        })
 }
 
 fn set_privacy_mode(state: &AppState, user_id: &str, enabled: bool) {
@@ -148,9 +192,27 @@ const TYPING_COOLDOWN: Duration = Duration::from_secs(2);
 /// short metadata); 64 KiB leaves generous headroom.
 const MAX_WS_FRAME_BYTES: usize = 65_536;
 
+/// Largest inbound WebSocket message or frame the transport will buffer at all (the
+/// default is 64 MiB). Anything bigger fails the read and ends the connection.
+const MAX_WS_TRANSPORT_BYTES: usize = 256 * 1024;
+
+/// A socket that sends nothing for this long is presumed half-open and closed. The
+/// client heartbeats every 20 s (`HEARTBEAT_MS` in client/src/gateway.ts), but browsers
+/// throttle timers in long-hidden tabs to about one per minute, so a backgrounded web
+/// client's heartbeats can arrive a minute or more apart. 150 s outlasts two of those.
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(150);
+
+/// Most live gateway sockets one user may hold across tabs and devices. A connection
+/// over the cap is closed straight away (policy violation) without a Ready.
+const MAX_CONNECTIONS_PER_USER: usize = 20;
+
 /// Cap on how many distinct typing-cooldown entries a single user may pin, so one
 /// connection can't grow the shared map by spamming many channels.
 const MAX_TYPING_CHANNELS_PER_USER: usize = 64;
+
+/// Minimum gap between heartbeat-driven `last_active_at` writes on one connection.
+/// The dead-man's switch works in hours, so a minute of resolution costs nothing.
+const HEARTBEAT_TOUCH_INTERVAL: Duration = Duration::from_secs(60);
 
 /// A participant currently connected to a voice channel.
 #[derive(Clone)]
@@ -161,6 +223,9 @@ pub struct VoiceMember {
     pub screen: bool,
     /// True when the participant joined with no microphone (receive-only).
     pub listen_only: bool,
+    /// The gateway connection that joined. Only that connection closing takes the user
+    /// out of the room, so another of their devices disconnecting leaves the call alone.
+    pub conn_id: u64,
 }
 
 // channel_id → (user_id → VoiceMember)
@@ -281,27 +346,116 @@ pub async fn ws_handler(
     State(state): State<AppState>,
 ) -> Response {
     // One-time ticket (consumed on use), so no long-lived token sits in the URL.
-    let user_id = {
+    let ticket = {
         let mut tickets = state.tickets.lock().unwrap_or_else(|e| e.into_inner());
         match tickets.remove(&q.ticket) {
-            Some((uid, issued)) if issued.elapsed() < TICKET_TTL => uid,
+            Some(t) if t.issued.elapsed() < TICKET_TTL => t,
             _ => return (StatusCode::UNAUTHORIZED, "Invalid or expired ticket").into_response(),
         }
     };
-    ws.on_upgrade(move |socket| handle_socket(socket, user_id, state))
+    // A ticket issued before "log out everywhere" is void: the version has moved on.
+    match current_token_version(&state, &ticket.user_id).await {
+        Ok(Some(v)) if v == ticket.token_version => {}
+        Ok(_) => return (StatusCode::UNAUTHORIZED, "Invalid or expired ticket").into_response(),
+        Err(e) => return crate::api::error::internal(e).into_response(),
+    }
+    let WsTicket {
+        user_id,
+        token_version,
+        ..
+    } = ticket;
+    ws.max_message_size(MAX_WS_TRANSPORT_BYTES)
+        .max_frame_size(MAX_WS_TRANSPORT_BYTES)
+        .on_upgrade(move |socket| handle_socket(socket, user_id, token_version, state))
 }
 
-async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
+/// What happened when a new connection tried to join the session map.
+enum Registration {
+    /// In the map: broadcasts reach it, and "log out everywhere" will close it.
+    Registered,
+    /// The user already holds `MAX_CONNECTIONS_PER_USER` sockets.
+    AtCap,
+    /// The account's token version moved on since the ticket was issued; the connection
+    /// was taken back out of the map.
+    Revoked,
+}
+
+/// Add connection `conn_id` to the user's sessions (multi-device: a user can have many
+/// at once), unless the user is at the cap or `token_version` (the version of the
+/// ticket that opened it) is no longer current.
+async fn register_connection(
+    state: &AppState,
+    user_id: &str,
+    conn_id: u64,
+    tx: broadcast::Sender<GatewayEvent>,
+    token_version: i64,
+) -> Registration {
+    {
+        // One step under the lock, so racing connects can't overshoot.
+        let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
+        let conns = map.entry(user_id.to_owned()).or_default();
+        if conns.len() >= MAX_CONNECTIONS_PER_USER {
+            return Registration::AtCap;
+        }
+        conns.insert(conn_id, tx);
+    }
+    // "Log out everywhere" closes the sockets it finds in the map. One that landed after
+    // this ticket was redeemed but before the connection joined the map had nothing to
+    // close, so check again now that it is in: any later logout will find it.
+    match current_token_version(state, user_id).await {
+        Ok(Some(v)) if v == token_version => Registration::Registered,
+        outcome => {
+            if let Err(e) = outcome {
+                tracing::warn!("gateway: token version re-check failed for {user_id}: {e}");
+            }
+            unregister_connection(state, user_id, conn_id);
+            Registration::Revoked
+        }
+    }
+}
+
+/// Take connection `conn_id` out of the session map. True if it was the user's last.
+fn unregister_connection(state: &AppState, user_id: &str, conn_id: u64) -> bool {
+    let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
+    if let Some(conns) = map.get_mut(user_id) {
+        conns.remove(&conn_id);
+        if conns.is_empty() {
+            map.remove(user_id);
+            true
+        } else {
+            false
+        }
+    } else {
+        true
+    }
+}
+
+async fn handle_socket(
+    mut socket: WebSocket,
+    user_id: String,
+    token_version: i64,
+    state: AppState,
+) {
     // Generous capacity — WebRTC ICE trickle is chatty (dozens of candidates/sec).
     let (tx, mut rx) = broadcast::channel::<GatewayEvent>(1024);
 
-    // Register this connection (multi-device: a user can have many at once).
     let conn_id = next_conn_id();
-    {
-        let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
-        map.entry(user_id.clone())
-            .or_default()
-            .insert(conn_id, tx.clone());
+    match register_connection(&state, &user_id, conn_id, tx.clone(), token_version).await {
+        Registration::Registered => {}
+        Registration::AtCap => {
+            let _ = socket
+                .send(Message::Close(Some(CloseFrame {
+                    code: close_code::POLICY,
+                    reason: "too many connections".into(),
+                })))
+                .await;
+            return;
+        }
+        Registration::Revoked => {
+            // Closed the way "log out everywhere" closes a live socket.
+            let _ = socket.send(Message::Close(None)).await;
+            return;
+        }
     }
 
     // Connecting counts as activity → refresh the dead-man's-switch liveness clock.
@@ -309,7 +463,11 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
 
     // Load persisted Privacy Mode before the first presence fan-out. Otherwise a
     // privacy-mode user would briefly flash online on every reconnect.
-    let persisted_privacy = load_persisted_privacy_mode(&state, &user_id).await;
+    // On a read error the socket starts with Privacy Mode off, as before: failing closed
+    // here would hide this user's presence and typing until they reconnect.
+    let persisted_privacy = load_persisted_privacy_mode(&state, &user_id)
+        .await
+        .unwrap_or(false);
     set_privacy_mode(&state, &user_id, persisted_privacy);
 
     // Load our own public profile once for voice events.
@@ -336,7 +494,7 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
 
     // Forward broadcast events to this WS connection. A lagging receiver (slow
     // client during ICE trickle) drops events but must NOT tear down the stream.
-    let send_task = tokio::spawn(async move {
+    let mut send_task = tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(event) => {
@@ -351,7 +509,11 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!("gateway: receiver lagged, dropped {n} events");
                 }
-                Err(broadcast::error::RecvError::Closed) => break,
+                // This connection's sender left the session map (logout everywhere).
+                Err(broadcast::error::RecvError::Closed) => {
+                    let _ = ws_tx.send(Message::Close(None)).await;
+                    break;
+                }
             }
         }
     });
@@ -360,9 +522,26 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     // (and their activity) so presence shows immediately, not just on the next change.
     send_presence_snapshot(&state, &user_id, &tx).await;
     send_voice_snapshot(&state, &user_id, &tx).await;
+    // From here the session map holds the only sender, so removing it closes the socket.
+    drop(tx);
 
     // Drain incoming messages: WebRTC signaling, voice state, heartbeats.
-    while let Some(Ok(msg)) = ws_rx.next().await {
+    let mut last_heartbeat_touch: Option<Instant> = None;
+    loop {
+        let msg = tokio::select! {
+            // The forwarder only stops once the socket is closed or unwritable.
+            _ = &mut send_task => break,
+            msg = tokio::time::timeout(state.gateway_idle_timeout, ws_rx.next()) => match msg {
+                Ok(Some(Ok(msg))) => msg,
+                // Closed, or a read error such as a message over the transport cap.
+                Ok(_) => break,
+                // Nothing at all for the idle limit: presume the socket is half-open.
+                Err(_) => {
+                    tracing::debug!("gateway: closing idle connection for {user_id}");
+                    break;
+                }
+            },
+        };
         match msg {
             Message::Close(_) => break,
             Message::Text(t) => {
@@ -377,7 +556,17 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
                     continue;
                 }
                 match serde_json::from_str::<ClientEvent>(&t) {
-                    Ok(ev) => handle_client_event(ev, &user_id, me.as_ref(), &state).await,
+                    Ok(ev) => {
+                        handle_client_event(
+                            ev,
+                            &user_id,
+                            conn_id,
+                            me.as_ref(),
+                            &state,
+                            &mut last_heartbeat_touch,
+                        )
+                        .await
+                    }
                     Err(e) => tracing::debug!("gateway: bad client frame from {user_id}: {e}"),
                 }
             }
@@ -387,25 +576,12 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
 
     send_task.abort();
 
-    // Leave any voice channels we were in, notifying peers.
-    cleanup_voice(&state, &user_id, me.as_ref()).await;
+    // Leave any voice channels this connection joined, notifying peers.
+    cleanup_voice(&state, &user_id, conn_id, me.as_ref()).await;
 
     // Unregister THIS connection. Only when the user's last connection drops do we
     // clear activity + announce offline (otherwise closing one device flaps presence).
-    let last_connection = {
-        let mut map = state.sessions.write().unwrap_or_else(|e| e.into_inner());
-        if let Some(conns) = map.get_mut(&user_id) {
-            conns.remove(&conn_id);
-            if conns.is_empty() {
-                map.remove(&user_id);
-                true
-            } else {
-                false
-            }
-        } else {
-            true
-        }
-    };
+    let last_connection = unregister_connection(&state, &user_id, conn_id);
     if last_connection {
         state
             .activities
@@ -421,12 +597,15 @@ async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
     }
 }
 
-/// Handle one client→server event.
+/// Handle one client→server event from connection `conn_id`. `last_heartbeat_touch` is
+/// this connection's throttle for heartbeat-driven `touch_active` writes.
 async fn handle_client_event(
     ev: ClientEvent,
     user_id: &str,
+    conn_id: u64,
     me: Option<&PublicUser>,
     state: &AppState,
+    last_heartbeat_touch: &mut Option<Instant>,
 ) {
     match ev {
         ClientEvent::JoinVoice {
@@ -446,12 +625,15 @@ async fn handle_client_event(
 
             // Build the roster of peers already present (before adding ourselves),
             // then register ourselves. Single lock, no await inside. Returns None
-            // if we're already in this room (duplicate join → ignore, don't
-            // re-send the roster which would trigger a second offer wave).
+            // if we're already in this room (duplicate join → don't re-send the roster,
+            // which would trigger a second offer wave, and announce nothing). The seat
+            // does move to this connection: after a reconnect during a call, the old
+            // connection closing must not take the user out of the call.
             let roster: Option<Vec<VoicePeer>> = {
                 let mut rooms = state.voice.write().unwrap_or_else(|e| e.into_inner());
                 let room = rooms.entry(channel_id.clone()).or_default();
-                if room.contains_key(user_id) {
+                if let Some(seat) = room.get_mut(user_id) {
+                    seat.conn_id = conn_id;
                     None
                 } else {
                     let peers = room
@@ -473,6 +655,7 @@ async fn handle_client_event(
                             video,
                             screen: false,
                             listen_only,
+                            conn_id,
                         },
                     );
                     Some(peers)
@@ -745,7 +928,24 @@ async fn handle_client_event(
             handle_watch_control(state, user_id, &channel_id, &action, url, position).await;
         }
 
-        ClientEvent::Heartbeat => {}
+        ClientEvent::Heartbeat => {
+            // Answer on this connection only, so the client sees the socket is alive.
+            if let Some(tx) = state
+                .sessions
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(user_id)
+                .and_then(|conns| conns.get(&conn_id))
+            {
+                let _ = tx.send(GatewayEvent::HeartbeatAck);
+            }
+            // A heartbeat proves the user is online: refresh the dead-man's-switch clock,
+            // at most once per HEARTBEAT_TOUCH_INTERVAL on this connection.
+            if last_heartbeat_touch.is_none_or(|t| t.elapsed() >= HEARTBEAT_TOUCH_INTERVAL) {
+                crate::api::users::touch_active(&state.db, user_id).await;
+                *last_heartbeat_touch = Some(Instant::now());
+            }
+        }
     }
 }
 
@@ -836,9 +1036,18 @@ async fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, c
             false
         }
     };
-    if !removed {
-        return;
+    if removed {
+        announce_voice_leave(state, user_id, me, channel_id).await;
     }
+}
+
+/// Tell everyone who can see `channel_id` that the user left its voice room.
+async fn announce_voice_leave(
+    state: &AppState,
+    user_id: &str,
+    me: Option<&PublicUser>,
+    channel_id: &str,
+) {
     if let Some(me) = me {
         broadcast_to_channel(
             state,
@@ -858,18 +1067,69 @@ async fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, c
     }
 }
 
-/// Remove a user from every voice channel on disconnect.
-async fn cleanup_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>) {
-    let channels: Vec<String> = {
+/// Remove a user from every voice room in one server (they were kicked, banned or left),
+/// announcing each departure exactly like a normal leave.
+pub async fn evict_from_server_voice(state: &AppState, server_id: &str, user_id: &str) {
+    let server_channels: HashSet<String> =
+        sqlx::query_scalar("SELECT id FROM channels WHERE server_id = ?")
+            .bind(server_id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    "evict_from_server_voice channels query failed for {server_id}: {e}"
+                );
+                Vec::new()
+            })
+            .into_iter()
+            .collect();
+    evict_from_voice_rooms(state, &server_channels, user_id).await;
+}
+
+/// Remove a user from the voice rooms of `channels` they can no longer access (a server
+/// they were kicked or banned from or left, or a group DM they were removed from),
+/// announcing each departure exactly like a normal leave.
+pub async fn evict_from_voice_rooms(state: &AppState, channels: &HashSet<String>, user_id: &str) {
+    let seats: Vec<(String, PublicUser)> = {
         let rooms = state.voice.read().unwrap_or_else(|e| e.into_inner());
         rooms
             .iter()
-            .filter(|(_, room)| room.contains_key(user_id))
-            .map(|(cid, _)| cid.clone())
+            .filter(|(channel_id, _)| channels.contains(*channel_id))
+            .filter_map(|(channel_id, room)| {
+                room.get(user_id)
+                    .map(|m| (channel_id.clone(), m.user.clone()))
+            })
             .collect()
     };
-    for cid in channels {
-        leave_voice(state, user_id, me, &cid).await;
+    for (channel_id, user) in seats {
+        leave_voice(state, user_id, Some(&user), &channel_id).await;
+    }
+}
+
+/// On disconnect of connection `conn_id`, remove the user from every voice channel that
+/// connection joined. Rooms joined from the user's other connections are left alone.
+/// Every seat is checked and removed in one pass under the write lock, so a seat another
+/// connection takes over meanwhile is never removed by this one.
+async fn cleanup_voice(state: &AppState, user_id: &str, conn_id: u64, me: Option<&PublicUser>) {
+    let left: Vec<String> = {
+        let mut rooms = state.voice.write().unwrap_or_else(|e| e.into_inner());
+        let channels: Vec<String> = rooms
+            .iter()
+            .filter(|(_, room)| room.get(user_id).is_some_and(|m| m.conn_id == conn_id))
+            .map(|(cid, _)| cid.clone())
+            .collect();
+        for cid in &channels {
+            if let Some(room) = rooms.get_mut(cid) {
+                room.remove(user_id);
+                if room.is_empty() {
+                    rooms.remove(cid);
+                }
+            }
+        }
+        channels
+    };
+    for cid in left {
+        announce_voice_leave(state, user_id, me, &cid).await;
     }
 }
 
@@ -1128,45 +1388,21 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
     .fetch_all(&state.db)
     .await?;
 
-    // Per-server channels/members/categories: run the three queries concurrently per
-    // server, and all servers concurrently (WAL + 16-conn pool) — instead of 3N serial
-    // queries on the connect critical path.
-    let server_list: Vec<ServerWithChannels> =
-        futures_util::future::join_all(servers.into_iter().map(|server| {
-            let db = &state.db;
-            async move {
-                let (channels, members, categories) = tokio::join!(
-                    sqlx::query_as::<_, crate::types::Channel>(
-                        "SELECT * FROM channels WHERE server_id = ? ORDER BY position",
-                    )
-                    .bind(&server.id)
-                    .fetch_all(db),
-                    sqlx::query_as::<_, crate::types::User>(
-                        "SELECT u.* FROM users u
-                         JOIN server_members sm ON sm.user_id = u.id
-                         WHERE sm.server_id = ?",
-                    )
-                    .bind(&server.id)
-                    .fetch_all(db),
-                    sqlx::query_as::<_, crate::types::Category>(
-                        "SELECT * FROM categories WHERE server_id = ? ORDER BY position",
-                    )
-                    .bind(&server.id)
-                    .fetch_all(db),
-                );
-                ServerWithChannels {
-                    server,
-                    channels: channels.unwrap_or_default(),
-                    members: members
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(PublicUser::from)
-                        .collect(),
-                    categories: categories.unwrap_or_default(),
-                }
-            }
-        }))
-        .await;
+    // Build each server through the same View Channel filter REST uses, so a channel
+    // this user can't see never reaches them. All servers run concurrently (WAL +
+    // 16-conn pool) to keep the connect critical path short.
+    let server_list: Vec<ServerWithChannels> = futures_util::future::join_all(
+        servers
+            .iter()
+            .map(|server| crate::api::servers::fetch_full_for_user(&server.id, state, user_id)),
+    )
+    .await
+    .into_iter()
+    .filter_map(|full| {
+        full.map_err(|(_, e)| tracing::warn!("gateway: Ready skipped a server for {user_id}: {e}"))
+            .ok()
+    })
+    .collect();
 
     let dms = sqlx::query_as::<_, crate::types::Channel>(
         "SELECT c.* FROM channels c
@@ -1205,7 +1441,17 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
     .fetch_all(&state.db)
     .await
     .unwrap_or_default();
-    let unread: std::collections::HashMap<String, i64> = unread_rows.into_iter().collect();
+    // Only channels listed above (i.e. ones this user can view) may carry an unread count.
+    let visible: HashSet<&str> = server_list
+        .iter()
+        .flat_map(|s| s.channels.iter())
+        .chain(dms.iter())
+        .map(|c| c.id.as_str())
+        .collect();
+    let unread: std::collections::HashMap<String, i64> = unread_rows
+        .into_iter()
+        .filter(|(channel_id, _)| visible.contains(channel_id.as_str()))
+        .collect();
 
     Ok(GatewayEvent::Ready {
         user: PublicUser::from(user),
@@ -1213,4 +1459,139 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
         dms,
         unread,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// State over a fresh migrated database holding user `u1` at `token_version`.
+    async fn state_with_user(token_version: i64) -> AppState {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, display_name, password_hash, created_at, token_version)
+             VALUES ('u1', 'u1', 'U1', 'h', 0, ?)",
+        )
+        .bind(token_version)
+        .execute(&pool)
+        .await
+        .unwrap();
+        crate::build_state(pool)
+    }
+
+    /// The ticket was redeemed at version 0, then "log out everywhere" moved the account
+    /// to 1 while the map held nothing of this connection's to close.
+    #[tokio::test]
+    async fn a_connection_that_joins_after_logout_everywhere_is_dropped() {
+        let state = state_with_user(1).await;
+        let (tx, _rx) = broadcast::channel(1);
+        let outcome = register_connection(&state, "u1", 1, tx, 0).await;
+        assert!(!matches!(outcome, Registration::Registered));
+        assert!(
+            !state
+                .sessions
+                .read()
+                .unwrap()
+                .get("u1")
+                .is_some_and(|conns| conns.contains_key(&1)),
+            "the connection is not left in the session map"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_connection_whose_version_is_current_stays_registered() {
+        let state = state_with_user(1).await;
+        let (tx, _rx) = broadcast::channel(1);
+        let outcome = register_connection(&state, "u1", 1, tx, 1).await;
+        assert!(matches!(outcome, Registration::Registered));
+        assert!(state
+            .sessions
+            .read()
+            .unwrap()
+            .get("u1")
+            .is_some_and(|conns| conns.contains_key(&1)));
+    }
+
+    fn seat(conn_id: u64) -> VoiceMember {
+        VoiceMember {
+            user: PublicUser {
+                id: "u1".to_owned(),
+                username: "u1".to_owned(),
+                display_name: "U1".to_owned(),
+                avatar_url: None,
+            },
+            muted: false,
+            video: false,
+            screen: false,
+            listen_only: false,
+            conn_id,
+        }
+    }
+
+    /// Connection 1 closes while connection 2 of the same user (re)joins its rooms. The
+    /// test runtime is single-threaded, so the rejoin task runs at the cleanup's first
+    /// await. Whenever that is, a seat connection 2 holds afterwards must survive.
+    #[tokio::test]
+    async fn disconnect_cleanup_never_removes_a_seat_another_connection_holds() {
+        let state = state_with_user(0).await;
+        let rooms = ["room-a", "room-b"];
+        for room in rooms {
+            state
+                .voice
+                .write()
+                .unwrap()
+                .entry(room.to_owned())
+                .or_default()
+                .insert("u1".to_owned(), seat(1));
+        }
+        let rejoin = tokio::spawn({
+            let state = state.clone();
+            async move {
+                let mut voice = state.voice.write().unwrap();
+                for room in rooms {
+                    let room = voice.entry(room.to_owned()).or_default();
+                    match room.get_mut("u1") {
+                        Some(member) => member.conn_id = 2,
+                        None => {
+                            room.insert("u1".to_owned(), seat(2));
+                        }
+                    }
+                }
+            }
+        });
+
+        cleanup_voice(&state, "u1", 1, Some(&seat(1).user)).await;
+        rejoin.await.unwrap();
+
+        for room in rooms {
+            assert_eq!(
+                state
+                    .voice
+                    .read()
+                    .unwrap()
+                    .get(room)
+                    .and_then(|r| r.get("u1"))
+                    .map(|m| m.conn_id),
+                Some(2),
+                "{room}: connection 2's seat survives connection 1's cleanup"
+            );
+        }
+    }
+
+    /// Browsers wake timers in a long-hidden tab about once a minute, so a backgrounded
+    /// client's 20 s heartbeat can arrive a minute late, or two minutes when a wake-up
+    /// slips. Closing before then would drop backgrounded web clients.
+    #[test]
+    fn idle_limit_outlasts_heartbeats_from_a_throttled_background_tab() {
+        let throttled_wakeup = Duration::from_secs(60);
+        assert!(
+            IDLE_TIMEOUT > 2 * throttled_wakeup,
+            "idle limit {IDLE_TIMEOUT:?}"
+        );
+    }
 }

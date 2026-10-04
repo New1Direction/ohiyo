@@ -4,7 +4,7 @@ import { useDropzone } from "react-dropzone";
 import { VariableSizeList as List } from "react-window";
 import type { AttachmentMeta, Embed, Message, Channel, ReactionGroup, ServerEmoji, PublicUser } from "../api";
 import type { WatchSession } from "../gateway";
-import { isEncryptedAttachment, type EncryptedAttachmentMeta } from "../lib/encryptedPayload";
+import { homeFileUrl, isEncryptedAttachment, safeAttachmentBlobType, type EncryptedAttachmentMeta } from "../lib/encryptedPayload";
 import type { TrustState } from "../lib/identityTrust";
 import { WatchParty } from "./WatchParty";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -20,28 +20,14 @@ import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
 import { safeHttpUrl } from "../lib/url";
+import { linkPreviewMode } from "../lib/linkPreviews";
+import { loadDraft, persistDraft } from "../lib/drafts";
+import { editBlockReason, pendingAttachmentsToKeep, REATTACH_MESSAGE } from "../lib/encryptedSend";
+import { filesThatFit, holdingSlots, TOO_MANY_ATTACHMENTS } from "../lib/attachmentLimit";
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 
-// Composer drafts persisted per channel so a half-written message survives a reload,
-// not just a channel switch. Cleared on send.
-const DRAFT_PREFIX = "kc:draft:";
 const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
-function persistDraft(channelId: string, text: string) {
-  try {
-    if (text.trim()) localStorage.setItem(DRAFT_PREFIX + channelId, text);
-    else localStorage.removeItem(DRAFT_PREFIX + channelId);
-  } catch {
-    /* storage off */
-  }
-}
-function loadDraft(channelId: string): string {
-  try {
-    return localStorage.getItem(DRAFT_PREFIX + channelId) ?? "";
-  } catch {
-    return "";
-  }
-}
 function hiddenMessagesKey(channelId: string, userId: string): string {
   return `${HIDDEN_MESSAGES_PREFIX}${userId || "anonymous"}:${channelId}`;
 }
@@ -134,6 +120,9 @@ export type ChatActivityNotice = {
 type MsgGroup = { author: Message["author"]; msgs: Message[]; isMe: boolean };
 type ChatRow = { kind: "messages"; group: MsgGroup } | { kind: "activity"; notice: ChatActivityNotice };
 
+// Shown wherever group encryption is offered (sender keys reach only connected members).
+const GROUP_E2E_NOTE = "Group encryption can miss messages sent while you were offline.";
+
 const DIRECT_VIDEO_EXT_RE = /\.(mp4|m4v|mov|webm|ogv|ogg)(?:$|[?#])/i;
 
 function extractSafeHttpUrlsFromText(text: string): string[] {
@@ -188,8 +177,10 @@ function linkPreviewHeight(url: string): number {
   return 98;
 }
 
-function messageEmbedHeight(message: Message): number {
-  if (message.embeds?.length) return message.embeds.reduce((sum, embed) => sum + linkPreviewHeight(embed.url), 0);
+function messageEmbedHeight(message: Message, channelEncrypted: boolean): number {
+  const mode = linkPreviewMode(message, channelEncrypted);
+  if (mode === "none") return 0;
+  if (mode === "server-embeds") return (message.embeds ?? []).reduce((sum, embed) => sum + linkPreviewHeight(embed.url), 0);
   return extractSafeHttpUrlsFromText(message.content).reduce((sum, url) => sum + linkPreviewHeight(url), 0);
 }
 
@@ -351,7 +342,7 @@ async function encryptAttachmentFile(file: File): Promise<{ blob: Blob; encrypte
 async function decryptAttachmentBytes(att: EncryptedAttachmentMeta, encryptedBytes: ArrayBuffer): Promise<Blob> {
   const key = await crypto.subtle.importKey("raw", unb64Url(att.encrypted.key), { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64Url(att.encrypted.iv) }, key, encryptedBytes);
-  return new Blob([plain], { type: att.content_type || "application/octet-stream" });
+  return new Blob([plain], { type: safeAttachmentBlobType(att.content_type) });
 }
 
 export function ChatPane({
@@ -408,6 +399,9 @@ export function ChatPane({
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   // Composer is sacred: remember unsent text per channel so a switch never loses it.
   const draftsRef = useRef<Record<string, string>>({});
+  // Whether each chat was in encrypted mode when last shown: its draft then stays in memory.
+  const encryptedChatsRef = useRef<Record<string, boolean>>({});
+  if (channel?.id) encryptedChatsRef.current[channel.id] = e2eEnabled;
   const inputRef = useRef(input);
   inputRef.current = input;
   const prevChannelRef = useRef<string | null>(channel?.id ?? null);
@@ -420,6 +414,11 @@ export function ChatPane({
   const [showPoll, setShowPoll] = useState(false);
   const lastTypingRef = useRef(0);
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([]);
+  // Files attached or still uploading, so a drop can't push a message past the server's
+  // attachment limit (read by onDrop, which keeps a stable identity).
+  const pendingFilesRef = useRef(pendingFiles);
+  pendingFilesRef.current = pendingFiles;
+  const uploadingCountRef = useRef(0);
   const [_uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [emojiPickerFor, setEmojiPickerFor] = useState<string | null>(null);
@@ -489,7 +488,7 @@ export function ChatPane({
     setMention(activeMentionQuery(value, caret));
     notifyTyping();
     // Persist immediately so a reload never loses it (beforeunload is just a backstop).
-    if (channel?.id) persistDraft(channel.id, value);
+    if (channel?.id) persistDraft(channel.id, value, e2eEnabled);
   }
 
   function pickMention(username: string) {
@@ -520,7 +519,7 @@ export function ChatPane({
     setInput(next);
     inputRef.current = next;
     draftsRef.current[channel.id] = next;
-    persistDraft(channel.id, next);
+    persistDraft(channel.id, next, e2eEnabled);
     setMention(null);
     requestAnimationFrame(() => {
       el?.focus();
@@ -540,7 +539,7 @@ export function ChatPane({
     setInput("");
     inputRef.current = "";
     draftsRef.current[channel.id] = "";
-    persistDraft(channel.id, "");
+    persistDraft(channel.id, "", e2eEnabled);
     setReplyTarget(null);
     setGifUrl("");
     setComposerPickerOpen(false);
@@ -636,7 +635,7 @@ export function ChatPane({
     if (prev === next) return;
     if (prev) {
       draftsRef.current[prev] = inputRef.current;
-      persistDraft(prev, inputRef.current); // survive a reload, not just a switch
+      persistDraft(prev, inputRef.current, encryptedChatsRef.current[prev] === true); // survive a reload, not just a switch
       // Stash where the user was reading in the channel they're leaving.
       const s = scrollMapRef.current[prev];
       persistScroll(prev, s && !s.atBottom ? s.offset : null);
@@ -666,12 +665,27 @@ export function ChatPane({
     setShowJump(false);
   }, [channel?.id]);
 
+  // A chat in encrypted mode keeps its draft in memory only: drop any copy stored before
+  // encryption was on (the draft itself stays in the composer).
+  useEffect(() => {
+    if (channel?.id && e2eEnabled) persistDraft(channel.id, inputRef.current, true);
+  }, [channel?.id, e2eEnabled]);
+
+  // A file attached while the chat was unencrypted was uploaded in the clear: once the
+  // chat is in encrypted mode (toggle or incoming encrypted message) it can't be sent.
+  useEffect(() => {
+    const kept = pendingAttachmentsToKeep(pendingFiles, e2eEnabled);
+    if (kept === pendingFiles) return;
+    setPendingFiles([...kept]);
+    onToast(REATTACH_MESSAGE);
+  }, [e2eEnabled, pendingFiles, onToast]);
+
   // Persist the CURRENT channel's draft on reload/close (the switch effect only fires
   // on a change, so a straight reload would otherwise drop it).
   useEffect(() => {
     const save = () => {
       if (!channel?.id) return;
-      persistDraft(channel.id, inputRef.current);
+      persistDraft(channel.id, inputRef.current, encryptedChatsRef.current[channel.id] === true);
       const s = scrollMapRef.current[channel.id];
       persistScroll(channel.id, s && !s.atBottom ? s.offset : null);
     };
@@ -792,10 +806,10 @@ export function ChatPane({
       const pins = g.msgs.filter((m) => m.pinned).length;
       const failed = g.msgs.filter((m) => m._state === "failed").length;
       const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
-      const embedsH = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 0 : messageEmbedHeight(m)), 0);
+      const embedsH = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 0 : messageEmbedHeight(m, e2eEnabled)), 0);
       return basePx + Math.max(textLines, 1) * linePx + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
     },
-    [rows, hiddenMessageIds]
+    [rows, hiddenMessageIds, e2eEnabled]
   );
 
   const handleSend = useCallback(
@@ -820,7 +834,7 @@ export function ChatPane({
       onSend(transformed, pendingFiles.map((f) => f.id), replyTarget?.id ?? null, encryptedAttachments.length ? encryptedAttachments : undefined);
       setInput("");
       draftsRef.current[channel.id] = "";
-      persistDraft(channel.id, ""); // sent → no lingering draft
+      persistDraft(channel.id, "", encryptedChatsRef.current[channel.id] === true); // sent → no lingering draft
       setPendingFiles([]);
       setReplyTarget(null);
     },
@@ -839,76 +853,82 @@ export function ChatPane({
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       if (!token) return;
+      const { fit, leftOut } = filesThatFit(pendingFilesRef.current.length + uploadingCountRef.current, acceptedFiles);
+      if (leftOut > 0) onToast(TOO_MANY_ATTACHMENTS, "error");
+      if (fit.length === 0) return;
       setUploading(true);
+      // The slots come back however the batch ends, so a failure can't shrink the
+      // 10-file allowance (holdingSlots).
+      await holdingSlots(uploadingCountRef, fit.length, async () => {
+        const results: UploadedFile[] = [];
+        for (const file of fit) {
+          try {
+            // Inside the try: a file that can't be read or encrypted is reported like any
+            // other failed upload, and the rest still go.
+            const formData = new FormData();
+            const encryptedUpload = e2eEnabled ? await encryptAttachmentFile(file) : null;
+            const uploadFile = encryptedUpload
+              ? new File([encryptedUpload.blob], "encrypted.bin", { type: "application/octet-stream" })
+              : file;
+            formData.append("file", uploadFile);
+            const xhr = new XMLHttpRequest();
+            const progressKey = file.name;
 
-      const results: UploadedFile[] = [];
-      for (const file of acceptedFiles) {
-        const formData = new FormData();
-        const encryptedUpload = e2eEnabled ? await encryptAttachmentFile(file) : null;
-        const uploadFile = encryptedUpload
-          ? new File([encryptedUpload.blob], "encrypted.bin", { type: "application/octet-stream" })
-          : file;
-        formData.append("file", uploadFile);
-
-        try {
-          const xhr = new XMLHttpRequest();
-          const progressKey = file.name;
-
-          await new Promise<void>((resolve, reject) => {
-            xhr.upload.onprogress = (e) => {
-              if (e.lengthComputable) {
-                setUploadProgress((prev) => ({
-                  ...prev,
-                  [progressKey]: Math.round((e.loaded / e.total) * 100),
-                }));
-              }
-            };
-            xhr.onload = () => {
-              if (xhr.status < 300) {
-                const data = JSON.parse(xhr.responseText) as UploadedFile[];
-                if (encryptedUpload) {
-                  results.push(
-                    ...data.map((item) => ({
-                      ...item,
-                      filename: file.name,
-                      content_type: file.type || "application/octet-stream",
-                      size_bytes: file.size,
-                      width: null,
-                      height: null,
-                      encrypted: encryptedUpload.encrypted,
-                      previewUrl: URL.createObjectURL(file),
-                    }))
-                  );
-                } else {
-                  results.push(...data);
+            await new Promise<void>((resolve, reject) => {
+              xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                  setUploadProgress((prev) => ({
+                    ...prev,
+                    [progressKey]: Math.round((e.loaded / e.total) * 100),
+                  }));
                 }
-                resolve();
-              } else {
-                const serverText = xhr.responseText?.trim();
-                const reason = serverText || (xhr.status === 413 ? "file is too large for this server" : `HTTP ${xhr.status}`);
-                reject(new Error(reason));
-              }
-            };
-            xhr.onerror = () => reject(new Error("Network error"));
+              };
+              xhr.onload = () => {
+                if (xhr.status < 300) {
+                  const data = JSON.parse(xhr.responseText) as UploadedFile[];
+                  if (encryptedUpload) {
+                    results.push(
+                      ...data.map((item) => ({
+                        ...item,
+                        filename: file.name,
+                        content_type: file.type || "application/octet-stream",
+                        size_bytes: file.size,
+                        width: null,
+                        height: null,
+                        encrypted: encryptedUpload.encrypted,
+                        previewUrl: URL.createObjectURL(file),
+                      }))
+                    );
+                  } else {
+                    results.push(...data);
+                  }
+                  resolve();
+                } else {
+                  const serverText = xhr.responseText?.trim();
+                  const reason = serverText || (xhr.status === 413 ? "file is too large for this server" : `HTTP ${xhr.status}`);
+                  reject(new Error(reason));
+                }
+              };
+              xhr.onerror = () => reject(new Error("Network error"));
 
-            xhr.open("POST", `${getApiBase()}/upload`);
-            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-            xhr.send(formData);
-          });
+              xhr.open("POST", `${getApiBase()}/upload`);
+              xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+              xhr.send(formData);
+            });
 
-          setUploadProgress((prev) => {
-            const next = { ...prev };
-            delete next[progressKey];
-            return next;
-          });
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          onToast(`Upload failed: ${file.name} (${formatBytes(file.size)}): ${reason}`, "error");
+            setUploadProgress((prev) => {
+              const next = { ...prev };
+              delete next[progressKey];
+              return next;
+            });
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            onToast(`Upload failed: ${file.name} (${formatBytes(file.size)}): ${reason}`, "error");
+          }
         }
-      }
 
-      setPendingFiles((prev) => [...prev, ...results]);
-      setUploading(false);
+        setPendingFiles((prev) => [...prev, ...results]);
+      }).finally(() => setUploading(false));
     },
     [token, onToast, e2eEnabled]
   );
@@ -1190,7 +1210,8 @@ export function ChatPane({
             )}
           </div>
         )}
-        {onWatchControl && (
+        {/* A watch party's video URL goes to the server unencrypted: not in encrypted chats. */}
+        {onWatchControl && !e2eEnabled && (
           <button
             type="button"
             onClick={() => setWatchInput((v) => (v === null ? "" : null))}
@@ -1208,7 +1229,10 @@ export function ChatPane({
             onClick={onToggleE2e}
             aria-label={e2eEnabled ? "Turn off end-to-end encryption" : "Turn on end-to-end encryption"}
             aria-pressed={e2eEnabled}
-            title={e2eEnabled ? "End-to-end encrypted — click to turn off" : "Turn on end-to-end encryption"}
+            title={
+              (e2eEnabled ? "End-to-end encrypted — click to turn off" : "Turn on end-to-end encryption") +
+              (channel?.channel_type === "group_dm" ? ` (Experimental). ${GROUP_E2E_NOTE}` : "")
+            }
             className={`kc-icon-btn flex-shrink-0${e2eEnabled ? " active" : ""}`}
             style={e2eEnabled ? { color: "var(--accent)" } : undefined}
           >
@@ -1387,7 +1411,18 @@ export function ChatPane({
                 <strong>
                   {e2eTrust === "verified" ? "End-to-end encrypted · verified." : "Switched to end-to-end encrypted."}
                 </strong>{" "}
-                Messages here are encrypted on your device — not even the server can read them.
+                {channel?.channel_type === "group_dm" && (
+                  <>
+                    <span
+                      className="rounded px-1 font-bold uppercase"
+                      style={{ fontSize: 10, letterSpacing: "0.04em", border: "1px solid currentColor" }}
+                    >
+                      Experimental
+                    </span>{" "}
+                  </>
+                )}
+                Encryption is on. The server stores only ciphertext for messages and files you send here.
+                {channel?.channel_type === "group_dm" && ` ${GROUP_E2E_NOTE}`}
               </span>
               {e2eTrust === "verified" && (
                 <span
@@ -1457,7 +1492,7 @@ export function ChatPane({
       )}
 
       {/* Watch party — synced video for this channel */}
-      {watchInput !== null && onWatchControl && (
+      {watchInput !== null && onWatchControl && !e2eEnabled && (
         <form
           className="mx-3 mt-2 flex items-center gap-2"
           onSubmit={(e) => {
@@ -1511,6 +1546,7 @@ export function ChatPane({
           <ChannelWelcome
             channelName={channel?.name && channel.name !== "dm" ? channel.name : undefined}
             isDM={channel?.channel_type === "dm" || channel?.channel_type === "group_dm"}
+            encrypted={e2eEnabled}
             userId={currentUserId}
             onSaveRecovery={onSaveRecovery}
           />
@@ -1605,7 +1641,7 @@ export function ChatPane({
                               className="msg-content"
                               style={{ color: "var(--text-secondary)", userSelect: "text", opacity: msg._state === "pending" ? 0.5 : 1 }}
                             >
-                              {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={!!(msg.embeds && msg.embeds.length)} />}
+                              {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={linkPreviewMode(msg, e2eEnabled) !== "client-fetch"} />}
                               {msg.edited_at && (
                                 <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 5 }}>(edited)</span>
                               )}
@@ -1620,7 +1656,7 @@ export function ChatPane({
                               {msg.attachments && msg.attachments.length > 0 && (
                                 <AttachmentList attachments={msg.attachments} />
                               )}
-                              {msg.embeds && msg.embeds.length > 0 && msg.embeds.map((em) => (
+                              {linkPreviewMode(msg, e2eEnabled) === "server-embeds" && msg.embeds?.map((em) => (
                                 <EmbedCard key={em.url} embed={em} />
                               ))}
                             </div>
@@ -1717,7 +1753,7 @@ export function ChatPane({
                                   <Icon name="bookmark" size={16} />
                                 </button>
                               )}
-                              {g.isMe && onEditMessage && !msg.poll && !msg.id.startsWith("temp-") && (
+                              {g.isMe && onEditMessage && !msg.poll && !msg.id.startsWith("temp-") && editBlockReason(msg, e2eEnabled) === null && (
                                 <button type="button" aria-label="Edit message" title="Edit" onClick={(e) => { e.stopPropagation(); setEditingId(msg.id); setEditText(msg.content); }}>
                                   <Icon name="edit" size={16} />
                                 </button>
@@ -1857,15 +1893,18 @@ export function ChatPane({
           >
             <Icon name="plus" size={18} />
           </button>
-          <button
-            type="button"
-            onClick={() => setShowPoll(true)}
-            className="kc-icon-btn flex-shrink-0 text-base"
-            title="Create a poll"
-            aria-label="Create a poll"
-          >
-            <Icon name="poll" />
-          </button>
+          {/* Polls are stored unencrypted, so there are none in an encrypted chat. */}
+          {!e2eEnabled && (
+            <button
+              type="button"
+              onClick={() => setShowPoll(true)}
+              className="kc-icon-btn flex-shrink-0 text-base"
+              title="Create a poll"
+              aria-label="Create a poll"
+            >
+              <Icon name="poll" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -1927,7 +1966,7 @@ export function ChatPane({
           onSave={() => { handleSave(actionSheetMsg.id); setActionSheetMsg(null); }}
           onHide={() => { hideMessageForMe(actionSheetMsg.id); setActionSheetMsg(null); }}
           onReport={onReportMessage ? () => { onReportMessage(actionSheetMsg); setActionSheetMsg(null); } : undefined}
-          onEdit={onEditMessage && !actionSheetMsg.poll ? () => { setEditingId(actionSheetMsg.id); setEditText(actionSheetMsg.content); setActionSheetMsg(null); } : undefined}
+          onEdit={onEditMessage && !actionSheetMsg.poll && editBlockReason(actionSheetMsg, e2eEnabled) === null ? () => { setEditingId(actionSheetMsg.id); setEditText(actionSheetMsg.content); setActionSheetMsg(null); } : undefined}
           onDelete={onDeleteMessage ? () => { setConfirmDeleteId(actionSheetMsg.id); setActionSheetMsg(null); } : undefined}
           onClose={() => setActionSheetMsg(null)}
         />
@@ -1997,17 +2036,38 @@ export function ChatPane({
       )}
 
       {/* Poll composer */}
-      {showPoll && channel && (
-        <PollComposer
-          token={token}
-          channelId={channel.id}
-          onClose={() => setShowPoll(false)}
-          onError={(m) => onToast(m, "error")}
-        />
-      )}
+      <PollComposerSlot
+        open={showPoll}
+        e2eEnabled={e2eEnabled}
+        channelId={channel?.id}
+        token={token}
+        onClose={() => setShowPoll(false)}
+        onError={(m) => onToast(m, "error")}
+      />
     </div>
     </OgAuthTokenContext.Provider>
   );
+}
+
+/** The poll composer, once opened — never in a chat in encrypted mode, because a poll is
+ *  stored unencrypted. Exported so the gate can be render-tested. */
+export function PollComposerSlot({
+  open,
+  e2eEnabled,
+  channelId,
+  token,
+  onClose,
+  onError,
+}: {
+  open: boolean;
+  e2eEnabled: boolean;
+  channelId: string | undefined;
+  token: string;
+  onClose: () => void;
+  onError: (message: string) => void;
+}) {
+  if (!open || !channelId || e2eEnabled) return null;
+  return <PollComposer token={token} channelId={channelId} onClose={onClose} onError={onError} />;
 }
 
 // ── Auto-sized virtual list ───────────────────────────────────────────────────
@@ -2878,7 +2938,12 @@ function EncryptedAttachmentItem({ att }: { att: EncryptedAttachmentMeta }) {
   useEffect(() => {
     let alive = true;
     let objectUrl: string | null = null;
-    const source = assetUrl(att.url ?? `/files/${att.id}`);
+    // The URL is sender-controlled: fetch only this attachment's /files/<id> on the current home.
+    const source = homeFileUrl(att, getFileBase());
+    if (!source) {
+      setError(true);
+      return;
+    }
     fetch(source)
       .then((r) => {
         if (!r.ok) throw new Error("download failed");

@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use axum::{
@@ -14,36 +14,241 @@ use crate::{
     AppState,
 };
 
-/// Per-IP cap on auth attempts to blunt brute-forcing. Generous enough for
+/// Per-client cap on auth attempts to blunt brute-forcing. Generous enough for
 /// shared NATs and legit retries; still throttles online password guessing.
-/// NOTE: behind a reverse proxy, parse X-Forwarded-For for the real client IP.
 const AUTH_MAX_PER_MIN: usize = 40;
 
-/// Resolve the real client IP for rate-limiting. Behind our deploy proxy (Fly),
-/// the socket peer is the proxy — so prefer the proxy-set header. These headers
-/// are only trustworthy behind a proxy that overwrites them (Fly does).
-fn client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
-    headers
-        .get("fly-client-ip")
-        .and_then(|v| v.to_str().ok())
-        .or_else(|| {
-            headers
-                .get("x-forwarded-for")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.split(',').next())
-        })
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-        .unwrap_or_else(|| addr.ip().to_string())
+/// Default per-username cap on login attempts a minute, whatever address they come from,
+/// so guessing one account's password from many addresses is throttled too. The check
+/// runs before the password is verified, so anyone who keeps sending attempts for a
+/// known username keeps it from logging in for as long as they continue; sessions that
+/// are already signed in are not affected. `OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE`
+/// changes it, and 0 turns it off.
+const DEFAULT_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE: usize = 10;
+
+/// The per-username login limit from `OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE`, read
+/// once at startup.
+pub fn login_limit_from_env() -> usize {
+    parse_login_limit(
+        std::env::var("OHIYO_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE")
+            .ok()
+            .as_deref(),
+    )
 }
 
-fn check_auth_rate(state: &AppState, client_ip: &str) -> Result<(), (StatusCode, String)> {
-    let key = format!("auth:{}", client_ip);
-    if !state
-        .rate
-        .check(&key, AUTH_MAX_PER_MIN, Duration::from_secs(60))
-    {
+/// A non-negative integer, 0 meaning no per-username login limit; the default when
+/// unset or unparseable.
+fn parse_login_limit(raw: Option<&str>) -> usize {
+    raw.and_then(|v| v.trim().parse().ok())
+        .unwrap_or(DEFAULT_LOGIN_LIMIT_PER_USERNAME_PER_MINUTE)
+}
+
+/// Default registrations per hour per client address (IPv6: per /64, and ten times that
+/// per /48), on top of the shared auth limit. Accounts are otherwise cheap, and each one
+/// can create per-user rate-limit keys.
+const DEFAULT_REGISTER_LIMIT_PER_HOUR: usize = 10;
+
+/// The window the registration limit counts in.
+const REGISTER_WINDOW: Duration = Duration::from_secs(60 * 60);
+
+/// The registration limit from `OHIYO_REGISTER_LIMIT_PER_HOUR`, read once at startup.
+pub fn register_limit_from_env() -> usize {
+    parse_register_limit(
+        std::env::var("OHIYO_REGISTER_LIMIT_PER_HOUR")
+            .ok()
+            .as_deref(),
+    )
+}
+
+/// A non-negative integer, 0 meaning no registration limit; the default when unset or
+/// unparseable.
+fn parse_register_limit(raw: Option<&str>) -> usize {
+    raw.and_then(|v| v.trim().parse().ok())
+        .unwrap_or(DEFAULT_REGISTER_LIMIT_PER_HOUR)
+}
+
+/// Count one attempt by the requesting client against the per-address limit `prefix`
+/// (see [`resolve_client_ip`], [`check_address_rate`]). False when it is spent.
+pub(crate) fn check_client_rate(
+    state: &AppState,
+    headers: &HeaderMap,
+    addr: &SocketAddr,
+    prefix: &str,
+    max: usize,
+    window: Duration,
+) -> bool {
+    let ip = resolve_client_ip(headers, addr.ip(), &ProxyTrust::from_env());
+    check_address_rate(&state.rate, ip, prefix, max, window)
+}
+
+/// An IPv6 /48 may make this many times a per-address limit, however many /64s it uses.
+const V6_48_MULTIPLIER: usize = 10;
+
+/// Whether the requesting client has already used up the per-address limit `prefix`
+/// (for IPv6, its /64 or its /48), without counting this request or creating a key.
+fn client_rate_spent(
+    state: &AppState,
+    headers: &HeaderMap,
+    addr: &SocketAddr,
+    prefix: &str,
+    max: usize,
+    window: Duration,
+) -> bool {
+    let ip = resolve_client_ip(headers, addr.ip(), &ProxyTrust::from_env());
+    let rate = &state.rate;
+    rate.spent_unauth(&format!("{prefix}:{}", rate_key_for(ip)), max, window)
+        || v6_48_key(ip).is_some_and(|block| {
+            rate.spent_unauth(
+                &format!("{prefix}:{block}"),
+                max.saturating_mul(V6_48_MULTIPLIER),
+                window,
+            )
+        })
+}
+
+/// Count one attempt from `ip` against the per-address limit `prefix`, keyed by
+/// [`rate_key_for`]. An IPv6 client also counts against its /48 at
+/// [`V6_48_MULTIPLIER`] times `max`, so rotating /64s within one allocation (a /48 is
+/// commonly one site's) doesn't multiply its budget. The /48 is checked first, and both
+/// count or neither: once the /48 is spent, a new /64 inside it adds no key, and
+/// refused retries use up neither budget.
+fn check_address_rate(
+    rate: &crate::ratelimit::RateLimiter,
+    ip: IpAddr,
+    prefix: &str,
+    max: usize,
+    window: Duration,
+) -> bool {
+    let key = format!("{prefix}:{}", rate_key_for(ip));
+    match v6_48_key(ip) {
+        Some(block) => rate.check_unauth_within(
+            &format!("{prefix}:{block}"),
+            max.saturating_mul(V6_48_MULTIPLIER),
+            &key,
+            max,
+            window,
+        ),
+        None => rate.check_unauth(&key, max, window),
+    }
+}
+
+/// The /48 an IPv6 client belongs to; None for IPv4 (including IPv4-mapped IPv6).
+fn v6_48_key(ip: IpAddr) -> Option<String> {
+    match ip {
+        IpAddr::V6(v6) if v6.to_ipv4_mapped().is_none() => {
+            let s = v6.segments();
+            Some(format!("{:x}:{:x}:{:x}::/48", s[0], s[1], s[2]))
+        }
+        _ => None,
+    }
+}
+
+/// Which proxy-set client-address headers this deployment may believe. Any client can
+/// send these headers, so each is trusted only when a proxy in front is known to set it.
+struct ProxyTrust {
+    /// `Fly-Client-IP`, overwritten by Fly's edge proxy. Fly sets `FLY_APP_NAME` on
+    /// every machine it runs.
+    fly: bool,
+    /// `X-Forwarded-For` behind `TRUSTED_PROXY_HOPS` proxies that each append the
+    /// address they saw.
+    xff_hops: Option<usize>,
+}
+
+impl ProxyTrust {
+    fn from_env() -> Self {
+        ProxyTrust {
+            fly: std::env::var_os("FLY_APP_NAME").is_some(),
+            xff_hops: parse_proxy_hops(std::env::var("TRUSTED_PROXY_HOPS").ok().as_deref()),
+        }
+    }
+}
+
+/// `TRUSTED_PROXY_HOPS` must be an integer of at least 1; anything else is ignored.
+fn parse_proxy_hops(raw: Option<&str>) -> Option<usize> {
+    raw.and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+}
+
+/// The client's address: `Fly-Client-IP` on Fly, else the Nth `X-Forwarded-For` entry
+/// from the right behind N trusted proxies, else the socket peer. A missing or invalid
+/// trusted header falls through; too few forwarded entries fall back to the peer, never
+/// to an entry the client could have written itself.
+fn resolve_client_ip(headers: &HeaderMap, peer: IpAddr, trust: &ProxyTrust) -> IpAddr {
+    if trust.fly {
+        let fly_ip = headers
+            .get("fly-client-ip")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse().ok());
+        if let Some(ip) = fly_ip {
+            return ip;
+        }
+    }
+    if let Some(hops) = trust.xff_hops {
+        let forwarded: Vec<&str> = headers
+            .get_all("x-forwarded-for")
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .flat_map(|v| v.split(','))
+            .collect();
+        return forwarded
+            .iter()
+            .rev()
+            .nth(hops - 1)
+            .and_then(|entry| entry.trim().parse().ok())
+            .unwrap_or(peer);
+    }
+    peer
+}
+
+/// Rate-limit key for a client address. IPv4 (including IPv4-mapped IPv6) is keyed as
+/// is; other IPv6 by its /64, the block one subscriber typically controls.
+fn rate_key_for(ip: IpAddr) -> String {
+    match ip {
+        IpAddr::V4(v4) => v4.to_string(),
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => v4.to_string(),
+            None => {
+                let s = v6.segments();
+                format!("{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
+            }
+        },
+    }
+}
+
+/// Argon2 runs at most this many at once: each takes 19 MiB and tens of milliseconds of CPU.
+static ARGON2_PERMITS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
+/// Run an Argon2 hash or verify on the blocking pool, so it never stalls the async
+/// executor. The permit moves into the blocking task, so a request dropped mid-hash
+/// can't free its slot before the hash is done.
+async fn run_argon2<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, (StatusCode, String)> {
+    let permit = ARGON2_PERMITS
+        .acquire()
+        .await
+        .map_err(crate::api::error::internal)?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        work()
+    })
+    .await
+    .map_err(crate::api::error::internal)
+}
+
+fn check_auth_rate(
+    state: &AppState,
+    headers: &HeaderMap,
+    addr: &SocketAddr,
+) -> Result<(), (StatusCode, String)> {
+    if !check_client_rate(
+        state,
+        headers,
+        addr,
+        "auth",
+        AUTH_MAX_PER_MIN,
+        Duration::from_secs(60),
+    ) {
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
             "too many attempts — give it a moment and try again".into(),
@@ -71,7 +276,25 @@ pub async fn register(
     headers: HeaderMap,
     Json(body): Json<RegisterBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
-    check_auth_rate(&state, &client_ip(&headers, &addr))?;
+    check_auth_rate(&state, &headers, &addr)?;
+    // 0 turns the registration limit off (the shared auth limit above still applies).
+    // Refused here once spent; only an account actually created counts, further down.
+    let register_limit = state.register_limit_per_hour;
+    if register_limit > 0
+        && client_rate_spent(
+            &state,
+            &headers,
+            &addr,
+            "register",
+            register_limit,
+            REGISTER_WINDOW,
+        )
+    {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many new accounts from your network — try again later".into(),
+        ));
+    }
     if body.username.len() < 2 || body.username.len() > 32 {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -80,6 +303,9 @@ pub async fn register(
     }
     if body.password.len() < 8 {
         return Err((StatusCode::BAD_REQUEST, "password must be ≥8 chars".into()));
+    }
+    if let Some(name) = &body.display_name {
+        crate::api::limits::check_len("display name", name, crate::api::limits::DISPLAY_NAME)?;
     }
 
     let existing: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
@@ -92,7 +318,10 @@ pub async fn register(
         return Err((StatusCode::CONFLICT, "username taken".into()));
     }
 
-    let hash = hash_password(&body.password).map_err(crate::api::error::internal)?;
+    let password = body.password.clone();
+    let hash = run_argon2(move || hash_password(&password))
+        .await?
+        .map_err(crate::api::error::internal)?;
 
     let id = new_id();
     let display_name = body.display_name.unwrap_or_else(|| body.username.clone());
@@ -108,6 +337,18 @@ pub async fn register(
     .execute(&state.db)
     .await
     .map_err(crate::api::error::internal)?;
+
+    // Counted only now, so bad input or a taken username costs no registration slot.
+    if register_limit > 0 {
+        let _ = check_client_rate(
+            &state,
+            &headers,
+            &addr,
+            "register",
+            register_limit,
+            REGISTER_WINDOW,
+        );
+    }
 
     let user = User {
         id: id.clone(),
@@ -140,7 +381,7 @@ pub async fn login(
     headers: HeaderMap,
     Json(body): Json<LoginBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
-    check_auth_rate(&state, &client_ip(&headers, &addr))?;
+    check_auth_rate(&state, &headers, &addr)?;
     let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
         .bind(&body.username)
         .fetch_optional(&state.db)
@@ -149,7 +390,25 @@ pub async fn login(
 
     let user = user.ok_or((StatusCode::UNAUTHORIZED, "invalid credentials".into()))?;
 
-    if !verify_password(&body.password, &user.password_hash) {
+    // Keyed only once the username exists, so made-up usernames can't mint limiter keys.
+    // Exact username: usernames are case-sensitive, so this is one account's key.
+    // 0 turns the per-username limit off (the per-address auth limit above still applies).
+    let login_limit = state.login_limit_per_username_per_minute;
+    if login_limit > 0
+        && !state.rate.check_unauth(
+            &format!("login-user:{}", body.username),
+            login_limit,
+            Duration::from_secs(60),
+        )
+    {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many attempts — give it a moment and try again".into(),
+        ));
+    }
+
+    let (password, hash) = (body.password, user.password_hash.clone());
+    if !run_argon2(move || verify_password(&password, &hash)).await? {
         return Err((StatusCode::UNAUTHORIZED, "invalid credentials".into()));
     }
 
@@ -192,6 +451,12 @@ pub async fn logout_everywhere(
         .execute(&state.db)
         .await
         .map_err(crate::api::error::internal)?;
+    // Close the user's live gateway sockets: each one ends when its sender leaves the map.
+    state
+        .sessions
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&auth.0);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -271,9 +536,11 @@ pub async fn link_complete(
     headers: HeaderMap,
     Json(body): Json<LinkCompleteBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
-    let ip = client_ip(&headers, &addr);
-    if !state.rate.check(
-        &format!("link:{}", ip),
+    if !check_client_rate(
+        &state,
+        &headers,
+        &addr,
+        "link",
         LINK_MAX_PER_MIN,
         Duration::from_secs(60),
     ) {
@@ -331,4 +598,219 @@ pub async fn link_complete(
         token,
         user: user.into(),
     }))
+}
+
+#[cfg(test)]
+mod client_ip_tests {
+    use super::*;
+
+    const PEER: &str = "203.0.113.9";
+
+    fn headers(pairs: &[(&'static str, &str)]) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        for (name, value) in pairs {
+            map.append(*name, value.parse().unwrap());
+        }
+        map
+    }
+
+    fn resolve(pairs: &[(&'static str, &str)], fly: bool, xff_hops: Option<usize>) -> String {
+        resolve_client_ip(
+            &headers(pairs),
+            PEER.parse().unwrap(),
+            &ProxyTrust { fly, xff_hops },
+        )
+        .to_string()
+    }
+
+    #[test]
+    fn proxy_headers_are_ignored_unless_trusted() {
+        let spoofed = [("fly-client-ip", "1.1.1.1"), ("x-forwarded-for", "2.2.2.2")];
+        assert_eq!(resolve(&spoofed, false, None), PEER);
+    }
+
+    #[test]
+    fn fly_client_ip_is_used_on_fly_and_falls_through_when_missing_or_invalid() {
+        let both = [("fly-client-ip", "1.1.1.1"), ("x-forwarded-for", "2.2.2.2")];
+        assert_eq!(resolve(&both, true, Some(1)), "1.1.1.1");
+        assert_eq!(resolve(&[("fly-client-ip", "nonsense")], true, None), PEER);
+        assert_eq!(
+            resolve(
+                &[
+                    ("fly-client-ip", "nonsense"),
+                    ("x-forwarded-for", "2.2.2.2")
+                ],
+                true,
+                Some(1)
+            ),
+            "2.2.2.2"
+        );
+        assert_eq!(resolve(&[], true, None), PEER);
+    }
+
+    #[test]
+    fn forwarded_for_takes_the_nth_address_from_the_right() {
+        let xff = [("x-forwarded-for", "9.9.9.9, 1.1.1.1, 2.2.2.2")];
+        assert_eq!(resolve(&xff, false, Some(1)), "2.2.2.2");
+        assert_eq!(resolve(&xff, false, Some(2)), "1.1.1.1");
+        assert_eq!(resolve(&xff, false, Some(3)), "9.9.9.9");
+        // Separate header lines count as one comma-joined list.
+        let split = [
+            ("x-forwarded-for", "9.9.9.9"),
+            ("x-forwarded-for", "1.1.1.1"),
+        ];
+        assert_eq!(resolve(&split, false, Some(1)), "1.1.1.1");
+    }
+
+    #[test]
+    fn forwarded_for_falls_back_to_the_peer_never_the_leftmost_entry() {
+        let xff = [("x-forwarded-for", "9.9.9.9, 1.1.1.1")];
+        assert_eq!(resolve(&xff, false, Some(3)), PEER, "too few entries");
+        let garbage = [("x-forwarded-for", "9.9.9.9, not-an-ip")];
+        assert_eq!(resolve(&garbage, false, Some(1)), PEER, "invalid entry");
+        assert_eq!(resolve(&[], false, Some(1)), PEER, "no header");
+    }
+
+    #[test]
+    fn trusted_proxy_hops_must_be_a_positive_integer() {
+        for (raw, hops) in [
+            (Some("1"), Some(1)),
+            (Some(" 2 "), Some(2)),
+            (Some("0"), None),
+            (Some("-1"), None),
+            (Some("two"), None),
+            (None, None),
+        ] {
+            assert_eq!(parse_proxy_hops(raw), hops, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn the_registration_limit_comes_from_the_environment_with_a_default_of_10() {
+        for (raw, limit) in [
+            (None, 10),
+            (Some("3"), 3),
+            (Some(" 3 "), 3),
+            (Some("0"), 0),
+            (Some("garbage"), 10),
+            (Some("-1"), 10),
+            (Some(""), 10),
+        ] {
+            assert_eq!(parse_register_limit(raw), limit, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn the_login_limit_comes_from_the_environment_with_a_default_of_10() {
+        for (raw, limit) in [
+            (None, 10),
+            (Some("3"), 3),
+            (Some(" 3 "), 3),
+            (Some("0"), 0),
+            (Some("garbage"), 10),
+            (Some("-1"), 10),
+            (Some(""), 10),
+        ] {
+            assert_eq!(parse_login_limit(raw), limit, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn rotating_64s_inside_one_48_hits_the_48_limit() {
+        let rate = crate::ratelimit::RateLimiter::new();
+        let window = Duration::from_secs(60);
+        // 2 a minute per /64, so 20 a minute per /48.
+        for i in 0..20u16 {
+            let ip: IpAddr = format!("2001:db8:1:{i:x}::1").parse().unwrap();
+            assert!(check_address_rate(&rate, ip, "auth", 2, window), "{ip}");
+        }
+        let fresh_64: IpAddr = "2001:db8:1:ff::1".parse().unwrap();
+        assert!(
+            !check_address_rate(&rate, fresh_64, "auth", 2, window),
+            "a 21st attempt from one /48 is refused, whatever its /64"
+        );
+        let other_48: IpAddr = "2001:db8:2::1".parse().unwrap();
+        assert!(check_address_rate(&rate, other_48, "auth", 2, window));
+        let other_limit: IpAddr = "2001:db8:1:ff::1".parse().unwrap();
+        assert!(
+            check_address_rate(&rate, other_limit, "link", 2, window),
+            "each limit has its own /48 count"
+        );
+    }
+
+    #[test]
+    fn once_a_48_is_spent_new_64s_inside_it_add_no_keys() {
+        let rate = crate::ratelimit::RateLimiter::new();
+        let window = Duration::from_secs(60);
+        for i in 0..20u16 {
+            let ip: IpAddr = format!("2001:db8:1:{i:x}::1").parse().unwrap();
+            assert!(check_address_rate(&rate, ip, "auth", 2, window), "{ip}");
+        }
+        let tracked = rate.tracked_unauth_keys();
+        for i in 100..150u16 {
+            let ip: IpAddr = format!("2001:db8:1:{i:x}::1").parse().unwrap();
+            assert!(!check_address_rate(&rate, ip, "auth", 2, window), "{ip}");
+        }
+        assert_eq!(
+            rate.tracked_unauth_keys(),
+            tracked,
+            "refused /64s inside a spent /48 add no keys"
+        );
+    }
+
+    /// An operator can set `OHIYO_REGISTER_LIMIT_PER_HOUR` to anything; the /48 budget
+    /// (ten times it) must saturate rather than overflow.
+    #[test]
+    fn an_absurd_per_address_limit_saturates_when_counting() {
+        let rate = crate::ratelimit::RateLimiter::new();
+        let ip: IpAddr = "2001:db8:1::1".parse().unwrap();
+        assert!(check_address_rate(
+            &rate,
+            ip,
+            "register",
+            usize::MAX,
+            Duration::from_secs(60)
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_absurd_per_address_limit_saturates_when_checking_if_spent() {
+        let state = crate::build_state(sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap());
+        let addr: SocketAddr = "[2001:db8:1::1]:443".parse().unwrap();
+        assert!(!client_rate_spent(
+            &state,
+            &HeaderMap::new(),
+            &addr,
+            "register",
+            usize::MAX,
+            Duration::from_secs(60)
+        ));
+    }
+
+    #[test]
+    fn a_64_keeps_its_own_limit_and_ipv4_counts_per_address_only() {
+        let rate = crate::ratelimit::RateLimiter::new();
+        let window = Duration::from_secs(60);
+        let ip: IpAddr = "2001:db8:1::1".parse().unwrap();
+        assert!(check_address_rate(&rate, ip, "auth", 2, window));
+        assert!(check_address_rate(&rate, ip, "auth", 2, window));
+        assert!(!check_address_rate(&rate, ip, "auth", 2, window));
+        for i in 1..=50u8 {
+            let v4: IpAddr = format!("198.51.100.{i}").parse().unwrap();
+            assert!(check_address_rate(&rate, v4, "auth", 2, window), "{v4}");
+        }
+    }
+
+    #[test]
+    fn ipv6_clients_are_keyed_by_their_64_and_mapped_ipv4_as_ipv4() {
+        let key = |ip: &str| rate_key_for(ip.parse().unwrap());
+        assert_eq!(key("198.51.100.7"), "198.51.100.7");
+        assert_eq!(key("::ffff:198.51.100.7"), "198.51.100.7");
+        assert_eq!(
+            key("2001:db8:aa:bb:1:2:3:4"),
+            key("2001:db8:aa:bb:ffff:ffff:ffff:ffff")
+        );
+        assert_ne!(key("2001:db8:aa:bb::1"), key("2001:db8:aa:bc::1"));
+        assert_eq!(key("2001:db8:aa:bb::1"), "2001:db8:aa:bb::/64");
+    }
 }

@@ -153,7 +153,13 @@ pub async fn read_source_guild_from_pool(
     let authors = read_authors(db, &guild_id).await?;
     let roles = read_roles_from_mentions(db, &guild_id).await?;
     let categories = read_categories(db, &guild_id).await?;
-    let channels = read_channels(db, &guild_id, opts.media_root.as_deref()).await?;
+    // Media files are confined to the root's canonical form. A root that can't be
+    // resolved (it doesn't exist) confines to nothing, so no attachment is read.
+    let media_root = match opts.media_root.as_deref() {
+        Some(root) => tokio::fs::canonicalize(root).await.ok(),
+        None => None,
+    };
+    let channels = read_channels(db, &guild_id, media_root.as_deref()).await?;
 
     Ok(SourceGuild {
         discord_id: guild_id,
@@ -372,6 +378,9 @@ async fn read_attachments(
         else {
             continue;
         };
+        let Some(local_path) = canonical_inside_root(&local_path, media_root).await else {
+            continue;
+        };
         out.push(SourceAttachment {
             discord_id: row.get("attachment_id"),
             filename: row.get("filename"),
@@ -393,8 +402,8 @@ fn attachment_local_path(media_path: Option<String>, media_root: Option<&Path>) 
     }
     // A media file is only safe to read if it resolves INSIDE the configured media_root.
     // A crafted archive must not be able to point at an absolute path (`/etc/passwd`) or
-    // escape via `..`; without a root there's no safe base at all. The check is LEXICAL —
-    // canonicalize() can't be used because the file may not exist yet at scan time.
+    // escape via `..`; without a root there's no safe base at all. This first check is
+    // lexical; `canonical_inside_root` then resolves symlinks.
     let root = media_root?;
     let path = PathBuf::from(&media_path);
     let resolved = if path.is_absolute() {
@@ -412,6 +421,16 @@ fn attachment_local_path(media_path: Option<String>, media_root: Option<&Path>) 
         return None;
     }
     Some(resolved.to_string_lossy().into_owned())
+}
+
+/// `path` in its canonical form, if that is inside the (already canonical) `root`. A
+/// symlink in the media directory can't lead out of it, and a missing file is skipped.
+async fn canonical_inside_root(path: &str, root: Option<&Path>) -> Option<String> {
+    let root = root?;
+    let resolved = tokio::fs::canonicalize(path).await.ok()?;
+    resolved
+        .starts_with(root)
+        .then(|| resolved.to_string_lossy().into_owned())
 }
 
 fn parse_discrawl_time(s: &str) -> Result<i64> {
@@ -594,15 +613,20 @@ mod tests {
     #[tokio::test]
     async fn reads_source_guild_from_discrawl_archive() {
         let db = discrawl_db().await;
+        let base = media_dir().await;
         let guild = read_source_guild_from_pool(
             &db,
             DiscrawlReadOptions {
                 guild_id: Some("g1".into()),
-                media_root: Some(PathBuf::from("/media")),
+                media_root: Some(base.join("media")),
             },
         )
         .await
         .unwrap();
+        let note = tokio::fs::canonicalize(base.join("media/aa/note.txt"))
+            .await
+            .unwrap();
+        tokio::fs::remove_dir_all(&base).await.ok();
 
         assert_eq!(guild.discord_id, "g1");
         assert_eq!(guild.authors[0].display_name, "Alice");
@@ -616,9 +640,64 @@ mod tests {
         assert_eq!(guild.channels[0].messages[0].created_at, 1_767_323_045);
         assert_eq!(
             guild.channels[0].messages[0].attachments[0].local_path,
-            "/media/aa/note.txt"
+            note.to_string_lossy()
         );
         assert_eq!(guild.channels[1].kind, "voice");
+    }
+
+    /// A fresh directory under the system temp dir, holding `media/aa/note.txt`.
+    async fn media_dir() -> PathBuf {
+        let base = std::env::temp_dir().join(format!("discrawl-media-{}", crate::types::new_id()));
+        tokio::fs::create_dir_all(base.join("media/aa"))
+            .await
+            .unwrap();
+        tokio::fs::write(base.join("media/aa/note.txt"), b"hello")
+            .await
+            .unwrap();
+        base
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn attachments_are_used_only_when_their_canonical_path_is_inside_the_root() {
+        let db = discrawl_db().await;
+        let base = media_dir().await;
+        // Inside the root by name, outside it once the symlink is followed.
+        tokio::fs::write(base.join("secret.txt"), b"secret")
+            .await
+            .unwrap();
+        std::os::unix::fs::symlink(base.join("secret.txt"), base.join("media/aa/link.txt"))
+            .unwrap();
+        for (id, media_path) in [("a2", "aa/link.txt"), ("a3", "aa/missing.txt")] {
+            sqlx::query("INSERT INTO message_attachments (attachment_id, message_id, guild_id, channel_id, author_id, filename, content_type, size, media_path, updated_at) VALUES (?,'m1','g1','ch1','u1','x.txt','text/plain',5,?,'2026-01-02T03:04:05Z')")
+                .bind(id)
+                .bind(media_path)
+                .execute(&db)
+                .await
+                .unwrap();
+        }
+
+        let guild = read_source_guild_from_pool(
+            &db,
+            DiscrawlReadOptions {
+                guild_id: Some("g1".into()),
+                media_root: Some(base.join("media")),
+            },
+        )
+        .await
+        .unwrap();
+        let attachments = &guild.channels[0].messages[0].attachments;
+        let ids: Vec<&str> = attachments.iter().map(|a| a.discord_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["a1"],
+            "the symlink out and the missing file are skipped"
+        );
+        let canonical = tokio::fs::canonicalize(base.join("media/aa/note.txt"))
+            .await
+            .unwrap();
+        assert_eq!(attachments[0].local_path, canonical.to_string_lossy());
+        tokio::fs::remove_dir_all(&base).await.ok();
     }
 
     #[test]
