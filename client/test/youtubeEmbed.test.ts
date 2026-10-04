@@ -145,3 +145,11 @@ test("a player that is playing, buffering or at the end was not stopped by autop
   for (const state of [YT_PLAYING, YT_BUFFERING, YT_ENDED]) assert.equal(countsAsPlaying(state), true);
   for (const state of [YT_PAUSED, 5, -1, null]) assert.equal(countsAsPlaying(state), false);
 });
+
+
+test("volume reports are bounded numbers, separate from party playback", () => {
+  const info = (volume: unknown) => parseYouTubeMessage(YOUTUBE_EMBED_ORIGIN, { event: "infoDelivery", info: { volume } });
+  assert.deepEqual(info(55), { volume: 55 });
+  for (const invalid of [-1, 101, NaN, Infinity, "50", null]) assert.deepEqual(info(invalid), {});
+  assert.deepEqual(JSON.parse(youtubeCommand("setVolume", [60])).args, [60]);
+});

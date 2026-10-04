@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { DreamGestures } from "./DreamGestures";
+import { useDreamHalo } from "../hooks/useDreamHalo";
 import { useWatchDream } from "../hooks/useWatchDream";
 import type { WatchSession } from "../gateway";
 import { isAutoplayBlock, livePosition, needsSeek, youtubeId } from "../lib/watchSync";
@@ -260,6 +262,87 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
   const [modeError, setModeError] = useState("");
   const playerRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const haloRef = useRef<HTMLDivElement>(null);
+  useDreamHalo(playerRef, haloRef, dream, session.url);
+  const [volume, setVolume] = useState<number | null>(null);
+  const [volumeNotice, setVolumeNotice] = useState("");
+  const volumeCheck = useRef<number | undefined>(undefined);
+  const reportedVolume = useRef<number | null>(null);
+  const reportedClock = useRef<PlayerClock>(NEW_PLAYER_CLOCK);
+  const positionKnown = useRef(false);
+
+  // Read only the public player message contract, never cross-origin frame pixels.
+  useEffect(() => {
+    reportedVolume.current = null;
+    reportedClock.current = NEW_PLAYER_CLOCK;
+    positionKnown.current = false;
+    setVolume(null);
+    setVolumeNotice("");
+    const video = playerRef.current?.querySelector("video");
+    const updateNative = () => {
+      if (video) { reportedVolume.current = video.volume * 100; setVolume(video.volume * 100); }
+    };
+    updateNative();
+    video?.addEventListener("volumechange", updateNative);
+    const onMessage = (event: MessageEvent) => {
+      const frame = playerRef.current?.querySelector("iframe");
+      if (!frame || event.source !== frame.contentWindow) return;
+      const update = parseYouTubeMessage(event.origin, event.data);
+      if (update) {
+        reportedClock.current = advanceClock(reportedClock.current, update, Date.now()).clock;
+        if (typeof update.time === "number") positionKnown.current = true;
+      }
+      if (typeof update?.volume === "number") {
+        reportedVolume.current = update.volume;
+        setVolume(update.volume);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      video?.removeEventListener("volumechange", updateNative);
+      window.clearTimeout(volumeCheck.current);
+    };
+  }, [session.url]);
+
+  const changeVolume = (requested: number) => {
+    const next = Math.max(0, Math.min(100, Math.round(requested)));
+    const video = playerRef.current?.querySelector("video");
+    const frame = playerRef.current?.querySelector("iframe");
+    setVolumeNotice("");
+    if (video) {
+      try { video.volume = next / 100; }
+      catch { setVolumeNotice("Use your device volume buttons in this browser."); return; }
+      if (Math.abs(video.volume * 100 - next) > 1) {
+        setVolumeNotice("Use your device volume buttons in this browser.");
+        return;
+      }
+      reportedVolume.current = next;
+    } else if (frame) {
+      frame.contentWindow?.postMessage(youtubeCommand("setVolume", [next]), YOUTUBE_EMBED_ORIGIN);
+    }
+    // Never automatically unmute the player. Native/provider mute remains the user's choice.
+    setVolume(next);
+    window.clearTimeout(volumeCheck.current);
+    volumeCheck.current = window.setTimeout(() => {
+      if (reportedVolume.current !== null && Math.abs(reportedVolume.current - next) > 2) {
+        setVolume(reportedVolume.current);
+        setVolumeNotice("Use the video's controls or your device volume buttons.");
+      }
+    }, 1200);
+  };
+  const togglePlayback = () => {
+    if (!isHost) return;
+    const native = playerRef.current?.querySelector("video");
+    if (ytId && !positionKnown.current) {
+      setModeError("The player is still loading. Try again shortly.");
+      return;
+    }
+    setModeError("");
+    onControl(session.paused ? "play" : "pause", {
+      position: native?.currentTime ?? playerTimeAt(reportedClock.current, Date.now()),
+    });
+  };
   useWatchDream(playerRef, toggleRef, dream, () => setDream(false));
 
   useEffect(() => {
@@ -303,15 +386,9 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
     <div
       ref={playerRef}
       className={`kc-watch${dream ? " kc-watch--dream" : ""}${cinema ? " kc-watch--cinema" : ""}`}
-      style={{
-        margin: "8px 12px 0",
-        borderRadius: "var(--radius-lg)",
-        overflow: "hidden",
-        background: "var(--bg-sidebar)",
-        border: "1px solid var(--bg-hover)",
-      }}
     >
-      <div className="kc-watch-header flex flex-wrap items-center justify-between gap-2" style={{ padding: "8px 12px" }}>
+      {dream && <div ref={haloRef} className="kc-watch-ambient" aria-hidden="true" />}
+      <div className="kc-watch-header flex flex-wrap items-center justify-between gap-2" >
         <span className="flex items-center gap-1.5 text-sm" style={{ fontWeight: 600, color: "var(--text-primary)" }}>
           📺 Watch party
           <span
@@ -329,7 +406,7 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
             ref={toggleRef}
             type="button"
             aria-pressed={dream}
-            title={dream ? "Leave Dream mode (Esc)" : "Feather the video edges into a soft, dreamy room"}
+            title={dream ? "Leave Dream mode (Esc)" : "Live outside-only room glow (availability varies by browser)"}
             onClick={() => void toggleDream()}
             className="kc-interactive kc-watch-dream-toggle rounded-full px-2.5 py-1 text-xs font-semibold"
           >
@@ -348,8 +425,7 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
             <button
               type="button"
               onClick={() => { setDream(false); onControl("stop"); }}
-              className="kc-interactive rounded-full px-2.5 py-1 text-xs font-semibold"
-              style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none", cursor: "pointer" }}
+              className="kc-interactive kc-watch-dream-toggle rounded-full px-2.5 py-1 text-xs font-semibold"
             >
               End
             </button>
@@ -367,8 +443,10 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
         ) : (
           <DirectVideo key={session.url} session={session} isHost={isHost} onControl={onControl} />
         )}
-        <div className="kc-watch-dream-edge" aria-hidden="true" />
+
       </div>
+      {dream && <DreamGestures volume={volume} onVolumeChange={changeVolume} onTogglePlayback={togglePlayback} isHost={isHost} paused={session.paused} />}
+      {dream && volumeNotice && <p className="kc-watch-volume-notice" role="status">{volumeNotice}</p>}
     </div>
   );
 }

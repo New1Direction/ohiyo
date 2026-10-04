@@ -1,0 +1,37 @@
+name: Watch modes
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: watch-modes-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    name: Dream browser and screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - name: Exercise real component and capture screenshots
+        run: |
+          export KIKKA_CHROMIUM="$(node -e "console.log(require('playwright-core').chromium.executablePath())")"
+          export KIKKA_SHOTS="$RUNNER_TEMP/watch-mode-shots"
+          npm run test:watch-dream
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: watch-mode-screenshots
+          path: ${{ runner.temp }}/watch-mode-shots
+          if-no-files-found: warn

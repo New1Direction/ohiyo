@@ -12,6 +12,7 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ## [Unreleased]
 
 ### Added
+- **Dream room lighting and gestures:** an outside-only live compositor halo where supported, lighter mode controls, local volume by sliding the right surround, and host double-click/tap playback. Provider controls stay uncovered; unsupported mobile volume uses device controls.
 - **Watch-party viewing modes:** Dream feathers the video edges into a softened room;
   Cinema opens a black fullscreen view with thin top/bottom insets. Both keep the
   existing player and playback state, with accessible mode controls.
