@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DreamGestures } from "./DreamGestures";
 import { useDreamHalo } from "../hooks/useDreamHalo";
+import { useDreamAvailable } from "../hooks/useDreamAvailable";
 import { useWatchDream } from "../hooks/useWatchDream";
 import type { WatchSession } from "../gateway";
 import { isAutoplayBlock, livePosition, needsSeek, youtubeId } from "../lib/watchSync";
@@ -257,7 +258,12 @@ function YouTubeWatch({ videoId, session, isHost, onControl }: PlayerProps & { v
  */
 export function WatchParty({ session, isHost, onControl }: PlayerProps) {
   const ytId = youtubeId(session.url);
-  const [dream, setDream] = useState(false);
+  const dreamOk = useDreamAvailable();
+  const [dreamWanted, setDream] = useState(false);
+  // Dream is only ever on where it is offered, so a window shrunk to phone size leaves it
+  // at once (and the effect below stops it coming back when the window grows again).
+  const dream = dreamWanted && dreamOk;
+  useEffect(() => { if (!dreamOk) setDream(false); }, [dreamOk]);
   const [cinema, setCinema] = useState(false);
   const [modeError, setModeError] = useState("");
   const playerRef = useRef<HTMLDivElement>(null);
@@ -402,7 +408,7 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
           </span>
         </span>
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          {dreamOk && <button
             ref={toggleRef}
             type="button"
             aria-pressed={dream}
@@ -411,7 +417,7 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
             className="kc-interactive kc-watch-dream-toggle rounded-full px-2.5 py-1 text-xs font-semibold"
           >
             <span aria-hidden="true">☾ </span>Dream mode
-          </button>
+          </button>}
           <button
             type="button"
             aria-pressed={cinema}

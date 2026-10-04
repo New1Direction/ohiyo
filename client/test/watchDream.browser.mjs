@@ -57,7 +57,7 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
   let browser;
   try {
     browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
-    const page = await browser.newPage({ viewport: { width: 1454, height: 864 }, hasTouch: true });
+    const page = await browser.newPage({ viewport: { width: 1454, height: 864 } });
     // Deliberately stub the cross-origin media, never claim playback was exercised.
     const playerHtml = `<body style="margin:0;background:rgb(25,85,245);color:white;display:grid;place-items:center;height:100vh"><button style="position:absolute;bottom:16px;left:16px">Video controls (test stand-in)</button><h1>Sharp video center</h1><button style="position:absolute;bottom:16px;right:16px" onclick="document.body.style.background='rgb(245,40,30)'">Red scene</button><script>
       let volume = 55;
@@ -173,24 +173,17 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     await page.waitForFunction(() => window.dreamFixture.controls.includes("pause"));
     assert.deepEqual(await page.evaluate(() => window.dreamFixture.positions), [48, 48], "stalled player position, not advancing session clock, drives host gestures");
     const surroundBounds = await surround.boundingBox();
-    await page.touchscreen.tap(surroundBounds.x + 10, surroundBounds.y + 50);
-    await page.touchscreen.tap(surroundBounds.x + 10, surroundBounds.y + 50);
+    // Touch pointer events, dispatched directly: the page is a desktop one (no touch emulation).
+    const touchTap = (x, y) => surround.evaluate((node, [clientX, clientY]) => {
+      const init = { bubbles: true, pointerType: "touch", pointerId: 7, isPrimary: true, clientX, clientY, button: 0 };
+      node.dispatchEvent(new PointerEvent("pointerdown", init));
+      node.dispatchEvent(new PointerEvent("pointerup", init));
+      node.dispatchEvent(new PointerEvent("pointerout", { ...init, relatedTarget: null }));
+    }, [x, y]);
+    await touchTap(surroundBounds.x + 10, surroundBounds.y + 50);
+    await touchTap(surroundBounds.x + 10, surroundBounds.y + 50);
     await page.waitForFunction(() => window.dreamFixture.controls.length === 3);
     assert.equal(await page.evaluate(() => window.dreamFixture.controls.at(-1)), "play", "real touch sequence includes terminal pointerleave");
-    await page.setViewportSize({ width: 390, height: 844 });
-    if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/watch-dream-mobile.png` });
-    const mobileRail = await rail.boundingBox();
-    const mobileFrame = await page.locator("iframe").boundingBox();
-    assert.ok(mobileRail.x >= mobileFrame.x + mobileFrame.width);
-    await page.waitForFunction(() => {
-      const halo = document.querySelector(".kc-watch-ambient");
-      const media = document.querySelector("iframe").getBoundingClientRect();
-      const style = getComputedStyle(halo);
-      const x = parseFloat(style.getPropertyValue("--halo-x"));
-      const width = parseFloat(style.getPropertyValue("--halo-width"));
-      return x < media.left && x + width > media.right;
-    });
-    await page.setViewportSize({ width: 1454, height: 864 });
     await page.evaluate(() => window.dreamFixture.navigate());
     // External fixture callbacks schedule React work; wait for the new channel commit.
     await page.waitForFunction(() => document.querySelector("main header button")?.textContent === "# another");
@@ -229,4 +222,52 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     await browser?.close();
     await server.close();
   }
+});
+
+// Dream mode is a desktop feature. These two use a plain page (no YouTube, no pixels), so they
+// run anywhere the others do.
+async function withFixturePage(port, pageOptions, run) {
+  const server = await createServer({ server: { port, strictPort: true } });
+  await server.listen();
+  let browser;
+  try {
+    browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
+    const page = await browser.newPage(pageOptions);
+    await page.route("https://www.youtube-nocookie.com/**", route => route.fulfill({ contentType: "text/html", body: "<body></body>" }));
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.goto(`http://localhost:${port}/test/fixtures/watchDream.html`);
+    await page.locator("iframe").waitFor();
+    await run(page);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await server.close();
+  }
+}
+
+test("Dream mode is not offered on a touch-first device, even in a wide window", { skip: !executablePath }, async () => {
+  // Touch emulation reports a coarse pointer and no hover, like a phone held sideways.
+  await withFixturePage(1438, { viewport: { width: 1454, height: 864 }, hasTouch: true }, async (page) => {
+    assert.equal(await page.getByRole("button", { name: "Dream mode" }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Cinema", exact: true }).count(), 1, "the other modes stay");
+  });
+});
+
+test("Dream mode leaves when the window shrinks to phone size and does not return when it grows", { skip: !executablePath }, async () => {
+  await withFixturePage(1439, { viewport: { width: 1454, height: 864 } }, async (page) => {
+    const toggle = page.getByRole("button", { name: "Dream mode" });
+    await toggle.click();
+    assert.equal(await toggle.getAttribute("aria-pressed"), "true");
+    assert.equal(await page.locator(".kc-watch--dream").count(), 1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => !document.querySelector(".kc-watch--dream"));
+    assert.equal(await toggle.count(), 0, "no Dream button on a phone-sized screen");
+    assert.equal(await page.locator(".kc-watch-ambient, .kc-watch-gestures").count(), 0);
+    assert.equal(await page.locator("[inert]").count(), 0, "the page behind is usable again");
+    await page.setViewportSize({ width: 1454, height: 864 });
+    await toggle.waitFor();
+    assert.equal(await toggle.getAttribute("aria-pressed"), "false", "growing back does not turn Dream on by itself");
+    assert.equal(await page.locator(".kc-watch--dream").count(), 0);
+  });
 });

@@ -3649,9 +3649,6 @@ button:disabled,
 .kc-watch-volume-notice { position: absolute; bottom: 0; right: 36px; z-index: 4; color: #dedff0; font-size: 12px; margin: 0; }
 .kc-watch-mode-error { position: absolute; top: 44px; z-index: 4; margin: 0; padding: 8px 12px; color: var(--text-secondary); font-size: 12px; }
 @media (max-width: 700px) {
-  .kc-watch--dream { inset: 8px; padding: 0 44px 28px 8px; }
-  .kc-watch--dream .kc-watch-header { margin: 0 -32px 0 0; gap: 4px; padding-bottom: 12px; }
-  .kc-watch--dream .kc-watch-header > span { font-size: 12px; }
   .kc-watch-dream-toggle { padding: 6px 9px; }
 }
 @media (prefers-reduced-motion: reduce) {
