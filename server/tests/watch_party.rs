@@ -159,6 +159,12 @@ async fn play_keeps_sub_second_time_so_guests_do_not_start_up_to_a_second_off() 
 
 #[tokio::test]
 async fn only_the_host_drives_or_ends_the_party() {
+    // Two gateways and many reads (each holds a 64 KiB buffer) make this test's future too
+    // big for the test thread's stack in an unoptimised build, so it runs boxed.
+    Box::pin(host_only_scenario()).await;
+}
+
+async fn host_only_scenario() {
     let srv = TestServer::start().await;
     let host = srv.register("drivinghost", "password123").await;
     let guest = srv.register("backseatguest", "password123").await;
@@ -181,7 +187,8 @@ async fn only_the_host_drives_or_ends_the_party() {
         .await;
 
     // The guest tries to pause, seek and end it; then the host seeks. If the server had
-    // obeyed the guest, the session read back here would be paused, moved or gone.
+    // obeyed the guest, the first update the host sees would be the guest's (paused, at
+    // 99 s, or no session), not its own seek.
     guest_ws
         .send(&watch(&channel_id, "pause", json!({ "position": 99.0 })))
         .await;
@@ -189,12 +196,18 @@ async fn only_the_host_drives_or_ends_the_party() {
         .send(&watch(&channel_id, "seek", json!({ "position": 99.0 })))
         .await;
     guest_ws.send(&watch(&channel_id, "stop", json!({}))).await;
+    // The server handles one connection's frames in order, so once it has answered this
+    // heartbeat it has already dealt with the guest's three attempts above.
+    guest_ws.send(&json!({ "t": "Heartbeat" })).await;
+    guest_ws.wait_for(|e| e["t"] == "HeartbeatAck").await;
     host_ws
         .send(&watch(&channel_id, "seek", json!({ "position": 7.0 })))
         .await;
-    let after = host_ws
-        .wait_for(|e| e["t"] == "WatchUpdate" && e["d"]["session"]["position"] == 7.0)
-        .await;
+    let after = host_ws.wait_for(|e| e["t"] == "WatchUpdate").await;
+    assert_eq!(
+        after["d"]["session"]["position"], 7.0,
+        "the next update is the host's seek, not anything the guest sent"
+    );
     assert_eq!(
         after["d"]["session"]["paused"], false,
         "the guest's pause was ignored"
