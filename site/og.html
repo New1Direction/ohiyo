@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- The social card. og.png is a 1200x630 screenshot of this page; it is not linked from the site. -->
+<!-- The social card. og.jpg is a 1200x630 screenshot of this page; it is not linked from the site. -->
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -8,13 +8,11 @@
 <link rel="stylesheet" href="site.css" />
 <style>
   body { width: 1200px; height: 630px; overflow: hidden; }
-  .card-og { position: relative; isolation: isolate; display: grid; align-content: space-between; width: 1200px; height: 630px; padding: 64px 72px; background: linear-gradient(180deg, #cde5f4 0%, #e2f0f5 40%, #fbefdb 78%, #fde2c0 100%); }
-  .card-og::after { content: ""; position: absolute; z-index: -1; left: 0; right: 0; bottom: 0; height: 150px; background: #d2e8cb; clip-path: path("M0 60C180 20 330 10 520 34s330 56 540 28 100-22 140-18V150H0Z"); }
-  .card-og::before { content: ""; position: absolute; z-index: -1; left: 0; right: 0; bottom: 0; height: 250px; background: #abd0bd; clip-path: path("M0 120C150 60 300 150 470 110S760 40 930 90s200 60 270 20V250H0Z"); }
+  .card-og { position: relative; display: grid; align-content: space-between; width: 1200px; height: 630px; padding: 64px 72px; background: #b5daf6 url("assets/scenery/dawn-1672.webp") center bottom / cover no-repeat; }
   .card-og .brand { font-size: 40px; }
   .card-og .brand .mark { width: 56px; }
   .card-og h1 { font-size: 92px; max-width: 760px; }
-  .card-og p { font: 600 28px/1.3 var(--font-body); color: var(--muted); }
+  .card-og p { justify-self: start; padding: 10px 20px; border-radius: 999px; background: rgb(255 253 248 / 85%); font: 600 26px/1.3 var(--font-body); color: var(--ink); }
   .card-og .kikka-hello { right: 64px; top: 150px; }
   .card-og .kikka { width: 300px; animation: none; }
   .card-og .bubble { font-size: 40px; padding: 18px 28px; border-radius: 28px; border-width: 3px; box-shadow: 0 7px 0 var(--ink); animation: none; }
