@@ -101,11 +101,17 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
       return x < media.left && y < media.top && x + width > media.right && y + height > media.bottom;
     });
     assert.equal(hole, true, "every provider pixel is inside the guarded mask hole");
-    // The video's outer band melts into the glow by design; its centre must stay exactly as the player drew it.
-    const featherMask = await page.locator(".kc-watch-media > div:has(iframe)").evaluate(node => getComputedStyle(node).maskImage);
-    assert.notEqual(featherMask, "none", "the video's edges are feathered while Dream is on");
+    // The video itself is never faded: the glow is a blur of what is under it, so a faded video
+    // darkens the glow into a grey frame right where it should be strongest.
+    assert.equal(await page.locator(".kc-watch-media > div:has(iframe)").evaluate(node => getComputedStyle(node).maskImage), "none", "the video is not faded");
+    // The glow fades in over the video's edge instead: a full layer minus a horizontal and a vertical ramp.
+    const haloMask = await page.locator(".kc-watch-ambient").evaluate(node => getComputedStyle(node).maskImage);
+    assert.equal(haloMask.split("linear-gradient(").length - 1, 3, "the glow's hole is soft, not a rectangle");
+    // The glow fades in over the outer band of the video; its centre must stay exactly as the player drew it.
     const iframeBox = await page.locator("iframe").boundingBox();
-    const centre = { x: iframeBox.x + 40, y: iframeBox.y + 28, width: iframeBox.width - 80, height: iframeBox.height - 56 };
+    // The glow covers the outer 9% (sides) and 12% (top and bottom) of the video; stay clear of it.
+    const insetX = Math.ceil(iframeBox.width * 0.09) + 12, insetY = Math.ceil(iframeBox.height * 0.12) + 12;
+    const centre = { x: iframeBox.x + insetX, y: iframeBox.y + insetY, width: iframeBox.width - 2 * insetX, height: iframeBox.height - 2 * insetY };
     const centreWithHalo = await page.screenshot({ clip: centre });
     await page.locator(".kc-watch-ambient").evaluate(node => { node.style.visibility = "hidden"; });
     const centreWithoutHalo = await page.screenshot({ clip: centre });
@@ -151,7 +157,6 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     assert.equal(await enabled(), "false");
     assert.equal(await page.locator("iframe").count(), 1);
     assert.equal(await page.locator("aside").evaluate(node => node.inert), false);
-    assert.equal(await page.locator(".kc-watch-media > div:has(iframe)").evaluate(node => getComputedStyle(node).maskImage), "none", "no feathered edge outside Dream mode");
     for (let i = 0; i < 4; i++) await toggle.click();
     assert.equal(await enabled(), "false");
     assert.equal(await frame.evaluate(node => node === document.querySelector("iframe")), true);
