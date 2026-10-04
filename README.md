@@ -3,11 +3,12 @@
 [![Builder fees earned on repo.ing](https://repo.ing/api/badge/1269625283)](https://repo.ing/token/9RnMkXRLtkpMSWSCfgbUoGsYmJovAgEgJ7z8sHnwbaHk)
 
 A private-by-design chat app with Discord-like ease — servers, channels, DMs, and
-real-time voice / video / screen-share, with **end-to-end encrypted content**, a
-sandboxed plugin system, and a brand of its own. Rust on the backend, React 19 + Tauri
+real-time voice / video / screen-share, with **end-to-end encryption you can turn on
+for DMs and group chats**, a sandboxed plugin system, and a brand of its own. Rust on the backend, React 19 + Tauri
 on the desktop. No subscriptions, no paywalled features, no telemetry. And **launch
-your own encrypted server in one tap** — Realms-style hosting where the box only ever
-holds ciphertext, with export ownership and self-host always one click away.
+your own server in one tap** — Realms-style hosting with export ownership and
+self-host always one click away. Encrypted DMs and group chats stay ciphertext on the
+box; server channels are stored like any chat server's.
 
 <p align="center">
   <img src="./brand/preview-cream.png" alt="Ohiyo on the Daybreak light theme — cream and coral, with channels, chat, and member list" width="48%" />
@@ -20,26 +21,32 @@ holds ciphertext, with export ownership and self-host always one click away.
 
 > **Status:** v0.2.0 public beta — early but real. The hosted app is live at
 > [app.ohiyo.gg](https://app.ohiyo.gg), the public site is live at
-> [ohiyo.gg](https://ohiyo.gg), and 28 end-to-end suites are green. Desktop builds are in
+> [ohiyo.gg](https://ohiyo.gg), and a 28-suite end-to-end run is part of CI. Desktop builds are in
 > [Releases](../../releases); Mac builds are beta/ad-hoc signed until Apple notarization is complete.
 
 ---
 
 ## Highlights
 
-- **End-to-end encryption** — DMs **and** group chats are encrypted with the
-  [Signal Protocol](https://signal.org/docs/). Keys live on your devices; the server
-  only ever relays **ciphertext** and never sees your messages. Multi-device, with
-  disappearing messages, safety-number verification, padded encrypted plaintext,
-  encrypted private attachments, and Privacy Mode for quieter metadata. Ohiyo is not
+- **End-to-end encryption, per conversation** — turn on the lock in a DM or group chat
+  and messages are encrypted on your device with the
+  [Signal Protocol](https://signal.org/docs/) before they leave it; for those messages
+  the server relays only **ciphertext**. It is **opt-in today, not the default**, and
+  server channels are not end-to-end encrypted. Multi-device, with disappearing
+  messages, safety numbers, padded plaintext, encrypted attachments, and Privacy Mode
+  for quieter metadata. Encrypted messages show no link previews and cannot be
+  forwarded, so their content stays off the server. **Group encryption is
+  experimental** and can miss messages sent while you were offline. Ohiyo is not
   anonymous or SimpleX-level metadata privacy; it keeps Discord-like convenience while
-  reducing avoidable leaks. *(See e2e
+  reducing avoidable leaks. See
+  [Known limits of the encryption](#known-limits-of-the-encryption) below. *(e2e
   suites `19-e2e-dm`, `20-disappearing`, `21-multidevice`, `22-group-e2e`,
   `26-privacy-mode`, `27-private-dm-links`.)*
-- **Instant Servers** — launch your own end-to-end-encrypted community server in **one
-  tap**. We host it (Minecraft-Realms-style) but the box only ever holds ciphertext —
-  export anytime, or graduate to your own box, or self-host for **$0**; all for less than
-  one Discord Nitro. *(Phase 1 shipped — control plane + provisioning; design + plan in
+- **Instant Servers** — launch your own community server in **one tap**. We host it
+  (Minecraft-Realms-style): encrypted DMs and group chats are ciphertext on the box,
+  while server channels are stored in the clear like any chat server's. Export anytime,
+  or graduate to your own box, or self-host for **$0**; all for less than one Discord
+  Nitro. *(Phase 1 shipped — control plane + provisioning; design + plan in
   [`docs/superpowers/`](docs/superpowers/).)*
 - **One-command Discord template migration** — give Ohiyo a Discord Server Template
   link and it reconstructs categories, channels, roles, best-effort permission bits,
@@ -53,9 +60,10 @@ holds ciphertext, with export ownership and self-host always one click away.
   joining reveals you to the room/channel audience even when media is encrypted.
   Peer-to-peer with STUN on LAN; optional coturn (`infra/coturn/`) for symmetric-NAT users, or an optional LiveKit SFU
   (`infra/livekit/`) for larger rooms.
-- **Plugins** — arbitrary third-party plugins run in a **genuinely isolated Web
-  Worker sandbox**: no network, no DOM, no token access, even via the prototype
-  chain. See `client/src/plugins/`.
+- **Plugins** — third-party plugins run in a **Web Worker sandbox** with no DOM and no
+  token access. Network APIs are removed inside the worker and the web build's CSP
+  limits what remains; on desktop the sandbox is the only barrier, so install only
+  plugins you trust. See `client/src/plugins/`.
 - **Design** — the **Daybreak** light theme (cream + coral, Quicksand + Inter) and a
   **Dusk** dark theme, with a real motion system and reduced-motion support.
 - **Desktop-native** — Tauri app with native notifications, deep links, and an
@@ -154,6 +162,32 @@ Ohiyo's privacy boundary is documented publicly:
 - [Privacy Threat Model](https://ohiyo.gg/threat-model.html) — what E2EE protects,
   what metadata remains, and when to choose self-hosting, custom homes, or Tor Browser
   with an onion home.
+
+### Known limits of the encryption
+
+We would rather you know these than find them:
+
+- **Opt-in.** A conversation is encrypted only after someone turns on the lock. New
+  DMs start unencrypted.
+- **New devices are trusted on first use.** When a contact (or your own account) adds
+  a device, your client starts encrypting to it without a prompt. A malicious server,
+  or someone holding a stolen session, could add a device and read messages sent after
+  that. Compare safety numbers out of band for conversations that matter.
+- **Group encryption is experimental.** It is Ohiyo's own sender-key design, not
+  Signal's, and it can miss messages sent while a member was offline.
+- **Not end-to-end encrypted:** server channels, polls, and watch-party links.
+- **Signing out removes readable history from that device.** An encrypted message can
+  be decrypted only once, so the app keeps a readable copy on the device. Signing out
+  of your last account there removes those copies (after a confirmation), and they
+  cannot be decrypted on that device again. Your other devices are not affected.
+- **One account per browser profile.** Encryption keys are stored per browser profile,
+  not per account. Signing in to a second account in the same profile reuses the first
+  account's keys and breaks its sessions; use a separate profile for each account.
+- **No external audit yet.** One-to-one chat uses a community TypeScript port of the
+  Signal Protocol; the group scheme, voice keys, backup and desktop vault are our own
+  constructions.
+
+Closing the first three is on the [roadmap](ROADMAP.md).
 
 ## License
 

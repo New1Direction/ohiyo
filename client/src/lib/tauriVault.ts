@@ -20,6 +20,7 @@ import { setSignalBackend } from "./signal";
 import { setSenderKeyBackend } from "./senderKeys";
 import { setE2eStore } from "./e2e";
 import { setHomesTokenStore } from "./homes";
+import { parseVaultLocked } from "./vaultLock";
 
 // localStorage namespaces that hold sensitive material → moved into the vault. Covers
 // Signal (kc:sig:), group sender keys (kc:sk:), the legacy ECDH keypair, per-home
@@ -47,6 +48,8 @@ export type VaultStore = {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
   removeItem: (key: string) => void;
+  /** Remove many keys with one vault write (each write re-seals and fsyncs the vault). */
+  removeMany: (keys: string[]) => void;
   keys: () => string[];
 };
 
@@ -64,13 +67,21 @@ export function getVaultStore(): VaultStore | null {
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<T>(cmd, args);
+  try {
+    return await invoke<T>(cmd, args);
+  } catch (err) {
+    // A command's Err(String) arrives as a bare string; make it an Error so callers can
+    // show its message.
+    throw typeof err === "string" ? new Error(err) : err;
+  }
 }
 
 /**
  * Point the Signal + sender-key stores at the native locked-RAM vault. MUST be awaited
  * before initSignal (or any key access). Returns true if the vault is active, false in
- * a browser (callers then just keep localStorage).
+ * a browser (callers then just keep localStorage). Rejects with the native locked error
+ * (see parseVaultLocked) when the vault exists but couldn't be unlocked: starting on
+ * localStorage then would run this device with no keys.
  */
 export async function initVaultBackend(): Promise<boolean> {
   if (!isDesktop()) return false;
@@ -101,6 +112,11 @@ export async function initVaultBackend(): Promise<boolean> {
         m.delete(k);
         void invoke("vault_remove", { key: k });
       },
+      removeMany: (keys: string[]): void => {
+        if (keys.length === 0) return;
+        for (const k of keys) m.delete(k);
+        void invoke("vault_remove_many", { keys });
+      },
       keys: (): string[] => [...m.keys()],
     };
     setSignalBackend(backend);
@@ -111,7 +127,8 @@ export async function initVaultBackend(): Promise<boolean> {
     // Expose the same mirror-backed store to the sync token/plaintext callers.
     vaultStore = backend;
     return true;
-  } catch {
+  } catch (err) {
+    if (parseVaultLocked(err) !== null) throw err;
     return false; // vault unavailable — fall back to localStorage
   }
 }
@@ -153,17 +170,34 @@ export async function importKeyMaterial(material: Record<string, string>): Promi
   }
 }
 
+/** Restart the desktop app: "Try again" on the locked vault screen, and after a reset or burn. */
+export async function restartApp(): Promise<void> {
+  await invoke("app_restart");
+}
+
+/**
+ * "Reset this device" on the locked screen, offered only when the keys saved on this
+ * device can't be opened: the native side moves the sealed file aside (and deletes a
+ * malformed keychain key), then the app restarts with an empty vault. A failure rejects
+ * with the native error and nothing restarts.
+ */
+export async function resetVaultAndRestart(): Promise<void> {
+  await invoke("vault_reset");
+  await restartApp();
+}
+
 /**
  * The dead-man's switch: burn the vault — wipe the locked RAM, delete the sealed
  * on-disk blob, and destroy the keychain master key. After this the keys are gone for
- * good and the user re-establishes E2E from scratch.
+ * good and the user re-establishes E2E from scratch. On success the app restarts, which
+ * also clears key copies from this webview's memory and signs this device out (its
+ * session token was in the vault); without that, signing in again would publish an
+ * identity lost at the next launch. If something couldn't be deleted, this rejects with
+ * what is left and nothing restarts.
  */
 export async function burnVault(): Promise<void> {
   if (!isDesktop()) return;
-  try {
-    await invoke("vault_burn");
-    mirror?.clear();
-  } catch {
-    /* ignore */
-  }
+  await invoke("vault_burn");
+  mirror?.clear();
+  await restartApp();
 }

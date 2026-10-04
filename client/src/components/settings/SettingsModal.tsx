@@ -16,6 +16,7 @@ import {
 } from "../../themes";
 import { isValidHex } from "../../lib/color";
 import { safeHttpUrl } from "../../lib/url";
+import { errorMessage } from "../../lib/errorMessage";
 import { PROFILE_PATTERNS, PROFILE_VIBES, ProfileCardView, type ProfileCardData } from "../ProfileCardView";
 import type { PluginManager } from "../../plugins/registry";
 import { ensureNotificationPermission, isDesktop } from "../../lib/desktop";
@@ -25,6 +26,7 @@ import { generateRecoveryCode, encryptBackup, decryptBackup, backupSummary, back
 import { missingSenderKeys, recordGroupSenderKeyMessage, recordSignalMessage, saveCoverageResults, signalMessagesForRecovery } from "../../lib/recoveryCoverage";
 import { isSignalCiphertext, parseSignalCiphertextHeader, previewSignalRestoreFromMaterial } from "../../lib/signal";
 import { isGroupCiphertext, parseGroupCiphertextHeader } from "../../lib/senderKeys";
+import { recoverableMessages, recoveryScanChannels } from "../../lib/e2eMode";
 import {
   ACCENT_PRESETS,
   APPEARANCE_CHANGED_EVENT,
@@ -193,7 +195,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
           {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} onCurrentUserUpdate={onCurrentUserUpdate} />}
           {tab === "profile" && <ProfileTab token={token} onToast={onToast} />}
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
-          {tab === "security" && <SecurityTab token={token} servers={servers} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} />}
+          {tab === "security" && <SecurityTab token={token} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} />}
           {tab === "notifications" && <NotificationsTab token={token} onToast={onToast} />}
           {tab === "emoji" && <EmojiTab token={token} servers={servers} onToast={onToast} />}
         </div>
@@ -1193,14 +1195,12 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
 
   async function save() {
     try {
-      await fetch(`${getApiBase()}/users/@me/profile`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ bio, banner_color: bannerColor, custom_status: status, profile_theme: profileTheme, top_songs: cleanSongs(topSongs) }),
-      });
+      // api.updateProfile throws on a non-OK answer, so a 400 (e.g. a field over the
+      // server's length limit) shows the server's message instead of "Profile saved".
+      await api.updateProfile(token, { bio, banner_color: bannerColor, custom_status: status, profile_theme: profileTheme, top_songs: cleanSongs(topSongs) });
       onToast("Profile saved", "success");
-    } catch {
-      onToast("Failed to save", "error");
+    } catch (err) {
+      onToast(errorMessage(err, "Failed to save"), "error");
     }
   }
 
@@ -1258,6 +1258,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
             <input
               value={status}
               onChange={(e) => setStatus(e.target.value)}
+              maxLength={128}
               placeholder="Building something cool..."
               className="w-full rounded px-3 py-2 text-sm outline-none"
               style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
@@ -1267,6 +1268,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
+              maxLength={500}
               placeholder="Tell people about yourself..."
               rows={4}
               className="w-full rounded px-3 py-2 text-sm outline-none resize-none"
@@ -1619,7 +1621,7 @@ function NotificationsTab({ token, onToast }: { token: string; onToast: (t: stri
     <div>
       <h2 className="mb-1 text-xl font-bold">Notifications &amp; mobile</h2>
       <p className="mb-6 max-w-3xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-        Ohiyo push is designed for sleeping Instant Servers: the server wakes to accept ciphertext, then the always-on relay sends a generic nudge. Push payloads do not include message text, filenames, channel names, or E2E keys.
+        Ohiyo push is designed for sleeping Instant Servers: the server wakes to accept the message, then the always-on relay sends a generic nudge. Push payloads do not include message text, filenames, channel names, or E2E keys.
       </p>
 
       <div className="mb-6 grid gap-3 md:grid-cols-2">
@@ -1715,14 +1717,12 @@ type RestorePreview = {
 
 function SecurityTab({
   token,
-  servers,
   dms,
   onToast,
   privacyPrefs,
   onPrivacyPrefsChange,
 }: {
   token: string;
-  servers: ServerWithChannels[];
   dms: Channel[];
   onToast: (t: string, type?: "info" | "success" | "error") => void;
   privacyPrefs: PrivacyPrefs;
@@ -1780,9 +1780,11 @@ function SecurityTab({
     }
   }
 
-  function recordRecoveryMetadata(messages: Message[], channelId: string): number {
+  function recordRecoveryMetadata(messages: Message[], channel: Channel): number {
+    const channelId = channel.id;
     let scanned = 0;
-    for (const message of messages) {
+    // Same gate as the chat's own writer: only well-formed envelopes in DMs and group DMs.
+    for (const message of recoverableMessages(channel.channel_type, messages)) {
       if (isGroupCiphertext(message.content)) {
         const header = parseGroupCiphertextHeader(message.content);
         if (!header) continue;
@@ -1805,15 +1807,13 @@ function SecurityTab({
   }
 
   async function scanRecentRecoveryMetadata(): Promise<number> {
-    const channels = [
-      ...servers.flatMap((server) => server.channels),
-      ...dms,
-    ].filter((channel) => ["text", "dm", "group_dm"].includes(channel.channel_type));
+    // Server channels never hold recoverable messages, so they aren't scanned at all.
+    const channels = recoveryScanChannels(dms);
     let scanned = 0;
     for (const channel of channels) {
       try {
         const messages = await api.listMessages(token, channel.id, 100);
-        scanned += recordRecoveryMetadata(messages, channel.id);
+        scanned += recordRecoveryMetadata(messages, channel);
       } catch {
         /* best-effort: one inaccessible/offline channel should not block restore */
       }
@@ -1840,8 +1840,7 @@ function SecurityTab({
         results[item.message_id] = await backupCoversSenderKey(code, blob, item.room_id, item.epoch, item.key_id);
       }
       const recentMessagesById = new Map<string, Message>();
-      for (const channel of [...servers.flatMap((server) => server.channels), ...dms]) {
-        if (!["text", "dm", "group_dm"].includes(channel.channel_type)) continue;
+      for (const channel of recoveryScanChannels(dms)) {
         try {
           for (const message of await api.listMessages(token, channel.id, 100)) recentMessagesById.set(message.id, message);
         } catch {
@@ -1948,15 +1947,18 @@ function SecurityTab({
 
   async function burn() {
     setConfirmBurn(false);
-    await burnVault();
-    onToast("Vault burned — E2E keys wiped from this device.", "success");
+    try {
+      await burnVault(); // restarts Ohiyo on success
+    } catch (err) {
+      onToast(`Couldn't burn the keys: ${errorMessage(err, "something went wrong")}`, "error");
+    }
   }
 
   return (
     <div>
       <h2 className="mb-1 text-xl font-bold">Privacy &amp; Security</h2>
       <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
-        Your messages are end-to-end encrypted with the Signal protocol. These controls decide what
+        Chats with the lock on are end-to-end encrypted; server channels are not. These controls decide what
         happens to your data if you disappear — or on demand.
       </p>
 
@@ -2215,6 +2217,11 @@ function SecurityTab({
             This destroys them (and the keychain key) immediately; you&apos;ll re-establish encryption
             from scratch.
           </p>
+          {confirmBurn && (
+            <p className="mb-3 text-xs font-semibold" style={{ color: "var(--danger)" }}>
+              Ohiyo will restart and sign you out on this device.
+            </p>
+          )}
           {confirmBurn ? (
             <div className="flex gap-2">
               <button

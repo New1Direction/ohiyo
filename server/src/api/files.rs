@@ -123,6 +123,10 @@ pub async fn upload_file(
 
         // Stream field bytes through SHA-256 hasher to a temp file.
         let tmp_path = upload_root.join(format!("tmp-{}", new_id()));
+        // Declared before the file so the file is closed before the guard unlinks it.
+        let mut tmp_guard = TempFileGuard {
+            path: Some(tmp_path.clone()),
+        };
         let mut tmp_file = tokio::fs::File::create(&tmp_path)
             .await
             .map_err(crate::api::error::internal)?;
@@ -145,9 +149,6 @@ pub async fn upload_file(
             // Abort the moment this upload would push the user over quota — so an
             // over-limit file is never fully written to disk in the first place.
             if used_u.saturating_add(size_bytes) > quota_u {
-                tmp_file.flush().await.ok();
-                drop(tmp_file);
-                tokio::fs::remove_file(&tmp_path).await.ok();
                 return Err((
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "upload quota exceeded".into(),
@@ -192,6 +193,7 @@ pub async fn upload_file(
             tokio::fs::rename(&tmp_path, &final_path)
                 .await
                 .map_err(crate::api::error::internal)?;
+            tmp_guard.disarm();
 
             // Read image pixel dimensions (cheap header parse; None for non-images).
             // `imagesize::size` does synchronous file I/O, so run it on the blocking
@@ -241,6 +243,232 @@ pub async fn upload_file(
     }
 
     Ok(Json(results))
+}
+
+/// Startup sweep: delete `tmp-*` files in the upload root older than an hour.
+pub async fn sweep_stale_temp_files() {
+    remove_stale_temp_files(&upload_dir(), STALE_TEMP_AGE).await;
+}
+
+const STALE_TEMP_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Delete top-level `tmp-*` files in `root` last modified more than `max_age` ago. Younger
+/// ones may belong to an upload still in flight. Failures are logged and skipped.
+async fn remove_stale_temp_files(root: &std::path::Path, max_age: std::time::Duration) {
+    let mut entries = match tokio::fs::read_dir(root).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            tracing::warn!(
+                "couldn't list upload dir {} for temp sweep: {e}",
+                root.display()
+            );
+            return;
+        }
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        if !entry.file_name().to_string_lossy().starts_with("tmp-") {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .await
+            .ok()
+            .filter(|meta| meta.is_file())
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > max_age);
+        if stale {
+            if let Err(e) = tokio::fs::remove_file(entry.path()).await {
+                tracing::warn!(
+                    "couldn't remove stale upload temp file {:?}: {e}",
+                    entry.path()
+                );
+            }
+        }
+    }
+}
+
+/// Removes an upload's temp file when dropped, so every early return (a malformed or
+/// aborted body, a write error, the quota check, a dropped request) cleans up. Disarmed
+/// once the file has been renamed into place.
+struct TempFileGuard {
+    path: Option<PathBuf>,
+}
+
+impl TempFileGuard {
+    fn disarm(&mut self) {
+        self.path = None;
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Some(path) = self.path.take() {
+            // Drop can't await; unlinking one directory entry is quick.
+            if let Err(e) = std::fs::remove_file(&path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!("couldn't remove upload temp file {}: {e}", path.display());
+                }
+            }
+        }
+    }
+}
+
+// ── Releasing files when their messages go ────────────────────────────────────
+
+/// File ids attached to a message, read from its `attachments` JSON. Native sends store
+/// `[{"id": .., ..}]`; Discord imports store bare ids `["..", ..]`. Both are read.
+pub(crate) fn attachment_file_ids(raw: Option<&str>) -> Vec<String> {
+    let Some(items) = raw.and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(s).ok())
+    else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| match item {
+            serde_json::Value::String(id) => Some(id.clone()),
+            other => other
+                .get("id")
+                .and_then(|id| id.as_str())
+                .map(str::to_owned),
+        })
+        .collect()
+}
+
+/// How many places still reference a file id: message attachments (either JSON shape;
+/// ids are UUIDs, so a substring match is exact), avatars, banners, server icons (all
+/// stored as `…/files/<id>…` URLs) and server emoji.
+const FILE_REFERENCES_SQL: &str = "SELECT
+      (SELECT COUNT(*) FROM messages WHERE instr(attachments, ?) > 0)
+    + (SELECT COUNT(*) FROM users
+         WHERE instr(avatar_url, '/files/' || ?) > 0 OR instr(banner_url, '/files/' || ?) > 0)
+    + (SELECT COUNT(*) FROM servers WHERE instr(icon_url, '/files/' || ?) > 0)
+    + (SELECT COUNT(*) FROM server_emojis WHERE file_id = ?)";
+
+/// Within a write transaction (the one that deleted the referencing message, or one
+/// batch of [`release_files_in_batches`]), delete each file in `file_ids` that nothing
+/// references any more. Returns the blob paths no remaining
+/// `files` row points at; pass them to [`remove_blobs`] after the transaction commits.
+pub(crate) async fn delete_unreferenced_files(
+    conn: &mut sqlx::SqliteConnection,
+    file_ids: &[String],
+) -> Result<Vec<String>, sqlx::Error> {
+    let mut orphaned_blobs = Vec::new();
+    // Dedup hands identical uploads one id, so a batch can repeat ids: count each once.
+    let mut seen = std::collections::HashSet::new();
+    for id in file_ids.iter().filter(|id| seen.insert(id.as_str())) {
+        let references: i64 = sqlx::query_scalar(FILE_REFERENCES_SQL)
+            .bind(id)
+            .bind(id)
+            .bind(id)
+            .bind(id)
+            .bind(id)
+            .fetch_one(&mut *conn)
+            .await?;
+        if references > 0 {
+            continue;
+        }
+        // None if the file row is already gone.
+        let path: Option<String> = sqlx::query_scalar("SELECT path FROM files WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await?;
+        let Some(path) = path else { continue };
+        sqlx::query("DELETE FROM files WHERE id = ?")
+            .bind(id)
+            .execute(&mut *conn)
+            .await?;
+        let rows_sharing_blob: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM files WHERE path = ?")
+                .bind(&path)
+                .fetch_one(&mut *conn)
+                .await?;
+        if rows_sharing_blob == 0 {
+            orphaned_blobs.push(path);
+        }
+    }
+    Ok(orphaned_blobs)
+}
+
+/// Most file ids [`release_files_in_batches`] handles in one write transaction. Each id
+/// costs a reference scan, so a small batch keeps the single SQLite writer free for others.
+const MAX_FILES_RELEASED_PER_TX: usize = 20;
+
+/// Attempts at one release batch that keeps failing because the database is busy.
+const RELEASE_BATCH_ATTEMPTS: usize = 3;
+
+/// Pause between those attempts (each one already waits out the busy timeout).
+const RELEASE_RETRY_PAUSE: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// For many messages' files at once: after the referencing message rows are deleted
+/// and committed, delete each file in `file_ids` that nothing references any more, in
+/// separate transactions of at most [`MAX_FILES_RELEASED_PER_TX`] ids, removing each
+/// batch's blobs once it commits. A batch that fails is logged and the rest still run:
+/// the messages are already gone, so nothing would come back for those files later.
+pub(crate) async fn release_files_in_batches(db: &sqlx::SqlitePool, file_ids: &[String]) {
+    let mut seen = std::collections::HashSet::new();
+    let unique: Vec<String> = file_ids
+        .iter()
+        .filter(|id| seen.insert(id.as_str()))
+        .cloned()
+        .collect();
+    for batch in unique.chunks(MAX_FILES_RELEASED_PER_TX) {
+        if let Err(e) = release_batch_retrying_while_busy(db, batch).await {
+            tracing::error!(
+                file_ids = ?batch,
+                "couldn't release files of deleted messages; they stay stored: {e}"
+            );
+        }
+    }
+}
+
+/// One release batch, tried up to [`RELEASE_BATCH_ATTEMPTS`] times while it fails busy.
+async fn release_batch_retrying_while_busy(
+    db: &sqlx::SqlitePool,
+    batch: &[String],
+) -> Result<(), sqlx::Error> {
+    let mut attempt = 1;
+    loop {
+        match release_batch(db, batch).await {
+            Err(e) if is_busy(&e) && attempt < RELEASE_BATCH_ATTEMPTS => {
+                attempt += 1;
+                tokio::time::sleep(RELEASE_RETRY_PAUSE).await;
+            }
+            result => return result,
+        }
+    }
+}
+
+async fn release_batch(db: &sqlx::SqlitePool, batch: &[String]) -> Result<(), sqlx::Error> {
+    // Take the write lock up front: the reference scans read before the first delete,
+    // and a read transaction that later upgrades fails at once (no busy wait) whenever
+    // another write lands in between. BEGIN IMMEDIATE waits out the busy timeout instead.
+    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    let orphaned_blobs = delete_unreferenced_files(&mut tx, batch).await?;
+    tx.commit().await?;
+    remove_blobs(orphaned_blobs).await;
+    Ok(())
+}
+
+/// SQLITE_BUSY or one of its extended codes (sqlx reports the extended code).
+fn is_busy(e: &sqlx::Error) -> bool {
+    e.as_database_error()
+        .and_then(|e| e.code())
+        .and_then(|code| code.parse::<i32>().ok())
+        .is_some_and(|code| code & 0xff == 5)
+}
+
+/// Remove blobs released by [`delete_unreferenced_files`], after its transaction has
+/// committed. A failure only leaks disk space, so it is logged rather than surfaced.
+pub(crate) async fn remove_blobs(paths: Vec<String>) {
+    for path in paths {
+        if let Err(e) = tokio::fs::remove_file(&path).await {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!("couldn't remove released upload blob {path}: {e}");
+            }
+        }
+    }
 }
 
 /// Optional capability signature on a `/files/{id}` request. The server appends
@@ -451,6 +679,41 @@ mod tests {
         assert!(!is_inline_safe(""));
     }
 
+    #[tokio::test]
+    async fn stale_temp_files_are_swept_and_everything_else_is_kept() {
+        let root = std::env::temp_dir().join(format!("ohiyo-sweep-{}", new_id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let two_hours_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+        for name in ["tmp-old", "old-blob"] {
+            std::fs::File::create(root.join(name))
+                .unwrap()
+                .set_modified(two_hours_ago)
+                .unwrap();
+        }
+        std::fs::File::create(root.join("tmp-in-flight")).unwrap();
+
+        remove_stale_temp_files(&root, STALE_TEMP_AGE).await;
+
+        let mut left: Vec<String> = std::fs::read_dir(&root)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["old-blob", "tmp-in-flight"]);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn attachment_ids_read_both_json_shapes_and_nothing_from_garbage() {
+        let native = r#"[{"id":"f1","url":"/files/f1?s=x"},{"id":"f2"}]"#;
+        assert_eq!(attachment_file_ids(Some(native)), ["f1", "f2"]);
+        assert_eq!(attachment_file_ids(Some(r#"["f3","f4"]"#)), ["f3", "f4"]);
+        // Unreadable JSON releases nothing rather than guessing.
+        assert!(attachment_file_ids(None).is_empty());
+        assert!(attachment_file_ids(Some("not json")).is_empty());
+        assert!(attachment_file_ids(Some(r#"[{"name":"no id"}]"#)).is_empty());
+    }
+
     #[test]
     fn parses_browser_media_byte_ranges() {
         assert_eq!(
@@ -501,5 +764,43 @@ mod tests {
         assert_ne!(tampered, sig);
         // A different id yields a different signature.
         assert_ne!(crate::sign_file_id("a-different-id"), sig);
+    }
+
+    /// A writer holding the lock makes a second connection with no busy timeout fail
+    /// `BEGIN IMMEDIATE` at once with SQLITE_BUSY: a real busy error, deterministically.
+    #[tokio::test]
+    async fn sqlite_busy_errors_are_recognised_as_busy() {
+        use sqlx::sqlite::SqliteConnectOptions;
+        use sqlx::ConnectOptions;
+        let path = std::env::temp_dir().join(format!("ohiyo-busy-{}.db", uuid::Uuid::new_v4()));
+        let options = SqliteConnectOptions::new()
+            .filename(&path)
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+        let mut holder = options.connect().await.unwrap();
+        let mut waiter = options
+            .clone()
+            .busy_timeout(std::time::Duration::ZERO)
+            .connect()
+            .await
+            .unwrap();
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut holder)
+            .await
+            .unwrap();
+
+        let err = sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut waiter)
+            .await
+            .expect_err("the write lock is held");
+        assert!(is_busy(&err), "{err}");
+        assert!(!is_busy(&sqlx::Error::RowNotFound));
+
+        drop((holder, waiter));
+        for suffix in ["", "-wal", "-shm"] {
+            let mut p = path.clone().into_os_string();
+            p.push(suffix);
+            let _ = std::fs::remove_file(p);
+        }
     }
 }

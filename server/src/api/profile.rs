@@ -212,7 +212,7 @@ pub async fn get_profile(
 }
 
 pub async fn get_user_profile(
-    _auth: AuthUser,
+    auth: AuthUser,
     axum::extract::Path(user_id): axum::extract::Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
@@ -227,6 +227,13 @@ pub async fn get_user_profile(
     .await
     .map_err(|_| (StatusCode::NOT_FOUND, "user not found".into()))?;
 
+    // Privacy Mode hides "last seen" from everyone but the user themselves.
+    if user_id != auth.0 && crate::gateway::privacy_mode_on(&state, &user_id).await {
+        return Ok(Json(ProfileResponse {
+            last_active_at: None,
+            ..row.into()
+        }));
+    }
     Ok(Json(row.into()))
 }
 
@@ -235,7 +242,42 @@ pub async fn update_profile(
     State(state): State<AppState>,
     Json(body): Json<UpdateProfileBody>,
 ) -> Result<Json<ProfileResponse>, (StatusCode, String)> {
+    // Checked before any field is written, so a rejected update changes nothing.
+    if let Some(bio) = &body.bio {
+        crate::api::limits::check_len("bio", bio, crate::api::limits::BIO)?;
+    }
+    if let Some(pronouns) = &body.pronouns {
+        crate::api::limits::check_len("pronouns", pronouns, crate::api::limits::PRONOUNS)?;
+    }
+    if let Some(status) = &body.custom_status {
+        crate::api::limits::check_len("custom status", status, crate::api::limits::CUSTOM_STATUS)?;
+    }
+    if let Some(color) = &body.banner_color {
+        crate::api::limits::check_len("banner color", color, crate::api::limits::BANNER_COLOR)?;
+    }
+    for (field, value) in [
+        ("Spotify", &body.social_spotify),
+        ("GitHub", &body.social_github),
+        ("Twitter", &body.social_twitter),
+        ("Steam", &body.social_steam),
+        ("YouTube", &body.social_youtube),
+        ("Twitch", &body.social_twitch),
+    ] {
+        if let Some(value) = value {
+            crate::api::limits::check_len(field, value, crate::api::limits::SOCIAL_FIELD)?;
+        }
+    }
+    let theme_data = body
+        .profile_theme
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(crate::api::error::internal)?;
+    if let Some(raw) = &theme_data {
+        crate::api::limits::check_len("profile theme", raw, crate::api::limits::PROFILE_THEME)?;
+    }
     if let Some(name) = &body.display_name {
+        crate::api::limits::check_len("display name", name, crate::api::limits::DISPLAY_NAME)?;
         sqlx::query("UPDATE users SET display_name = ? WHERE id = ?")
             .bind(name)
             .bind(&auth.0)
@@ -279,8 +321,7 @@ pub async fn update_profile(
             .await
             .map_err(crate::api::error::internal)?;
     }
-    if let Some(theme) = &body.profile_theme {
-        let raw = serde_json::to_string(theme).map_err(crate::api::error::internal)?;
+    if let Some(raw) = theme_data {
         sqlx::query("UPDATE users SET theme_data = ? WHERE id = ?")
             .bind(raw)
             .bind(&auth.0)

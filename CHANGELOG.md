@@ -54,7 +54,78 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   refresh nudge, durable design notes, calmer protection-first copy, and first-class
   undecryptable-message states instead of a fake retry loop.
 
+### Security
+- **Permissions:** role hierarchy is now enforced when unassigning and deleting roles;
+  the gateway's initial channel list and unread counts respect View Channel; kick, ban
+  and leave clear the member's roles, member-level overwrites and voice seat.
+- **Operator-only actions:** Discord imports that read local files or use the managed
+  bot, and Instant Server tier changes, are limited to the accounts listed in
+  `OHIYO_OPERATOR_USER_IDS` (unset means nobody). The local import reads media only
+  from `OHIYO_DISCRAWL_MEDIA_ROOT`, and import asset URLs are fetched only from public
+  addresses.
+- **Rate limits:** limits are keyed on the real client address (`Fly-Client-IP` on Fly,
+  `TRUSTED_PROXY_HOPS` behind other proxies) and IPv6 clients are counted by /64 and
+  /48. Login is limited per username, registration to 10 new accounts an hour per
+  address (`OHIYO_REGISTER_LIMIT_PER_HOUR`), and invite previews, prekey fetches and
+  template imports have limits of their own. An account can hold 10 devices.
+- **Abuse limits:** length caps on names, topics, bios, statuses, profile and poll
+  fields; a message carries at most 10 attachments; the message list page size is
+  clamped to 100; gateway frame size and sockets per user are
+  capped and silent sockets are closed; password hashing runs off the async runtime
+  with bounded concurrency; failed uploads no longer leave temp files behind.
+- **Sessions:** "log out everywhere" now closes open gateway sockets and voids gateway
+  tickets issued before it.
+- **Outbound requests:** the link-preview and import fetchers refuse IPv4-mapped, NAT64,
+  6to4, Teredo and other non-public addresses. Push dispatch accepts only known web
+  push services and well-formed APNs tokens, with a timeout and no redirects.
+- **Privacy Mode** now also covers read cursors and last-active times reported over
+  REST, and the dead-man's switch no longer fires for users who are online.
+- **Encryption (app):** a group message is never sent as plaintext when encryption
+  fails; group message signatures are verified before the key ratchet advances;
+  forwarding cannot carry decrypted content into the clear or plaintext into an
+  encrypted chat; only DMs and group chats can enter encrypted mode; decrypted messages
+  and encrypted chats show no link previews or embeds; encrypted attachment links must
+  point at this home's file store; polls and watch parties are hidden in encrypted
+  chats because they are not encrypted; a decrypted message cannot be edited while the
+  lock is off.
+- **Local data (app):** signing out of the last account on a device asks first, then
+  clears the decrypted-message cache, the unsent outbox and drafts (keys are kept); the
+  same data is cleared when a different account signs in there, and kept when a session
+  simply expires. Drafts in encrypted chats stay in memory only; cached decrypted
+  messages are dropped once they expire; a full browser storage evicts the oldest
+  cached messages instead of crashing the app.
+- **Attachments:** files attached before a chat became encrypted are removed from the
+  composer, and an encrypted chat refuses to send a file that was not encrypted.
+- **Desktop vault:** a keychain or sealed-file failure now leaves the vault locked
+  instead of starting an empty one that would overwrite the saved keys. The locked
+  screen offers Try again and, when the saved keys cannot be opened, a confirmed reset.
+  The sealed file is written atomically, and burning the vault restarts the app.
+- **Calls:** call signalling is ignored unless you are in that call and the sender is
+  one of its participants.
+- **Plugins:** more network-capable APIs are removed from plugin workers, and plugin
+  CSS containing escapes or anything that can make a request is rejected.
+- **Web app headers:** Cloudflare Pages now sends `X-Frame-Options: DENY`,
+  `frame-ancestors 'none'`, HSTS, `nosniff`, a referrer policy and a permissions policy.
+- Message notifications respect the current blocked list.
+- **Dependencies:** `jsonwebtoken` 10, `rustls`, `quinn-proto` and `event-listener`
+  updated past their advisories; CI now runs `npm audit` and `cargo audit`.
+
 ### Changed
+- Group encryption is now labelled **Experimental** in the app, with a note that it can
+  miss messages sent while a member was offline.
+- Deleting a message now also deletes its attachments when nothing else refers to them.
+- Message history pages no longer skip or repeat messages created in the same second.
+- The gateway now answers heartbeats, so an idle connection is no longer treated as
+  dead and reconnected every 40 seconds.
+- A call is no longer dropped when another of your devices disconnects.
+- A member with Manage Roles now creates roles just below their own highest role, so
+  they can manage what they create.
+- "Activate paid" for Instant Servers is replaced by a disabled "Paid plan: coming soon"
+  control until billing exists.
+- The local Discord import no longer takes a media folder from the request, and import
+  options your account cannot use are hidden.
+- Profile and channel fields enforce the server's length limits, and rate-limit and
+  device-limit errors show clear messages.
 - Voice state join/leave/mute/video metadata now reaches everyone who can access the
   channel so the sidebar updates live; WebRTC signaling and voice encryption keys remain
   restricted to actual call participants.
@@ -63,6 +134,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- Turning on encryption in a DM right after a reload no longer fails with "your friend
+  needs to open Ohiyo".
+- One undecryptable message no longer makes a group chat load empty.
 - Production call smoke tests now skip the dev-only low-level peer-connection inspector
   while still verifying the live roster/UI behavior.
 

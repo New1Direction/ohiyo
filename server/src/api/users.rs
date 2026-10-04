@@ -459,6 +459,9 @@ pub async fn open_group_dm(
     ) {
         return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
     }
+    if let Some(name) = &body.name {
+        crate::api::limits::check_len("group name", name, crate::api::limits::GROUP_DM_NAME)?;
+    }
     let mut members: Vec<String> = body
         .recipient_ids
         .into_iter()
@@ -749,6 +752,14 @@ pub async fn remove_recipient(
     if removed == 0 {
         return Ok(StatusCode::NO_CONTENT); // wasn't a member → nothing to do
     }
+    // Out of the group's call too, as a server kick takes them out of its voice rooms.
+    // First, so no later step that fails and returns early can leave them in it.
+    crate::gateway::evict_from_voice_rooms(
+        &state,
+        &std::collections::HashSet::from([channel_id.clone()]),
+        &target,
+    )
+    .await;
     // If the owner just left, hand ownership to the earliest-joined remaining member so
     // the group stays administerable (otherwise nobody could remove anyone afterward).
     // Clients pick up the new owner on their next Ready/refetch.
@@ -868,6 +879,32 @@ pub async fn set_deadman(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Delete every message a user wrote, then release each attached file that nothing else
+/// references any more. The message deletion commits first and the files are released
+/// afterwards in small batches, so the write lock is never held for a whole history's
+/// reference scans. A crash between the two steps leaves unreferenced files behind,
+/// which only costs disk space.
+async fn wipe_authored_messages(state: &AppState, user_id: &str) -> Result<(), sqlx::Error> {
+    let mut tx = state.db.begin().await?;
+    let attachments: Vec<String> = sqlx::query_scalar(
+        "SELECT attachments FROM messages WHERE author_id = ? AND attachments IS NOT NULL",
+    )
+    .bind(user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM messages WHERE author_id = ?")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    let file_ids: Vec<String> = attachments
+        .iter()
+        .flat_map(|raw| crate::api::files::attachment_file_ids(Some(raw)))
+        .collect();
+    crate::api::files::release_files_in_batches(&state.db, &file_ids).await;
+    Ok(())
+}
+
 /// Wipe data for users whose dead-man's switch has tripped (inactive past their window).
 /// Driven by the periodic task in `main`. 'history' deletes their authored messages;
 /// 'keys' also clears their server-side Signal directory + legacy public key.
@@ -885,12 +922,20 @@ pub async fn sweep_deadman(state: &AppState) {
     .unwrap_or_default();
 
     for (uid, scope) in tripped {
+        // A live gateway session means the user is online, whatever last_active_at says.
+        let online = state
+            .sessions
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(&uid);
+        if online {
+            continue;
+        }
         // Leave an audit trail in the logs before the irreversible wipe.
         tracing::warn!(user_id = %uid, scope = ?scope, "dead-man's switch tripped — wiping data");
-        let _ = sqlx::query("DELETE FROM messages WHERE author_id = ?")
-            .bind(&uid)
-            .execute(&state.db)
-            .await;
+        if let Err(e) = wipe_authored_messages(state, &uid).await {
+            tracing::error!(user_id = %uid, "dead-man's switch: message wipe failed: {e}");
+        }
         if scope.as_deref() == Some("keys") {
             for q in [
                 "DELETE FROM signal_identity WHERE user_id = ?",

@@ -26,3 +26,11 @@ export function timeLeft(expiresAt: number, nowMs: number = Date.now()): string 
   if (s >= 60) return `${Math.ceil(s / 60)}m`;
   return `${s}s`;
 }
+
+/** The unix time a message disappears, for the decrypted-message cache: its expires_at
+ *  when that is a real time, else null (never). Every cache write goes through this, so
+ *  a disappearing message's plaintext is dropped when the message expires. */
+export function messageExpiry(message: { expires_at?: number | null } | null | undefined): number | null {
+  const at = message?.expires_at;
+  return typeof at === "number" && Number.isFinite(at) ? at : null;
+}

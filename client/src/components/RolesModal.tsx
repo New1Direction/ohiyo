@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Role, type PublicUser } from "../api";
 import { PERM_LABELS } from "../permissions";
+import { errorMessage } from "../lib/errorMessage";
 import { ModalShell } from "./ModalShell";
 
 type Props = {
@@ -54,8 +55,8 @@ export function RolesModal({ token, serverId, members, ownerId, onClose }: Props
       setName("");
       setPerms(0);
       await refresh();
-    } catch {
-      setError("Could not create that role. Try again.");
+    } catch (err) {
+      setError(errorMessage(err, "Could not create that role. Try again."));
     } finally {
       setBusy(false);
     }

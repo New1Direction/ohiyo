@@ -27,6 +27,8 @@ type SyncStore = {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
   removeItem: (key: string) => void;
+  /** The desktop vault's batch removal: one write instead of one per key. */
+  removeMany?: (keys: string[]) => void;
 };
 
 // Prefer the encrypted vault on desktop; fall back to localStorage on web.
@@ -34,11 +36,68 @@ function store(): SyncStore {
   return getVaultStore() ?? localStorage;
 }
 
-export function cachePlaintext(msgId: string, text: string): void {
+// Each entry is stored as JSON {pt, expires_at}: the plaintext and the message's
+// self-destruct time in unix seconds (null = never). Entries written before expiries were
+// stored are the bare plaintext and never expire here.
+type Entry = { pt: string; expires_at: number | null };
+
+function decodeEntry(raw: string): Entry {
+  try {
+    const v: unknown = JSON.parse(raw);
+    if (typeof v === "object" && v !== null && Object.keys(v).length === 2) {
+      const { pt, expires_at } = v as Record<string, unknown>;
+      if (typeof pt === "string" && (expires_at === null || typeof expires_at === "number")) return { pt, expires_at };
+    }
+  } catch {
+    /* not JSON: a bare entry from before expiries were stored */
+  }
+  return { pt: raw, expires_at: null };
+}
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
+const isExpired = (e: Entry, now: number) => e.expires_at !== null && e.expires_at <= now;
+
+// The earliest expires_at still cached in `store` (Infinity if none), so a read only sweeps
+// the whole cache once something may have expired.
+let nextExpiry: { store: SyncStore; at: number } | null = null;
+
+// Drop every expired entry, including ones nothing will read again (a disappearing
+// message that expired while the app was closed is never fetched, so never read).
+function dropExpired(s: SyncStore, now: number): void {
+  if (nextExpiry?.store === s && now < nextExpiry.at) return;
+  let idx: string[] = [];
+  try {
+    idx = JSON.parse(s.getItem(INDEX) || "[]");
+  } catch {
+    idx = [];
+  }
+  let at = Infinity;
+  const expired: string[] = [];
+  const kept = idx.filter((id) => {
+    const raw = s.getItem(PREFIX + id);
+    if (raw === null) return true;
+    const entry = decodeEntry(raw);
+    if (isExpired(entry, now)) {
+      expired.push(PREFIX + id);
+      return false;
+    }
+    if (entry.expires_at !== null) at = Math.min(at, entry.expires_at);
+    return true;
+  });
+  if (expired.length > 0) {
+    if (s.removeMany) s.removeMany(expired);
+    else for (const key of expired) s.removeItem(key);
+  }
+  if (kept.length !== idx.length) s.setItem(INDEX, JSON.stringify(kept));
+  nextExpiry = { store: s, at };
+}
+
+export function cachePlaintext(msgId: string, text: string, expiresAt: number | null = null): void {
   try {
     const s = store();
     if (s.getItem(PREFIX + msgId) !== null) return; // already cached
-    s.setItem(PREFIX + msgId, text);
+    s.setItem(PREFIX + msgId, JSON.stringify({ pt: text, expires_at: expiresAt } satisfies Entry));
+    if (expiresAt !== null && nextExpiry?.store === s) nextExpiry = { store: s, at: Math.min(nextExpiry.at, expiresAt) };
     let idx: string[] = [];
     try {
       idx = JSON.parse(s.getItem(INDEX) || "[]");
@@ -56,9 +115,19 @@ export function cachePlaintext(msgId: string, text: string): void {
   }
 }
 
+/** The cached plaintext, or null when absent or past its expires_at. Reading also drops
+ *  every expired entry from storage. */
 export function getCachedPlaintext(msgId: string): string | null {
   try {
-    return store().getItem(PREFIX + msgId);
+    const s = store();
+    const now = nowSeconds();
+    dropExpired(s, now);
+    const raw = s.getItem(PREFIX + msgId);
+    if (raw === null) return null;
+    const entry = decodeEntry(raw);
+    if (!isExpired(entry, now)) return entry.pt;
+    removeCachedPlaintext(msgId); // not in the index (e.g. restored from a backup)
+    return null;
   } catch {
     return null;
   }

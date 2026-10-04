@@ -89,6 +89,9 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   // Per-peer signaling serialization: offer/answer/candidate for a given peer must apply
   // in arrival order, else addIceCandidate can race ahead of setRemoteDescription (glare).
   const signalChainsRef = useRef<Map<string, Promise<void>>>(new Map());
+  // Who is in our call, recorded as the gateway's roster and join/leave events arrive
+  // (not via React state, which may lag). Signals from anyone else are ignored.
+  const participantIdsRef = useRef<ReadonlySet<string>>(new Set());
 
   const cbRef = useRef(cb);
   cbRef.current = cb;
@@ -254,6 +257,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   // ── Gateway-driven handlers (wired in App.tsx) ────────────────────────────
   const onRoster = useCallback((cid: string, peers: VoicePeer[]) => {
     if (channelRef.current !== cid) return;
+    participantIdsRef.current = new Set([...participantIdsRef.current, ...peers.map((p) => p.user_id)]);
     setParticipants((prev) => {
       const next = new Map(prev);
       for (const p of peers) {
@@ -272,8 +276,13 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     setCallState("connected");
   }, [createPeer]);
 
-  const onPeerSignal = useCallback(async (sig: { from: string; kind: string; payload: string }) => {
+  const onPeerSignal = useCallback(async (sig: { from: string; channel_id: string; kind: string; payload: string }) => {
     const { from, kind, payload } = sig;
+    // Only from a current participant of the call we're in on that channel. The server
+    // sends a joiner's VoiceState before any of its signals (same ordered queue), and
+    // the joiner gets the roster before it offers, so legitimate first offers pass.
+    if (channelRef.current === null || sig.channel_id !== channelRef.current) return;
+    if (!participantIdsRef.current.has(from)) return;
 
     // The actual handling for ONE signal. Chained per-peer below so offer →
     // setRemoteDescription always completes before a following candidate is applied.
@@ -330,6 +339,10 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   }) => {
     if (channelRef.current !== s.channel_id) return;
     if (s.user_id === cbRef.current.currentUserId) return;
+    const ids = new Set(participantIdsRef.current);
+    if (s.joined) ids.add(s.user_id);
+    else ids.delete(s.user_id);
+    participantIdsRef.current = ids;
     if (s.joined) {
       setParticipants((prev) => new Map(prev).set(s.user_id, {
         user_id: s.user_id, user: s.user, muted: s.muted, video: s.video, screen: s.screen, listenOnly: s.listenOnly,
@@ -442,6 +455,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     screenStreamRef.current = null;
     cameraTrackRef.current = null;
     channelRef.current = null;
+    participantIdsRef.current = new Set();
     setLocalStream(null);
     setRemoteStreams(new Map());
     setParticipants(new Map());

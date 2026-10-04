@@ -185,7 +185,8 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
                     <button type="button" onClick={() => showGraduate(inst)} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" }}>Self-host</button>
                     <button type="button" onClick={() => billing(inst)} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--accent)", border: "none" }}>Billing</button>
                     {inst.tier !== "paid" && (
-                      <button type="button" onClick={() => run(`paid:${inst.id}`, () => api.setInstanceTier(inst.id, "paid", token), () => onToast("Marked always-on for MVP/manual billing.", "success"))} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "color-mix(in oklch, var(--accent) 16%, var(--bg-input))", color: "var(--accent)", border: "none" }}>Activate paid</button>
+                      // Changing the tier is operator-only on the server (an owner gets 403).
+                      <button type="button" disabled className="rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "not-allowed", opacity: 0.7 }}>Paid plan: coming soon</button>
                     )}
                     <button type="button" onClick={() => { if (confirm(`Delete ${inst.name}? Export first if you need it.`)) void run(`delete:${inst.id}`, () => api.deleteInstance(inst.id, token), () => onToast("Instant Server deleted.", "success")); }} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--danger)", border: "none" }}><Icon name="trash" size={13} /> Delete</button>
                   </div>
@@ -207,7 +208,7 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
             {guide.guide.raw_data_export_url && (
               <div className="mt-3 rounded-2xl p-3 text-xs leading-5" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
                 Raw Server Pack endpoint: <code style={{ color: "var(--text-primary)" }}>{guide.guide.raw_data_export_url}</code><br />
-                Sign in on that home as the owner before downloading. It restores infrastructure + ciphertext, not everyone’s readable history.
+                Sign in on that home as the owner before downloading. It restores the database and files: messages sent with the lock on, and their files, stay ciphertext; server channels, and DM or group-DM messages sent with the lock off, and their files, are plain text.
               </div>
             )}
             <pre className="mt-3 overflow-x-auto rounded-2xl p-3 text-xs" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}>{guide.guide.one_liner}</pre>

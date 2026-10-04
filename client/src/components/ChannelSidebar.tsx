@@ -441,6 +441,7 @@ export function ChannelSidebar({
                     autoFocus
                     value={newChannelName}
                     onChange={(e) => setNewChannelName(e.target.value)}
+                    maxLength={100}
                     onKeyDown={(e) => e.key === "Escape" && setShowNewChannel(false)}
                     placeholder="new-channel"
                     className="w-full px-2 py-1 text-sm outline-none"

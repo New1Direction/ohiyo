@@ -47,7 +47,10 @@ export type GatewayEvent =
   | { t: "VoiceState"; d: { channel_id: string; user_id: string; user: PublicUser; joined: boolean; muted: boolean; video: boolean; screen: boolean; listenOnly: boolean } }
   | { t: "VoiceRoster"; d: { channel_id: string; peers: VoicePeer[] } }
   | { t: "VoiceSignal"; d: { from: string; to: string; channel_id: string; kind: string; payload: string } }
-  | { t: "WatchUpdate"; d: { channel_id: string; session: WatchSession | null } };
+  | { t: "WatchUpdate"; d: { channel_id: string; session: WatchSession | null } }
+  // The server's answer to each Heartbeat. Needs no handler: any inbound frame counts as
+  // alive (lastFrameAt).
+  | { t: "HeartbeatAck" };
 
 // ── Client → server events (mirror the server's ClientEvent enum) ──────────────
 export type ClientEvent =
@@ -83,7 +86,7 @@ const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set([
   "SenderKeyDistribution", "GroupMembersUpdate", "VoiceKeyDistribution", "ServerCreate",
   "ServerDelete", "ChannelCreate", "MemberJoin", "MemberLeave", "PermissionsUpdate",
   "EventsChanged", "ReactionUpdate", "ReadReceipt", "PresenceUpdate", "TypingStart",
-  "VoiceState", "VoiceRoster", "VoiceSignal", "WatchUpdate",
+  "VoiceState", "VoiceRoster", "VoiceSignal", "WatchUpdate", "HeartbeatAck",
 ]);
 
 export class Gateway {

@@ -2,6 +2,15 @@ use tauri::Manager;
 
 mod vault;
 
+/// Restart the app: "Try again" on the locked vault screen, and after a reset or burn.
+/// `request_restart` goes through the normal exit (the Exit event), so plugins such as
+/// single-instance clean up before the relaunch; `restart` from a command skips that and
+/// the relaunched process could quit instead of starting.
+#[tauri::command]
+fn app_restart(app: tauri::AppHandle) {
+    app.request_restart();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -33,7 +42,10 @@ pub fn run() {
             vault::vault_snapshot,
             vault::vault_set,
             vault::vault_remove,
+            vault::vault_remove_many,
+            vault::vault_reset,
             vault::vault_burn,
+            app_restart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ohiyo");

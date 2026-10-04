@@ -12,6 +12,9 @@ import {
 import { api } from "../api";
 import { recordKeySeen, setIdentityTrustBackend } from "./identityTrust";
 import { computeSafetyNumber } from "./safetyNumber";
+import { fanOut } from "./signalFanout";
+import { setItemEvictingPlaintextCache } from "./storageQuota";
+import { deviceLimitMessage } from "./apiErrors";
 
 const NS = "kc:sig:";
 const PREKEY_BATCH = 100;
@@ -99,7 +102,10 @@ class SignalStore {
     return s === null ? undefined : dec(s);
   }
   private put(key: string, v: unknown) {
-    this.activeBackend().setItem(NS + key, enc(v));
+    // A full store evicts the oldest quarter of the decrypted-message cache and retries,
+    // until the key fits or the cache is empty; if it still can't be saved, this throws and
+    // the operation that needed it fails.
+    setItemEvictingPlaintextCache(this.activeBackend(), NS + key, enc(v));
   }
   private del(key: string) {
     this.activeBackend().removeItem(NS + key);
@@ -206,9 +212,19 @@ function ownUserId(): string | null {
   return backend.getItem(NS + "ownUserId");
 }
 
+// One tab at a time creates, stores and publishes this device's keys: two runs at once
+// could each create an identity, or hand out the same one-time prekey ids. publish() runs
+// only inside initSignal, so this one lock covers both (Web Locks aren't reentrant).
+const KEYS_LOCK = "ohiyo:signal-keys";
+
 /** Generate this device's identity + prekeys on first run + publish; replenish
  *  one-time prekeys when low. Safe to call on every login. */
-export async function initSignal(token: string): Promise<void> {
+export function initSignal(token: string): Promise<void> {
+  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
+  return locks ? locks.request(KEYS_LOCK, () => initSignalLocked(token)) : initSignalLocked(token);
+}
+
+async function initSignalLocked(token: string): Promise<void> {
   // Remember our own user id so we can fan out to (and decrypt for) our own devices.
   try {
     const me = await api.me(token);
@@ -226,7 +242,9 @@ export async function initSignal(token: string): Promise<void> {
     try {
       const { count } = await api.signalPrekeyCount(token, dev);
       if (count < PREKEY_LOW) await publish(token, dev);
-    } catch {
+    } catch (err) {
+      // The account's device limit refused our keys: the caller tells the user.
+      if (deviceLimitMessage(err) !== null) throw err;
       /* offline — not critical */
     }
   }
@@ -376,30 +394,26 @@ async function ensureSession(addr: SignalProtocolAddress, bundle: Bundle): Promi
 }
 
 /** Encrypt for a peer, fanning out a copy to EVERY one of the peer's devices and our
- *  own other devices (multi-device). Returns a `sig2.<b64(json)>` envelope, or null if
- *  no Signal-capable recipient device exists yet. */
+ *  own other devices (multi-device). Device lists come from the identity-key directory
+ *  on every send; prekey bundles (one one-time prekey per device) are fetched only when
+ *  a device has no session yet — see signalFanout.ts. Returns a `sig2.<b64(json)>`
+ *  envelope, or null if no Signal-capable recipient device exists yet. */
 export async function encryptFor(token: string, peerId: string, plaintext: string): Promise<string | null> {
   if (!isValidUserId(peerId)) return null;
   const myId = ownUserId();
   const myDevice = getDeviceId();
   const uids = myId && myId !== peerId ? [peerId, myId] : [peerId];
   const buf = new TextEncoder().encode(plaintext).buffer;
-  const r: Record<string, { t: number; b: string }> = {};
-  for (const uid of uids) {
-    let bundles: Bundle[];
-    try {
-      bundles = await api.getPrekeyBundles(token, uid);
-    } catch {
-      bundles = [];
-    }
-    for (const b of bundles) {
-      if (uid === myId && b.device_id === myDevice) continue; // never to ourselves
-      const addr = new SignalProtocolAddress(uid, b.device_id);
-      if (!(await ensureSession(addr, b))) continue;
-      const msg = await new SessionCipher(store, addr).encrypt(buf);
-      r[`${uid}.${b.device_id}`] = { t: msg.type, b: btoa(msg.body as string) };
-    }
-  }
+  const r = await fanOut<Bundle>(uids, { userId: myId, deviceId: myDevice }, {
+    listDevices: async (uid) => (await api.getIdentityKeys(token, uid)).map((k) => k.device_id),
+    fetchBundles: (uid) => api.getPrekeyBundles(token, uid),
+    hasSession: async (uid, d) => Boolean(await store.loadSession(new SignalProtocolAddress(uid, d).toString())),
+    startSession: (uid, b) => ensureSession(new SignalProtocolAddress(uid, b.device_id), b),
+    encrypt: async (uid, d) => {
+      const msg = await new SessionCipher(store, new SignalProtocolAddress(uid, d)).encrypt(buf);
+      return { t: msg.type, b: btoa(msg.body as string) };
+    },
+  });
   if (Object.keys(r).length === 0) return null;
   return `sig2.${btoa(JSON.stringify({ s: myDevice, r }))}`;
 }

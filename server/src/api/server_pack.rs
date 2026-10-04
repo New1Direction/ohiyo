@@ -2,10 +2,13 @@
 //!
 //! This is the ownership/export primitive that complements the Instant Servers
 //! control-plane "ownership pack": it snapshots the current SQLite database and the
-//! uploaded blob directory into a tar.gz with a signed manifest. The pack restores
-//! infrastructure + ciphertext/opaque files. It does **not** contain users' recovery
-//! codes, E2E private keys beyond whatever ciphertext/key-backup rows already exist in
-//! the DB, or everyone else's readable plaintext history.
+//! uploaded blob directory into a tar.gz with a signed manifest. The pack holds the
+//! messages as the server stores them: server-channel messages as readable text (as are
+//! DMs and group chats without encryption turned on), and end-to-end encrypted DM and
+//! group messages as ciphertext. It does **not** contain
+//! users' recovery codes or E2E private keys beyond whatever encrypted key-backup rows
+//! already exist in the DB, so readable history for the encrypted conversations still
+//! depends on each user's own device keys or recovery backup.
 
 use std::{
     io::Read,
@@ -342,8 +345,8 @@ pub async fn export_server_pack(
             total_bytes: 0,
             files: Vec::new(),
         },
-        privacy_note: "This pack contains the server database, ciphertext messages, metadata, and uploaded blobs. It does not contain users' recovery codes or personal E2E private keys beyond encrypted/key-backup rows already stored as ciphertext.".into(),
-        restore_note: "Restoring this pack recreates infrastructure and ciphertext. Readable history still depends on each user's own device keys or personal recovery backup.".into(),
+        privacy_note: "This pack contains the server database with the messages as stored (server-channel messages as readable text, as are DMs and group chats without encryption turned on; end-to-end encrypted DM and group messages as ciphertext), metadata, and uploaded blobs. It does not contain users' recovery codes or personal E2E private keys beyond encrypted/key-backup rows already stored as ciphertext.".into(),
+        restore_note: "Restoring this pack recreates the server with its messages as stored: server-channel messages as readable text, as are DMs and group chats without encryption turned on; end-to-end encrypted DM and group messages as ciphertext. Readable history for the encrypted ones still depends on each user's own device keys or personal recovery backup.".into(),
     };
 
     let upload_root = crate::api::files::upload_dir();

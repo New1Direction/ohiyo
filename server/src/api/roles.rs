@@ -98,15 +98,18 @@ fn has_admin_override(permissions: i64) -> bool {
         || permissions & perm::LEGACY_MANAGE_ALL == perm::LEGACY_MANAGE_ALL
 }
 
+/// One permission overwrite: `(target_type, target_id, allow, deny)`.
+type Overwrite = (String, Option<String>, i64, i64);
+
 async fn apply_overwrite_scope(
     state: &AppState,
-    mut permissions: i64,
+    permissions: i64,
     scope_type: &str,
     scope_id: &str,
     user_id: &str,
     role_ids: &[String],
 ) -> i64 {
-    let rows: Vec<(String, Option<String>, i64, i64)> = sqlx::query_as(
+    let rows: Vec<Overwrite> = sqlx::query_as(
         "SELECT target_type, target_id, allow_permissions, deny_permissions
          FROM permission_overwrites
          WHERE scope_type = ? AND scope_id = ?",
@@ -116,10 +119,20 @@ async fn apply_overwrite_scope(
     .fetch_all(&state.db)
     .await
     .unwrap_or_default();
+    apply_overwrites(permissions, &rows, user_id, role_ids)
+}
 
+/// Apply one scope's overwrites: @everyone, then the member's roles combined, then the
+/// member; deny then allow at each level.
+fn apply_overwrites(
+    mut permissions: i64,
+    rows: &[Overwrite],
+    user_id: &str,
+    role_ids: &[String],
+) -> i64 {
     let mut deny = 0;
     let mut allow = 0;
-    for (target_type, _target_id, allow_permissions, deny_permissions) in &rows {
+    for (target_type, _target_id, allow_permissions, deny_permissions) in rows {
         if target_type == "everyone" {
             deny |= *deny_permissions;
             allow |= *allow_permissions;
@@ -130,7 +143,7 @@ async fn apply_overwrite_scope(
 
     deny = 0;
     allow = 0;
-    for (target_type, target_id, allow_permissions, deny_permissions) in &rows {
+    for (target_type, target_id, allow_permissions, deny_permissions) in rows {
         if target_type == "role" && target_id.as_ref().is_some_and(|id| role_ids.contains(id)) {
             deny |= *deny_permissions;
             allow |= *allow_permissions;
@@ -141,7 +154,7 @@ async fn apply_overwrite_scope(
 
     deny = 0;
     allow = 0;
-    for (target_type, target_id, allow_permissions, deny_permissions) in &rows {
+    for (target_type, target_id, allow_permissions, deny_permissions) in rows {
         if target_type == "member" && target_id.as_deref() == Some(user_id) {
             deny |= *deny_permissions;
             allow |= *allow_permissions;
@@ -207,6 +220,88 @@ pub async fn has_channel_perm(
     flag: i64,
 ) -> bool {
     channel_permissions(state, channel_id, user_id).await & flag != 0
+}
+
+/// The channels of `server_id` (as loaded from it) that `user_id` may view, by the same
+/// rules as [`channel_permissions`]. The member's base permissions are resolved once and
+/// the overwrites of every channel and category in `channels` are read in one query, so
+/// the cost does not grow with the channel count. The query takes its scopes from
+/// `channels` itself, so a channel moved or deleted since the list was loaded is still
+/// judged with the overwrites it had in that list. An error reading the overwrites
+/// returns the error rather than listing channels whose denies could not be checked.
+pub async fn viewable_channels(
+    state: &AppState,
+    server_id: &str,
+    user_id: &str,
+    channels: Vec<crate::types::Channel>,
+) -> Result<Vec<crate::types::Channel>, sqlx::Error> {
+    if is_owner(state, server_id, user_id).await {
+        return Ok(channels);
+    }
+    if !crate::api::servers::is_member(state, server_id, user_id).await {
+        return Ok(Vec::new());
+    }
+    let (role_ids, role_permissions) =
+        member_role_ids_and_permissions(state, server_id, user_id).await;
+    let base = everyone_permissions(state, server_id).await | role_permissions;
+    if has_admin_override(base) {
+        return Ok(channels);
+    }
+    let json_list =
+        |ids: Vec<&str>| serde_json::to_string(&ids).map_err(|e| sqlx::Error::Encode(Box::new(e)));
+    let channel_ids = json_list(channels.iter().map(|c| c.id.as_str()).collect())?;
+    let category_ids = json_list(
+        channels
+            .iter()
+            .filter_map(|c| c.category_id.as_deref())
+            .collect(),
+    )?;
+    let rows: Vec<(String, String, String, Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT scope_type, scope_id, target_type, target_id, allow_permissions, deny_permissions
+         FROM permission_overwrites
+         WHERE (scope_type = 'channel' AND scope_id IN (SELECT value FROM json_each(?)))
+            OR (scope_type = 'category' AND scope_id IN (SELECT value FROM json_each(?)))",
+    )
+    .bind(channel_ids)
+    .bind(category_ids)
+    .fetch_all(&state.db)
+    .await?;
+    let mut by_scope: std::collections::HashMap<(String, String), Vec<Overwrite>> =
+        std::collections::HashMap::new();
+    for (scope_type, scope_id, target_type, target_id, allow, deny) in rows {
+        by_scope.entry((scope_type, scope_id)).or_default().push((
+            target_type,
+            target_id,
+            allow,
+            deny,
+        ));
+    }
+    let scope = |scope_type: &str, scope_id: &str| -> &[Overwrite] {
+        by_scope
+            .get(&(scope_type.to_owned(), scope_id.to_owned()))
+            .map_or(&[], Vec::as_slice)
+    };
+    Ok(channels
+        .into_iter()
+        .filter(|channel| {
+            let mut permissions = base;
+            if let Some(category_id) = &channel.category_id {
+                permissions = apply_overwrites(
+                    permissions,
+                    scope("category", category_id),
+                    user_id,
+                    &role_ids,
+                );
+            }
+            permissions = apply_overwrites(
+                permissions,
+                scope("channel", &channel.id),
+                user_id,
+                &role_ids,
+            );
+            permissions & perm::VIEW_CHANNEL != 0
+        })
+        .collect())
 }
 
 /// A member's rank for hierarchy checks: the owner outranks everyone (i64::MAX),
@@ -304,17 +399,47 @@ pub async fn create_role(
     if name.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "role name required".into()));
     }
+    crate::api::limits::check_len("role name", name, crate::api::limits::ROLE_NAME)?;
     // A non-owner can never grant permissions they don't themselves hold.
     let mine = member_permissions(&state, &server_id, &auth.0).await;
     let granted = body.permissions & mine & perm::ALL;
 
-    // New roles rank above existing ones (creation order = hierarchy in v1).
-    let position: i64 =
+    // The owner's new roles rank above existing ones (creation order = hierarchy in v1).
+    // Anyone else's take the rank of their own top role, which moves up one together with
+    // every role above it: the new role sits directly below the creator, who can then
+    // assign and delete it, and every other role keeps its order. Without a role of their
+    // own, anything they made would rank at or above them.
+    let creator_top = member_top_position(&state, &server_id, &auth.0).await;
+    let by_owner = creator_top == i64::MAX;
+    let position: i64 = if by_owner {
         sqlx::query_scalar("SELECT COALESCE(MAX(position), 0) + 1 FROM roles WHERE server_id = ?")
             .bind(&server_id)
             .fetch_one(&state.db)
             .await
-            .unwrap_or(1);
+            .unwrap_or(1)
+    } else if creator_top >= 0 {
+        creator_top
+    } else {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you need a role of your own to create roles below it".into(),
+        ));
+    };
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(crate::api::error::internal)?;
+    if !by_owner {
+        sqlx::query(
+            "UPDATE roles SET position = position + 1 WHERE server_id = ? AND position >= ?",
+        )
+        .bind(&server_id)
+        .bind(position)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    }
 
     let role = Role {
         id: new_id(),
@@ -336,9 +461,10 @@ pub async fn create_role(
     .bind(role.permissions)
     .bind(role.position)
     .bind(role.created_at)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
 
     Ok(Json(role))
 }
@@ -352,18 +478,28 @@ pub async fn delete_role(
     if !has_perm(&state, &server_id, &auth.0, perm::MANAGE_ROLES).await {
         return Err((StatusCode::FORBIDDEN, "you can't manage roles".into()));
     }
-    let is_everyone: Option<bool> =
-        sqlx::query_scalar("SELECT is_everyone FROM roles WHERE id = ? AND server_id = ?")
+    let role: Option<(bool, i64)> =
+        sqlx::query_as("SELECT is_everyone, position FROM roles WHERE id = ? AND server_id = ?")
             .bind(&role_id)
             .bind(&server_id)
             .fetch_optional(&state.db)
             .await
             .map_err(crate::api::error::internal)?;
-    if is_everyone == Some(true) {
+    if role.is_some_and(|(is_everyone, _)| is_everyone) {
         return Err((
             StatusCode::BAD_REQUEST,
             "@everyone cannot be deleted".into(),
         ));
+    }
+    // Same hierarchy rule as assign_role: only roles ranked below your own top role.
+    // The owner is exempt — member_top_position → i64::MAX.
+    if let Some((_, role_position)) = role {
+        if role_position >= member_top_position(&state, &server_id, &auth.0).await {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "you can't delete a role ranked at or above your own".into(),
+            ));
+        }
     }
     sqlx::query("DELETE FROM roles WHERE id = ? AND server_id = ?")
         .bind(&role_id)
@@ -458,6 +594,28 @@ pub async fn unassign_role(
 ) -> Result<StatusCode, (StatusCode, String)> {
     if !has_perm(&state, &server_id, &auth.0, perm::MANAGE_ROLES).await {
         return Err((StatusCode::FORBIDDEN, "you can't manage roles".into()));
+    }
+    // Same hierarchy rule as assign_role (the owner is exempt via i64::MAX): the role
+    // must rank below your own top role, and so must the member, unless it's you.
+    let role_position: Option<i64> =
+        sqlx::query_scalar("SELECT position FROM roles WHERE id = ? AND server_id = ?")
+            .bind(&role_id)
+            .bind(&server_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    let actor_top = member_top_position(&state, &server_id, &auth.0).await;
+    if role_position.is_some_and(|position| position >= actor_top) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't remove a role ranked at or above your own".into(),
+        ));
+    }
+    if user_id != auth.0 && member_top_position(&state, &server_id, &user_id).await >= actor_top {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "that member ranks too high for you to act on".into(),
+        ));
     }
     sqlx::query("DELETE FROM member_roles WHERE server_id = ? AND user_id = ? AND role_id = ?")
         .bind(&server_id)

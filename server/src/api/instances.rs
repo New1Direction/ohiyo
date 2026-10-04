@@ -167,14 +167,21 @@ pub async fn wake_instance(
     Ok(Json(inst))
 }
 
-/// PATCH /api/v1/instances/{id}/tier — local billing/tier switch used by MVP ops.
+/// PATCH /api/v1/instances/{id}/tier — billing/tier switch for operators (MVP ops).
+/// Operators may change any instance; everyone else, owners included, gets 403.
 pub async fn set_tier(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(body): Json<SetTierBody>,
 ) -> Result<Json<HostedInstance>, (StatusCode, String)> {
-    let inst = provision::set_instance_tier(&state.db, &auth.0, &id, &body.tier).await?;
+    if !crate::auth::is_operator(&auth.0) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "only an operator can change an instance's tier".into(),
+        ));
+    }
+    let inst = provision::set_instance_tier(&state.db, &id, &body.tier).await?;
     Ok(Json(inst))
 }
 

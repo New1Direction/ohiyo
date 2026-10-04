@@ -114,4 +114,27 @@ async fn owner_downloads_signed_server_pack_with_db_and_uploads() {
         .as_str()
         .unwrap()
         .contains("ciphertext"));
+    // Only end-to-end encrypted DMs and group chats are ciphertext; server-channel
+    // messages are stored, and packed, as readable text.
+    let privacy = manifest["privacy_note"].as_str().unwrap();
+    let restore = manifest["restore_note"].as_str().unwrap();
+    for note in [privacy, restore] {
+        assert!(
+            note.contains("server-channel messages as readable text"),
+            "{note}"
+        );
+        assert!(
+            note.contains("encrypted DM and group messages as ciphertext"),
+            "{note}"
+        );
+    }
+    assert!(!privacy.contains("ciphertext messages"), "{privacy}");
+    assert!(
+        !restore.contains("recreates infrastructure and ciphertext"),
+        "{restore}"
+    );
+    assert!(
+        restore.contains("each user's own device keys or personal recovery backup"),
+        "{restore}"
+    );
 }

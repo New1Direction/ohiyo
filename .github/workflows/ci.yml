@@ -55,3 +55,22 @@ jobs:
         run: cargo build --locked
       - name: Test
         run: cargo test --locked
+
+  audit:
+    name: Dependency advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: npm audit (runtime dependencies)
+        working-directory: client
+        run: npm audit --omit=dev --audit-level=high
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit (server)
+        working-directory: server
+        # RUSTSEC-2023-0071 (rsa, timing side channel) has no fixed release yet.
+        run: cargo audit --ignore RUSTSEC-2023-0071

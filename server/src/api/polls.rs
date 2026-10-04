@@ -109,6 +109,7 @@ pub async fn create_poll(
             "you can't send messages in this channel".into(),
         ));
     }
+    crate::api::messages::ensure_dm_not_blocked(&state, &channel_id, &auth.0).await?;
     if !state
         .rate
         .check(&format!("msg:{}", auth.0), 30, Duration::from_secs(10))
@@ -120,6 +121,13 @@ pub async fn create_poll(
     if question.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "ask a question".into()));
     }
+    // The question is stored as the poll message's text, so it has the message cap.
+    if question.len() > crate::api::messages::MAX_MESSAGE_BYTES {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "question too long (max 4000 chars)".into(),
+        ));
+    }
     let options: Vec<String> = body
         .options
         .into_iter()
@@ -129,8 +137,12 @@ pub async fn create_poll(
     if options.len() < 2 || options.len() > 10 {
         return Err((StatusCode::BAD_REQUEST, "polls need 2–10 options".into()));
     }
+    for option in &options {
+        crate::api::limits::check_len("poll option", option, crate::api::limits::POLL_OPTION)?;
+    }
 
     let now = now_unix();
+    let expires_at = crate::api::messages::disappearing_expiry(&state, &channel_id, now).await;
     let message_id = new_id();
     let closes_at = body
         .closes_in_secs
@@ -139,13 +151,14 @@ pub async fn create_poll(
 
     // The poll rides on a normal message so it appears in the channel + search.
     sqlx::query(
-        "INSERT INTO messages (id, channel_id, author_id, content, created_at) VALUES (?,?,?,?,?)",
+        "INSERT INTO messages (id, channel_id, author_id, content, created_at, expires_at) VALUES (?,?,?,?,?,?)",
     )
     .bind(&message_id)
     .bind(&channel_id)
     .bind(&auth.0)
     .bind(&question)
     .bind(now)
+    .bind(expires_at)
     .execute(&state.db)
     .await
     .map_err(crate::api::error::internal)?;

@@ -1,6 +1,6 @@
 import "./index.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, useSyncExternalStore, type FormEvent } from "react";
-import { api, getApiBase, setServerOrigin } from "./api";
+import { api, getApiBase, getFileBase, setServerOrigin } from "./api";
 import { Gateway } from "./gateway";
 import { AuthScreen } from "./components/AuthScreen";
 import { ModalShell } from "./components/ModalShell";
@@ -57,10 +57,21 @@ import {
   installDistribution,
   setGroupEpoch,
 } from "./lib/senderKeys";
-import { formatDuration } from "./lib/disappearing";
+import { formatDuration, messageExpiry } from "./lib/disappearing";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
+import { createDistributionTracker, editBlockReason, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
+import { isWellFormedEnvelope, resolveDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
-import { initVaultBackend } from "./lib/tauriVault";
+import { decryptEach } from "./lib/decryptEach";
+import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
+import { parseVaultLocked, type VaultLocked } from "./lib/vaultLock";
+import { VaultLockedScreen } from "./components/VaultLockedScreen";
+import { SignOutDialog } from "./components/SignOutDialog";
+import { signInRemovesLocalDataNow, signOutRemovesLocalDataNow } from "./lib/signOut";
+import { clearLocalMessageData } from "./lib/logoutCleanup";
+import { onPlaintextCacheEvicted, saveEncryptedChannels } from "./lib/storageQuota";
+import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
+import { badRequestMessage, deviceLimitMessage } from "./lib/apiErrors";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -79,6 +90,7 @@ import {
   loadHomes,
   saveActiveHomeId,
   saveHomes,
+  setHomeLastUser,
   setHomeToken,
   upsertHome,
   type OhiyoHome,
@@ -100,6 +112,21 @@ type VoiceSidebarParticipant = {
 // Boot the theme + personal accent from localStorage immediately (warm first paint).
 applyActiveAppearance();
 
+// On logout: drop decrypted plaintext, the outbox and every draft from localStorage and
+// (desktop) the vault. Identity and session keys stay.
+function clearSignedOutMessageData(): void {
+  try {
+    const browser = {
+      keys: () => Object.keys(localStorage),
+      removeMany: (keys: string[]) => keys.forEach((k) => localStorage.removeItem(k)),
+    };
+    const vault = getVaultStore();
+    clearLocalMessageData(vault ? [browser, vault] : [browser]);
+  } catch {
+    /* storage disabled — nothing was persisted to clear */
+  }
+}
+
 export default function App() {
   const initialHomesRef = useRef<OhiyoHome[] | null>(null);
   if (!initialHomesRef.current) initialHomesRef.current = loadHomes();
@@ -110,10 +137,14 @@ export default function App() {
   const activeHome = homes.find((h) => h.id === activeHomeId) ?? homes[0];
   const token = activeHome?.token ?? null;
   const [showAddHome, setShowAddHome] = useState(false);
+  // Asking before signing out of the last signed-in home (it removes local message data).
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   // Desktop: the session token lives in the encrypted vault, which hydrates
   // asynchronously. Until it's ready we can't tell "logged out" from "token still
   // sealed", so the UI is gated on this flag. Web has no vault → ready immediately.
   const [vaultReady, setVaultReady] = useState(() => !isDesktop());
+  // Desktop: why the vault couldn't be unlocked (keychain or sealed-file failure), if so.
+  const [vaultLocked, setVaultLocked] = useState<VaultLocked | null>(null);
 
   useEffect(() => {
     if (activeHome) setServerOrigin(activeHome.url);
@@ -125,15 +156,29 @@ export default function App() {
   useEffect(() => {
     if (!isDesktop()) return; // web: tokens already came from localStorage synchronously
     let cancelled = false;
-    void initVaultBackend().finally(() => {
-      if (cancelled) return;
-      setHomes(loadHomes());
-      setVaultReady(true);
-    });
+    void initVaultBackend()
+      .catch((err: unknown) => {
+        if (!cancelled) setVaultLocked(parseVaultLocked(err) ?? { kind: "keychain", reason: String(err) });
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setHomes(loadHomes());
+        setVaultReady(true);
+      });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Set by signOut when the sign-out removes local data. Clearing waits for the
+  // signed-out render to commit: the chat saves its draft as it unmounts, and effects run
+  // after every unmount cleanup.
+  const logoutCleanupPendingRef = useRef(false);
+  useEffect(() => {
+    if (!logoutCleanupPendingRef.current) return;
+    logoutCleanupPendingRef.current = false;
+    clearSignedOutMessageData();
+  }, [token]);
 
   function persistHomes(next: OhiyoHome[]) {
     setHomes(next);
@@ -153,15 +198,44 @@ export default function App() {
     setActiveHomeId(next[0].id);
   }
 
-  // Persist the token to the active home so sessions survive reloads per server.
-  function handleAuth(newToken: string) {
+  // Persist the token to the active home so sessions survive reloads per server, and
+  // remember who signed in. A different user than the one who last used this home here,
+  // with no other home signed in, must not see the previous account's readable data:
+  // remove it now, before anything loads, flushes from the outbox or reads the cache.
+  function handleAuth(newToken: string, userId: string) {
     if (!activeHome) return;
-    persistHomes(setHomeToken(homes, activeHome.id, newToken));
+    if (signInRemovesLocalDataNow(activeHome.id, userId)) clearSignedOutMessageData();
+    persistHomes(setHomeLastUser(setHomeToken(homes, activeHome.id, newToken), activeHome.id, userId));
   }
 
+  // Ready confirmed who this session belongs to: remember it (homes read fresh, so other
+  // homes' tokens are written back as they are stored).
+  function rememberHomeUser(userId: string) {
+    if (!activeHome || activeHome.lastUserId === userId) return;
+    const next = setHomeLastUser(loadHomes(), activeHome.id, userId);
+    setHomes(next);
+    saveHomes(next);
+  }
+
+  function signOut(removeLocalData: boolean) {
+    if (!activeHome) return;
+    logoutCleanupPendingRef.current = removeLocalData;
+    persistHomes(setHomeToken(homes, activeHome.id, null));
+  }
+
+  // The sidebar's sign-out (the user chose to leave). Signing out of the last signed-in
+  // home removes this device's readable encrypted history, so it asks first; with another
+  // home still signed in (as stored now, so other tabs count), nothing is removed.
   function handleLogout() {
     if (!activeHome) return;
-    persistHomes(setHomeToken(homes, activeHome.id, null));
+    if (signOutRemovesLocalDataNow(activeHome.id)) setConfirmSignOut(true);
+    else signOut(false);
+  }
+
+  // BootSplash's "Back to sign in": the session isn't working (expired after 30 days, or
+  // revoked). Removes nothing; a different user signing in is handled in handleAuth.
+  function handleBackToSignIn() {
+    signOut(false);
   }
 
   if (!activeHome) return null;
@@ -169,6 +243,10 @@ export default function App() {
     // Desktop only: a brief wait while the encrypted vault unlocks and the session token
     // hydrates, so an already-signed-in user never flashes the login screen.
     return <div className="fixed inset-0 grid place-items-center text-sm opacity-60">Unlocking…</div>;
+  }
+  if (vaultLocked !== null) {
+    // Desktop only: don't start with an empty vault, which would replace the saved keys.
+    return <VaultLockedScreen locked={vaultLocked} onTryAgain={restartApp} onReset={resetVaultAndRestart} />;
   }
   const addHomeModal = showAddHome ? (
     <AddHomeModal
@@ -204,8 +282,19 @@ export default function App() {
         onAddHome={() => setShowAddHome(true)}
         onAddHomeUrl={addHome}
         onLogout={handleLogout}
+        onBackToSignIn={handleBackToSignIn}
+        onSessionUser={rememberHomeUser}
       />
       {addHomeModal}
+      {confirmSignOut && (
+        <SignOutDialog
+          onCancel={() => setConfirmSignOut(false)}
+          onConfirm={() => {
+            setConfirmSignOut(false);
+            signOut(true);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -276,6 +365,8 @@ function MainApp({
   onAddHome,
   onAddHomeUrl,
   onLogout,
+  onBackToSignIn,
+  onSessionUser,
 }: {
   token: string;
   homes: OhiyoHome[];
@@ -284,9 +375,22 @@ function MainApp({
   onAddHome: () => void;
   onAddHomeUrl: (url: string) => void;
   onLogout: () => void;
+  /** BootSplash's way back when the session isn't working; removes nothing. */
+  onBackToSignIn: () => void;
+  /** Ready confirmed the session's user: the home remembers it. */
+  onSessionUser: (userId: string) => void;
 }) {
   const { toasts, push: toast } = useToast();
+  // A full localStorage removed the oldest decrypted messages to make room: say so once.
+  useEffect(() => onPlaintextCacheEvicted((notice) => toast(notice)), [toast]);
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
+  // Remember who uses this home on this device once Ready confirms it (a later sign-in by
+  // someone else then clears the shared local message data first).
+  const onSessionUserRef = useRef(onSessionUser);
+  onSessionUserRef.current = onSessionUser;
+  useEffect(() => {
+    if (currentUser?.id) onSessionUserRef.current(currentUser.id);
+  }, [currentUser?.id]);
   const [activation, setActivation] = useState<ActivationState>(() => loadActivation(null));
   const [activationDismissed, setActivationDismissedState] = useState(false);
   // Whether this server runs the LiveKit SFU — fetched at runtime from /livekit/config,
@@ -319,6 +423,10 @@ function MainApp({
   const [showCategories, setShowCategories] = useState(false);
   const [showModQueue, setShowModQueue] = useState(false);
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
+  // maybeNotify runs from the gateway handler registered once per token, so it reads the
+  // current blocked list through this ref, not the first render's.
+  const blockedUserIdsRef = useRef(blockedUserIds);
+  blockedUserIdsRef.current = blockedUserIds;
   const [forwarding, setForwarding] = useState<Message | null>(null);
   const [eventsRefresh, setEventsRefresh] = useState(0);
   const [myPerms, setMyPerms] = useState(0);
@@ -407,15 +515,18 @@ function MainApp({
   e2eChannelsRef.current = e2eChannels;
   const dmUsersRef = useRef(dmUsers);
   dmUsersRef.current = dmUsers;
+  const dmsRef = useRef(dms);
+  dmsRef.current = dms;
   const dmKeyCacheRef = useRef<Map<string, CryptoKey>>(new Map());
-  const dmPeerRef = useRef<Map<string, string>>(new Map()); // channelId → peer userId (learned from messages)
+  const dmPeerRef = useRef<Map<string, string>>(new Map()); // channelId → peer userId (from the participant list)
   const serversRef = useRef<ServerWithChannels[]>([]);
   const gatewayRef = useRef<Gateway | null>(null);
   const privacyModeRef = useRef(privacyMode);
   privacyModeRef.current = privacyMode;
 
   function messageFromDecryptedPlaintext(message: Message, plain: string): Message {
-    const unpacked = unpackEncryptedMessagePlaintext(plain);
+    // Attachments not on this home's /files/<id> are dropped (the URL is sender-controlled).
+    const unpacked = unpackEncryptedMessagePlaintext(plain, getFileBase());
     return {
       ...message,
       content: unpacked.text,
@@ -514,7 +625,12 @@ function MainApp({
         .catch(() => {});
       // Generate + publish Signal prekeys (forward-secret X3DH sessions). Idempotent;
       // makes every signed-in user Signal-capable. The DM-flow switch builds on this.
-      void initSignal(token);
+      // An account at its device limit gets told where to remove one.
+      void initSignal(token).catch((err: unknown) => {
+        const tooManyDevices = deviceLimitMessage(err);
+        if (tooManyDevices === null) throw err;
+        if (alive) toast(tooManyDevices, "error");
+      });
       // Sync appearance (theme + accent) from the server so it follows the user across
       // devices. Local appearance already painted at boot; this reconciles.
       void pullAppearance(token);
@@ -738,8 +854,9 @@ function MainApp({
   function syncGroupEpoch(channelId: string, epoch: number | undefined): void {
     void setGroupEpoch(channelId, epoch ?? 0).then((rotated) => {
       if (!rotated) return;
-      distributedGroupsRef.current.delete(channelId);
-      if (e2eChannelsRef.current.has(channelId)) void distributeMySenderKey(channelId);
+      senderKeyDistributionRef.current.forget(channelId);
+      // A failure here resurfaces on the next send, which awaits a fresh attempt.
+      if (e2eChannelsRef.current.has(channelId)) distributeMySenderKey(channelId).catch(() => {});
     });
   }
 
@@ -750,6 +867,14 @@ function MainApp({
         setCurrentUser(event.d.user);
         setServers(event.d.servers);
         setDms(event.d.dms);
+        // Earlier builds could mark a server channel as encrypted (C-H6). Drop stored
+        // entries Ready lists as server channels; keep DMs and ids it doesn't mention.
+        setE2eChannels((prev) => {
+          const next = withoutServerChannels(prev, event.d.servers.flatMap((s) => s.channels));
+          if (next === prev) return prev;
+          saveEncryptedChannels(next);
+          return new Set(next);
+        });
         // Catch up on group rekeys that happened while we were offline: if a group's
         // server epoch is ahead of our own sender key, this rotates us and redistributes.
         for (const d of event.d.dms) {
@@ -1280,11 +1405,22 @@ function MainApp({
     }
   }
 
-  // Resolve a DM peer's user id (learned from message authors, or dmUsers).
+  // Resolve a DM peer's user id (from the channel's participant list, or dmUsers).
   const dmPeerId = useCallback(
     (channelId: string): string | undefined =>
       dmPeerRef.current.get(channelId) ?? dmUsersRef.current[channelId]?.id,
     []
+  );
+  // The DM's peer as known, else learned from its participant list (never from message
+  // authors) and remembered. After a reload nothing is known for a DM whose loaded page
+  // has no ciphertext.
+  const learnDmPeer = useCallback(
+    async (channelId: string): Promise<string | undefined> => {
+      const peer = await resolveDmPeer(dmPeerId(channelId), () => api.listRecipients(token, channelId), currentUserRef.current?.id);
+      if (peer) dmPeerRef.current.set(channelId, peer);
+      return peer;
+    },
+    [dmPeerId, token]
   );
 
   // Verification state for the open DM's peer — drives the "safety number changed"
@@ -1301,7 +1437,7 @@ function MainApp({
     async (channelId: string): Promise<CryptoKey | null> => {
       const cached = dmKeyCacheRef.current.get(channelId);
       if (cached) return cached;
-      // Peer = the learned message-author OR dmUsers (whichever we know).
+      // Peer = from the participant list OR dmUsers (whichever we know).
       const peerId = dmPeerRef.current.get(channelId) ?? dmUsersRef.current[channelId]?.id;
       if (!peerId) return null;
       try {
@@ -1323,13 +1459,12 @@ function MainApp({
   // Signal messages can only be decrypted once — the ratchet destroys the key — so we
   // cache the plaintext locally and reuse it on later reloads.
   // Group E2E (sender keys): distribute MY sender key to every other group member,
-  // encrypted pairwise so the server stays blind. Idempotent — once per group/session.
-  const distributedGroupsRef = useRef<Set<string>>(new Set());
+  // encrypted pairwise so the server stays blind. Once per group/session; concurrent
+  // callers await the same in-flight run, and a failure rejects them (then retries next time).
+  const senderKeyDistributionRef = useRef(createDistributionTracker());
   const distributeMySenderKey = useCallback(
-    async (channelId: string) => {
-      if (distributedGroupsRef.current.has(channelId)) return;
-      distributedGroupsRef.current.add(channelId);
-      try {
+    (channelId: string): Promise<void> =>
+      senderKeyDistributionRef.current.ensure(channelId, async () => {
         const recipients = await api.listRecipients(token, channelId);
         const myId = currentUserRef.current?.id;
         const skdm = await buildDistribution(channelId);
@@ -1340,11 +1475,40 @@ function MainApp({
           if (env) envelopes[r.id] = env;
         }
         if (Object.keys(envelopes).length) await api.distributeSenderKey(token, channelId, envelopes);
-      } catch {
-        distributedGroupsRef.current.delete(channelId); // allow a retry on next send
-      }
-    },
+      }),
     [token]
+  );
+
+  // The type of a channel we know about (open, DM list, or a joined server).
+  const channelTypeOf = useCallback((channelId: string): Channel["channel_type"] | undefined => {
+    if (selectedChannelRef.current?.id === channelId) return selectedChannelRef.current.channel_type;
+    const dm = dmsRef.current.find((d) => d.id === channelId);
+    if (dm) return dm.channel_type;
+    for (const s of serversRef.current) {
+      const c = s.channels.find((ch) => ch.id === channelId);
+      if (c) return c.channel_type;
+    }
+    return undefined;
+  }, []);
+
+  // Encrypt for a channel in encrypted mode: ciphertext or a thrown EncryptedSendError,
+  // never the plaintext. Groups use our sender key (distributed first), DMs Signal.
+  const encryptForChannel = useCallback(
+    (channelId: string, channelType: Channel["channel_type"] | undefined, padded: string): Promise<string> =>
+      encryptOutgoing(channelType, padded, {
+        ensureSenderKey: () => distributeMySenderKey(channelId),
+        groupEncrypt: async (pt) => {
+          const wire = await groupEncrypt(channelId, pt);
+          // No sender key on this device any more: mint and distribute one on the next try.
+          if (!wire) senderKeyDistributionRef.current.forget(channelId);
+          return wire;
+        },
+        pairwiseEncrypt: async (pt) => {
+          const peerId = await learnDmPeer(channelId);
+          return peerId ? encryptFor(token, peerId, pt) : null;
+        },
+      }),
+    [token, learnDmPeer, distributeMySenderKey]
   );
 
   const decryptMessages = useCallback(
@@ -1353,22 +1517,26 @@ function MainApp({
         !msgs.some((m) => isEncrypted(m.content) || isSignalCiphertext(m.content) || isGroupCiphertext(m.content))
       )
         return msgs;
+      const channelType = channelTypeOf(channelId);
+      const contents = msgs.map((m) => m.content);
       // The conversation is encrypted → reflect it locally (sticky + mutual): the
-      // recipient's UI flips to encrypted mode and their replies encrypt too.
-      setE2eChannels((prev) => {
-        if (prev.has(channelId)) return prev;
-        const next = new Set(prev);
-        next.add(channelId);
-        localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
-        return next;
-      });
-      // Learn the DM peer from message authors (resilient to un-hydrated dmUsers).
-      if (!dmPeerRef.current.has(channelId)) {
-        const myId = currentUserRef.current?.id;
-        const peer = msgs.find((m) => m.author.id !== myId)?.author.id;
-        if (peer) dmPeerRef.current.set(channelId, peer);
-      }
-      const peerId = dmPeerId(channelId);
+      // recipient's UI flips to encrypted mode and their replies encrypt too. Only in a
+      // DM / group DM, and only for a well-formed envelope (or, below, a message that
+      // decrypted) — never for text that merely starts with an envelope prefix.
+      const enterEncryptedMode = () =>
+        setE2eChannels((prev) => {
+          if (prev.has(channelId)) return prev;
+          const next = new Set(prev);
+          next.add(channelId);
+          saveEncryptedChannels(next);
+          dropDraftsEnteringEncryptedMode(prev, next);
+          return next;
+        });
+      const wellFormed = shouldEnterEncryptedMode(channelType, contents, false);
+      if (wellFormed) enterEncryptedMode();
+      // The 1:1 peer comes from the channel's participant list, never message authors.
+      // Offline, Signal messages stay undecryptable until the next load.
+      const peerId = channelType === "dm" ? await learnDmPeer(channelId) : undefined;
       const decryptStateFor = (messageId: string): "unknown" | "not_covered" | "restore_failed" => {
         const coverage = coverageForMessage(messageId);
         if (
@@ -1383,6 +1551,7 @@ function MainApp({
       // Inventory encrypted-message headers durably before attempting decrypt, so the
       // restore preview can reason about messages loaded in a previous browser session.
       for (const m of msgs) {
+        if (!shouldRecordRecoveryInventory(channelType, m.content)) continue;
         if (isGroupCiphertext(m.content)) {
           const header = parseGroupCiphertextHeader(m.content);
           if (header) recordGroupSenderKeyMessage({ message_id: m.id, room_id: channelId, epoch: header.epoch, key_id: String(header.keyId) });
@@ -1399,41 +1568,54 @@ function MainApp({
       }
       // Legacy static key only fetched if any v1 messages are present.
       const legacyKey = msgs.some((m) => isEncrypted(m.content)) ? await getDmKey(channelId) : null;
-      // Sequential: the Double Ratchet requires in-order processing of new messages.
-      const out: Message[] = [];
-      for (const m of msgs) {
-        if (isGroupCiphertext(m.content)) {
+      // Sequential: the Double Ratchet requires in-order processing of new messages. A
+      // message whose decrypt throws shows as undecryptable; the rest still load.
+      let decryptedAny = false;
+      const undecryptable = (m: Message): Message => ({ ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
+      const out = await decryptEach(msgs, async (m) => {
+        if ((isGroupCiphertext(m.content) || isSignalCiphertext(m.content)) && !isWellFormedEnvelope(m.content)) {
+          // Only looks like ciphertext: show it as undecryptable and touch nothing else.
+          return undecryptable(m);
+        } else if (isGroupCiphertext(m.content)) {
           // Group sender-key message — decrypt from the message author's sender key.
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
-            out.push(messageFromDecryptedPlaintext(m, cached));
-            continue;
+            decryptedAny = true;
+            return messageFromDecryptedPlaintext(m, cached);
           }
           const pt = await groupDecrypt(channelId, m.author.id, m.content);
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
-          if (plain !== null) cachePlaintext(m.id, plain);
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
+          if (plain !== null) {
+            cachePlaintext(m.id, plain, messageExpiry(m));
+            decryptedAny = true;
+          }
+          return plain !== null ? messageFromDecryptedPlaintext(m, plain) : undecryptable(m);
         } else if (isSignalCiphertext(m.content)) {
           const cached = getCachedPlaintext(m.id);
           if (cached !== null) {
-            out.push(messageFromDecryptedPlaintext(m, cached));
-            continue;
+            decryptedAny = true;
+            return messageFromDecryptedPlaintext(m, cached);
           }
           const pt = peerId ? await decryptFrom(peerId, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
-          if (plain !== null) cachePlaintext(m.id, plain);
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
+          if (plain !== null) {
+            cachePlaintext(m.id, plain, messageExpiry(m));
+            decryptedAny = true;
+          }
+          return plain !== null ? messageFromDecryptedPlaintext(m, plain) : undecryptable(m);
         } else if (isEncrypted(m.content)) {
           const pt = legacyKey ? await decryptMessage(legacyKey, m.content) : null;
           const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
-          out.push(plain !== null ? messageFromDecryptedPlaintext(m, plain) : { ...m, content: "", _encrypted: true, _decryptState: decryptStateFor(m.id) });
-        } else {
-          out.push(m);
+          if (plain !== null) decryptedAny = true;
+          return plain !== null ? messageFromDecryptedPlaintext(m, plain) : undecryptable(m);
         }
-      }
+        return m;
+      }, undecryptable);
+      // E.g. a legacy static-key message that decrypted here (no sig/grp envelope).
+      if (!wellFormed && shouldEnterEncryptedMode(channelType, contents, decryptedAny)) enterEncryptedMode();
       return out;
     },
-    [getDmKey, dmPeerId]
+    [getDmKey, learnDmPeer, channelTypeOf]
   );
 
   // Flip a DM into (or out of) end-to-end encrypted mode — persisted; the chat shifts
@@ -1449,14 +1631,16 @@ function MainApp({
           next.add(channelId);
           if (isGroup) {
             // Group: hand my sender key to every member so they can read my messages.
-            void distributeMySenderKey(channelId);
+            // A failure here resurfaces on the next send, which awaits a fresh attempt.
+            distributeMySenderKey(channelId).catch(() => {});
           } else {
             void getDmKey(channelId).then((k) => {
               if (!k) toast("Your friend hasn't set up encryption yet — they just need to open Ohiyo once.");
             });
           }
         }
-        localStorage.setItem("kc:e2e-channels", JSON.stringify([...next]));
+        saveEncryptedChannels(next);
+        dropDraftsEnteringEncryptedMode(prev, next);
         return next;
       });
     },
@@ -1493,37 +1677,28 @@ function MainApp({
       }
       try {
         const cid = selectedChannelRef.current!.id;
-        const isGroup = selectedChannelRef.current!.channel_type === "group_dm";
-        let wire = content;
+        const channelType = selectedChannelRef.current!.channel_type;
         const privatePlaintext = packEncryptedMessagePlaintext(content, encryptedAttachments);
         // E2E: encrypt on this device before it leaves — the server only sees ciphertext.
-        if ((content || encryptedAttachments?.length) && e2eChannelsRef.current.has(cid)) {
-          if (isGroup) {
-            // Group: encrypt once with our sender key (every member decrypts the same
-            // ciphertext). Ensure our key is distributed first (idempotent).
-            await distributeMySenderKey(cid);
-            const g = await groupEncrypt(cid, padMessagePlaintext(privatePlaintext));
-            if (g) wire = g;
-          } else {
-            // 1:1: require a forward-secret Signal session. We no longer fall back to
-            // the legacy static-key scheme (zero forward secrecy) — and never to
-            // plaintext. If there's no session yet, abort so the message stays
-            // retryable once the peer publishes prekeys.
-            const peerId = dmPeerId(cid);
-            const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(privatePlaintext)) : null;
-            if (!sig) {
+        // Group: one sender-key ciphertext every member decrypts. 1:1: a forward-secret
+        // Signal session (no legacy static-key fallback). Never plaintext, and never a file
+        // uploaded in the clear: on failure the message stays in the failed state with Retry.
+        const wire = await outgoingWire({ content, attachmentIds, encryptedAttachments }, e2eChannelsRef.current.has(cid), async () => {
+          try {
+            return await encryptForChannel(cid, channelType, padMessagePlaintext(privatePlaintext));
+          } catch (err) {
+            if (err instanceof EncryptedSendError && err.reason === "no-signal-session") {
               toast("Can't send encrypted yet — your friend needs to open Ohiyo once to set up encryption.");
-              throw new Error("no-signal-session");
             }
-            wire = sig;
+            throw err;
           }
-        }
+        });
         const created = await api.sendMessage(token, cid, wire, attachmentIds, replyTo);
         completeActivation("message");
         // Forward secrecy: we can't decrypt our own outgoing ciphertext later (1:1
         // ratchet or group sender key), so cache the plaintext by the real message id.
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
-          cachePlaintext(created.id, privatePlaintext);
+          cachePlaintext(created.id, privatePlaintext, messageExpiry(created));
           // If the gateway echo already rendered this as a placeholder (it can't
           // self-decrypt), patch it back to plaintext now.
           setMessages((prev) =>
@@ -1532,13 +1707,16 @@ function MainApp({
         }
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         removeFromOutbox(tempId);
-      } catch {
+      } catch (err) {
+        const refused = badRequestMessage(err); // e.g. more attachments than the server allows
+        if (err instanceof EncryptedSendError && err.reason === "unencrypted-attachment") toast(err.message, "error");
+        else if (refused) toast(`Couldn't send: ${refused}`, "error");
         // Keep the message visible in a failed state (persisted) so it can be retried.
         setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, _state: "failed" } : m)));
         setOutboxState(tempId, "failed");
       }
     },
-    [token, dmPeerId, toast, distributeMySenderKey, completeActivation]
+    [token, toast, encryptForChannel, completeActivation]
   );
 
   // Retry a failed/queued message using its stored send args.
@@ -1549,35 +1727,30 @@ function MainApp({
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, _state: "pending" } : m)));
       setOutboxState(msg.id, "pending");
       try {
-        let wire = send.content;
         const privatePlaintext = packEncryptedMessagePlaintext(send.content, send.encryptedAttachments as EncryptedAttachmentMeta[] | undefined);
-        if ((send.content || send.encryptedAttachments?.length) && e2eChannelsRef.current.has(msg.channel_id)) {
-          // A group sender key exists only for group channels (else null → 1:1 path).
-          const g = await groupEncrypt(msg.channel_id, padMessagePlaintext(privatePlaintext));
-          if (g) {
-            wire = g;
-          } else {
-            const peerId = dmPeerId(msg.channel_id);
-            const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(privatePlaintext)) : null;
-            if (!sig) throw new Error("no-signal-session"); // stays failed/retryable
-            wire = sig;
-          }
-        }
+        // The channel's type picks group vs 1:1. Unknown (e.g. before Ready), no
+        // ciphertext, or a file uploaded in the clear → throws, so the message stays failed.
+        const wire = await outgoingWire(send, e2eChannelsRef.current.has(msg.channel_id), () =>
+          encryptForChannel(msg.channel_id, channelTypeOf(msg.channel_id), padMessagePlaintext(privatePlaintext)),
+        );
         const created = await api.sendMessage(token, msg.channel_id, wire, send.attachmentIds, send.replyTo ?? null);
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
-          cachePlaintext(created.id, privatePlaintext);
+          cachePlaintext(created.id, privatePlaintext, messageExpiry(created));
           setMessages((prev) =>
             prev.map((m) => (m.id === created.id ? { ...m, content: send.content, attachments: send.encryptedAttachments ?? m.attachments, _encrypted: true } : m))
           );
         }
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
         removeFromOutbox(msg.id);
-      } catch {
+      } catch (err) {
+        const refused = badRequestMessage(err); // e.g. more attachments than the server allows
+        if (err instanceof EncryptedSendError && err.reason === "unencrypted-attachment") toast(err.message, "error");
+        else if (refused) toast(`Couldn't send: ${refused}`, "error");
         setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, _state: "failed" } : m)));
         setOutboxState(msg.id, "failed");
       }
     },
-    [token, dmPeerId]
+    [token, toast, encryptForChannel, channelTypeOf]
   );
 
   // Drop a failed message (it never reached the server).
@@ -1622,30 +1795,31 @@ function MainApp({
     const ch = selectedChannelRef.current;
     const cid = ch?.id;
     if (!cid) return;
+    const blocked = editBlockReason(messages.find((m) => m.id === messageId), e2eChannelsRef.current.has(cid));
+    if (blocked) {
+      toast(blocked, "error");
+      return;
+    }
     try {
       let wire = content;
       // E2E: encrypt the edit on-device too — editing must NOT leak plaintext to the
       // server (mirrors handleSend; without this an edited E2E message went out in clear).
       if (content && e2eChannelsRef.current.has(cid)) {
-        if (ch?.channel_type === "group_dm") {
-          await distributeMySenderKey(cid);
-          const g = await groupEncrypt(cid, padMessagePlaintext(content));
-          if (g) wire = g;
-        } else {
-          const peerId = dmPeerId(cid);
-          const sig = peerId ? await encryptFor(token, peerId, padMessagePlaintext(content)) : null;
-          if (!sig) {
+        try {
+          wire = await encryptForChannel(cid, ch?.channel_type, padMessagePlaintext(content));
+        } catch (err) {
+          if (err instanceof EncryptedSendError && err.reason === "no-signal-session") {
             toast("Can't edit encrypted yet — your friend needs to open Ohiyo once to set up encryption.");
             return;
           }
-          wire = sig;
+          throw err; // e.g. no group ciphertext: "Couldn't edit: …", nothing sent
         }
       }
-      await api.editMessage(token, cid, messageId, wire);
+      const edited = await api.editMessage(token, cid, messageId, wire);
       // Forward secrecy: cache the new plaintext under the message id so our own view
       // (and later history reloads) shows it — we can't re-decrypt our own ciphertext.
       if (isSignalCiphertext(wire) || isGroupCiphertext(wire)) {
-        cachePlaintext(messageId, content);
+        cachePlaintext(messageId, content, messageExpiry(edited));
         setMessages((prev) =>
           prev.map((m) => (m.id === messageId ? { ...m, content, _encrypted: true } : m))
         );
@@ -1680,6 +1854,11 @@ function MainApp({
     const m = forwarding;
     setForwarding(null);
     if (!m) return;
+    const blocked = forwardBlockReason(m, e2eChannelsRef.current.has(channelId));
+    if (blocked) {
+      toast(blocked, "error");
+      return;
+    }
     const content = `【FWD:${m.author.display_name}】${m.content}`;
     const attachmentIds = (m.attachments ?? []).map((a) => a.id);
     try {
@@ -1693,7 +1872,7 @@ function MainApp({
   // Show a desktop notification for a message you're not actively reading.
   function maybeNotify(msg: Message) {
     if (msg.author.id === currentUserRef.current?.id) return;
-    if (blockedUserIds.has(msg.author.id)) return;
+    if (blockedUserIdsRef.current.has(msg.author.id)) return;
     const lookingAtIt =
       selectedChannelRef.current?.id === msg.channel_id && !document.hidden;
     if (lookingAtIt) return;
@@ -2048,7 +2227,7 @@ function MainApp({
 
   // Until the first `Ready` payload lands, show a warm splash instead of empty chrome.
   if (!currentUser) {
-    return <BootSplash connStatus={connStatus} onLogout={onLogout} />;
+    return <BootSplash connStatus={connStatus} onLogout={onBackToSignIn} />;
   }
 
   // Arrived via an invite link → show the join screen before anything else.

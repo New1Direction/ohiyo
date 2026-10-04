@@ -4,11 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Ohiyo — the encrypted home for your people</title>
-<meta name="description" content="Discord-like ease with private-by-design ownership: E2E content, servers, voice, video, screen-share, and exportable self-hostable encrypted community homes." />
+<meta name="description" content="Discord-like ease with private-by-design ownership: end-to-end encrypted DMs and group chats, servers, voice, video, screen-share, and exportable self-hostable community homes." />
 <meta name="theme-color" content="#10100f" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Ohiyo — the encrypted home for your people" />
-<meta property="og:description" content="Discord-like ease, private-by-design. E2E content, self-host/export ownership, and honest voice visibility." />
+<meta property="og:description" content="Discord-like ease, private-by-design. End-to-end encrypted DMs and group chats, self-host/export ownership, and honest voice visibility." />
 <meta property="og:image" content="https://ohiyo.gg/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
@@ -50,18 +50,18 @@
 
 <!-- HERO -->
 <header class="hero" id="top"><div class="wrap">
-  <span class="pill reveal">🔒 E2E content · export ownership · self-hostable by design</span>
+  <span class="pill reveal">🔒 E2E DMs &amp; groups · export ownership · self-hostable by design</span>
   <div class="reveal"><span class="mascot"><img class="logo" src="kikka.svg" alt="Kikka, the Ohiyo chinchilla" /></span></div>
   <div class="wordmark"><span class="wm-l">o</span><span class="wm-l hi">H</span><span class="wm-l hi">i</span><span class="wm-l">Y</span><span class="wm-l">o</span></div>
   <h1 class="reveal"><span class="serif-i grad">Discord-like</span> ease. <span class="serif-i">Private-by-design</span> ownership.</h1>
-  <p class="sub reveal">The warm, free place for your people — servers, voice, video, 4K screen-share — with E2E content, exportable community homes, and honest call visibility. Open source. Yours to host.</p>
+  <p class="sub reveal">The warm, free place for your people — servers, voice, video, 4K screen-share — with end-to-end encrypted DMs and group chats, exportable community homes, and honest call visibility. Open source. Yours to host.</p>
   <div class="cta-row reveal">
     <a class="btn solid" href="https://app.ohiyo.gg" rel="noopener">Open in your browser →</a>
     <a class="btn ghost download-primary" href="#download">Download the app</a>
     <a class="btn ghost" href="#host">Self-host</a>
   </div>
   <div class="trust reveal">
-    <span><b>✓</b> E2E content</span>
+    <span><b>✓</b> E2E DMs &amp; groups</span>
     <span><b>✓</b> Free forever — no Nitro</span>
     <span><b>✓</b> Self-hostable, AGPL</span>
     <span><b>✓</b> Built in Rust</span>
@@ -146,7 +146,7 @@
 <section id="servers"><div class="wrap">
   <span class="eyebrow reveal">Instant Servers</span>
   <h2 class="reveal">Launch your own server <span class="serif-i grad">in one tap.</span></h2>
-  <p class="lede reveal">We host it so it just works — but it's end-to-end encrypted (we can't read it), you can export everything anytime, and you're one button from moving it to your own box. <b style="color:var(--cream)">Minecraft Realms, if Realms couldn't read your world.</b></p>
+  <p class="lede reveal">We host it so it just works — your encrypted DMs and group chats stay unreadable to us, you can export everything anytime, and you're one button from moving it to your own box. <b style="color:var(--cream)">Minecraft Realms, if you could walk out with your world.</b></p>
   <div class="compare reveal">
     <div class="cmp-card them">
       <div class="cmp-head"><h3>Discord Nitro</h3><span class="price">$9.99/mo · per person</span></div>
@@ -154,10 +154,10 @@
     </div>
     <div class="cmp-card us">
       <div class="cmp-head"><h3>Ohiyo Instant Server</h3><span class="price">&lt; one Nitro · whole crew</span></div>
-      <p>An <b>always-on, encrypted server for your entire community</b> — every "premium" thing included, for everyone. Or run it <b>free</b> (it naps when idle). Or self-host for <b>$0</b>. Cost-per-person only drops as you grow.</p>
+      <p>An <b>always-on server for your entire community, with encrypted DMs and group chats</b> — every "premium" thing included, for everyone. Or run it <b>free</b> (it naps when idle). Or self-host for <b>$0</b>. Cost-per-person only drops as you grow.</p>
     </div>
   </div>
-  <p class="punch reveal">One Discord Nitro buys you a fancier avatar. The same money runs your whole community — <span class="grad">encrypted</span> — on Ohiyo.</p>
+  <p class="punch reveal">One Discord Nitro buys you a fancier avatar. The same money runs your whole community — <span class="grad">yours to keep</span> — on Ohiyo.</p>
 </div></section>
 
 <!-- FEATURES (bento) -->
@@ -169,7 +169,7 @@
     <div class="tile hero-tile t-2x2">
       <span class="ic">🔒</span>
       <h3>End-to-end encrypted — DMs, groups &amp; calls</h3>
-      <p>Built on the <b>Signal Protocol</b>: X3DH + Double Ratchet for 1:1, sender keys + epoch rekey for groups. A removed member can't read a single future message. The server only ever relays <b>ciphertext</b>.</p>
+      <p>Turn on the lock in a DM or group chat and messages are encrypted on your device before they leave it. 1:1 chats use the <b>Signal Protocol</b> (X3DH + Double Ratchet); groups use sender keys that are replaced when a member is removed (experimental). For those conversations the server relays only <b>ciphertext</b>. Server channels are not end-to-end encrypted.</p>
       <span class="tag">integration-tested</span>
     </div>
     <div class="tile t-3">
@@ -190,7 +190,7 @@
     <div class="tile t-1">
       <span class="ic">🧩</span>
       <h3>Sandboxed plugins</h3>
-      <p>Third-party plugins run in a genuinely isolated Web Worker — no network, no token access.</p>
+      <p>Third-party plugins run in a sandboxed Web Worker with network APIs removed and no token access.</p>
     </div>
     <div class="tile t-3">
       <span class="ic">🎨</span>
@@ -211,8 +211,8 @@
     <div>
       <span class="eyebrow reveal">Under the hood</span>
       <h2 class="reveal">A cozy room with a <span class="serif-i grad">steel door.</span></h2>
-      <p class="lede reveal">Warm inside, sealed shut. We didn't hand-roll the hard parts — 1:1 messaging rides the Signal Protocol's Double Ratchet, and the server is blind by design.</p>
-      <p class="sec-note reveal">The server moves <b>sealed envelopes</b> between devices, enforces membership, and stores nothing it can read — proven by a Rust integration suite that shows a removed member loses access and a pinned identity can't be silently swapped.</p>
+      <p class="lede reveal">Warm inside, sealed shut. We didn't hand-roll the hard parts — 1:1 messaging rides the Signal Protocol's Double Ratchet, and encrypted conversations reach the server only as ciphertext.</p>
+      <p class="sec-note reveal">For encrypted conversations the server moves <b>sealed envelopes</b> between devices, enforces membership, and stores only ciphertext — backed by a Rust integration suite that shows a removed member loses access.</p>
       <p class="sec-note reveal"><a href="threat-model.html">Read the public privacy threat model →</a></p>
     </div>
     <div class="sec-flow reveal">
@@ -232,12 +232,12 @@
     <table class="cmp">
       <thead><tr><th scope="col"><span class="sr-only">Feature</span></th><th scope="col" class="us">Ohiyo</th><th scope="col">Discord</th></tr></thead>
       <tbody>
-        <tr><td>End-to-end encrypted DMs &amp; groups</td><td class="us-col"><span class="yes">✓</span> Signal Protocol</td><td class="them-col"><span class="no">✕</span> plaintext on servers</td></tr>
+        <tr><td>End-to-end encrypted DMs &amp; groups</td><td class="us-col"><span class="yes">✓</span> opt-in · Signal Protocol for 1:1</td><td class="them-col"><span class="no">✕</span> plaintext on servers</td></tr>
         <tr><td>The full feature set</td><td class="us-col"><span class="yes">✓</span> everything free</td><td class="them-col"><span class="no">✕</span> Nitro subscription</td></tr>
         <tr><td>Launch your own server</td><td class="us-col"><span class="yes">✓</span> one tap, &lt; a Nitro</td><td class="them-col"><span class="no">✕</span> not a thing</td></tr>
         <tr><td>Self-hostable &amp; open source</td><td class="us-col"><span class="yes">✓</span> single binary, AGPL</td><td class="them-col"><span class="no">✕</span> closed SaaS</td></tr>
         <tr><td>Disappearing messages &amp; dead-man switch</td><td class="us-col"><span class="yes">✓</span> built in</td><td class="them-col"><span class="no">✕</span> none</td></tr>
-        <tr><td>Reads your data to monetize it</td><td class="us-col"><span class="yes">✓</span> can't — blind server</td><td class="them-col"><span class="no">✕</span> analytics &amp; ads</td></tr>
+        <tr><td>Reads your data to monetize it</td><td class="us-col"><span class="yes">✓</span> never — no ads, no data sales</td><td class="them-col"><span class="no">✕</span> analytics &amp; ads</td></tr>
       </tbody>
     </table>
   </div>
@@ -261,7 +261,7 @@
 <section class="final"><div class="wrap">
   <div class="reveal"><img class="logo" src="kikka.svg" alt="" /></div>
   <h2 class="reveal">oh, hi. <span class="wave">👋</span></h2>
-  <p class="lede reveal" style="margin:0 auto 2rem">The warmth and reach of Discord, the privacy of Signal, and a server that can't betray you because it can't read you. Kikka kept you a seat.</p>
+  <p class="lede reveal" style="margin:0 auto 2rem">The warmth and reach of Discord, Signal-style encryption for your private conversations, and a server you can export or leave whenever you like. Kikka kept you a seat.</p>
   <div class="cta-row reveal" style="justify-content:center">
     <a class="btn solid" href="https://app.ohiyo.gg" rel="noopener">Open in your browser →</a>
     <a class="btn ghost download-primary" href="#download">Download the app</a>
