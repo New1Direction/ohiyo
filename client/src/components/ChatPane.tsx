@@ -7,6 +7,7 @@ import type { WatchSession } from "../gateway";
 import { homeFileUrl, isEncryptedAttachment, safeAttachmentBlobType, type EncryptedAttachmentMeta } from "../lib/encryptedPayload";
 import type { TrustState } from "../lib/identityTrust";
 import { WatchParty } from "./WatchParty";
+import { isWatchHost } from "../lib/watchSync";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { api, getApiBase, getFileBase } from "../api";
 import type { PluginManager } from "../plugins/registry";
@@ -1523,7 +1524,7 @@ export function ChatPane({
       )}
       {watchSession && onWatchControl && (
         <ErrorBoundary label="Watch party">
-          <WatchParty session={watchSession} onControl={onWatchControl} />
+          <WatchParty session={watchSession} isHost={isWatchHost(watchSession, currentUserId)} onControl={onWatchControl} />
         </ErrorBoundary>
       )}
 
