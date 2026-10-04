@@ -115,6 +115,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
+- **Dream mode glow:** the whole room now takes the video's colours (a wider, much more
+  saturated blur, with a lighter dimmer over the page), and the video's own edges are
+  feathered into it instead of ending in a hard frame. The feather is narrower at the top and
+  bottom so the player's title and controls stay readable. The middle of the video is never
+  touched.
 - **Dream mode is desktop only:** the button no longer appears on phones or touch-first
   tablets (including a phone held sideways), or in a window narrower than 701px. If a
   desktop window is shrunk to that size while Dream is on, Dream turns off and stays off

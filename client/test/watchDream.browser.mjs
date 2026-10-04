@@ -101,10 +101,15 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
       return x < media.left && y < media.top && x + width > media.right && y + height > media.bottom;
     });
     assert.equal(hole, true, "every provider pixel is inside the guarded mask hole");
-    const frameWithHalo = await page.locator("iframe").screenshot();
+    // The video's outer band melts into the glow by design; its centre must stay exactly as the player drew it.
+    const featherMask = await page.locator(".kc-watch-media > div:has(iframe)").evaluate(node => getComputedStyle(node).maskImage);
+    assert.notEqual(featherMask, "none", "the video's edges are feathered while Dream is on");
+    const iframeBox = await page.locator("iframe").boundingBox();
+    const centre = { x: iframeBox.x + 40, y: iframeBox.y + 28, width: iframeBox.width - 80, height: iframeBox.height - 56 };
+    const centreWithHalo = await page.screenshot({ clip: centre });
     await page.locator(".kc-watch-ambient").evaluate(node => { node.style.visibility = "hidden"; });
-    const frameWithoutHalo = await page.locator("iframe").screenshot();
-    assert.deepEqual(frameWithHalo, frameWithoutHalo, "whole iframe pixels remain unaltered");
+    const centreWithoutHalo = await page.screenshot({ clip: centre });
+    assert.deepEqual(centreWithHalo, centreWithoutHalo, "the centre of the video is not altered by the halo");
     await page.locator(".kc-watch-ambient").evaluate(node => node.style.removeProperty("visibility"));
     const colorBounds = await page.locator("iframe").boundingBox();
     const colorClip = { x: Math.floor(colorBounds.x + colorBounds.width / 2), y: Math.floor(colorBounds.y) - 24, width: 1, height: 1 };
@@ -146,6 +151,7 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     assert.equal(await enabled(), "false");
     assert.equal(await page.locator("iframe").count(), 1);
     assert.equal(await page.locator("aside").evaluate(node => node.inert), false);
+    assert.equal(await page.locator(".kc-watch-media > div:has(iframe)").evaluate(node => getComputedStyle(node).maskImage), "none", "no feathered edge outside Dream mode");
     for (let i = 0; i < 4; i++) await toggle.click();
     assert.equal(await enabled(), "false");
     assert.equal(await frame.evaluate(node => node === document.querySelector("iframe")), true);
@@ -226,7 +232,7 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
 
 // Dream mode is a desktop feature. These two use a plain page (no YouTube, no pixels), so they
 // run anywhere the others do.
-async function withFixturePage(port, pageOptions, run) {
+async function withFixturePage(port, pageOptions, run, initScript) {
   const server = await createServer({ server: { port, strictPort: true } });
   await server.listen();
   let browser;
@@ -234,6 +240,7 @@ async function withFixturePage(port, pageOptions, run) {
     browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
     const page = await browser.newPage(pageOptions);
     await page.route("https://www.youtube-nocookie.com/**", route => route.fulfill({ contentType: "text/html", body: "<body></body>" }));
+    if (initScript) await page.addInitScript(initScript);
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     await page.goto(`http://localhost:${port}/test/fixtures/watchDream.html`);
@@ -246,12 +253,23 @@ async function withFixturePage(port, pageOptions, run) {
   }
 }
 
+// Playwright's `hasTouch` does not reliably change Chromium's pointer media features (the page can
+// still report a mouse), so a touch-only device is simulated by answering the fine-pointer query
+// "no", like a phone held sideways. The app code under test (the hook and the button) is real.
+const touchOnlyDevice = () => {
+  const real = window.matchMedia.bind(window);
+  window.matchMedia = (query) => {
+    const list = real(query);
+    if (!/any-pointer:\s*fine/.test(query)) return list;
+    return new Proxy(list, { get: (target, key) => key === "matches" ? false : typeof target[key] === "function" ? target[key].bind(target) : target[key] });
+  };
+};
+
 test("Dream mode is not offered on a touch-first device, even in a wide window", { skip: !executablePath }, async () => {
-  // Touch emulation reports a coarse pointer and no hover, like a phone held sideways.
-  await withFixturePage(1438, { viewport: { width: 1454, height: 864 }, hasTouch: true }, async (page) => {
+  await withFixturePage(1438, { viewport: { width: 1454, height: 864 } }, async (page) => {
     assert.equal(await page.getByRole("button", { name: "Dream mode" }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "Cinema", exact: true }).count(), 1, "the other modes stay");
-  });
+  }, touchOnlyDevice);
 });
 
 test("Dream mode leaves when the window shrinks to phone size and does not return when it grows", { skip: !executablePath }, async () => {
