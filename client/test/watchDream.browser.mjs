@@ -4,27 +4,51 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "vite";
 import { chromium } from "playwright-core";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { inflateSync } from "node:zlib";
 
-// Chromium PNG screenshots use 8-bit RGB/RGBA. A 1x1 crop needs no filter-neighbor reconstruction.
-function screenshotPixel(png) {
+// Read a pixel from the full rendered page PNG. A tiny capture clip can cull the
+// off-clip iframe from the compositor input, changing backdrop-filter output.
+function screenshotPixel(png, x, y) {
   const chunks = [];
+  let width, height, channels;
   for (let offset = 8; offset < png.length;) {
     const length = png.readUInt32BE(offset);
     const type = png.toString("ascii", offset + 4, offset + 8);
     if (type === "IHDR") {
-      assert.equal(png.readUInt32BE(offset + 8), 1);
-      assert.equal(png.readUInt32BE(offset + 12), 1);
+      width = png.readUInt32BE(offset + 8);
+      height = png.readUInt32BE(offset + 12);
       assert.equal(png[offset + 16], 8);
       assert.ok([2, 6].includes(png[offset + 17]));
+      channels = png[offset + 17] === 6 ? 4 : 3;
+      assert.equal(png[offset + 20], 0, "non-interlaced screenshot");
     }
     if (type === "IDAT") chunks.push(png.subarray(offset + 8, offset + 8 + length));
     offset += length + 12;
   }
-  return [...inflateSync(Buffer.concat(chunks)).subarray(1, 4)];
+  assert.ok(x >= 0 && x < width && y >= 0 && y < height);
+  const bytes = inflateSync(Buffer.concat(chunks));
+  const stride = width * channels;
+  let previous = Buffer.alloc(stride);
+  const paeth = (a, b, c) => {
+    const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+    return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+  };
+  for (let row = 0; row <= y; row++) {
+    const offset = row * (stride + 1), filter = bytes[offset];
+    const current = Buffer.alloc(stride);
+    for (let i = 0; i < stride; i++) {
+      const left = i >= channels ? current[i - channels] : 0;
+      const above = previous[i];
+      const upperLeft = i >= channels ? previous[i - channels] : 0;
+      const predictor = [0, left, above, Math.floor((left + above) / 2), paeth(left, above, upperLeft)][filter];
+      assert.notEqual(predictor, undefined);
+      current[i] = (bytes[offset + 1 + i] + predictor) & 255;
+    }
+    previous = current;
+  }
+  return [...previous.subarray(x * channels, x * channels + 3)];
 }
-
 
 const executablePath = process.env.KIKKA_CHROMIUM;
 test("Dream mode preserves media, isolates surroundings and cleans up", { skip: !executablePath }, async () => {
@@ -85,17 +109,19 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     const colorBounds = await page.locator("iframe").boundingBox();
     const colorClip = { x: Math.floor(colorBounds.x + colorBounds.width / 2), y: Math.floor(colorBounds.y) - 24, width: 1, height: 1 };
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    const blue = screenshotPixel(await page.screenshot({ clip: colorClip }));
-    if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/watch-dream-live-blue.png` });
+    const blueShot = await page.screenshot();
+    const blue = screenshotPixel(blueShot, colorClip.x, colorClip.y);
+    if (process.env.KIKKA_SHOTS) await writeFile(`${process.env.KIKKA_SHOTS}/watch-dream-live-blue.png`, blueShot);
     await page.frameLocator("iframe").getByRole("button", { name: "Red scene" }).click();
     await page.mouse.move(0, 0);
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    const red = screenshotPixel(await page.screenshot({ clip: colorClip }));
+    const redShot = await page.screenshot();
+    const red = screenshotPixel(redShot, colorClip.x, colorClip.y);
     console.log("live-color sample diagnostics", { blue, red, colorClip, colorBounds });
     assert.ok(blue[2] > blue[0] + 10, `blue live halo: ${blue}`);
     assert.ok(red[0] > red[2] + 10, `red live halo: ${red}`);
     console.log("outside-only live-color pixel proof", { blue, red, colorClip });
-    if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/watch-dream-live-red.png` });
+    if (process.env.KIKKA_SHOTS) await writeFile(`${process.env.KIKKA_SHOTS}/watch-dream-live-red.png`, redShot);
     assert.equal(await frame.evaluate(node => node === document.querySelector("iframe")), true);
     assert.equal(await page.locator("aside").evaluate(node => getComputedStyle(node).filter), "blur(12px) brightness(0.8)");
     assert.equal(await page.locator("aside").evaluate(node => node.inert), true);

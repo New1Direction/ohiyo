@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: watch-modes-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   browser:
     name: Dream browser and screenshots
