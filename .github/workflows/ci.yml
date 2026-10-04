@@ -56,6 +56,36 @@ jobs:
       - name: Test
         run: cargo test --locked
 
+  desktop:
+    name: Desktop (check · test)
+    # Same runner image and system libraries as release.yml, so a build that passes here is
+    # one the release workflow can also build. Without this job nothing compiles the Tauri
+    # crate until a version tag is pushed, so a bad dependency bump would only show up then.
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: client/src-tauri
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Linux libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri
+      - name: Stand-in for the frontend build
+        # tauri::generate_context! embeds frontendDist (../dist) at compile time and fails if
+        # it is missing. The Client job already builds the real bundle; this only has to exist.
+        run: |
+          mkdir -p ../dist
+          printf '<!doctype html><title>ci</title>\n' > ../dist/index.html
+      - name: Check
+        run: cargo check --locked --all-targets
+      - name: Test
+        run: cargo test --locked
+
   audit:
     name: Dependency advisories
     runs-on: ubuntu-latest
