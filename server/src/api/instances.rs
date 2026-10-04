@@ -96,6 +96,15 @@ pub async fn create_instance(
     State(state): State<AppState>,
     Json(body): Json<CreateInstanceBody>,
 ) -> Result<Json<HostedInstance>, (StatusCode, String)> {
+    if !provision::provisioning_available(
+        std::env::var("FLY_API_TOKEN").is_ok(),
+        cfg!(debug_assertions),
+    ) {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Instant Servers aren't available on this server yet.".into(),
+        ));
+    }
     if !state.rate.check(
         &format!("provision:{}", auth.0),
         MAX_PROVISIONS_PER_HOUR,
