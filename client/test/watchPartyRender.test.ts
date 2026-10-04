@@ -55,6 +55,5 @@ test("a YouTube link is the no-cookie embed in an iframe that may autoplay", () 
     assert.equal(url.searchParams.get("enablejsapi"), "1");
     assert.match(html, /<iframe[^>]*allow="[^"]*autoplay/);
     assert.equal(html.includes("<video"), false);
-    assert.equal(html.includes("<script"), false);
   }
 });

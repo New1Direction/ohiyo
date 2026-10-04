@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { isWatchHost, livePosition, onLocalClock, youtubeId } from "../src/lib/watchSync.ts";
+import { isAutoplayBlock, isWatchHost, livePosition, needsSeek, onLocalClock, youtubeId } from "../src/lib/watchSync.ts";
 
 const session = (over: Record<string, unknown> = {}) => ({
   url: "https://example.com/v.mp4",
@@ -65,4 +65,31 @@ test("youtubeId reads watch, share, embed and shorts links, and nothing else", (
   assert.equal(youtubeId("https://example.com/watch?v=aqz-KE-bpKQ"), null);
   assert.equal(youtubeId("https://notyoutube.com/watch?v=aqz-KE-bpKQ"), null);
   assert.equal(youtubeId("not a url"), null);
+});
+
+test("youtubeId only accepts a real video id, so nothing can step out of the embed path", () => {
+  for (const v of ["..", ".", "%2e%2e", "abc", "aqz-KE-bpKQx", "aqz KE bpKQ", "../../x"]) {
+    assert.equal(youtubeId(`https://www.youtube.com/watch?v=${v}`), null, v);
+  }
+  assert.equal(youtubeId("https://youtu.be/.."), null);
+  assert.equal(youtubeId("https://www.youtube.com/embed/.."), null);
+});
+
+test("only the browser refusing to start playback counts as an autoplay block", () => {
+  const err = (name: string) => Object.assign(new Error(name), { name });
+  assert.equal(isAutoplayBlock(err("NotAllowedError")), true);
+  // pause() interrupting play() rejects with AbortError; a non-media URL with NotSupportedError.
+  assert.equal(isAutoplayBlock(err("AbortError")), false);
+  assert.equal(isAutoplayBlock(err("NotSupportedError")), false);
+  assert.equal(isAutoplayBlock(undefined), false);
+  assert.equal(isAutoplayBlock("NotAllowedError"), false);
+});
+
+test("a guest is moved when more than the tolerance off; the host is not moved by its own echo", () => {
+  assert.equal(needsSeek(10, 10.4, false, 0.5), false);
+  assert.equal(needsSeek(10, 10.6, false, 0.5), true);
+  // The host's own play comes back a round trip later: it must not rewind itself.
+  assert.equal(needsSeek(12, 10, true, 0.5), false);
+  // A real change (another tab of the host, a rejoin) still moves it.
+  assert.equal(needsSeek(12, 60, true, 0.5), true);
 });

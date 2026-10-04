@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import type { WatchSession } from "../gateway";
-import { livePosition, youtubeId } from "../lib/watchSync";
+import { isAutoplayBlock, livePosition, needsSeek, youtubeId } from "../lib/watchSync";
 import {
+  NEW_PLAYER_CLOCK,
   YOUTUBE_EMBED_ORIGIN,
-  YT_BUFFERING,
-  YT_PAUSED,
   YT_PLAYING,
+  advanceClock,
+  countsAsPlaying,
   parseYouTubeMessage,
+  playerTimeAt,
   youtubeCommand,
+  youtubeControlFor,
   youtubeEmbedUrl,
   youtubeListening,
+  type PlayerClock,
 } from "../lib/youtubeEmbed";
 
 type ControlFn = (action: string, payload?: { url?: string; position?: number }) => void;
@@ -52,8 +56,11 @@ function DirectVideo({ session, isHost, onControl }: PlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const suppressRef = useRef(false);
   const suppressTimer = useRef<number | undefined>(undefined);
+  // sync() runs from an effect and from event handlers: it reads the latest props here.
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const isHostRef = useRef(isHost);
+  isHostRef.current = isHost;
   const [blocked, setBlocked] = useState(false);
 
   /** Put this player where the shared session says it should be. */
@@ -63,15 +70,20 @@ function DirectVideo({ session, isHost, onControl }: PlayerProps) {
     const s = sessionRef.current;
     suppressRef.current = true;
     const target = Math.max(0, livePosition(s, nowSeconds()));
-    if (Number.isFinite(target) && Math.abs(v.currentTime - target) > 0.5) v.currentTime = target;
+    if (Number.isFinite(target) && needsSeek(v.currentTime, target, isHostRef.current, 0.5)) v.currentTime = target;
     // Past the end there is nothing to play; play() there would restart from the top.
     const pastEnd = Number.isFinite(v.duration) && target >= v.duration - 0.25;
-    if (s.paused || pastEnd) v.pause();
-    else {
+    if (s.paused || pastEnd) {
+      v.pause();
+      if (s.paused) setBlocked(false);
+    } else {
       void v
         .play()
         .then(() => setBlocked(false))
-        .catch(() => setBlocked(true));
+        .catch((err: unknown) => {
+          // Not pause() cutting play() short, and not a URL that isn't media.
+          if (isAutoplayBlock(err)) setBlocked(true);
+        });
     }
     window.clearTimeout(suppressTimer.current);
     suppressTimer.current = window.setTimeout(() => {
@@ -120,9 +132,8 @@ function YouTubeWatch({ videoId, session, isHost, onControl }: PlayerProps & { v
   const suppressTimer = useRef<number | undefined>(undefined);
   const autoplayTimer = useRef<number | undefined>(undefined);
   const listenTimer = useRef<number | undefined>(undefined);
-  const stateRef = useRef<number | null>(null);
-  // The last position the player reported, and when (ms), to estimate where it is now.
-  const timeRef = useRef({ time: 0, at: 0 });
+  // The player's last reported position and state, to work out where it is now.
+  const clockRef = useRef<PlayerClock>(NEW_PLAYER_CLOCK);
   // Always act on the latest props (the message listener is set up once per video).
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -134,10 +145,7 @@ function YouTubeWatch({ videoId, session, isHost, onControl }: PlayerProps & { v
 
   const post = (message: string) => frameRef.current?.contentWindow?.postMessage(message, YOUTUBE_EMBED_ORIGIN);
 
-  const playerTime = () => {
-    const { time, at } = timeRef.current;
-    return stateRef.current === YT_PLAYING ? time + (Date.now() - at) / 1000 : time;
-  };
+  const playerTime = () => playerTimeAt(clockRef.current, Date.now());
 
   /** Put this player where the shared session says it should be. */
   function sync() {
@@ -145,8 +153,9 @@ function YouTubeWatch({ videoId, session, isHost, onControl }: PlayerProps & { v
     const s = sessionRef.current;
     suppressRef.current = true;
     const target = Math.max(0, livePosition(s, nowSeconds()));
-    if (Math.abs(playerTime() - target) > 1) post(youtubeCommand("seekTo", [target, true]));
+    if (needsSeek(playerTime(), target, isHostRef.current, 1)) post(youtubeCommand("seekTo", [target, true]));
     post(youtubeCommand(s.paused ? "pauseVideo" : "playVideo"));
+    if (s.paused) setBlocked(false);
     window.clearTimeout(suppressTimer.current);
     suppressTimer.current = window.setTimeout(() => {
       suppressRef.current = false;
@@ -154,8 +163,7 @@ function YouTubeWatch({ videoId, session, isHost, onControl }: PlayerProps & { v
     window.clearTimeout(autoplayTimer.current);
     if (!s.paused) {
       autoplayTimer.current = window.setTimeout(() => {
-        const playing = stateRef.current === YT_PLAYING || stateRef.current === YT_BUFFERING;
-        if (!sessionRef.current.paused && !playing) setBlocked(true);
+        if (!sessionRef.current.paused && !countsAsPlaying(clockRef.current.state)) setBlocked(true);
       }, AUTOPLAY_CHECK_MS);
     }
   }
@@ -163,42 +171,33 @@ function YouTubeWatch({ videoId, session, isHost, onControl }: PlayerProps & { v
   // Listen to the player for as long as this video is shown.
   useEffect(() => {
     readyRef.current = false;
-    stateRef.current = null;
-    timeRef.current = { time: 0, at: 0 };
-
-    const onState = (state: number) => {
-      if (state === YT_PLAYING) setBlocked(false);
-      if (suppressRef.current || (state !== YT_PLAYING && state !== YT_PAUSED)) return;
-      // Only the host drives the party; a guest who pauses or scrubs is put back in step.
-      if (!isHostRef.current) {
-        sync();
-        return;
-      }
-      onControlRef.current(state === YT_PLAYING ? "play" : "pause", { position: playerTime() });
-    };
+    clockRef.current = NEW_PLAYER_CLOCK;
 
     const onMessage = (e: MessageEvent) => {
       if (e.source !== frameRef.current?.contentWindow) return;
       const update = parseYouTubeMessage(e.origin, e.data);
       if (!update) return;
       window.clearInterval(listenTimer.current);
-      if (typeof update.time === "number") {
-        const jumped = Math.abs(update.time - timeRef.current.time) > 1.5;
-        timeRef.current = { time: update.time, at: Date.now() };
-        // The host scrubbing while paused changes the time without changing the state.
-        if (jumped && readyRef.current && !suppressRef.current && stateRef.current === YT_PAUSED) {
-          if (isHostRef.current) onControlRef.current("seek", { position: update.time });
-          else sync();
-        }
-      }
+      const { clock, jumped, stateChanged } = advanceClock(clockRef.current, update, Date.now());
+      clockRef.current = clock;
+      if (stateChanged && clock.state === YT_PLAYING) setBlocked(false);
       if (update.ready && !readyRef.current) {
         readyRef.current = true;
         post(youtubeCommand("addEventListener", ["onStateChange"]));
         sync();
+        return;
       }
-      if (typeof update.state === "number" && update.state !== stateRef.current) {
-        stateRef.current = update.state;
-        if (readyRef.current) onState(update.state);
+      // Our own commands move the player too; those are not the user's doing.
+      if (!readyRef.current || suppressRef.current) return;
+      if (stateChanged && clock.state !== null) {
+        // Only the host drives the party; a guest who pauses or plays is put back in step.
+        const action = youtubeControlFor(clock.state, isHostRef.current);
+        if (action === "resync") sync();
+        else if (action) onControlRef.current(action, { position: playerTime() });
+      } else if (jumped) {
+        // Scrubbing moves the position without always changing the state.
+        if (isHostRef.current) onControlRef.current("seek", { position: clock.time });
+        else sync();
       }
     };
 
