@@ -22,7 +22,7 @@ export const PERM_LABELS: { flag: PermFlag; label: string; hint: string }[] = [
   { flag: PERM.MANAGE_SERVER, label: "Manage server", hint: "Rename and customize the server" },
   { flag: PERM.VIEW_CHANNEL, label: "View channels", hint: "See channels by default" },
   { flag: PERM.SEND_MESSAGES, label: "Send messages", hint: "Post in text channels by default" },
-  { flag: PERM.ADMINISTRATOR, label: "Administrator", hint: "Bypass channel overwrites" },
+  { flag: PERM.ADMINISTRATOR, label: "Administrator", hint: "Can do everything in every channel" },
 ];
 
 export const can = (perms: number, flag: number): boolean => (perms & flag) !== 0;

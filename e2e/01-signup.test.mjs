@@ -147,7 +147,7 @@ try {
   await settle(page, 200);
 
   // ── Create-server modal (the + button, replacing window.prompt) ──
-  await page.click('[title="Add a Server"]');
+  await page.click('[title="Create a space"]');
   await page.waitForSelector("text=Create your space", { timeout: 5000 });
   log("CreateServerModal opens from + (no window.prompt) ✓");
   await shot(page, "06-create-modal-1440");
@@ -155,7 +155,7 @@ try {
   await settle(page, 300);
 
   // ── Logout → login flow with remembered username + friendly error ─
-  await page.click('[title="Log out"]');
+  await page.click('[title="Sign out"]');
   // Signing out of the last account asks first, because it removes local message data.
   const signOutDialog = '[role="dialog"][aria-labelledby="kc-sign-out-title"]';
   await page.waitForSelector(signOutDialog, { timeout: 8000 });
@@ -179,11 +179,32 @@ try {
   await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("login success → back in channel ✓");
 
+  // ── Narrowing a desktop window reflows the chat (it used to stay wide and get clipped) ──
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await page.waitForFunction(() => {
+    const composer = document.querySelector(".kc-composer-shell");
+    return composer && composer.getBoundingClientRect().right <= window.innerWidth;
+  }, null, { timeout: 4000 }).catch(() => { throw new Error("the chat pane did not shrink with the window: the composer is clipped"); });
+  log("narrower window: chat pane shrinks, composer stays on screen ✓");
+
   // ── Mobile drawer: chat MUST be reachable on a phone (the old break) ──
   await page.setViewportSize({ width: 320, height: 720 });
   await settle(page, 500);
   await page.waitForSelector('input[placeholder*="Say something"]', { state: "visible", timeout: 6000 });
   log("mobile 320: chat full-width + reachable, drawer collapsed ✓");
+
+  // A message that wraps on a phone needs a taller row (rows used to be sized for a wide pane
+  // and ran into each other).
+  const longLine = page.locator('input[placeholder*="Say something"]');
+  await longLine.fill("ok so the plan for saturday is: we meet at the station at ten, grab coffee, walk up to the lookout, and then whoever is still alive gets ramen after");
+  await longLine.press("Enter");
+  await page.waitForSelector("text=/whoever is still alive/", { timeout: 6000 });
+  await page.waitForFunction(() => [...document.querySelectorAll(".msg-group")].every((row) => {
+    const style = getComputedStyle(row);
+    const needed = row.firstElementChild.getBoundingClientRect().height + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    return row.getBoundingClientRect().height >= Math.floor(needed);
+  }), null, { timeout: 4000 }).catch(() => { throw new Error("a wrapped message on a phone got a row that is too short for it"); });
+  log("mobile 320: wrapped messages get rows tall enough for them ✓");
   await shot(page, "08-mobile-chat");
 
   const menuBtn = page.locator('button[aria-label="Open channels"]').filter({ has: page.locator("svg") }).first();

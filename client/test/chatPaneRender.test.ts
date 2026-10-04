@@ -335,3 +335,28 @@ test("default avatar: a member with a picture keeps it and gets no logo", () => 
   assert.equal(inner, "", "no fallback content over a picture");
   assert.ok(html.includes("bea.png"));
 });
+
+// ||Spoilers|| used to work only for a reader who had switched on a plugin; everyone else
+// saw the bars and the text. They are part of chat now, with no plugin involved.
+test("spoilers: text between double bars is hidden behind a button for every reader", () => {
+  const html = renderChatPane({
+    channel: { id: "c1", server_id: null, name: "chat", channel_type: "dm", position: 0, topic: null, created_at: 0 },
+    messages: [{ channel_id: "c1", author: peer, created_at: 1, edited_at: null, reactions: [], id: "m1", content: "the ending: ||everyone lives|| honest" }],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s },
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    e2eEnabled: false,
+    onToggleE2e() {},
+  });
+  const spoiler = /<button[^>]*data-spoiler=""[^>]*>(.*?)<\/button>/.exec(html);
+  assert.ok(spoiler, "a spoiler button is rendered");
+  assert.equal(spoiler[1], "everyone lives");
+  assert.match(spoiler[0], /aria-label="Spoiler, activate to reveal"/);
+  const row = html.slice(html.indexOf('class="kc-msg"'));
+  assert.equal(row.includes("||"), false, "the bars are not shown");
+  assert.ok(row.includes("the ending: ") && row.includes(" honest"), "the text around it stays");
+});

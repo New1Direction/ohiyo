@@ -12,8 +12,8 @@ const seenKey = (userId?: string) => `kc:welcome-manifesto-seen:${userId ?? "ano
 const recoveryNudgeKey = (userId?: string) => `kc:recovery-nudge-seen:${userId ?? "anon"}`;
 
 const SHARE_NOTE =
-  "I just switched to Ohiyo 🐿️ — a free, open chat with optional end-to-end encrypted DMs and " +
-  "nothing to sell you. No ads, no tracking, no paywall. Come hang out: https://github.com/New1Direction/ohiyo";
+  "I just switched to Ohiyo 👋 It's a free, open chat with optional end-to-end encrypted DMs and " +
+  "nothing to sell you. No ads, no tracking, no paywall. Come hang out: https://ohiyo.gg";
 
 type Props = {
   /** The channel name (server text channels). Ignored for DMs. */
@@ -65,11 +65,11 @@ export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRec
     }
   }, [showManifesto, userId]);
 
-  const title = isDM ? "Start the private thread 👋" : channelName ? `Welcome to #${channelName}!` : "This channel's all quiet";
+  const title = isDM ? "Say hi 👋" : channelName ? `Welcome to #${channelName}!` : "This channel's all quiet";
   const sub = isDM
     ? encrypted
-      ? "Say hi or drop a file. Encryption is on: the server stores only ciphertext for messages and files you send here."
-      : "Say hi, drop a file, or tap the lock first so the server only stores sealed envelopes."
+      ? "Send a message or drop a file. Encryption is on: the server stores only ciphertext for messages and files you send here."
+      : "Send a message, drop a file, or tap the lock first to end-to-end encrypt this chat."
     : channelName
       ? `This is the start of #${channelName}. Say hi, share a file, or hop into voice when text is too slow.`
       : "Say something, share a file, or start a call — it’s a great place to begin.";
@@ -117,8 +117,8 @@ export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRec
           <div className="kc-setup-row is-done">
             <span className="kc-setup-step" aria-hidden>✓</span>
             <div className="min-w-0 flex-1">
-              <div className="kc-setup-title">Space created</div>
-              <div className="kc-setup-copy">Your first channel is ready.</div>
+              <div className="kc-setup-title">{isDM ? "Chat opened" : "You’re in"}</div>
+              <div className="kc-setup-copy">{isDM ? "This chat is ready when you are." : "This channel is ready when you are."}</div>
             </div>
           </div>
 
@@ -127,7 +127,7 @@ export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRec
               <span className="kc-setup-step" aria-hidden>2</span>
               <div className="min-w-0 flex-1">
                 <div className="kc-setup-title">Save a recovery code</div>
-                <div className="kc-setup-copy">Use it to get back in on a new device.</div>
+                <div className="kc-setup-copy">It lets a new device read your encrypted messages. It doesn’t replace your password.</div>
                 <div className="kc-setup-actions">
                   <button
                     type="button"
@@ -166,7 +166,7 @@ export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRec
                     className="kc-interactive rounded-full px-4 py-2 text-sm font-semibold"
                     style={{ background: copied ? "color-mix(in oklch, var(--green) 22%, var(--bg-input))" : "var(--bg-input)", color: copied ? "var(--green)" : "var(--text-secondary)", border: "1px solid color-mix(in oklch, var(--text-primary) 7%, transparent)", cursor: "pointer" }}
                   >
-                    {copied ? "Copied" : "Copy invite note"}
+                    {copied ? "Copied" : "Copy a note about Ohiyo"}
                   </button>
                 </div>
               </div>

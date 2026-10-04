@@ -298,7 +298,7 @@ export function ChannelSidebar({
           {server?.icon_url && <img src={server.icon_url} alt="" className="h-8 w-8 flex-shrink-0 rounded-xl object-cover" />}
           <div className="min-w-0 flex-1">
             <div className="truncate" style={{ fontFamily: "var(--font-display)", fontWeight: 750, fontSize: "var(--text-lg)", color: "var(--text-primary)" }}>{server ? server.name : "Direct Messages"}</div>
-            <div className="truncate text-[11px] font-semibold" style={{ color: "var(--text-muted)", letterSpacing: "0.02em" }}>{server ? "Private space" : "Your conversations"}</div>
+            <div className="truncate text-[11px] font-semibold" style={{ color: "var(--text-muted)", letterSpacing: "0.02em" }}>{server ? "Invite-only space" : "Your conversations"}</div>
           </div>
         </div>
         <div className="mt-2 flex min-w-0 items-center gap-1.5">
@@ -689,7 +689,7 @@ export function ChannelSidebar({
           </div>
           <div className="kc-user-actions flex flex-shrink-0 items-center gap-1">
             <button type="button" onClick={onOpenSettings} aria-label="Settings" className="kc-sidebar-action kc-interactive flex h-8 w-8 items-center justify-center rounded-full text-base" style={{ color: "var(--text-muted)", background: "transparent", border: "none" }} title="Settings (Ctrl+,)"><Icon name="settings" size={16} /></button>
-            <button type="button" onClick={onLogout} aria-label="Log out" className="kc-sidebar-action kc-interactive flex h-8 w-8 items-center justify-center rounded-full text-base" style={{ color: "var(--text-muted)", background: "transparent", border: "none" }} title="Log out">⎋</button>
+            <button type="button" onClick={onLogout} aria-label="Sign out" className="kc-sidebar-action kc-interactive flex h-8 w-8 items-center justify-center rounded-full text-base" style={{ color: "var(--text-muted)", background: "transparent", border: "none" }} title="Sign out">⎋</button>
           </div>
         </div>
       )}

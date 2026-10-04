@@ -183,7 +183,7 @@ export function PrivateDmLinkModal({
           </div>
 
           <div className="mt-3 rounded-xl p-3 text-xs leading-5" style={{ background: "var(--bg-sidebar)", color: "var(--text-secondary)", border: "1px solid var(--bg-hover)" }}>
-            <strong style={{ color: "var(--text-primary)" }}>Security:</strong> the server stores only a hash of this bearer token.
+            <strong style={{ color: "var(--text-primary)" }}>Keep it private:</strong> anyone who has this link can use it, once. The server keeps a fingerprint of the link, not the link itself.
             It expires in <strong>{expiresLabel(info.expires_at)}</strong>, can be used once, and should be revoked if you shared it in the wrong place.
           </div>
 

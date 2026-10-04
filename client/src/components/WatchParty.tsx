@@ -412,7 +412,7 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
             ref={toggleRef}
             type="button"
             aria-pressed={dream}
-            title={dream ? "Leave Dream mode (Esc)" : "Live outside-only room glow (availability varies by browser)"}
+            title={dream ? "Leave Dream mode (Esc)" : "Dream mode: the video's colours glow into the room around it"}
             onClick={() => void toggleDream()}
             className="kc-interactive kc-watch-dream-toggle rounded-full px-2.5 py-1 text-xs font-semibold"
           >

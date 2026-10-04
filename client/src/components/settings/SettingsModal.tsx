@@ -44,6 +44,7 @@ import {
 import { type Density, DENSITIES, FONT_SCALES } from "../../lib/density";
 import { pushAppearance } from "../../lib/appearanceSync";
 import { LinkedDevices } from "./LinkedDevices";
+import { PluginsTab } from "./PluginsTab";
 import type { PrivacyPrefs } from "../../lib/privacyPrefs";
 import { AvatarMark } from "../BirdMark";
 
@@ -54,10 +55,10 @@ const SETTINGS_TABS: Array<{ id: Tab; label: string; description: string }> = [
   { id: "profile", label: "Profile", description: "How people see you" },
   { id: "social", label: "Social links", description: "Your places online" },
   { id: "security", label: "Privacy & security", description: "Keys and safety" },
-  { id: "notifications", label: "Notifications", description: "Mobile + PWA push" },
+  { id: "notifications", label: "Notifications", description: "Alerts on your devices" },
   { id: "appearance", label: "Appearance", description: "Colors and comfort" },
   { id: "plugins", label: "Plugins", description: "Extra powers" },
-  { id: "emoji", label: "Custom emoji", description: "Server reactions" },
+  { id: "emoji", label: "Custom emoji", description: "For your spaces" },
 ];
 
 type Props = {
@@ -739,166 +740,6 @@ function AppearanceTab({
 
 // ── Plugins tab ───────────────────────────────────────────────────────────────
 
-function PluginsTab({
-  pluginManager,
-  onToast,
-}: {
-  pluginManager: PluginManager;
-  onToast: (t: string, type?: "info" | "success" | "error") => void;
-}) {
-  const [enabled, setEnabled] = useState<string[]>(() => pluginManager.enabledIds());
-  const [plugins, setPlugins] = useState(() => pluginManager.allPlugins());
-  const [urlInput, setUrlInput] = useState("");
-  const [installing, setInstalling] = useState(false);
-
-  function toggle(id: string) {
-    if (enabled.includes(id)) {
-      pluginManager.disable(id);
-      setEnabled(pluginManager.enabledIds());
-      onToast(`Plugin disabled`, "info");
-    } else {
-      pluginManager.enable(id);
-      setEnabled(pluginManager.enabledIds());
-      onToast(`Plugin enabled`, "success");
-    }
-  }
-
-  async function installFromUrl() {
-    const url = urlInput.trim();
-    if (!url) return;
-    setInstalling(true);
-    try {
-      const id = await pluginManager.installFromUrl(url);
-      setPlugins(pluginManager.allPlugins());
-      pluginManager.enable(id);
-      setEnabled(pluginManager.enabledIds());
-      setUrlInput("");
-      onToast(`Plugin installed!`, "success");
-    } catch (err) {
-      onToast(`Install failed: ${err instanceof Error ? err.message : err}`, "error");
-    } finally {
-      setInstalling(false);
-    }
-  }
-
-  function uninstall(id: string) {
-    pluginManager.uninstallUserPlugin(id);
-    setPlugins(pluginManager.allPlugins());
-    setEnabled(pluginManager.enabledIds());
-    onToast("Plugin removed", "info");
-  }
-
-  const builtinPlugins = plugins.filter((p) => !pluginManager.isUserPlugin(p.id));
-  const userPlugins = plugins.filter((p) => pluginManager.isUserPlugin(p.id));
-
-  function PluginRow({ plugin, showUninstall }: { plugin: { id: string; name: string; version: string; author?: string; description: string }; showUninstall?: boolean }) {
-    const isOn = enabled.includes(plugin.id);
-    return (
-      <div
-        className="flex items-center gap-4 rounded-lg p-4"
-        style={{ background: "var(--bg-sidebar)" }}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
-            {plugin.name}
-            <span className="ml-2 text-xs font-normal" style={{ color: "var(--text-muted)" }}>
-              v{plugin.version}
-            </span>
-            {plugin.author && (
-              <span className="ml-1 text-xs font-normal" style={{ color: "var(--text-muted)" }}>
-                · {plugin.author}
-              </span>
-            )}
-          </div>
-          <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-            {plugin.description}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {showUninstall && (
-            <button
-              onClick={() => uninstall(plugin.id)}
-              className="text-xs px-2 py-1 rounded"
-              style={{ background: "var(--bg-hover)", color: "var(--danger)" }}
-            >
-              Remove
-            </button>
-          )}
-          <button
-            onClick={() => toggle(plugin.id)}
-            className="relative h-6 w-12 rounded-full transition-colors duration-150"
-            style={{ background: isOn ? "var(--accent)" : "var(--bg-hover)" }}
-          >
-            <span
-              className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-150"
-              style={{ transform: isOn ? "translateX(26px)" : "translateX(2px)" }}
-            />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <h2 className="mb-1 text-xl font-bold">Plugins</h2>
-      <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
-        Toggle plugins or install from URL. All plugins run locally — no data leaves your device.
-      </p>
-
-      {/* Install from URL */}
-      <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
-        <div className="mb-2 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-          Install Plugin from URL
-        </div>
-        <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-          Paste a URL to a JavaScript ES module that exports a default OhiyoPlugin object.
-        </p>
-        <div className="flex gap-2">
-          <input
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            placeholder="https://example.com/my-plugin.js"
-            className="flex-1 rounded px-3 py-2 text-sm outline-none font-mono"
-            style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
-            onKeyDown={(e) => { if (e.key === "Enter") installFromUrl(); }}
-          />
-          <button
-            onClick={installFromUrl}
-            disabled={installing || !urlInput.trim()}
-            className="rounded px-3 py-2 text-sm font-semibold"
-            style={{ background: urlInput.trim() && !installing ? "var(--accent)" : "var(--bg-hover)", color: "white" }}
-          >
-            {installing ? "…" : "Install"}
-          </button>
-        </div>
-      </div>
-
-      {/* User-installed plugins */}
-      {userPlugins.length > 0 && (
-        <div className="mb-4">
-          <div className="mb-2 text-xs font-bold uppercase" style={{ color: "var(--text-muted)" }}>
-            User Installed ({userPlugins.length})
-          </div>
-          <div className="flex flex-col gap-2">
-            {userPlugins.map((p) => <PluginRow key={p.id} plugin={p} showUninstall />)}
-          </div>
-        </div>
-      )}
-
-      {/* Built-in plugins */}
-      <div>
-        <div className="mb-2 text-xs font-bold uppercase" style={{ color: "var(--text-muted)" }}>
-          Built-in ({builtinPlugins.length})
-        </div>
-        <div className="flex flex-col gap-2">
-          {builtinPlugins.map((p) => <PluginRow key={p.id} plugin={p} />)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Account tab ───────────────────────────────────────────────────────────────
 
 function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate }: { currentUser: PublicUser | null; token: string; onToast: (t: string, type?: "info" | "success" | "error") => void; onCurrentUserUpdate?: (user: PublicUser) => void }) {
@@ -969,7 +810,7 @@ function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate }: { curr
         </div>
         <input ref={fileRef} type="file" accept="image/*,.gif" className="hidden" onChange={handleAvatarUpload} />
         <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
-          Supports PNG, JPG, WebP, and animated GIF. Unlike Discord, GIF avatars are free for all users.
+          PNG, JPG, WebP and animated GIF all work. Animated pictures are free too.
         </p>
       </div>
     </div>
@@ -1012,7 +853,7 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
       setNewName("");
       onToast(`Emoji :${emoji.name}: added!`, "success");
     } catch (err) {
-      onToast(`Failed: ${err instanceof Error ? err.message : err}`, "error");
+      onToast(errorMessage(err, "Couldn't add that emoji. Try again."), "error");
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -1025,7 +866,7 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
       setEmojis((prev) => prev.filter((e) => e.id !== emojiId));
       onToast(`Removed :${name}:`, "info");
     } catch (err) {
-      onToast(`Failed: ${err instanceof Error ? err.message : err}`, "error");
+      onToast(errorMessage(err, "Couldn't remove that emoji. Try again."), "error");
     }
   }
 
@@ -1033,7 +874,7 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
     <div>
       <h2 className="mb-1 text-xl font-bold">Custom Emoji</h2>
       <p className="mb-4 text-sm" style={{ color: "var(--text-muted)" }}>
-        Upload custom emoji for any server. Use them in messages with <code>:name:</code> syntax. GIF emoji are supported for all users — no Nitro required.
+        Add your own emoji to a space, then type <code>:name:</code> in a message to use one. Animated GIFs work too.
       </p>
 
       {servers.length === 0 ? (
@@ -1559,7 +1400,7 @@ function SocialTab({ token, onToast }: { token: string; onToast: (t: string, typ
 
 function NotificationsTab({ token, onToast }: { token: string; onToast: (t: string, type?: "info" | "success" | "error") => void }) {
   const [devices, setDevices] = useState<PushDevice[]>([]);
-  const [privacyNote, setPrivacyNote] = useState("Push notifications are content-free.");
+  const [privacyNote, setPrivacyNote] = useState("A push notification only says something new arrived.");
   const [serverPushEnabled, setServerPushEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -1608,18 +1449,18 @@ function NotificationsTab({ token, onToast }: { token: string; onToast: (t: stri
     <div>
       <h2 className="mb-1 text-xl font-bold">Notifications &amp; mobile</h2>
       <p className="mb-6 max-w-3xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-        Ohiyo push is designed for sleeping Instant Servers: the server wakes to accept the message, then the always-on relay sends a generic nudge. Push payloads do not include message text, filenames, channel names, or E2E keys.
+        Get a nudge when something new arrives. A notification never includes message text, file names, channel names or encryption keys.
       </p>
 
       <div className="mb-6 grid gap-3 md:grid-cols-2">
         <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
-          <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>📱 Mobile/PWA install</div>
+          <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>📱 Install on your phone</div>
           <p className="mt-2 text-xs leading-5" style={{ color: "var(--text-muted)" }}>
-            On iPhone/Android, open Ohiyo in the browser menu and choose <b>Add to Home Screen</b>. The installed app gets standalone chrome, safe-area layout, and the Ohiyo service worker.
+            On iPhone or Android, open your browser&apos;s menu and choose <b>Add to Home Screen</b>. After that, Ohiyo opens like any other app.
           </p>
         </div>
         <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
-          <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>🔕 Privacy boundary</div>
+          <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>🔕 What a notification shows</div>
           <p className="mt-2 text-xs leading-5" style={{ color: "var(--text-muted)" }}>{privacyNote}</p>
         </div>
       </div>
@@ -1629,36 +1470,36 @@ function NotificationsTab({ token, onToast }: { token: string; onToast: (t: stri
           <div>
             <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Device notifications</div>
             <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-              Local notifications work while Ohiyo is open. Server-backed PWA push needs a VAPID key on the relay.
+              Notifications on this device work while Ohiyo is open. Push notifications also reach you when it&apos;s closed, if this home has them switched on.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={enableLocalNotifications} className="rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }}>
-              Enable local notifications
+              Turn on notifications
             </button>
             <button type="button" onClick={enablePush} disabled={!canUseWebPush() || !serverPushEnabled || busy} className="rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--accent)", color: "white", opacity: canUseWebPush() && serverPushEnabled && !busy ? 1 : 0.55 }}>
-              {busy ? "Enabling…" : "Enable content-free PWA push"}
+              {busy ? "Turning on…" : "Turn on push notifications"}
             </button>
           </div>
         </div>
         {!serverPushEnabled && (
           <p className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
-            Server-backed PWA push is not configured on this home yet. Set <code>OHIYO_WEB_PUSH_PUBLIC_KEY</code> and the dispatcher credentials to enable it; APNs/FCM native setup is documented for mobile builds.
+            Push notifications aren&apos;t switched on for this home yet. If you run it, the setup steps are in <code>docs/push-mobile-runbook.md</code>.
           </p>
         )}
       </div>
 
       <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
-        <div className="mb-3 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Registered push devices</div>
+        <div className="mb-3 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Devices that get push notifications</div>
         {devices.length === 0 ? (
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>No server-backed push devices registered yet.</p>
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>None yet.</p>
         ) : (
           <div className="grid gap-2">
             {devices.map((d) => (
               <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2" style={{ background: "var(--bg-input)" }}>
                 <div className="min-w-0">
                   <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{d.device_name || d.platform}</div>
-                  <div className="truncate text-[11px]" style={{ color: "var(--text-muted)", maxWidth: 420 }}>{d.platform} · {d.endpoint}</div>
+                  {d.device_name && <div className="truncate text-[11px]" style={{ color: "var(--text-muted)", maxWidth: 420 }}>{d.platform}</div>}
                 </div>
                 <button type="button" onClick={() => void remove(d.id)} className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: "var(--bg-hover)", color: "var(--danger)" }}>Remove</button>
               </div>
@@ -1926,7 +1767,7 @@ function SecurityTab({
     setScope(nextScope);
     try {
       await api.setDeadman(token, nextSeconds, nextScope);
-      onToast(nextSeconds ? "Dead man's switch armed" : "Dead man's switch turned off", "success");
+      onToast(nextSeconds ? "Dead man's switch is on" : "Dead man's switch is off", "success");
     } catch {
       onToast("Couldn't save", "error");
     }
@@ -1937,7 +1778,7 @@ function SecurityTab({
     try {
       await burnVault(); // restarts Ohiyo on success
     } catch (err) {
-      onToast(`Couldn't burn the keys: ${errorMessage(err, "something went wrong")}`, "error");
+      onToast(`Couldn't delete the keys: ${errorMessage(err, "something went wrong")}`, "error");
     }
   }
 
@@ -1957,12 +1798,11 @@ function SecurityTab({
         <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              🥷 Privacy Mode
+              Privacy Mode
             </div>
             <p className="mt-1 max-w-2xl text-xs" style={{ color: "var(--text-muted)" }}>
-              Hide live behavioral metadata while keeping Ohiyo easy: no typing pings, no visible online/idle/activity,
-              and no peer-visible “Seen” receipts. Messages, unread badges, and calls still work — joining a voice room
-              still reveals you to that room.
+              Hides when you&apos;re typing, when you&apos;re online, and when you&apos;ve read a message. Messages, unread
+              badges and calls still work. Joining a voice room still shows you to the people in it.
             </p>
           </div>
           <button
@@ -1982,10 +1822,10 @@ function SecurityTab({
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {[
-            ["No typing leaks", "Ohiyo stops telling rooms when you are composing."],
-            ["Invisible presence", "Others will not get online/idle/activity updates for you."],
-            ["Quiet receipts", "Your reads still clear your unread count, but peers do not get Seen updates."],
-            ["Device synced", "The preference is stored in your account prefs and follows new sessions."],
+            ["No typing dots", "Nobody sees that you are typing."],
+            ["Hidden status", "Nobody sees whether you are online or idle, or what you are doing."],
+            ["No “Seen”", "Your unread counts still clear, but nobody is told you read their message."],
+            ["On all your devices", "This setting follows your account to your other devices."],
           ].map(([title, body]) => (
             <div key={title} className="rounded-md px-3 py-2" style={{ background: "var(--bg-input)", border: "1px solid var(--bg-hover)" }}>
               <div className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>{title}</div>
@@ -2028,7 +1868,7 @@ function SecurityTab({
               {newCode}
             </code>
             <p className="mt-2 text-xs" style={{ color: "var(--text-secondary)" }}>
-              ⚠️ Write this down and keep it safe. It can restore your encryption identity and keys. Anyone with it may be able to restore this encrypted state; we can&apos;t reset it for you.
+              Write this down and keep it somewhere safe. It unlocks your backed-up encryption keys, so anyone who has it could use them too. We can&apos;t recover it for you.
             </p>
             <div className="mt-2 flex gap-2">
               <button
@@ -2065,7 +1905,7 @@ function SecurityTab({
             {hasBackup && (
               <>
                 <span className="text-xs" style={{ color: backupInfo?.version === 1 ? "var(--warning)" : "var(--green)" }}>
-                  {backupInfo?.version === 1 ? "Older backup saved — refresh to replace it with keys-only v2" : `✓ Keys-only snapshot saved${backupInfo?.entry_count ? ` · ${backupInfo.entry_count} entries` : ""}`}
+                  {backupInfo?.version === 1 ? "You have an older backup. Choose “Back up keys again” to update it." : "✓ Keys backed up"}
                 </span>
                 <button
                   type="button"
@@ -2083,10 +1923,10 @@ function SecurityTab({
         <details className="mb-3 rounded-md p-3 text-xs" style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "1px solid var(--bg-hover)" }}>
           <summary className="cursor-pointer font-semibold" style={{ color: "var(--text-primary)" }}>What this protects</summary>
           <div className="mt-2 grid gap-1.5">
-            <p>This is a <strong>keys-only snapshot</strong>: it protects key material present when you press the button. Run it again after important activity until continuous backup ships.</p>
-            <p>If you have an older v1 backup, pressing the backup button replaces the single server-stored backup blob with a v2 keys-only snapshot; old backup blobs are not kept alongside the replacement.</p>
-            <p>Ohiyo does not include your decrypted plaintext cache by default. That stronger history recovery mode would store user-encrypted plaintext on the server and needs an explicit advanced opt-in.</p>
-            <p>Backup coverage handles are blinded with your recovery secret. The server stores opaque handles, not clear room ids or per-room activity timestamps.</p>
+            <p>The backup holds the <strong>keys you have right now</strong>. Back up again after you start new encrypted chats, so the newest keys are in it too.</p>
+            <p>There is only ever one backup. Backing up again replaces the old one.</p>
+            <p>It holds keys, not copies of your messages.</p>
+            <p>The server can&apos;t tell from the backup which chats it covers, or when you were active in them.</p>
           </div>
         </details>
 
@@ -2124,21 +1964,21 @@ function SecurityTab({
               <div className="font-semibold" style={{ color: "var(--text-primary)" }}>Recovery preview</div>
               <div className="mt-1 grid gap-1">
                 <div>Backup format v{restorePreview.version}{restorePreview.updated_at ? ` · updated ${new Date(restorePreview.updated_at * 1000).toLocaleDateString()}` : ""}{restorePreview.entry_count ? ` · ${restorePreview.entry_count} entries` : ""}</div>
-                {restorePreview.scanned_messages > 0 && <div>Scanned {restorePreview.scanned_messages} recent encrypted message(s) across your accessible channels on this home.</div>}
-                <div>Restore material: {restorePreview.material_importable}/{restorePreview.material_total} importable entr{restorePreview.material_total === 1 ? "y" : "ies"}; {restorePreview.material_signal_sessions} Signal ratchet session(s); {restorePreview.material_sender_keys} group sender key(s).</div>
+                {restorePreview.scanned_messages > 0 && <div>Checked {restorePreview.scanned_messages} recent encrypted message(s) in your chats on this home.</div>}
+                <div>In this backup: {restorePreview.material_importable} of {restorePreview.material_total} item(s) can be restored, including {restorePreview.material_signal_sessions} one-to-one chat session(s) and {restorePreview.material_sender_keys} group key(s).</div>
                 {restorePreview.material_ignored > 0 && <div>{restorePreview.material_ignored} unsupported backup entr{restorePreview.material_ignored === 1 ? "y was" : "ies were"} skipped in the preview. Restore will be partial, not silent.</div>}
                 {restorePreview.material_plaintext_cache_entries > 0 && <div>This older backup includes {restorePreview.material_plaintext_cache_entries} plaintext-cache entr{restorePreview.material_plaintext_cache_entries === 1 ? "y" : "ies"}; new backups do not include plaintext cache by default.</div>}
                 {restorePreview.checked_messages > 0 ? (
-                  <div>{restorePreview.covered} group message key(s) appear covered; {restorePreview.not_covered} not covered; {restorePreview.unavailable} unavailable.</div>
+                  <div>Group chats: {restorePreview.covered} recent message(s) covered by this backup, {restorePreview.not_covered} not covered, {restorePreview.unavailable} couldn&apos;t be checked.</div>
                 ) : (
-                  <div>No recent encrypted-message headers were found yet. Restore can still install your backed-up keys.</div>
+                  <div>There are no recent encrypted messages to check against. Restoring will still bring your backed-up keys to this device.</div>
                 )}
                 {restorePreview.signal_messages > 0 && (
                   <div>
-                    Signal preview: {restorePreview.signal_restorable} likely restorable from cloned ratchet state; {restorePreview.signal_missing_session} missing ratchet session; {restorePreview.signal_not_addressed} not addressed to this backed-up device; {restorePreview.signal_corrupt} corrupt/incompatible; {restorePreview.unavailable} unavailable without recent ciphertext.
+                    One-to-one chats: {restorePreview.signal_restorable} recent message(s) can probably be restored. Can&apos;t be restored: {restorePreview.signal_missing_session} with no saved session, {restorePreview.signal_not_addressed} sent to a different device, {restorePreview.signal_corrupt} damaged. {restorePreview.unavailable} couldn&apos;t be checked.
                   </div>
                 )}
-                {(restorePreview.not_covered > 0 || restorePreview.signal_missing_session > 0 || restorePreview.signal_not_addressed > 0 || restorePreview.signal_corrupt > 0) && <div>Messages marked not covered, missing, not addressed, or corrupt are terminal for this backup; Ohiyo will not show a fake retry loop after reload.</div>}
+                {(restorePreview.not_covered > 0 || restorePreview.signal_missing_session > 0 || restorePreview.signal_not_addressed > 0 || restorePreview.signal_corrupt > 0) && <div>Messages this backup can&apos;t restore will stay unreadable on this device, and Ohiyo won&apos;t keep retrying them.</div>}
               </div>
             </div>
           )}
@@ -2148,10 +1988,11 @@ function SecurityTab({
       {/* Dead man's switch */}
       <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
         <div className="mb-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-          ⏳ Dead man&apos;s switch
+          Dead man&apos;s switch
         </div>
         <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-          If you don&apos;t open Ohiyo for this long, your data is wiped automatically.
+          If you don&apos;t open Ohiyo for this long, every message you&apos;ve sent is deleted from the server for good. You can have
+          your encryption keys deleted with them.
         </p>
         <div className="mb-3 flex flex-wrap gap-2">
           {DEADMAN_PRESETS.map((p) => {
@@ -2186,7 +2027,7 @@ function SecurityTab({
                   border: "1px solid var(--bg-hover)",
                 }}
               >
-                {s === "history" ? "Wipe my messages" : "Wipe messages + my encryption keys"}
+                {s === "history" ? "Delete my messages" : "Delete my messages and my encryption keys"}
               </button>
             ))}
           </div>
@@ -2197,12 +2038,11 @@ function SecurityTab({
       {isDesktop() && (
         <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--danger)" }}>
           <div className="mb-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-            🔥 Burn keys on this device now
+            Delete this device&apos;s encryption keys now
           </div>
           <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-            On desktop your E2E keys live in locked, non-swappable memory — never plaintext on disk.
-            This destroys them (and the keychain key) immediately; you&apos;ll re-establish encryption
-            from scratch.
+            This deletes the encryption keys stored on this device right away. It can&apos;t be undone, and
+            you&apos;ll set up encryption again from scratch.
           </p>
           {confirmBurn && (
             <p className="mb-3 text-xs font-semibold" style={{ color: "var(--danger)" }}>
@@ -2217,7 +2057,7 @@ function SecurityTab({
                 className="rounded px-3 py-1.5 text-sm font-semibold"
                 style={{ background: "var(--danger)", color: "#fff" }}
               >
-                Yes, burn them
+                Yes, delete them
               </button>
               <button
                 type="button"
@@ -2235,7 +2075,7 @@ function SecurityTab({
               className="rounded px-3 py-1.5 text-sm font-semibold"
               style={{ background: "transparent", color: "var(--danger)", border: "1px solid var(--danger)" }}
             >
-              Burn now
+              Delete keys now
             </button>
           )}
         </div>

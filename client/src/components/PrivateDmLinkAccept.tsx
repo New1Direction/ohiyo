@@ -109,8 +109,8 @@ export function PrivateDmLinkAccept({
             </div>
 
             <p className="mt-4 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
-              This link opens a one-to-one encrypted conversation. It expires in <strong>{timeLeft(preview!.expires_at)}</strong> and
-              burns after the first successful use.
+              This link opens a one-to-one DM. It expires in <strong>{timeLeft(preview!.expires_at)}</strong> and stops
+              working after the first person uses it. Turn on the lock in the chat to end-to-end encrypt it.
             </p>
 
             {isMine ? (

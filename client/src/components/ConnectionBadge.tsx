@@ -6,7 +6,7 @@ const LABELS: Record<QualityLevel, string> = {
   excellent: "Excellent connection",
   good: "Good connection",
   poor: "Poor connection",
-  critical: "Critical connection",
+  critical: "Very poor connection",
   unknown: "Measuring connection",
 };
 

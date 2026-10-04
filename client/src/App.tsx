@@ -333,9 +333,10 @@ function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClos
         Add an Ohiyo home
       </h2>
       <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-        Paste the invite or home link you were given. Custom homes let you use a self-hosted relay; Tor users can add an
+        A home is the server an Ohiyo account lives on. Paste the invite or home link you were given to add another one.
+        In Tor Browser you can also add an
         <code className="mx-1 rounded px-1" style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }}>http://…onion</code>
-        home from Tor Browser. Desktop-wide SOCKS proxy routing still depends on the OS/network layer.
+        home. The desktop app does not route through Tor by itself.
       </p>
       <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -2064,7 +2065,7 @@ function MainApp({
   }
 
   async function reportTarget(target_type: "message" | "user" | "server", target_id: string, label: string) {
-    const reason = window.prompt(`Why are you reporting this ${label}?`, "harassment/spam/unsafe content");
+    const reason = window.prompt(`Why are you reporting this ${label}? For example: harassment, spam or unsafe content.`, "");
     if (!reason?.trim()) return;
     const details = window.prompt("Optional details for moderators", "") ?? "";
     try {
@@ -2210,7 +2211,7 @@ function MainApp({
     {
       id: "action-private-dm-link",
       label: "Create private DM link",
-      sub: "One-time link or QR for a private thread",
+      sub: "One-time link or QR code to start a DM",
       icon: "⛓",
       run: () => setShowPrivateDmLink(true),
     },

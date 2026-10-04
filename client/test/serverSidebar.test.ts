@@ -24,7 +24,7 @@ test("the lightning shortcut is removed without removing add-home, DMs or add-se
   window.document.body.innerHTML = bundle.mod.renderServerSidebar();
   assert.equal(window.document.body.textContent.includes("⚡"), false);
   assert.equal(window.document.querySelector('[aria-label="Create or manage Instant Servers"]'), null);
-  for (const name of ["Add an Ohiyo server", "Direct Messages", "Add a server"]) {
+  for (const name of ["Add an Ohiyo home", "Direct Messages", "Create a space"]) {
     assert.ok(window.document.querySelector(`button[aria-label="${name}"]`));
   }
 });

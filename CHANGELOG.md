@@ -115,6 +115,16 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
+- **Plugins page you can read:** a plain introduction, the list first, real on/off switches that
+  say which plugin they changed, and adding a plugin from a link folded away at the bottom with
+  what such a plugin can and cannot do. Four switches that changed nothing are gone (Custom CSS,
+  Font Picker, Link Preview, Code Highlight) and the rest have plain names.
+- **Spoilers for everyone:** `||text||` is hidden until clicked for every reader. It used to be
+  a plugin, so only readers who had switched it on got it.
+- **Plainer wording across the app,** and several lines that were not true are fixed: a DM opened
+  from a one-time link is not encrypted until the lock is on, a recovery code restores keys but
+  does not sign you in, uploads have a size limit, and the dead man's switch now says what it
+  deletes. Notifications no longer shows server setup instructions to everyone.
 - **ohiyo.gg comes alive:** the birds now flap their wings and fly in two flocks, near and far.
   Butterflies and drifting seeds move over the meadow, a rabbit peeks over the hill now and
   then, a shooting star crosses the night sky, sun rays turn slowly behind the sunrise, and
@@ -179,6 +189,13 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- **The chat follows the window:** narrowing a desktop window no longer leaves the chat wide and
+  the message box off screen, and on a phone a message that wraps onto a second line no longer
+  runs into the one below it. Rows are now sized for the real width of the chat, for the phone
+  font size, and for wide characters such as emoji and CJK.
+- **`/me` sends italics:** it sent `_underscores_`, which the chat does not render.
+- **Focus mode on a phone:** it hid the drawer, which is the only way to another chat or back to
+  Settings. It now only hides the sidebars on wide windows.
 - **Dream mode's glow and the blur behind dialogs were missing in the production app:** the
   production build kept only `-webkit-backdrop-filter` for two rules, which Chrome, Edge and
   Firefox ignore, so the blur never applied there (it looked fine in development, which does

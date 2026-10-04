@@ -32,7 +32,7 @@ test("home rail uses the brand mark, removes the lightning shortcut and preserve
       await page.keyboard.press("Enter");
       assert.equal(await official.getAttribute("aria-pressed"), "true");
     }
-    for (const [name, action] of [["Add an Ohiyo server", "add-home"], ["Direct Messages", "dm"], ["Add a server", "create"], ["Saved messages", "saved"]]) {
+    for (const [name, action] of [["Add an Ohiyo home", "add-home"], ["Direct Messages", "dm"], ["Create a space", "create"], ["Saved messages", "saved"]]) {
       await page.getByRole("button", { name, exact: true }).click();
       assert.equal(await page.getByLabel("Last action").textContent(), action);
     }

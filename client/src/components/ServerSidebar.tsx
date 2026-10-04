@@ -122,8 +122,8 @@ export function ServerSidebar({
         <button
           type="button"
           onClick={onAddHome}
-          title="Add an Ohiyo server"
-          aria-label="Add an Ohiyo server"
+          title="Add an Ohiyo home"
+          aria-label="Add an Ohiyo home"
           className="kc-interactive flex h-8 w-8 items-center justify-center text-sm font-bold"
           style={{ borderRadius: "50%", background: "var(--bg-sidebar)", color: "var(--accent)", border: "none" }}
         >
@@ -169,8 +169,8 @@ export function ServerSidebar({
         className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full text-xl font-bold transition-all duration-150 hover:rounded-[30%]"
         style={{ background: "var(--bg-sidebar)", color: "var(--green)", border: "none" }}
         onClick={onCreateServer}
-        title="Add a Server"
-        aria-label="Add a server"
+        title="Create a space"
+        aria-label="Create a space"
       >
         +
       </button>
