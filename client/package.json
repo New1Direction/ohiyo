@@ -12,7 +12,8 @@
     "lint:fix": "eslint src --fix",
     "typecheck": "tsc --noEmit",
     "test:unit": "node --experimental-strip-types --test 'test/**/*.test.ts'",
-    "test:e2e": "node ../e2e/run.mjs"
+    "test:e2e": "node ../e2e/run.mjs",
+    "test:watch-dream": "node --test test/watchDream.browser.mjs"
   },
   "dependencies": {
     "@privacyresearch/libsignal-protocol-typescript": "^0.0.16",
@@ -41,6 +42,7 @@
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^15.15.0",
+    "happy-dom": "^20.14.5",
     "playwright-core": "^1.60.0",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.61.0",

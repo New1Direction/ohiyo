@@ -12,6 +12,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ## [Unreleased]
 
 ### Added
+- **Watch-party viewing modes:** Dream feathers the video edges into a softened room;
+  Cinema opens a black fullscreen view with thin top/bottom insets. Both keep the
+  existing player and playback state, with accessible mode controls.
 - **Voice pre-join roster:** voice channels now show who is already in the call before
   you join, including a live count and compact participant preview.
 - **Call entry preview:** joining a non-empty voice room now opens a “Ready to join?”

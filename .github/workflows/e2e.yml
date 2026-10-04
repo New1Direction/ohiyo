@@ -46,6 +46,13 @@ jobs:
           npm ci
           npx playwright-core install --with-deps chromium
 
+      - name: Watch modes browser regression
+        if: matrix.client_mode == 'dev'
+        working-directory: client
+        run: |
+          export KIKKA_CHROMIUM="$(node -e "console.log(require('playwright-core').chromium.executablePath())")"
+          npm run test:watch-dream
+
       - name: Build server
         working-directory: server
         run: cargo build --locked
