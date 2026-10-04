@@ -154,6 +154,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- **Dream mode's glow and the blur behind dialogs were missing in the production app:** the
+  production build kept only `-webkit-backdrop-filter` for two rules, which Chrome, Edge and
+  Firefox ignore, so the blur never applied there (it looked fine in development, which does
+  not minify CSS). Both rules now keep the standard property, and a test runs the real
+  production build to catch this.
 - **Profile editor:** Grouped, responsive fields with visible focus and character counts; fixed the avatar being hidden behind the banner.
 - **Top songs:** Compact add/edit/remove favorites, optional listening links with validation, and a simpler public music list. Drafts remain local until Save profile.
 - **Watch parties work on the web app.** A YouTube party showed an empty box, because
