@@ -123,10 +123,16 @@ try {
   log("invite link generated + activation recorded ✓");
   await page.click('button:has-text("Done")');
 
-  // ── Instant Servers manager is exposed from the rail ──────────────
-  await page.click('button[aria-label="Create or manage Instant Servers"]');
+  // ── Instant Servers stays reachable after removing the lightning shortcut ──
+  if (await page.locator('button[aria-label="Create or manage Instant Servers"]').count()) {
+    throw new Error("the removed lightning shortcut returned");
+  }
+  // Fresh accounts have no optional keyboard plugin enabled.
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Search channels and DMs" }).fill("Instant Servers");
+  await page.getByRole("option", { name: /Create or manage Instant Servers/ }).click();
   await page.waitForSelector("text=Managed encrypted homes you can leave anytime", { timeout: 8000 });
-  log("Instant Servers manager opens from rail ✓");
+  log("Instant Servers manager opens from the core command palette ✓");
   await page.keyboard.press("Escape");
   await settle(page, 200);
 

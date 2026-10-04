@@ -46,12 +46,24 @@ jobs:
           npm ci
           npx playwright-core install --with-deps chromium
 
-      - name: Watch modes browser regression
+      - name: UI browser regressions
         if: matrix.client_mode == 'dev'
         working-directory: client
         run: |
           export KIKKA_CHROMIUM="$(node -e "console.log(require('playwright-core').chromium.executablePath())")"
+          export KIKKA_SHOTS=/tmp/ohiyo-ui-shots
+          mkdir -p "$KIKKA_SHOTS"
           npm run test:watch-dream
+          npm run test:server-sidebar
+          npm run test:profile-editor
+
+      - name: Upload UI screenshots
+        if: always() && matrix.client_mode == 'dev'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-regression-screenshots
+          path: /tmp/ohiyo-ui-shots
+          if-no-files-found: ignore
 
       - name: Build server
         working-directory: server
