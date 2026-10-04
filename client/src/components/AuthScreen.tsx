@@ -429,13 +429,13 @@ export function AuthScreen({ home, onAuth }: Props) {
               </button>
               <br />
               <span style={{ color: "var(--text-muted)", opacity: 0.85 }}>
-                Forgot it? If you saved a recovery code you can{" "}
+                Forgot your password? Ohiyo can't reset it. If you're still signed in somewhere, you can{" "}
                 <button type="button" onClick={() => switchMode("link")} className="kc-interactive font-semibold" style={{ color: "var(--green)", textShadow: "0 0 12px color-mix(in oklch, var(--green) 28%, transparent)" }}>
-                  link a device
+                  link this device
                 </button>{" "}
-                or{" "}
+                from there. If not, you can{" "}
                 <button type="button" onClick={() => switchMode("register")} className="kc-interactive font-semibold" style={{ color: "var(--danger)", textShadow: "0 0 12px color-mix(in oklch, var(--danger) 28%, transparent)" }}>
-                  start fresh
+                  start a new account
                 </button>
                 .
               </span>

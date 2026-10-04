@@ -31,7 +31,7 @@ export function ActivationChecklist({ state, serverName, onInvite, onJoinVoice, 
         </div>
         <button type="button" className="kc-activation-dismiss kc-interactive" onClick={onDismiss} aria-label="Hide owner launch checklist">×</button>
       </div>
-      <p>{allDone ? "Nice — you’ve completed the first-user funnel." : "Five tiny steps to turn an empty room into a real community."}</p>
+      <p>{allDone ? "Nice. Your space is ready for people." : "Five tiny steps to turn an empty room into a real community."}</p>
       <div className="kc-activation-progress" aria-label={`${done} of ${total} setup steps complete`}>
         <span style={{ width: `${pct}%` }} />
       </div>

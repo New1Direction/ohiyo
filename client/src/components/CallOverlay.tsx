@@ -333,7 +333,7 @@ function SharePresetSheet({
           Share your screen
         </div>
         <div style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)", marginBottom: "var(--space-4)" }}>
-          Pick a quality — all free, no Nitro.
+          Pick a quality. They're all free.
         </div>
 
         <div role="radiogroup" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "var(--space-2)" }}>

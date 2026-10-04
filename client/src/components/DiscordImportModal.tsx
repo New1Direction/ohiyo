@@ -639,7 +639,7 @@ function PreviewCard({ preview, history }: { preview: DiscrawlPreview; history: 
           <div className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>2. Preview looks good</div>
           <div className="mt-1 text-xl font-bold" style={{ color: "var(--text-primary)" }}>{preview.guild_name}</div>
           <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-            {history === "All" ? "All history selected." : "Last 90 days selected for a faster first move."} Imported archive channels will be labeled not E2E.
+            {history === "All" ? "All history selected." : "Last 90 days selected for a faster first move."} Imported channels will be labeled as not encrypted.
           </p>
         </div>
         {isHuge && (
@@ -748,7 +748,7 @@ function PermissionReviewCard({ report, review, reviewError }: { report: ImportR
         <div>
           <div className="font-bold" style={{ color: "var(--text-primary)" }}>1-2-3 permission audit</div>
           <p className="mt-1 text-xs leading-5" style={{ color: "var(--text-muted)" }}>
-            Grandma mode first, raw audit second: Ohiyo translates Discord rules into plain English, then keeps the exact allow/deny bits underneath for power users.
+            A plain-English summary first, the full details underneath: Ohiyo translates Discord's rules, then lists the exact allow and deny settings for anyone who wants to check them.
           </p>
         </div>
         <span className="rounded-full px-2 py-1 text-[11px] font-bold uppercase tracking-wide" style={{ background: clean ? "color-mix(in oklch, var(--green, #22c55e) 18%, transparent)" : "color-mix(in oklch, var(--gold, #f59e0b) 18%, transparent)", color: clean ? "var(--green, #22c55e)" : "var(--gold, #f59e0b)" }}>

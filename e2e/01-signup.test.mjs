@@ -147,7 +147,7 @@ try {
   await settle(page, 200);
 
   // ── Create-server modal (the + button, replacing window.prompt) ──
-  await page.click('[title="Add a Server"]');
+  await page.click('[title="Create a space"]');
   await page.waitForSelector("text=Create your space", { timeout: 5000 });
   log("CreateServerModal opens from + (no window.prompt) ✓");
   await shot(page, "06-create-modal-1440");
@@ -155,7 +155,7 @@ try {
   await settle(page, 300);
 
   // ── Logout → login flow with remembered username + friendly error ─
-  await page.click('[title="Log out"]');
+  await page.click('[title="Sign out"]');
   // Signing out of the last account asks first, because it removes local message data.
   const signOutDialog = '[role="dialog"][aria-labelledby="kc-sign-out-title"]';
   await page.waitForSelector(signOutDialog, { timeout: 8000 });

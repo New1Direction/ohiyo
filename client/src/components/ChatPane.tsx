@@ -1078,7 +1078,7 @@ export function ChatPane({
         >
           <div className="text-4xl mb-2">📁</div>
           <div className="font-semibold" style={{ color: "var(--accent)" }}>
-            Drop it anywhere — files of any size are welcome
+            Drop it anywhere. Big files are welcome.
           </div>
         </div>
       )}
@@ -1153,7 +1153,7 @@ export function ChatPane({
             style={{ background: "color-mix(in oklch, var(--gold, #f59e0b) 16%, transparent)", color: "var(--gold, #f59e0b)" }}
             title="Imported from Discord — not end-to-end encrypted"
           >
-            Imported · not E2E
+            Imported · not encrypted
           </span>
         )}
         {channel.topic && (
@@ -1373,7 +1373,7 @@ export function ChatPane({
         >
           <span aria-hidden="true">📦</span>
           <span>
-            <strong style={{ color: "var(--text-primary)" }}>Imported Discord archive.</strong> This history is preserved as plaintext archive content and marked not E2E. Native Ohiyo DMs and group chats can still be encrypted.
+            <strong style={{ color: "var(--text-primary)" }}>Imported Discord archive.</strong> These messages came from Discord and are not end-to-end encrypted. DMs and group chats you start in Ohiyo can still be.
           </span>
         </div>
       ) : null}
@@ -2192,10 +2192,10 @@ function UndecryptableMessage({ state, onOpenRecovery }: { state: "unknown" | "n
       </div>
       <p className="mt-1 leading-5">
         {notCovered
-          ? "After checking your recovery manifest, this message’s key was not covered. Forward secrecy may have deleted it before backup, so Ohiyo cannot recreate it later."
+          ? "This message’s key wasn’t in your backup, so it can’t be read on this device. Keys for old messages are deleted over time on purpose, and Ohiyo can’t make this one again."
           : restoredButFailed
-            ? "A recovery backup was restored, but this specific message still could not be read. The key may be incomplete, from a different device state, or already deleted by forward secrecy before backup."
-            : "If you made a recovery backup, open Personal recovery to check it. If the key was never backed up, forward secrecy means Ohiyo cannot recreate it later."}
+            ? "A backup was restored, but this message still can’t be read. Its key may be missing from the backup, belong to another device, or have been deleted before the backup was made."
+            : "If you made a recovery backup, open Personal recovery to check it. If this key was never backed up, Ohiyo can’t make it again."}
       </p>
       {!restoredButFailed && !notCovered && onOpenRecovery && (
         <button type="button" onClick={onOpenRecovery} className="kc-interactive mt-2 rounded-full px-3 py-1.5 text-xs font-bold" style={{ background: "var(--accent)", color: "#fff", border: "none" }}>
