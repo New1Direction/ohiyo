@@ -5,25 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Privacy Threat Model — Ohiyo</title>
 <meta name="description" content="Ohiyo's public privacy threat model: what end-to-end encryption protects, what metadata remains, and how Privacy Mode, private links, padding, encrypted attachments, local cache encryption, and custom homes reduce exposure." />
-<meta name="theme-color" content="#10100f" />
+<meta name="theme-color" content="#f6f1e7" />
 <link rel="icon" href="kikka.svg" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css" />
+<link rel="preload" href="assets/fonts/sora-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="assets/fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="site.css" />
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
-<div class="bg"></div><div class="grain"></div>
-<nav id="nav"><div class="wrap">
-  <a class="brand" href="/" style="text-decoration:none;color:inherit"><img src="kikka.svg" alt="" /> o<span class="hi">Hi</span>Yo</a>
-  <div class="nav-links">
-    <a class="l" href="/#features">Features</a>
-    <a class="l" href="/#security">Security</a>
-    <a class="l" href="privacy.html">Privacy</a>
-    <a class="btn ghost sm" href="https://app.ohiyo.gg" rel="noopener">Open app →</a>
+<header class="nav" id="nav">
+  <div class="wrap nav__in">
+    <a class="brand" href="/" aria-label="Ohiyo home"><span class="mark" aria-hidden="true"></span><span>o<b>Hi</b>Yo</span></a>
+    <nav class="nav__links" aria-label="Main">
+      <a href="/#how">How it works</a>
+      <a href="/#inside">What's inside</a>
+      <a href="/#privacy">Privacy</a>
+      <a href="/#mission">Mission</a>
+      <a href="/#own">Run your own</a>
+    </nav>
+    <a class="btn btn--go btn--sm" href="https://app.ohiyo.gg">Open Ohiyo</a>
   </div>
-</div></nav>
+</header>
 
 <main id="main" class="legal wrap threat-model">
   <p class="eyebrow">Privacy</p>
@@ -109,17 +111,42 @@
   <p class="legal-updated">This threat model is a living document. If code and this page disagree, the code wins and this page should be fixed.</p>
 </main>
 
-<footer><div class="wrap">
-  <div class="brand"><img src="kikka.svg" alt="" style="width:24px" /> o<span class="hi" style="color:var(--coral)">Hi</span>Yo</div>
-  <div class="f-links">
-    <a href="/">Home</a>
-    <a href="privacy.html">Privacy</a>
-    <a href="threat-model.html">Threat model</a>
-    <a href="terms.html">Terms</a>
-    <a href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">GitHub</a>
+<footer class="footer">
+  <svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30c160 34 330 44 520 22s300-52 500-40 300 44 420 30v38H0Z"/></svg>
+  <div class="wrap">
+    <div class="footer__grid">
+      <div>
+        <a class="brand" href="/" aria-label="Ohiyo home"><span class="mark" aria-hidden="true"></span><span>o<b>Hi</b>Yo</span></a>
+        <p class="footer__blurb">A free, open source group chat with a lock that works. Kikka says hi.</p>
+      </div>
+      <div>
+        <h2>Ohiyo</h2>
+        <ul>
+          <li><a href="https://app.ohiyo.gg">Open Ohiyo</a></li>
+          <li><a href="/#how">How it works</a></li>
+          <li><a href="status.html">Status</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Trust</h2>
+        <ul>
+          <li><a href="privacy.html">Privacy</a></li>
+          <li><a href="threat-model.html">Threat model</a></li>
+          <li><a href="terms.html">Terms</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Code</h2>
+        <ul>
+          <li><a href="https://github.com/New1Direction/ohiyo" rel="noopener">GitHub</a></li>
+          <li><a href="https://github.com/New1Direction/ohiyo/blob/main/DEPLOY.md" rel="noopener">Run your own</a></li>
+          <li><a href="https://github.com/New1Direction/ohiyo/blob/main/LICENSE" rel="noopener">AGPL-3.0 license</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer__base"><span>oh, hi.</span><span>Free and open source.</span></div>
   </div>
-  <div>oh, hi · ohiyo.gg · free &amp; open · built in Rust + React + Tauri</div>
-</div></footer>
-<script src="app.js"></script>
+</footer>
+<script src="site.js" defer></script>
 </body>
 </html>

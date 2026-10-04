@@ -100,8 +100,10 @@ The GitHub Release is a draft. Before publishing it:
 2. Open it normally from Downloads.
 3. Confirm there is no “Apple could not verify” warning.
 4. Repeat for Intel if possible.
-5. Only then flip `macDownloadsTrusted` in `site/app.js` to `true`, restore direct
-   Mac download copy if desired, deploy the landing site, and publish the release.
+5. Only then add the download links back to `site/index.html` (the landing page stopped
+   offering downloads in October 2026, because the released builds still pointed at the
+   old server), relax the matching check in `client/test/siteLanding.test.ts`, deploy
+   the landing site, and publish the release.
 
 ## Beta policy
 

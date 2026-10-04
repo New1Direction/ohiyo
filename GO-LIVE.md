@@ -23,8 +23,9 @@ Pages) and the wildcard `*.ohiyo.gg` that Instant Servers needs.
 
 ## 2. Ship the landing page → Cloudflare Pages **[you]**
 
-The site is static and self-contained in [`site/`](site/) (`index.html` + `styles.css` +
-`app.js` + `kikka.svg`). Nothing to build.
+The site is static and self-contained in [`site/`](site/) (`index.html` + `site.css` +
+`site.js` + `assets/`). Nothing to build, and it loads nothing from other sites: the fonts
+are in `site/assets/fonts`. `client/test/siteLanding.test.ts` checks its links and claims.
 
 1. Cloudflare → **Workers & Pages → Create → Pages → Connect to Git** → pick
    `New1Direction/ohiyo`.

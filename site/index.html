@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Ohiyo — the encrypted home for your people</title>
-<meta name="description" content="Discord-like ease with private-by-design ownership: end-to-end encrypted DMs and group chats, servers, voice, video, screen-share, and exportable self-hostable community homes." />
-<meta name="theme-color" content="#10100f" />
+<title>Ohiyo: group chat that's actually yours</title>
+<meta name="description" content="Ohiyo is a free, open source group chat. Text, voice, video, screen share and watch parties, with a lock that keeps private chats private. Runs in your browser. No email needed." />
+<meta name="theme-color" content="#f6f1e7" />
+<link rel="canonical" href="https://ohiyo.gg/" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="Ohiyo — the encrypted home for your people" />
-<meta property="og:description" content="Discord-like ease, private-by-design. End-to-end encrypted DMs and group chats, self-host/export ownership, and honest voice visibility." />
+<meta property="og:title" content="Ohiyo: group chat that's actually yours" />
+<meta property="og:description" content="Chat, call, share your screen and watch videos together. Flip the lock on a private chat and nobody else can read it. Free and open source." />
 <meta property="og:image" content="https://ohiyo.gg/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
@@ -17,273 +18,341 @@
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:image" content="https://ohiyo.gg/og.png" />
 <link rel="icon" href="kikka.svg" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css" />
+<link rel="preload" href="assets/fonts/sora-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="assets/fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="site.css" />
+<script>document.documentElement.classList.add("js");</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Ohiyo","url":"https://ohiyo.gg","applicationCategory":"CommunicationApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"license":"https://www.gnu.org/licenses/agpl-3.0.html","codeRepository":"https://github.com/New1Direction/ohiyo"}
+</script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
-<div class="bg"></div><div class="grain"></div>
-<div class="motes" aria-hidden="true">
-  <span class="mote" style="left:7%;width:6px;height:6px;animation-duration:15s;animation-delay:0s"></span>
-  <span class="mote" style="left:21%;width:4px;height:4px;animation-duration:21s;animation-delay:-7s"></span>
-  <span class="mote" style="left:38%;width:7px;height:7px;animation-duration:18s;animation-delay:-3s"></span>
-  <span class="mote" style="left:54%;width:3px;height:3px;animation-duration:24s;animation-delay:-12s"></span>
-  <span class="mote" style="left:69%;width:5px;height:5px;animation-duration:17s;animation-delay:-9s"></span>
-  <span class="mote" style="left:83%;width:6px;height:6px;animation-duration:20s;animation-delay:-4s"></span>
-  <span class="mote" style="left:93%;width:4px;height:4px;animation-duration:23s;animation-delay:-15s"></span>
-</div>
 
-<nav id="nav"><div class="wrap">
-  <a class="brand" href="#top" style="text-decoration:none;color:inherit"><img src="kikka.svg" alt="" /> o<span class="hi">Hi</span>Yo</a>
-  <div class="nav-links">
-    <a class="l" href="#migrate">Move from Discord</a>
-    <a class="l" href="#servers">Instant Servers</a>
-    <a class="l" href="#features">Features</a>
-    <a class="l" href="#security">Security</a>
-    <a class="l" href="status.html">Status</a>
-    <a class="l" href="#download">Download</a>
-    <a class="btn ghost sm" href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">GitHub ↗</a>
+<header class="nav" id="nav">
+  <div class="wrap nav__in">
+    <a class="brand" href="/" aria-label="Ohiyo home"><span class="mark" aria-hidden="true"></span><span>o<b>Hi</b>Yo</span></a>
+    <nav class="nav__links" aria-label="Main">
+      <a href="#how">How it works</a>
+      <a href="#inside">What's inside</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#mission">Mission</a>
+      <a href="#own">Run your own</a>
+    </nav>
+    <a class="btn btn--go btn--sm" href="https://app.ohiyo.gg">Open Ohiyo</a>
   </div>
-</div></nav>
-
-<!-- HERO -->
-<header class="hero" id="top"><div class="wrap">
-  <span class="pill reveal">🔒 E2E DMs &amp; groups · export ownership · self-hostable by design</span>
-  <div class="reveal"><span class="mascot"><img class="logo" src="kikka.svg" alt="Kikka, the Ohiyo chinchilla" /></span></div>
-  <div class="wordmark"><span class="wm-l">o</span><span class="wm-l hi">H</span><span class="wm-l hi">i</span><span class="wm-l">Y</span><span class="wm-l">o</span></div>
-  <h1 class="reveal"><span class="serif-i grad">Discord-like</span> ease. <span class="serif-i">Private-by-design</span> ownership.</h1>
-  <p class="sub reveal">The warm, free place for your people — servers, voice, video, 4K screen-share — with end-to-end encrypted DMs and group chats, exportable community homes, and honest call visibility. Open source. Yours to host.</p>
-  <div class="cta-row reveal">
-    <a class="btn solid" href="https://app.ohiyo.gg" rel="noopener">Open in your browser →</a>
-    <a class="btn ghost download-primary" href="#download">Download the app</a>
-    <a class="btn ghost" href="#host">Self-host</a>
-  </div>
-  <div class="trust reveal">
-    <span><b>✓</b> E2E DMs &amp; groups</span>
-    <span><b>✓</b> Free forever — no Nitro</span>
-    <span><b>✓</b> Self-hostable, AGPL</span>
-    <span><b>✓</b> Built in Rust</span>
-  </div>
-</div></header>
+</header>
 
 <main id="main">
-<!-- DISCORD MIGRATION -->
-<section id="migrate" class="migration"><div class="wrap">
-  <div class="migrate-shell reveal">
-    <div class="migrate-copy">
-      <span class="eyebrow">Move from Discord</span>
-      <h2>Move your Discord community <span class="serif-i grad">in one link.</span></h2>
-      <p class="lede">Paste a Discord Server Template link. Ohiyo rebuilds the familiar rooms, roles, colors, icon, and emoji assets it can see — then gives you a plain-English permission review before you invite anyone.</p>
-      <div class="cta-row migrate-actions">
-        <a class="btn solid" href="https://app.ohiyo.gg" rel="noopener">Import a template →</a>
-        <a class="btn ghost" href="https://github.com/New1Direction/ohiyo/blob/main/docs/discord-template-migration.md" target="_blank" rel="noopener">Read the migration guide</a>
+
+<section class="hero">
+  <div class="wrap hero__grid">
+    <div class="hero__copy">
+      <h1>Group chat that's actually <span class="hl">yours.</span></h1>
+      <p class="lead">Chat, call, share your screen and watch videos together. Flip the lock on a private chat and nobody else can read it. Not even us.</p>
+      <div class="cta">
+        <a class="btn btn--go btn--lg" href="https://app.ohiyo.gg">Open Ohiyo</a>
+        <a class="btn btn--lg" href="#how">How it works</a>
+      </div>
+      <p class="hero__facts">Free. Runs in your browser. No email needed.</p>
+    </div>
+    <div class="hero__art">
+      <div class="kikka-hello">
+        <p class="bubble">oh, hi.</p>
+        <img class="kikka" src="assets/kikka-color.svg" alt="Kikka, the Ohiyo chinchilla" width="746" height="700" />
+      </div>
+      <figure class="window">
+        <div class="window__bar" aria-hidden="true"><i></i><i></i><i></i><span>app.ohiyo.gg</span></div>
+        <img src="assets/shots/chat-1600.webp" srcset="assets/shots/chat-800.webp 800w, assets/shots/chat-1600.webp 1600w" sizes="(max-width: 900px) 92vw, 48vw" width="1600" height="813" alt="Ohiyo open in a browser. Four friends in a space called Movie Club are planning a movie night in the general channel." fetchpriority="high" />
+      </figure>
+      <figure class="phone">
+        <img src="assets/shots/phone-780.webp" width="780" height="1560" alt="The same chat on a phone." />
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="band band--deep" id="how">
+  <svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 58C190 14 360 6 560 32s340 52 540 26 250-40 340-28v50H0Z"/></svg>
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>Up and chatting in about a minute.</h2>
+      <p class="lead">Three steps. The first one is the hardest, and it's picking a name.</p>
+    </div>
+    <ol class="steps">
+      <li class="step reveal">
+        <span class="step__num" aria-hidden="true">1</span>
+        <div class="mock" aria-hidden="true">
+          <span class="mock__label">Username</span>
+          <span class="mock__field">juno<i class="caret"></i></span>
+          <span class="mock__label">Password</span>
+          <span class="mock__field mock__field--dots">••••••••••</span>
+        </div>
+        <h3>Pick a name.</h3>
+        <p>A username and a password. That's the whole signup. No email. No phone number.</p>
+      </li>
+      <li class="step reveal">
+        <span class="step__num" aria-hidden="true">2</span>
+        <div class="mock" aria-hidden="true">
+          <span class="mock__row"><span class="mock__tile">MC</span>Movie Club</span>
+          <span class="mock__row mock__row--quiet"><span class="mock__glyph">#</span>general</span>
+          <span class="mock__row mock__row--quiet"><span class="mock__glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4Z"/><path d="M16 9a4.5 4.5 0 0 1 0 6"/></svg></span>Voice</span>
+        </div>
+        <h3>Name your space.</h3>
+        <p>A space is your group's home. It comes with a #general chat and a voice room, ready to go.</p>
+      </li>
+      <li class="step reveal">
+        <span class="step__num" aria-hidden="true">3</span>
+        <div class="mock" aria-hidden="true">
+          <span class="mock__label">Invite link</span>
+          <span class="mock__field mock__link"><span>app.ohiyo.gg/?invite=k1kk4</span><span class="mock__copy">Copy</span></span>
+          <span class="faces"><img src="assets/people/mika.webp" alt="" width="160" height="160" loading="lazy" /><img src="assets/people/sol.webp" alt="" width="160" height="160" loading="lazy" /><img src="assets/people/pepper.webp" alt="" width="160" height="160" loading="lazy" /><span>3 friends joined</span></span>
+        </div>
+        <h3>Send the link.</h3>
+        <p>Copy your invite link and drop it wherever your friends already are. They click, they're in.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="band band--paper" id="inside">
+  <svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30c160 34 330 44 520 22s300-52 500-40 300 44 420 30v38H0Z"/></svg>
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>What's inside.</h2>
+      <p class="lead">The stuff you'd expect from a group chat, plus a few things we just really wanted.</p>
+    </div>
+    <div class="rows">
+
+      <article class="row reveal">
+        <figure class="window row__art">
+          <img src="assets/shots/dream-1600.webp" srcset="assets/shots/dream-800.webp 800w, assets/shots/dream-1600.webp 1600w" sizes="(max-width: 820px) 92vw, 52vw" width="1600" height="1000" loading="lazy" alt="A watch party in Dream mode. A video of a red flower plays in the middle and the whole room glows with its colors." />
+        </figure>
+        <div class="row__copy">
+          <p class="eyebrow">Watch parties</p>
+          <h3>Watch stuff together.</h3>
+          <p>Paste a video link and everyone watches in sync. One person holds the remote, so nobody ends up three seconds behind.</p>
+          <p>Turn on Dream mode and the whole room glows with the colors of whatever you're watching.</p>
+          <p class="note">Dream mode is for computers. Phones get the regular player.</p>
+        </div>
+      </article>
+
+      <article class="row row--flip reveal">
+        <div class="room row__art" aria-hidden="true">
+          <div class="room__head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4Z"/><path d="M16 9a4.5 4.5 0 0 1 0 6"/></svg>Voice<span>3 in the room</span></div>
+          <ul class="room__people">
+            <li class="is-talking"><img src="assets/people/juno.webp" alt="" width="160" height="160" loading="lazy" />Juno</li>
+            <li><img src="assets/people/mika.webp" alt="" width="160" height="160" loading="lazy" />Mika</li>
+            <li><img src="assets/people/sol.webp" alt="" width="160" height="160" loading="lazy" />Sol</li>
+          </ul>
+          <div class="room__controls"><span>Mute</span><span>Camera</span><span>Share screen</span><span class="leave">Leave</span></div>
+        </div>
+        <div class="row__copy">
+          <p class="eyebrow">Voice and video</p>
+          <h3>Talk out loud.</h3>
+          <p>Hop into a voice room, turn on your camera, or share your screen. One click in, one click out.</p>
+        </div>
+      </article>
+
+      <article class="row reveal">
+        <div class="yours row__art">
+          <figure class="yours__card"><img src="assets/shots/profile-600.webp" width="600" height="1042" loading="lazy" alt="A profile card for Juno with a sunset banner, a short bio and three favorite songs." /></figure>
+          <div class="yours__themes">
+            <p class="eyebrow" id="themes-label">A few of the themes</p>
+            <ul class="chips" aria-labelledby="themes-label">
+              <li>Chrome Blue</li><li>Daybreak</li><li>Dusk</li><li>Sage Grove</li><li>Tokyo Night</li><li>Rosé Pine</li><li>Copper Forge</li><li>Midnight</li>
+            </ul>
+          </div>
+        </div>
+        <div class="row__copy">
+          <p class="eyebrow">Profiles and themes</p>
+          <h3>Make it yours.</h3>
+          <p>Pick one of eleven themes or build your own. Give your profile a banner, a GIF avatar and your top three songs.</p>
+          <p>None of it costs extra. It's your profile, not a product.</p>
+        </div>
+      </article>
+
+      <div class="also reveal">
+        <h3>And the usual good stuff.</h3>
+        <ul class="chips">
+          <li>Direct messages</li><li>Group chats</li><li>Polls</li><li>Events</li><li>Custom emoji</li><li>Pinned messages</li><li>Replies</li><li>Disappearing messages</li><li>Roles and permissions</li><li>Plugins</li><li>Linked devices</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="band band--night" id="privacy">
+  <svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 58C190 14 360 6 560 32s340 52 540 26 250-40 340-28v50H0Z"/></svg>
+  <div class="wrap lock__grid">
+    <div class="lock__copy reveal">
+      <h2>Flip the lock. Now it's <span class="hl">just you</span> and them.</h2>
+      <p class="lead">Turn on the lock in a DM or a group chat. From then on, your messages are scrambled on your device before they are sent. Our server only stores the scrambled version, so we can't read them. Neither can anyone who breaks into our server.</p>
+      <ul class="plain-list">
+        <li><b>Locked</b><span>DMs and group chats, once you turn the lock on. One-to-one chats use the Signal Protocol.</span></li>
+        <li><b>Not locked</b><span>Channels inside a space. Our server can read those, the same as most chat apps.</span></li>
+        <li><b>Still new</b><span>Locks on group chats are experimental. A message sent while you were offline can be missed.</span></li>
+      </ul>
+      <div class="lock__links">
+        <a class="btn" href="threat-model.html">Read the threat model</a>
+        <a class="btn" href="https://github.com/New1Direction/ohiyo" rel="noopener">Check the code</a>
       </div>
     </div>
-    <div class="migrate-panel" aria-label="Discord template import flow">
-      <div class="migrate-bar"><span></span><span></span><span></span><b>Discord template</b></div>
-      <div class="migrate-input">https://discord.new/your-template</div>
-      <div class="migrate-steps">
-        <div><strong>1</strong><b>Paste link</b><small>No server rebuild from scratch.</small></div>
-        <div><strong>2</strong><b>Review permissions</b><small>Plain-English verdicts + exact bits.</small></div>
-        <div><strong>3</strong><b>Invite safely</b><small>Bring people over after visibility checks.</small></div>
+    <div class="lockdemo reveal">
+      <input class="lockdemo__input" type="checkbox" id="lock-toggle" />
+      <label class="lockdemo__switch" for="lock-toggle">
+        <span class="lockdemo__track" aria-hidden="true"><span class="lockdemo__knob"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path class="shackle" d="M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11"/><rect x="5" y="11" width="14" height="9.5" rx="2.5" fill="currentColor"/></svg></span></span>
+        <span>Lock this chat <span class="when-off">(try it)</span></span>
+      </label>
+      <div class="panes">
+        <figure class="pane">
+          <figcaption>On your screen</figcaption>
+          <p class="pane__msg">movie night at 8?</p>
+          <p class="pane__verdict">You and your friend always see the real message.</p>
+        </figure>
+        <figure class="pane" aria-live="polite">
+          <figcaption>What our server stores</figcaption>
+          <p class="pane__stored when-off">movie night at 8?</p>
+          <p class="pane__stored when-on" id="cipher" data-cipher="wJ4kQ0c2u9Zr7YbV1mXeT8aLhPq3NsFd6GyKoU5iRt0=">wJ4kQ0c2u9Zr7YbV1mXeT8aLhPq3NsFd6GyKoU5iRt0=</p>
+          <p class="pane__verdict when-off"><b>Readable.</b> With the lock off, the server keeps your message as plain text.</p>
+          <p class="pane__verdict when-on"><b>Scrambled.</b> Only your devices hold the keys, so this is all we ever get.</p>
+        </figure>
       </div>
-      <div class="migrate-verdict">
-        <span>check before invite</span>
-        <b>#staff-room is likely private</b>
-        <p>@everyone was blocked from seeing this channel in Discord. Make sure it stays hidden before inviting.</p>
-      </div>
     </div>
   </div>
-</div></section>
+</section>
 
-<!-- DOWNLOAD -->
-<section id="download"><div class="wrap">
-  <span class="eyebrow reveal">Get Ohiyo</span>
-  <h2 class="reveal">Download <span class="serif-i grad">Ohiyo.</span></h2>
-  <p class="lede reveal">Use Ohiyo in your browser today, or install the Mac beta. The Mac build is signed but not Apple-notarized yet, so macOS may ask you to right-click → Open the first time.</p>
-  <div class="download-grid reveal">
-    <a class="download-card recommended" data-download-os="mac-arm" href="https://github.com/New1Direction/ohiyo/releases/latest/download/Ohiyo_0.2.0_aarch64.dmg">
-      <span class="dl-logo" aria-hidden="true"><img src="assets/icons/apple.svg" alt="" /></span>
-      <span class="dl-copy"><span class="dl-title"><b>Mac — Apple Silicon</b><em>Beta</em></span><small>M1 / M2 / M3 / M4 · not Apple-notarized yet</small></span>
-      <strong>Download DMG</strong>
-    </a>
-    <a class="download-card" data-download-os="mac-intel" href="https://github.com/New1Direction/ohiyo/releases/latest/download/Ohiyo_0.2.0_x64.dmg">
-      <span class="dl-logo" aria-hidden="true"><img src="assets/icons/apple.svg" alt="" /></span>
-      <span class="dl-copy"><span class="dl-title"><b>Mac — Intel</b><em>Beta</em></span><small>Older Macs · not Apple-notarized yet</small></span>
-      <strong>Download DMG</strong>
-    </a>
-    <a class="download-card" data-download-os="linux" href="https://github.com/New1Direction/ohiyo/releases/latest/download/Ohiyo_0.2.0_amd64.AppImage">
-      <span class="dl-logo" aria-hidden="true"><img src="assets/icons/linux.svg" alt="" /></span>
-      <span class="dl-copy"><span class="dl-title"><b>Linux</b></span><small>AppImage for most desktops</small></span>
-      <strong>Download AppImage</strong>
-    </a>
-    <a class="download-card web" href="https://app.ohiyo.gg" rel="noopener">
-      <span class="dl-logo ohiyo" aria-hidden="true"><img src="assets/icons/ohiyo.svg" alt="" /></span>
-      <span class="dl-copy"><span class="dl-title"><b>Use in browser</b></span><small>No install. Best fallback for Windows right now.</small></span>
-      <strong>Open app</strong>
-    </a>
+<section class="band band--blue mission" id="mission">
+  <svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30c160 34 330 44 520 22s300-52 500-40 300 44 420 30v38H0Z"/></svg>
+  <div class="wrap mission__in">
+    <div class="reveal">
+      <p class="eyebrow">Our mission</p>
+      <h2>Your group chat should belong to you.</h2>
+    </div>
+    <div class="mission__body reveal">
+      <p>Not to an ad company. Not to whoever buys the app next year.</p>
+      <p>So Ohiyo is free. The code is open for anyone to read. And if you'd rather not rely on us at all, you can run your own copy.</p>
+      <p class="mission__sign"><span class="mark" aria-hidden="true"></span>That's the whole plan.</p>
+    </div>
   </div>
-  <p class="download-note reveal"><b>Mac beta note:</b> Apple notarization is still pending. If macOS blocks the app, open Finder, right-click Ohiyo, choose <b>Open</b>, then confirm. Browser access stays available at <a href="https://app.ohiyo.gg" rel="noopener">app.ohiyo.gg</a>.</p>
-  <div class="mac-faq reveal" aria-label="Mac beta FAQ">
-    <details open>
-      <summary>Why does macOS warn about Ohiyo?</summary>
-      <p>The current Mac DMGs are beta/ad-hoc signed while Developer ID notarization is being completed. Gatekeeper may warn even though the release checksums are published on GitHub.</p>
-    </details>
-    <details>
-      <summary>Should I use the browser app instead?</summary>
-      <p>Yes if you want the smoothest first run today. The browser app at <a href="https://app.ohiyo.gg" rel="noopener">app.ohiyo.gg</a> is the primary public beta and does not need the Gatekeeper workaround.</p>
-    </details>
-    <details>
-      <summary>Will the Mac app be notarized?</summary>
-      <p>That is the goal. Until then, Mac downloads remain clearly marked as beta and not Apple-notarized.</p>
-    </details>
-  </div>
-</div></section>
+</section>
 
-<!-- INSTANT SERVERS -->
-<section id="servers"><div class="wrap">
-  <span class="eyebrow reveal">Instant Servers</span>
-  <h2 class="reveal">Launch your own server <span class="serif-i grad">in one tap.</span></h2>
-  <p class="lede reveal">We host it so it just works — your encrypted DMs and group chats stay unreadable to us, you can export everything anytime, and you're one button from moving it to your own box. <b style="color:var(--cream)">Minecraft Realms, if you could walk out with your world.</b></p>
-  <div class="compare reveal">
-    <div class="cmp-card them">
-      <div class="cmp-head"><h3>Discord Nitro</h3><span class="price">$9.99/mo · per person</span></div>
-      <p>A shinier avatar, bigger emoji, HD — <b>for one person.</b> The real server perks are paywalled <em>again</em> behind Boosts (~$4.99 each). A 20-person crew that all wants HD pays <b>~$200/mo</b>. Forever.</p>
+<section class="band band--paper" id="own">
+  <svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 58C190 14 360 6 560 32s340 52 540 26 250-40 340-28v50H0Z"/></svg>
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>Free. No catch.</h2>
     </div>
-    <div class="cmp-card us">
-      <div class="cmp-head"><h3>Ohiyo Instant Server</h3><span class="price">&lt; one Nitro · whole crew</span></div>
-      <p>An <b>always-on server for your entire community, with encrypted DMs and group chats</b> — every "premium" thing included, for everyone. Or run it <b>free</b> (it naps when idle). Or self-host for <b>$0</b>. Cost-per-person only drops as you grow.</p>
+    <ul class="nos">
+      <li class="reveal"><h3>No ads.</h3><p>We don't run ads and we don't sell your data.</p></li>
+      <li class="reveal"><h3>No paid tier.</h3><p>Custom emoji, themes and GIF avatars are just part of the app.</p></li>
+      <li class="reveal"><h3>No lock-in.</h3><p>The code is open source under the AGPL. Anyone can read it, check it or run it.</p></li>
+    </ul>
+    <div class="duo">
+      <article class="card card--sand reveal">
+        <h3>Coming from Discord?</h3>
+        <p>Paste a Discord server template link. Ohiyo rebuilds your channels, roles and colors, then shows you which rooms are private before you invite anyone.</p>
+        <div class="tmpl" aria-hidden="true">
+          <span class="tmpl__link">discord.new/your-template</span>
+          <ul class="chips"><li>Channels</li><li>Roles</li><li>Colors</li><li>Emoji</li></ul>
+        </div>
+        <div class="card__actions"><a class="btn" href="https://github.com/New1Direction/ohiyo/blob/main/docs/discord-template-migration.md" rel="noopener">Read the guide</a></div>
+      </article>
+      <article class="card card--night reveal">
+        <h3>Rather run it yourself?</h3>
+        <p>Ohiyo is one small server program and one database file. Put it on a cheap box and your community lives on your hardware.</p>
+        <div class="term"><code>git clone https://github.com/New1Direction/ohiyo</code><button type="button" data-copy="git clone https://github.com/New1Direction/ohiyo">Copy</button></div>
+        <div class="card__actions">
+          <a class="btn btn--go" href="https://github.com/New1Direction/ohiyo/blob/main/DEPLOY.md" rel="noopener">Setup guide</a>
+          <a class="btn" href="https://github.com/New1Direction/ohiyo" rel="noopener">See the code</a>
+        </div>
+      </article>
     </div>
   </div>
-  <p class="punch reveal">One Discord Nitro buys you a fancier avatar. The same money runs your whole community — <span class="grad">yours to keep</span> — on Ohiyo.</p>
-</div></section>
+</section>
 
-<!-- FEATURES (bento) -->
-<section id="features"><div class="wrap">
-  <span class="eyebrow reveal">Everything, included</span>
-  <h2 class="reveal">The whole thing — <span class="serif-i grad">not a teaser.</span></h2>
-  <p class="lede reveal">All the stuff Discord charges Nitro for is just how Ohiyo works. For $0.</p>
-  <div class="bento reveal">
-    <div class="tile hero-tile t-2x2">
-      <span class="ic">🔒</span>
-      <h3>End-to-end encrypted — DMs, groups &amp; calls</h3>
-      <p>Turn on the lock in a DM or group chat and messages are encrypted on your device before they leave it. 1:1 chats use the <b>Signal Protocol</b> (X3DH + Double Ratchet); groups use sender keys that are replaced when a member is removed (experimental). For those conversations the server relays only <b>ciphertext</b>. Server channels are not end-to-end encrypted.</p>
-      <span class="tag">integration-tested</span>
+<section class="band band--deep">
+  <svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30c160 34 330 44 520 22s300-52 500-40 300 44 420 30v38H0Z"/></svg>
+  <div class="wrap faq">
+    <div class="head reveal">
+      <h2>Quick answers.</h2>
+      <p class="lead">Short ones. We'd rather tell you than have you guess.</p>
     </div>
-    <div class="tile t-3">
-      <span class="ic">🎙️</span>
-      <h3>Voice, video &amp; 4K screen-share</h3>
-      <p>Hop into a call in one tap. Studio-grade audio, HD video, high-fps screen-share — free, no catch.</p>
-    </div>
-    <div class="tile t-3">
-      <span class="ic">⏳</span>
-      <h3>Disappearing messages + dead-man switch</h3>
-      <p>Per-conversation TTL that wipes server-side, plus an inactivity wipe if you go dark for N days.</p>
-    </div>
-    <div class="tile t-2w">
-      <span class="ic">💸</span>
-      <h3>Free forever — no paywalls, no tracking</h3>
-      <p>Bigger uploads, custom emoji, HD video, themes, roles, polls, events. The things behind Nitro are just… included. No ads, no telemetry.</p>
-    </div>
-    <div class="tile t-1">
-      <span class="ic">🧩</span>
-      <h3>Sandboxed plugins</h3>
-      <p>Third-party plugins run in a sandboxed Web Worker with network APIs removed and no token access.</p>
-    </div>
-    <div class="tile t-3">
-      <span class="ic">🎨</span>
-      <h3>A real design system</h3>
-      <p>The warm <b>Daybreak</b> &amp; <b>Dusk</b> themes, a build-your-own theme editor, and motion that respects reduced-motion.</p>
-    </div>
-    <div class="tile t-3">
-      <span class="ic">🏠</span>
-      <h3>Yours to host</h3>
-      <p>One Rust binary + SQLite. Deploy to a $5 box and own your community — code, server, and conversations.</p>
+    <div class="faq__list reveal">
+      <details open>
+        <summary>Is it really free?</summary>
+        <p>Yes. There are no ads and there is no paid tier.</p>
+      </details>
+      <details>
+        <summary>Can you read my messages?</summary>
+        <p>Locked DMs and group chats: no. Channels inside a space: yes, our server can, like most chat apps. The lock tells you which is which.</p>
+      </details>
+      <details>
+        <summary>Do I need to install anything?</summary>
+        <p>No. Ohiyo runs in your browser, on a computer or a phone. A new desktop app is on the way.</p>
+      </details>
+      <details>
+        <summary>What's a space?</summary>
+        <p>Your group's home. It holds your channels, your voice rooms and your people. On Discord it would be called a server.</p>
+      </details>
+      <details>
+        <summary>Who's the chinchilla?</summary>
+        <p>That's Kikka. Kikka keeps your seat warm.</p>
+      </details>
     </div>
   </div>
-</div></section>
+</section>
 
-<!-- SECURITY -->
-<section id="security"><div class="wrap">
-  <div class="sec-grid">
-    <div>
-      <span class="eyebrow reveal">Under the hood</span>
-      <h2 class="reveal">A cozy room with a <span class="serif-i grad">steel door.</span></h2>
-      <p class="lede reveal">Warm inside, sealed shut. We didn't hand-roll the hard parts — 1:1 messaging rides the Signal Protocol's Double Ratchet, and encrypted conversations reach the server only as ciphertext.</p>
-      <p class="sec-note reveal">For encrypted conversations the server moves <b>sealed envelopes</b> between devices, enforces membership, and stores only ciphertext — backed by a Rust integration suite that shows a removed member loses access.</p>
-      <p class="sec-note reveal"><a href="threat-model.html">Read the public privacy threat model →</a></p>
-    </div>
-    <div class="sec-flow reveal">
-      <div class="node"><span class="k">Handshake</span><b>X3DH</b><p>Async key agreement — message someone offline, forward-secret from the first byte.</p></div>
-      <div class="node"><span class="k">1:1 sessions</span><b>Double Ratchet</b><p>Per-message keys with forward secrecy &amp; post-compromise recovery, via a community libsignal port.</p></div>
-      <div class="node"><span class="k">Groups</span><b>Sender keys + epochs</b><p>Every membership change rekeys; a removed member reads zero future messages.</p></div>
-      <div class="node"><span class="k">Trust</span><b>Safety numbers</b><p>Out-of-band verification across a contact's devices; a swapped key raises a loud banner.</p></div>
-    </div>
+<section class="band band--paper final">
+  <svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 58C190 14 360 6 560 32s340 52 540 26 250-40 340-28v50H0Z"/></svg>
+  <div class="wrap final__in">
+    <h2 class="reveal">Kikka kept you a seat.</h2>
+    <div class="cta reveal"><a class="btn btn--go btn--lg" href="https://app.ohiyo.gg">Open Ohiyo</a></div>
+    <p class="reveal">Free. Runs in your browser. No email needed.</p>
+    <img class="final__kikka" src="assets/kikka-color.svg" alt="" width="746" height="700" loading="lazy" />
   </div>
-</div></section>
+</section>
 
-<!-- VS DISCORD -->
-<section id="compare"><div class="wrap">
-  <span class="eyebrow reveal">Head to head</span>
-  <h2 class="reveal">oHiYo <span style="color:var(--muted);font-family:var(--ui);font-weight:600;font-size:.6em">vs</span> Discord</h2>
-  <div class="table-wrap reveal">
-    <table class="cmp">
-      <thead><tr><th scope="col"><span class="sr-only">Feature</span></th><th scope="col" class="us">Ohiyo</th><th scope="col">Discord</th></tr></thead>
-      <tbody>
-        <tr><td>End-to-end encrypted DMs &amp; groups</td><td class="us-col"><span class="yes">✓</span> opt-in · Signal Protocol for 1:1</td><td class="them-col"><span class="no">✕</span> plaintext on servers</td></tr>
-        <tr><td>The full feature set</td><td class="us-col"><span class="yes">✓</span> everything free</td><td class="them-col"><span class="no">✕</span> Nitro subscription</td></tr>
-        <tr><td>Launch your own server</td><td class="us-col"><span class="yes">✓</span> one tap, &lt; a Nitro</td><td class="them-col"><span class="no">✕</span> not a thing</td></tr>
-        <tr><td>Self-hostable &amp; open source</td><td class="us-col"><span class="yes">✓</span> single binary, AGPL</td><td class="them-col"><span class="no">✕</span> closed SaaS</td></tr>
-        <tr><td>Disappearing messages &amp; dead-man switch</td><td class="us-col"><span class="yes">✓</span> built in</td><td class="them-col"><span class="no">✕</span> none</td></tr>
-        <tr><td>Reads your data to monetize it</td><td class="us-col"><span class="yes">✓</span> never — no ads, no data sales</td><td class="them-col"><span class="no">✕</span> analytics &amp; ads</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div></section>
-
-<!-- SELF-HOST -->
-<section id="host"><div class="wrap">
-  <div class="host reveal">
-    <span class="eyebrow" style="justify-content:center">Own it</span>
-    <h2 style="margin-top:.6rem">Self-host in <span class="serif-i grad">minutes.</span></h2>
-    <p class="lede" style="margin:0 auto">One Rust binary + SQLite. Deploy to a tiny box, point the app at it, and your community is genuinely yours — no exit tax, no rug-pull.</p>
-    <code>git clone https://github.com/New1Direction/ohiyo</code>
-    <div class="cta-row" style="justify-content:center">
-      <a class="btn solid" href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">Self-host on GitHub →</a>
-      <a class="btn ghost" href="https://github.com/New1Direction/ohiyo/blob/main/DEPLOY.md" target="_blank" rel="noopener">Read the deploy guide</a>
-    </div>
-  </div>
-</div></section>
-
-<!-- FINAL CTA -->
-<section class="final"><div class="wrap">
-  <div class="reveal"><img class="logo" src="kikka.svg" alt="" /></div>
-  <h2 class="reveal">oh, hi. <span class="wave">👋</span></h2>
-  <p class="lede reveal" style="margin:0 auto 2rem">The warmth and reach of Discord, Signal-style encryption for your private conversations, and a server you can export or leave whenever you like. Kikka kept you a seat.</p>
-  <div class="cta-row reveal" style="justify-content:center">
-    <a class="btn solid" href="https://app.ohiyo.gg" rel="noopener">Open in your browser →</a>
-    <a class="btn ghost download-primary" href="#download">Download the app</a>
-  </div>
-</div></section>
 </main>
 
-<footer><div class="wrap">
-  <div class="brand"><img src="kikka.svg" alt="" style="width:24px" /> o<span class="hi" style="color:var(--coral)">Hi</span>Yo</div>
-  <div class="f-links">
-    <a href="https://github.com/New1Direction/ohiyo" target="_blank" rel="noopener">GitHub</a>
-    <a href="#security">Security</a>
-    <a href="privacy.html">Privacy</a>
-    <a href="threat-model.html">Threat model</a>
-    <a href="status.html">Status</a>
-    <a href="terms.html">Terms</a>
-    <a href="#host">Self-host</a>
-    <a href="https://github.com/New1Direction/ohiyo/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0</a>
+<footer class="footer">
+  <svg class="wave" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30c160 34 330 44 520 22s300-52 500-40 300 44 420 30v38H0Z"/></svg>
+  <div class="wrap">
+    <div class="footer__grid">
+      <div>
+        <a class="brand" href="/" aria-label="Ohiyo home"><span class="mark" aria-hidden="true"></span><span>o<b>Hi</b>Yo</span></a>
+        <p class="footer__blurb">A free, open source group chat with a lock that works. Kikka says hi.</p>
+      </div>
+      <div>
+        <h2>Ohiyo</h2>
+        <ul>
+          <li><a href="https://app.ohiyo.gg">Open Ohiyo</a></li>
+          <li><a href="#how">How it works</a></li>
+          <li><a href="status.html">Status</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Trust</h2>
+        <ul>
+          <li><a href="privacy.html">Privacy</a></li>
+          <li><a href="threat-model.html">Threat model</a></li>
+          <li><a href="terms.html">Terms</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Code</h2>
+        <ul>
+          <li><a href="https://github.com/New1Direction/ohiyo" rel="noopener">GitHub</a></li>
+          <li><a href="https://github.com/New1Direction/ohiyo/blob/main/DEPLOY.md" rel="noopener">Run your own</a></li>
+          <li><a href="https://github.com/New1Direction/ohiyo/blob/main/LICENSE" rel="noopener">AGPL-3.0 license</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer__base"><span>oh, hi.</span><span>Free and open source.</span></div>
   </div>
-  <div>oh, hi · ohiyo.gg · free &amp; open · built in Rust + React + Tauri</div>
-</div></footer>
+</footer>
 
-<script src="app.js"></script>
+<script src="site.js" defer></script>
 </body>
 </html>
