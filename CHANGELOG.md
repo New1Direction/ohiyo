@@ -115,11 +115,12 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
-- **ohiyo.gg scenery:** the landing page now looks like a day in a valley. Dawn sky, drifting
-  clouds, birds and layered mountains at the top, a starry night with fireflies behind the
-  privacy section, sunrise behind the mission, and Kikka on a hill at the end. Hard outlines
-  and block shadows are replaced by soft shapes and soft shadows. The landscape is plain SVG
-  drawn by `scripts/site-scenery.py`; it stops moving for people who ask for reduced motion.
+- **ohiyo.gg scenery:** the landing page now looks like a day in a valley, painted in
+  gouache. A dawn valley behind the top of the page, a starry night behind the privacy
+  section, a sunrise behind the mission, and Kikka on a hill in the morning at the end. A few
+  small things move on top of the paintings (a glow on the sun, mist, birds, twinkling stars,
+  fireflies) and stop for people who ask for reduced motion. Hard outlines and block shadows
+  are replaced by soft shapes and soft shadows.
 - **ohiyo.gg redesign:** a new landing page in plain language, built from real app
   screenshots and the Kikka mark. It explains how Ohiyo works in three steps, shows what the
   lock does with a small demo, and states the mission. Fonts are self-hosted, so the site
