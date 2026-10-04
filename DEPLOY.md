@@ -113,6 +113,19 @@ selects it and the `/healthz` check). Settings that differ from Fly:
 - Instant Servers are provisioned through Fly Machines. Without `FLY_API_TOKEN` a
   release build refuses to create them.
 
+**The web app** runs as a second Railway service from `client/Dockerfile`: it builds
+the Vite bundle (the backend address comes from `client/.env.production`) and serves it
+with Caddy, which sets the same security headers as `client/public/_headers` does on
+Cloudflare Pages. To ship an app update:
+
+```bash
+scripts/deploy-web.sh    # builds and deploys client/, then updates OHIYO_EXPECTED_APP_BUNDLE
+```
+
+`app.ohiyo.gg` is a custom domain on that service; its DNS records live at the
+registrar (a CNAME to the target Railway shows, plus a `_railway-verify` TXT record).
+Custom domains have to be added in the Railway dashboard; the CLI's login cannot.
+
 ### Rolling back
 
 The launch-hardening release adds migration 40 (indexes only). An older server image
