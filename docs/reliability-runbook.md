@@ -7,9 +7,9 @@ This is the beta reliability checklist for the hosted service and Instant Server
 - GitHub Actions **Reliability Alerts** runs every 30 minutes against production:
   - `https://ohiyo.gg`
   - `https://app.ohiyo.gg`
-  - `https://ohiyo.fly.dev/healthz`
-  - `https://ohiyo.fly.dev/api/v1/reliability/status`
-  - `https://ohiyo.fly.dev/api/v1/push/config`
+  - `https://ohiyo-server-production.up.railway.app/healthz`
+  - `https://ohiyo-server-production.up.railway.app/api/v1/reliability/status`
+  - `https://ohiyo-server-production.up.railway.app/api/v1/push/config`
 - The same workflow runs one daily Instant Server create → routed `/healthz` → delete smoke at `08:17 UTC`.
 - `scripts/status-check.sh` is the local/CI entrypoint. It checks landing/app/API/push health, confirms the app serves index JS/CSS bundles, validates reliability components, validates Web Push is enabled with a VAPID public key, and can run the Instant Server smoke.
 - GitHub Actions CI must stay green on `main`.
@@ -69,9 +69,9 @@ Public page: `https://ohiyo.gg/status.html`
 
 Machine-readable summary:
 
-- `https://ohiyo.fly.dev/healthz` — load balancer readiness, DB-backed.
-- `https://ohiyo.fly.dev/api/v1/reliability/status` — component summary, no secrets/content.
-- `https://ohiyo.fly.dev/api/v1/reliability/cost-model` — public planning cost model.
+- `https://ohiyo-server-production.up.railway.app/healthz` — load balancer readiness, DB-backed.
+- `https://ohiyo-server-production.up.railway.app/api/v1/reliability/status` — component summary, no secrets/content.
+- `https://ohiyo-server-production.up.railway.app/api/v1/reliability/cost-model` — public planning cost model.
 
 ## Observability
 
@@ -112,7 +112,7 @@ Do not run large load tests against production without a window and rollback pla
 See `docs/hosted-community-cost-model.md` and the live JSON endpoint:
 
 ```bash
-curl 'https://ohiyo.fly.dev/api/v1/reliability/cost-model?communities=100&paid=20&free_active_ratio=0.15' | jq
+curl 'https://ohiyo-server-production.up.railway.app/api/v1/reliability/cost-model?communities=100&paid=20&free_active_ratio=0.15' | jq
 ```
 
 The model is deliberately public and approximate. Replace assumptions with actual invoice data as usage grows.

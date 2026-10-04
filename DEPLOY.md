@@ -93,6 +93,26 @@ Login, registration and other limits are keyed on the client's address.
 - **Local Discrawl import** reads media only from `OHIYO_DISCRAWL_MEDIA_ROOT`; the
   request can no longer choose the folder.
 
+### Running on Railway
+
+The hosted service runs on Railway from the same `Dockerfile` (`server/railway.json`
+selects it and the `/healthz` check). Settings that differ from Fly:
+
+- A volume mounted at `/data`, and `RAILWAY_RUN_UID=0`: Railway mounts volumes as
+  root and the image otherwise runs as an unprivileged user that cannot write there.
+- `PORT=3000` (and `BIND_ADDR=0.0.0.0:3000`) so Railway routes to the server's port.
+- `TRUSTED_PROXY_HOPS=2`. Railway sends `X-Forwarded-For: <client>, <its edge>` and
+  discards any value the client sent, so the client is the second entry from the
+  right. With `1` every request is keyed on an edge address and the limits never
+  trigger.
+- Check the volume's write speed once after creating it. One volume we were given
+  took 0.3 to 15 seconds per `fsync`, which stalls any request that hits a SQLite
+  checkpoint; a second volume in the same region took about 25 ms. From
+  `railway ssh`: `dd if=/dev/zero of=/data/.probe bs=4k count=8 conv=fsync` a few
+  times, then delete the file. If it is slow, attach a new volume.
+- Instant Servers are provisioned through Fly Machines. Without `FLY_API_TOKEN` a
+  release build refuses to create them.
+
 ### Rolling back
 
 The launch-hardening release adds migration 40 (indexes only). An older server image

@@ -6,7 +6,7 @@ A community can die in transit if admins have to rebuild categories, channels, r
 
 ```bash
 OHIYO_TOKEN=<owner-jwt> \
-  E2E_API=https://ohiyo.fly.dev/api/v1 \
+  E2E_API=https://ohiyo-server-production.up.railway.app/api/v1 \
   scripts/migrate-discord-template.mjs https://discord.new/<template-code>
 ```
 

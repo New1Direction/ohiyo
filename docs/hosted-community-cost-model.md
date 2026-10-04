@@ -34,7 +34,7 @@ These are planning numbers, not invoices. The real model should be updated from 
 100 communities, 20 paid, 80 free, free duty-cycle 15%:
 
 ```bash
-curl 'https://ohiyo.fly.dev/api/v1/reliability/cost-model?communities=100&paid=20&free_active_ratio=0.15' | jq
+curl 'https://ohiyo-server-production.up.railway.app/api/v1/reliability/cost-model?communities=100&paid=20&free_active_ratio=0.15' | jq
 ```
 
 Interpretation:
