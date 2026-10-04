@@ -19,7 +19,9 @@ test("profile editing, save validation, avatar stacking and responsive layout", 
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(profile) });
     });
     await page.goto("http://localhost:1439/test/fixtures/profileEditor.html");
-    await page.getByRole("button", { name: /Pink \+ White/ }).click();
+    await page.getByRole("button", { name: /^Pink \+ White/ }).waitFor();
+    if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/profile-initial.png` });
+    await page.getByRole("button", { name: /^Pink \+ White/ }).click();
     await page.getByLabel("Custom status", { exact: true }).fill("A fresh status");
     await page.getByLabel("Song title", { exact: true }).fill("Changed song");
     await page.getByLabel("Listen link", { exact: false }).fill("javascript:alert(1)");
