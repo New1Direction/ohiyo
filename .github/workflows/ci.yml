@@ -16,7 +16,7 @@ jobs:
         working-directory: client
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           # Node 22: the unit tests run via the built-in runner with native TS
           # type-stripping (--experimental-strip-types), available from 22.6+.
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: npm audit (runtime dependencies)
