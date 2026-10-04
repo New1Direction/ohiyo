@@ -3,6 +3,7 @@
 //   node --experimental-strip-types --test test/siteLanding.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -122,4 +123,15 @@ test("the site does not promise what the hosted service does not do today", () =
   assert.equal(/Instant Server/i.test(home), false, "the home page does not advertise Instant Servers");
   // Channels in a space are not end-to-end encrypted, and the page has to say so.
   assert.match(home, /Channels inside a space\. Our server can read those/);
+});
+
+test("the landscape is decoration, and matches the script that draws it", () => {
+  const document = parse("index.html");
+  const scenes = [...document.querySelectorAll(".scene")];
+  assert.equal(scenes.length, 4, "dawn, night, sunrise and morning");
+  for (const scene of scenes) assert.equal(scene.getAttribute("aria-hidden"), "true", "hidden from screen readers");
+  // The scenes are generated. Editing them by hand would be lost on the next run.
+  const check = spawnSync("python3", [join(site, "..", "scripts", "site-scenery.py"), "--check"], { encoding: "utf8" });
+  if (check.error) return; // no python3 on this machine
+  assert.equal(check.status, 0, check.stderr || check.stdout);
 });
