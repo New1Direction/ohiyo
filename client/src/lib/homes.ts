@@ -79,6 +79,22 @@ function writeToken(id: string, token: string | null): void {
   }
 }
 const FALLBACK_HOME_URL = "http://localhost:3000";
+
+// Hosts of the official hosted backend, shown as "Ohiyo" rather than by host name.
+const OFFICIAL_HOSTS = new Set(["ohiyo-server-production.up.railway.app", "api.ohiyo.gg", "ohiyo.fly.dev"]);
+
+// Hosted backends that no longer exist. A home stored for one can never connect again
+// (and the web build's CSP refuses its address), so loadHomes drops it and its token.
+const RETIRED_HOME_IDS = new Set(["ohiyo.fly.dev"]);
+let retiredHomeDropped = false;
+
+/** True once after loadHomes removed a retired home: local message data kept for its
+ *  account is stale, and the caller decides whether to clear it. */
+export function takeRetiredHomeDropped(): boolean {
+  const dropped = retiredHomeDropped;
+  retiredHomeDropped = false;
+  return dropped;
+}
 const ENV_HOME_URL = (import.meta as unknown as { env?: { VITE_SERVER_URL?: string } }).env
   ?.VITE_SERVER_URL;
 
@@ -111,7 +127,7 @@ export function defaultHome(): OhiyoHome {
 export function nameFromUrl(url: string): string {
   try {
     const host = new URL(normalizeHomeUrl(url)).host;
-    if (host === "ohiyo.fly.dev") return "Ohiyo";
+    if (OFFICIAL_HOSTS.has(host)) return "Ohiyo";
     if (host === "localhost:3000") return "Local";
     return host.replace(/^app\./, "").replace(/^api\./, "");
   } catch {
@@ -137,6 +153,13 @@ export function loadHomes(): OhiyoHome[] {
       }));
   } catch {
     homes = [];
+  }
+
+  const retired = homes.filter((h) => RETIRED_HOME_IDS.has(h.id));
+  if (retired.length > 0) {
+    for (const h of retired) writeToken(h.id, null);
+    homes = homes.filter((h) => !RETIRED_HOME_IDS.has(h.id));
+    retiredHomeDropped = true;
   }
 
   const def = defaultHome();
