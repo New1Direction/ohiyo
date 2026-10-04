@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type FriendItem, type FriendshipStatus, type PublicUser } from "../api";
 import { ModalShell } from "./ModalShell";
+import { AvatarMark } from "./BirdMark";
 
 type Props = {
   token: string;
@@ -248,7 +249,7 @@ function PersonRow({
           backgroundSize: "cover", backgroundPosition: "center",
         }}
       >
-        {!user.avatar_url && (user.display_name[0] ?? user.username[0] ?? "?").toUpperCase()}
+        {!user.avatar_url && <AvatarMark />}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{user.display_name}</div>

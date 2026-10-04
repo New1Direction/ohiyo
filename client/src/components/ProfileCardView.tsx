@@ -1,5 +1,6 @@
 import type { ProfileTheme, UserProfile } from "../api";
 import { safeHttpUrl } from "../lib/url";
+import { AvatarMark } from "./BirdMark";
 
 /** The fields the profile card renders — shared by the hover popover and the
  *  live editor preview (container/presentational split). */
@@ -110,7 +111,6 @@ function patternOverlay(pattern: ProfileTheme["pattern"]): React.CSSProperties {
 export function ProfileCardView({ data, preview = false }: { data: ProfileCardData; preview?: boolean }) {
   const bannerColor = data.banner_color ?? "#5865f2";
   const theme = cleanTheme(data.profile_theme, bannerColor);
-  const initial = (data.display_name || "?")[0]?.toUpperCase();
   const showStatus = data.profile_theme?.showStatus ?? true;
   const showBio = data.profile_theme?.showBio ?? true;
   const showActive = data.profile_theme?.showActive ?? true;
@@ -196,7 +196,7 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
               {data.avatar_url ? (
                 <img src={data.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                initial
+                <AvatarMark />
               )}
             </div>
           </div>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { PublicUser } from "../api";
 import type { Activity } from "../gateway";
 import { ModalShell } from "./ModalShell";
+import { AvatarMark } from "./BirdMark";
 
 type Props = {
   members: PublicUser[];
@@ -94,7 +95,7 @@ export function MembersModal({
                   backgroundSize: "cover", backgroundPosition: "center",
                 }}
               >
-                {!m.avatar_url && (m.display_name[0] ?? "?").toUpperCase()}
+                {!m.avatar_url && <AvatarMark />}
               </div>
               {onlineUsers.has(m.id) && (
                 <span

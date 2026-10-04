@@ -114,6 +114,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
+- **Default avatar:** a member who has not set a profile picture now shows the Ohiyo logo
+  instead of their first initial, in chat, the member lists, profile cards, calls and settings.
+  Group chats keep their letter. The two sidebar circles that painted no background (so the
+  letter was dark on dark) now draw their gradient.
 - **Home rail:** use the Ohiyo logo in place of its initials and remove the lightning
   shortcut. Instant Servers remains available from the command palette (Ctrl/⌘K).
 - **The hosted backend moved from Fly.io to Railway and started with an empty
