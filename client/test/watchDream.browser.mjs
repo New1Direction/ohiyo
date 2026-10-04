@@ -57,6 +57,8 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     await toggle.click();
     if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/watch-dream-desktop.png` });
     await page.evaluate(() => window.dreamFixture.navigate());
+    // External fixture callbacks schedule React work; wait for the new channel commit.
+    await page.waitForFunction(() => document.querySelector("main header button")?.textContent === "# another");
     assert.equal(await enabled(), "false");
     assert.equal(await page.locator("[inert]").count(), 0);
     await toggle.click();
@@ -68,6 +70,7 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     await toggle.click();
     assert.equal(await page.getByRole("button", { name: "End", exact: true }).count(), 0);
     await page.evaluate(() => window.dreamFixture.endRemotely());
+    await page.locator("iframe").waitFor({ state: "detached" });
     assert.equal(await page.locator("[inert]").count(), 0);
     await load();
     await page.emulateMedia({ reducedMotion: "reduce" });
