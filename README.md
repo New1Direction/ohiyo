@@ -85,7 +85,7 @@ box; server channels are stored like any chat server's.
 ## Repo layout
 
 ```
-server/        Rust axum + sqlx server (migrations/, src/, Dockerfile, fly.toml)
+server/        Rust axum + sqlx server (migrations/, src/, Dockerfile, railway.json, fly.toml)
 client/        React + Vite app and Tauri shell (src/, src-tauri/)
 e2e/           Node-driven end-to-end suites (NN-*.test.mjs + harness)
 infra/coturn/  Optional TURN server for WebRTC behind strict NATs
@@ -93,7 +93,7 @@ brand/         Mascot (Kikka) + brand assets (Daybreak)
 site/          Public landing page (deploys to ohiyo.gg)
 docs/          Design specs & plans
 CHANGELOG.md   Release notes (Keep a Changelog)
-DEPLOY.md      Production deploy guide (Fly.io)
+DEPLOY.md      Production deploy guide (Railway or Fly.io)
 UX-GATES.md    UX acceptance gates
 ```
 

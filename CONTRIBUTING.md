@@ -18,7 +18,7 @@ Kikka the chinchilla approves of small, well-tested PRs. So do the maintainers.
 ## Repo layout
 
 ```
-server/   Rust axum + sqlx server (migrations/, src/, Dockerfile, fly.toml)
+server/   Rust axum + sqlx server (migrations/, src/, Dockerfile, railway.json, fly.toml)
 client/   React 19 + TypeScript + Vite app and the Tauri desktop shell (src/, src-tauri/)
 e2e/      Node-driven end-to-end suites (NN-*.test.mjs + harness)
 infra/    Optional infrastructure (coturn TURN server for WebRTC behind strict NATs)

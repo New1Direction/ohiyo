@@ -6,22 +6,54 @@ from "runs on my localhost" to "my friends download an app and it just works."
 
 ```
 ┌─────────────────────────┐         ┌──────────────────────────────────┐
-│  Ohiyo.app / .msi   │  HTTPS  │  Fly.io                          │
+│  Ohiyo.app / .msi   │  HTTPS  │  Railway or Fly.io               │
 │  (Tauri desktop client) │ ──────▶ │  • axum server  (Docker)         │
 │  React bundle inside     │   WSS   │  • SQLite + uploads (volume)     │
 │  a native window         │ ◀─────▶ │  • coturn (voice TURN, optional) │
 └─────────────────────────┘         └──────────────────────────────────┘
 ```
 
-- **Backend host:** Fly.io (chosen). Single machine + a persistent volume.
+- **Backend host:** any host that runs a Docker image with one persistent volume.
+  ohiyo.gg runs on Railway ([§1](#1-deploy-the-backend)); the repo also ships a
+  `fly.toml` for Fly.io. Either way it is a single machine with a persistent volume.
 - **Signing:** unsigned installers for now; the seam for signing/auto-update is
-  wired and documented in [§4](#4-code-signing--auto-update-the-later-path).
+  wired and documented in [§5](#5-code-signing--auto-update-the-later-path).
 
 ---
 
-## 1. Deploy the backend to Fly.io
+## 1. Deploy the backend
 
-Everything here runs from `server/`.
+Ohiyo needs exactly **one** running server and **one** persistent volume mounted at
+`/data` (the SQLite database and uploads). Any host that runs a Docker image with a
+volume works; both paths below build `server/Dockerfile`.
+
+### Railway (what ohiyo.gg runs on)
+
+From the repo root, with the Railway CLI logged in. Create a project, a service for the
+server and a volume mounted at `/data` (`railway volume add`, or the dashboard), then:
+
+```bash
+# Required: the server REFUSES to start in release without JWT_SECRET and PUBLIC_BASE_URL.
+railway variable set --service ohiyo-server \
+  JWT_SECRET="$(openssl rand -base64 48)" \
+  PUBLIC_BASE_URL="https://<your-service>.up.railway.app" \
+  OHIYO_OPERATOR_USER_IDS="<your-user-id>" \
+  RAILWAY_RUN_UID=0 PORT=3000 BIND_ADDR=0.0.0.0:3000 TRUSTED_PROXY_HOPS=2
+
+# Build server/Dockerfile on Railway and wait for the health check (/healthz).
+railway up server --path-as-root --service ohiyo-server --ci
+
+curl https://<your-service>.up.railway.app/healthz     # -> ok
+```
+
+`OHIYO_OPERATOR_USER_IDS` is a comma-separated list of user ids. Only those accounts can
+run Discord imports or change an Instant Server's tier; unset means nobody can. Why the
+other variables are set the way they are is under
+[Railway settings and gotchas](#railway-settings-and-gotchas).
+
+### Fly.io (alternative)
+
+The repo also ships a `fly.toml`. Everything here runs from `server/`.
 
 ```bash
 cd server
@@ -93,7 +125,7 @@ Login, registration and other limits are keyed on the client's address.
 - **Local Discrawl import** reads media only from `OHIYO_DISCRAWL_MEDIA_ROOT`; the
   request can no longer choose the folder.
 
-### Running on Railway
+### Railway settings and gotchas
 
 The hosted service runs on Railway from the same `Dockerfile` (`server/railway.json`
 selects it and the `/healthz` check). Settings that differ from Fly:
@@ -143,7 +175,10 @@ The `/data` volume holds the SQLite DB: **all** messages (ciphertext for encrypt
 and group chats, readable text for everything else) *and* the encrypted `key_backups`
 blobs. Losing it is unrecoverable, so back it up.
 
-- **Fly volume snapshots (baseline, automatic).** Fly snapshots every volume
+- **Railway volumes.** Nothing here is set up for you. Check what your Railway plan
+  offers for volume backups before relying on them, and use the Litestream option
+  below, which works on any host.
+- **Fly volume snapshots (Fly only; baseline, automatic).** Fly snapshots every volume
   daily and keeps them ~5 days by default. Extend retention and *practice a
   restore* before you need one:
   ```bash
@@ -169,7 +204,9 @@ where `sig` is derived from `JWT_SECRET` and the file id. **Enforcement is OFF b
 default**, so this changes nothing unless you opt in:
 
 ```bash
-fly secrets set OHIYO_REQUIRE_SIGNED_FILES=true   # "1" also works; unset/anything else = off
+fly secrets set OHIYO_REQUIRE_SIGNED_FILES=true                          # Fly
+railway variable set --service ohiyo-server OHIYO_REQUIRE_SIGNED_FILES=true  # Railway
+# "1" also works; unset/anything else = off
 ```
 
 When on, `serve_file` rejects any request whose `?s=` signature doesn't match (returning
@@ -197,6 +234,7 @@ STUN alone works on a LAN. Real calls between people behind home routers need a
 
 ```bash
 cd server
+# On Railway, set the same three values with `railway variable set`.
 fly secrets set \
   TURN_SECRET="<same as coturn static-auth-secret>" \
   TURN_URLS="turn:turn.ohiyo-<you>.com:3478?transport=udp" \
@@ -217,7 +255,7 @@ cd client
 
 # Point the packaged app at YOUR backend (this is baked in at build time).
 # Edit client/.env.production:
-#   VITE_SERVER_URL=https://ohiyo-<you>.fly.dev
+#   VITE_SERVER_URL=https://<your-backend-host>
 
 npm install
 npm run tauri build
@@ -233,7 +271,7 @@ Installers land in `client/src-tauri/target/release/bundle/`:
 
 > You can only build a platform's installer **on that platform** (or in CI). On
 > your Mac you get the `.dmg`; use GitHub Actions runners for Windows/Linux —
-> see [§5](#5-recommended-cicd).
+> see [§6](#6-cicd).
 
 ### What's already native (Discord-like)
 
@@ -326,7 +364,7 @@ fallback:
 
 | Secret | Purpose |
 |--------|---------|
-| `VITE_SERVER_URL` | Backend URL baked into the bundle (`https://<app>.fly.dev`) |
+| `VITE_SERVER_URL` | Backend URL baked into the bundle (`https://<your-backend-host>`) |
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | macOS Developer ID signing + notarization (§4) |
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Tauri auto-updater signing (§4) |
 
@@ -344,7 +382,7 @@ These are tracked follow-ups, not blockers for a first test build:
       executing arbitrary JS in the app's context). Built-in plugins still work.
       Before re-enabling remote plugins, sandbox them in an iframe/Worker.
 - [ ] **Tighten CSP `connect-src`** from `https: wss:` to your exact backend host
-      once it's fixed (`https://ohiyo-<you>.fly.dev wss://...`).
+      once it's fixed (`https://<your-backend-host> wss://<your-backend-host>`).
 - [ ] **Token storage.** The web client keeps the session token in
       `localStorage`. Acceptable in the packaged app; revisit if you ship a pure
       web build to untrusted origins.

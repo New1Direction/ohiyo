@@ -69,10 +69,10 @@ After the deploy, confirm with `curl -sI https://app.ohiyo.gg | grep -i -E
 - `https://app.ohiyo.gg` returns 200 and serves the current React bundle:
   - `assets/index-BjorZsew.js`
   - `assets/index-DGqrrC5D.css`
-- `https://ohiyo.fly.dev/healthz` returns `ok`.
+- `https://ohiyo-server-production.up.railway.app/healthz` returns `ok`.
 - `https://api.ohiyo.gg/healthz` returns `ok`.
-- `https://ohiyo.fly.dev/api/v1/reliability/status` reports all public components `ok`.
-- `https://ohiyo.fly.dev/api/v1/push/config` reports Web Push `enabled=true` with a VAPID public key.
+- `https://ohiyo-server-production.up.railway.app/api/v1/reliability/status` reports all public components `ok`.
+- `https://ohiyo-server-production.up.railway.app/api/v1/push/config` reports Web Push `enabled=true` with a VAPID public key.
 - Production backend exposes current v0.2 routes; auth-gated routes return `401` instead of stale `404`.
 - Current deployed app bundle includes launch modal polish from `4a793e2` (`Polish launch modal surfaces`).
 - GitHub CI is green on `main`.
