@@ -46,6 +46,9 @@ pub enum ProvisionError {
 }
 
 /// Abstracts the cloud that runs per-community instances.
+// `async_trait` marks each generated method `#[must_use]`, and the boxed future it
+// returns is `must_use` already; newer clippy releases flag the pair.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait MachineProvisioner: Send + Sync {
     async fn provision(&self, req: ProvisionRequest) -> Result<ProvisionedMachine, ProvisionError>;
