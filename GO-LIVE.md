@@ -38,6 +38,10 @@ The site is static and self-contained in [`site/`](site/) (`index.html` + `style
 
 ## 2b. Browser sign-up client (`app.ohiyo.gg`) → Cloudflare Pages **[you]**
 
+> **Superseded.** The web app is now built from `client/Dockerfile` and deployed to Railway
+> with `scripts/deploy-web.sh` (see `DEPLOY.md`). The steps below are the original
+> Cloudflare Pages setup.
+
 Lets anyone sign up in a browser — no download. It's the same React app the desktop build
 wraps (verified: the e2e suite drives it in a plain browser), pointed at the live backend.
 The production build is verified (`ohiyo.fly.dev` baked in, CSP allows it); this is a second
@@ -59,6 +63,10 @@ Cloudflare Pages project + DNS.
 origin, so invites from the web app point at `app.ohiyo.gg` (correct). Desktop app unaffected.
 
 ## 3. (When ready) Live Instant Servers **[you]**
+
+> **Off on the hosted server since 2026-10-03.** Without `FLY_API_TOKEN` the server refuses
+> to create Instant Servers (HTTP 503). The code is still in the repo; the steps below are
+> the original setup and need a Fly account.
 
 The control plane is built and tested ([`server/src/provision/`](server/src/provision/)); it
 just needs a cloud to talk to. It auto-switches from the in-memory fake to **Fly Machines**
@@ -95,6 +103,9 @@ the moment `FLY_API_TOKEN` is present.
 
 ## 4. Optional — move the API onto the brand domain **[you]**
 
+> **Superseded.** The hosted API is on Railway and `api.ohiyo.gg` has not been repointed to
+> it. The Fly commands below only apply if you host on Fly.
+
 Today the desktop app talks to your own self-hosted backend (e.g. `your-app.fly.dev`),
 set in [`client/.env.production`](client/.env.production). If you'd like `api.ohiyo.gg` instead:
 add a Cloudflare `CNAME api → <fly-app>.fly.dev`, `fly certs add api.ohiyo.gg`, set
@@ -107,10 +118,10 @@ add a Cloudflare `CNAME api → <fly-app>.fly.dev`, `fly certs add api.ohiyo.gg`
 | Piece | State |
 |---|---|
 | Landing page (`site/`) | ✅ live at `https://ohiyo.gg` via GitHub Pages; `www` redirects/resolves to the same Pages host |
-| Browser sign-up client (`client/`) | ✅ live at `https://app.ohiyo.gg` via Cloudflare Pages, pointed at the production backend |
-| Backend API | ✅ live at `https://ohiyo.fly.dev`; `https://api.ohiyo.gg/healthz` also answers `ok` |
-| Domain `ohiyo.gg` | ✅ owned and DNS is wired for apex, `www`, `app`, `api`, and wildcard community subdomains |
-| Instant Servers control plane | ✅ Fly provisioning secrets are deployed and wildcard `*.ohiyo.gg` reaches the main router; unknown subdomains 404 with `no Ohiyo server lives here yet` |
-| Fly instances app | ✅ `ohiyo-instances` app exists; real per-community machine creation/deletion has an owner-scoped API path for production smoke testing |
-| Backups | ✅ Fly volume snapshots enabled with 30-day retention; Litestream continuous backup remains optional/not configured |
+| Browser sign-up client (`client/`) | ✅ live at `https://app.ohiyo.gg`, served from the `ohiyo-web` service on Railway (`scripts/deploy-web.sh`), pointed at the Railway backend |
+| Backend API | ✅ live at `https://ohiyo-server-production.up.railway.app` (Railway, fresh database since 2026-10-03). `api.ohiyo.gg` still points at the old Fly app |
+| Domain `ohiyo.gg` | ✅ owned. `app` points at Railway; the wildcard `*.ohiyo.gg` (and so `api`) still points at the old Fly app until it is shut down |
+| Instant Servers control plane | ⏸ off on the hosted server: without `FLY_API_TOKEN` it refuses to create them (HTTP 503). The code remains in the repo |
+| Old Fly apps | ⚠️ not shut down when the hosting moved (see `LAUNCH-STATUS.md`); they are the owner's to remove |
+| Backups | ⚠️ not verified for Railway. The Fly volume snapshots (30-day retention) were on the old Fly volume only; Litestream continuous backup remains optional/not configured |
 | Desktop public release | ⚠️ Linux assets are public; macOS downloads remain paused until Apple Developer ID signing/notarization secrets are added |
