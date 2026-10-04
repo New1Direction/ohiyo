@@ -2232,8 +2232,8 @@ function MessageContent({ content, serverEmojis, currentUsername = "", suppressL
   const emojiMap = new Map(serverEmojis.map((e) => [e.name, e]));
 
   const parts: React.ReactNode[] = [];
-  // Parse code blocks, spoilers, and custom emoji :name:
-  const tokenRe = /```([\s\S]*?)```|【SPOILER:(.+?)】|:([a-z0-9_]{2,32}):/g;
+  // Parse code blocks, ||spoilers||, and custom emoji :name:
+  const tokenRe = /```([\s\S]*?)```|\|\|(.+?)\|\||:([a-z0-9_]{2,32}):/g;
   let last = 0;
 
   for (const match of content.matchAll(tokenRe)) {

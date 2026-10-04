@@ -6,11 +6,6 @@ if (typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.
   (window as typeof window & { __ohiyoTestSandboxHost?: typeof SandboxHost }).__ohiyoTestSandboxHost = SandboxHost;
 }
 
-// Allowlist for the user-configurable font-picker value before it is
-// interpolated into a `font-family` declaration. Letters, digits, spaces and a
-// small set of separators only — no characters that could escape the rule.
-const FONT_FAMILY_RE = /^[A-Za-z0-9 ,_-]+$/;
-
 // Persisted record for an installed user (third-party) plugin. `id` is the
 // resolved plugin manifest id; it is optional only for legacy url-only entries.
 type UserPluginEntry = { id?: string; url: string };
@@ -19,8 +14,8 @@ type UserPluginEntry = { id?: string; url: string };
 
 const compactModePlugin: OhiyoPlugin = {
   id: "compact-mode",
-  name: "Compact Mode",
-  description: "Reduces message padding for denser chat layout.",
+  name: "Compact chat",
+  description: "Hides profile pictures and packs messages closer together.",
   version: "1.0.0",
   author: "Ohiyo",
   onLoad: () => {
@@ -37,28 +32,10 @@ const compactModePlugin: OhiyoPlugin = {
   `,
 };
 
-const customCssPlugin: OhiyoPlugin = {
-  id: "custom-css",
-  name: "Custom CSS",
-  description: "Inject your own CSS into Ohiyo.",
-  version: "1.0.0",
-  author: "Ohiyo",
-  onLoad: (api) => {
-    const css = api.store.get<string>("custom-css") ?? "";
-    // Even though this is a "trusted" built-in, the CSS body is fully
-    // user-controlled, so run it through the same sanitizer used for
-    // untrusted third-party plugins (strips url()/@import/expression()/etc.).
-    injectStyle("custom-css-plugin", sanitizePluginCss(css));
-  },
-  onUnload: () => {
-    document.getElementById("custom-css-plugin")?.remove();
-  },
-};
-
 const mentionHighlightPlugin: OhiyoPlugin = {
   id: "mention-highlight",
-  name: "Mention Highlight",
-  description: "Highlights messages that mention your username.",
+  name: "Mention bell",
+  description: "Puts a 🔔 in front of any message that mentions you.",
   version: "1.0.0",
   author: "Ohiyo",
   transformMessage: (msg) => {
@@ -74,56 +51,10 @@ const mentionHighlightPlugin: OhiyoPlugin = {
   },
 };
 
-const linkPreviewPlugin: OhiyoPlugin = {
-  id: "link-preview",
-  name: "Link Preview",
-  description: "Shows URL previews in messages (title + favicon).",
-  version: "1.0.0",
-  author: "Ohiyo",
-  css: `
-    .link-preview {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: var(--bg-input);
-      font-size: 11px;
-      color: var(--text-muted);
-      text-decoration: none;
-      margin-left: 4px;
-      transition: background 0.1s;
-    }
-    .link-preview:hover { background: var(--bg-hover); }
-  `,
-};
-
-const codeHighlightPlugin: OhiyoPlugin = {
-  id: "code-highlight",
-  name: "Code Highlight",
-  description: "Syntax-highlights ``` code blocks in messages.",
-  version: "1.0.0",
-  author: "Ohiyo",
-  css: `
-    .code-block {
-      display: block;
-      background: #1e1e2e;
-      color: #cdd6f4;
-      border-radius: 6px;
-      padding: 10px 14px;
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
-      font-size: 13px;
-      overflow-x: auto;
-      margin: 6px 0;
-      border-left: 3px solid var(--accent);
-    }
-  `,
-};
-
 const messageSoundPlugin: OhiyoPlugin = {
   id: "message-sound",
-  name: "Message Sounds",
-  description: "Plays a subtle sound on new messages.",
+  name: "Message sound",
+  description: "Plays a soft tick when a new message arrives.",
   version: "1.0.0",
   author: "Ohiyo",
   onLoad: (api) => {
@@ -135,8 +66,8 @@ const messageSoundPlugin: OhiyoPlugin = {
 
 const keyboardNavPlugin: OhiyoPlugin = {
   id: "keyboard-nav",
-  name: "Keyboard Navigator",
-  description: "Alt+1..9 to jump to servers, Ctrl+K to open channel search.",
+  name: "Space shortcuts",
+  description: "Press Alt+1 to Alt+9 to jump to one of your first nine spaces.",
   version: "1.0.0",
   author: "Ohiyo",
   onLoad: () => {
@@ -149,8 +80,8 @@ const keyboardNavPlugin: OhiyoPlugin = {
 
 const zenModePlugin: OhiyoPlugin = {
   id: "zen-mode",
-  name: "Zen Mode",
-  description: "Hides server and channel sidebars for focused chat.",
+  name: "Focus mode",
+  description: "Hides both sidebars so only the chat is left. Press Ctrl+, to open Settings and turn it off.",
   version: "1.0.0",
   author: "Ohiyo",
   onLoad: () => {
@@ -159,66 +90,20 @@ const zenModePlugin: OhiyoPlugin = {
   onUnload: () => {
     document.documentElement.classList.remove("plugin-zen");
   },
+  // Wide windows only: on a phone the sidebars are the drawer, which is the only way to
+  // another chat or back to Settings.
   css: `
-    .plugin-zen .server-sidebar,
-    .plugin-zen .channel-sidebar { display: none !important; }
-  `,
-};
-
-const fontPickerPlugin: OhiyoPlugin = {
-  id: "font-picker",
-  name: "Font Picker",
-  description: "Change the app font. Configure in plugin settings.",
-  version: "1.0.0",
-  author: "Ohiyo",
-  onLoad: (api) => {
-    const stored = api.store.get<string>("font") ?? "inherit";
-    // The font value is interpolated straight into a <style>, so allowlist it to
-    // a conservative font-family character set (letters, digits, space, comma,
-    // underscore, hyphen). Anything else (quotes, braces, semicolons, url(), …)
-    // would let an attacker break out of the declaration — fall back to inherit.
-    const font = FONT_FAMILY_RE.test(stored) ? stored : "inherit";
-    injectStyle("font-picker-plugin", `body { font-family: ${font}, sans-serif !important; }`);
-  },
-  onUnload: () => {
-    document.getElementById("font-picker-plugin")?.remove();
-  },
-};
-
-const spoilerPlugin: OhiyoPlugin = {
-  id: "spoiler-text",
-  name: "Spoiler Text",
-  description: "Wrap text in ||spoiler|| to hide it — click to reveal.",
-  version: "1.0.0",
-  author: "Ohiyo",
-  transformMessage: (msg) => {
-    if (!msg.content.includes("||")) return msg;
-    return {
-      ...msg,
-      content: msg.content.replace(/\|\|(.+?)\|\|/g, "【SPOILER:$1】"),
-    };
-  },
-  css: `
-    [data-spoiler] {
-      background: var(--text-secondary);
-      color: transparent;
-      border-radius: 3px;
-      cursor: pointer;
-      user-select: none;
-      transition: all 0.2s;
-      padding: 0 2px;
-    }
-    [data-spoiler].revealed {
-      background: var(--bg-hover);
-      color: var(--text-primary);
+    @media (min-width: 769px) {
+      .plugin-zen .server-sidebar,
+      .plugin-zen .channel-sidebar { display: none !important; }
     }
   `,
 };
 
 const chatCommandsPlugin: OhiyoPlugin = {
   id: "chat-commands",
-  name: "Chat Commands",
-  description: "/shrug /me /tableflip /unflip /lenny in your messages.",
+  name: "Text shortcuts",
+  description: "Type /shrug, /tableflip, /unflip, /lenny or /party and Ohiyo sends the text art. /me sends a line in italics.",
   version: "1.0.0",
   author: "Ohiyo",
   transformSend: (text) => {
@@ -228,7 +113,7 @@ const chatCommandsPlugin: OhiyoPlugin = {
     if (trimmed === "/unflip") return "┬─┬ノ( º _ ºノ)";
     if (trimmed === "/lenny") return "( ͡° ͜ʖ ͡°)";
     if (trimmed === "/party") return "🎉🎊🥳 PARTY TIME 🥳🎊🎉";
-    if (trimmed.startsWith("/me ")) return `_${trimmed.slice(4)}_`;
+    if (trimmed.startsWith("/me ")) return `*${trimmed.slice(4)}*`;
     if (trimmed.startsWith("/spoiler ")) return `||${trimmed.slice(9)}||`;
     return text;
   },
@@ -236,8 +121,8 @@ const chatCommandsPlugin: OhiyoPlugin = {
 
 const bigEmojiPlugin: OhiyoPlugin = {
   id: "big-emoji",
-  name: "Big Emoji",
-  description: "Messages containing only 1–3 emoji are displayed larger.",
+  name: "Big emoji",
+  description: "A message that is only one to three emoji shows up larger.",
   version: "1.0.0",
   author: "Ohiyo",
   transformMessage: (msg) => {
@@ -258,8 +143,8 @@ const bigEmojiPlugin: OhiyoPlugin = {
 
 const timestampPlugin: OhiyoPlugin = {
   id: "discord-timestamps",
-  name: "Discord Timestamps",
-  description: "Renders <t:UNIX> and <t:UNIX:R> like Discord's timestamp format.",
+  name: "Discord time codes",
+  description: "Turns time codes pasted from Discord into readable dates and times.",
   version: "1.0.0",
   author: "Ohiyo",
   transformMessage: (msg) => {
@@ -283,15 +168,10 @@ const timestampPlugin: OhiyoPlugin = {
 
 export const BUILTIN_PLUGINS: OhiyoPlugin[] = [
   compactModePlugin,
-  customCssPlugin,
   mentionHighlightPlugin,
-  linkPreviewPlugin,
-  codeHighlightPlugin,
   messageSoundPlugin,
   keyboardNavPlugin,
   zenModePlugin,
-  fontPickerPlugin,
-  spoilerPlugin,
   chatCommandsPlugin,
   bigEmojiPlugin,
   timestampPlugin,
@@ -450,7 +330,7 @@ export class PluginManager {
     try {
       resolved = new URL(url, location.href);
     } catch {
-      throw new Error("Invalid plugin URL");
+      throw new Error("That doesn't look like a link.");
     }
     // Fetch the source as text. Same-origin always works; cross-origin requires
     // the host to send permissive CORS headers (most raw/CDN hosts do).
@@ -461,7 +341,8 @@ export class PluginManager {
         return r.text();
       });
     } catch (e) {
-      throw new Error(`Couldn't fetch plugin (the host must allow cross-origin requests): ${(e as Error).message}`);
+      console.warn("[plugin] download failed:", (e as Error).message);
+      throw new Error("Couldn't download that plugin. Check the link and try again.");
     }
 
     // SECURITY: untrusted code runs in an isolated Worker — no DOM, no auth
@@ -475,7 +356,8 @@ export class PluginManager {
       manifest = await host.ready();
     } catch (e) {
       host.terminate();
-      throw new Error(`Invalid plugin: ${(e as Error).message}`);
+      console.warn("[plugin] rejected:", (e as Error).message);
+      throw new Error("That file isn't an Ohiyo plugin.");
     }
     // Defense-in-depth: the worker bootstrap already allowlists the id, but the
     // host must not trust a manifest that arrives over postMessage — the id is
@@ -483,11 +365,11 @@ export class PluginManager {
     // id could collide with another plugin's store.
     if (!isValidPluginId(manifest.id)) {
       host.terminate();
-      throw new Error(`Invalid plugin id "${manifest.id}" (must match ^[A-Za-z0-9._-]+$)`);
+      throw new Error("That plugin's id can only use letters, numbers, dots, dashes and underscores.");
     }
     if (this.plugins.some((p) => p.id === manifest.id)) {
       host.terminate();
-      throw new Error(`Plugin "${manifest.id}" already installed`);
+      throw new Error(`${manifest.name} is already added.`);
     }
     host.bindStore(this.makeStore(manifest.id));
     this.sandboxes.set(manifest.id, host);
@@ -631,10 +513,6 @@ function playTick() {
 function handleKeyNav(e: KeyboardEvent) {
   if (e.altKey && e.key >= "1" && e.key <= "9") {
     window.dispatchEvent(new CustomEvent("kikkacord:jump-server", { detail: parseInt(e.key) - 1 }));
-  }
-  if (e.ctrlKey && e.key === "k") {
-    e.preventDefault();
-    window.dispatchEvent(new CustomEvent("kikkacord:open-search"));
   }
 }
 

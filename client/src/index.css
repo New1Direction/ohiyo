@@ -3181,6 +3181,41 @@ button:disabled,
   padding-bottom: var(--msg-group-gap, 0.125rem);
 }
 
+/* ─── On/off switch (Plugins settings) ──────────────────────────────────────────
+   State comes from aria-checked, so what a screen reader hears and what is drawn can't
+   drift apart. The border keeps the off track visible on every theme. */
+.kc-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--text-muted) 45%, transparent);
+  background: var(--bg-hover);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.kc-switch[aria-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.kc-switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.kc-switch[aria-checked="true"] .kc-switch__knob { transform: translateX(1.25rem); }
+.kc-plugins-add > summary { list-style-position: inside; }
+@media (prefers-reduced-motion: reduce) {
+  .kc-switch, .kc-switch__knob { transition: none; }
+}
+
 /* ─── Density + font-scale segmented controls (Appearance settings) ───────────── */
 .kc-seg {
   display: inline-flex;
