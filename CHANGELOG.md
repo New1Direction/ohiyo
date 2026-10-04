@@ -114,6 +114,8 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
+- **Home rail:** use the Ohiyo logo in place of its initials and remove the lightning
+  shortcut. Instant Servers remains available from the command palette (Ctrl/⌘K).
 - **The hosted backend moved from Fly.io to Railway and started with an empty
   database.** Existing hosted accounts, messages and files were not carried over, and
   the web app drops a stored `ohiyo.fly.dev` home and asks you to sign in again.
@@ -143,6 +145,8 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- **Profile editor:** Grouped, responsive fields with visible focus and character counts; fixed the avatar being hidden behind the banner.
+- **Top songs:** Compact add/edit/remove favorites, optional listening links with validation, and a simpler public music list. Drafts remain local until Save profile.
 - **Watch parties work on the web app.** A YouTube party showed an empty box, because
   the site's security policy blocks YouTube's player script; the player is now an embed
   driven by messages, so nothing from YouTube runs inside the app. Guests are kept in

@@ -2197,6 +2197,13 @@ function MainApp({
 
   const commandActions: CommandAction[] = [
     {
+      id: "action-instant-servers",
+      label: "Create or manage Instant Servers",
+      sub: "Hosted communities and self-hosting",
+      icon: "+",
+      run: () => setShowInstantServers(true),
+    },
+    {
       id: "action-private-dm-link",
       label: "Create private DM link",
       sub: "One-time link or QR for a private thread",
@@ -2320,7 +2327,6 @@ function MainApp({
             activeHomeId={activeHomeId}
             onSwitchHome={onSwitchHome}
             onAddHome={onAddHome}
-            onOpenInstantServers={() => setShowInstantServers(true)}
           />
         </div>
 

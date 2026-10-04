@@ -15,6 +15,8 @@ import {
   THEME_VAR_GROUPS,
 } from "../../themes";
 import { isValidHex } from "../../lib/color";
+import { ProfileSongsEditor, songError } from "./ProfileSongsEditor";
+import "./profileEditor.css";
 import { safeHttpUrl } from "../../lib/url";
 import { errorMessage } from "../../lib/errorMessage";
 import { PROFILE_PATTERNS, PROFILE_VIBES, ProfileCardView, type ProfileCardData } from "../ProfileCardView";
@@ -100,7 +102,8 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
   // Trap Tab focus inside the dialog so keyboard users can't tab behind the scrim.
   function trapTab(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key !== "Tab") return;
-    const nodes = dialogRef.current?.querySelectorAll<HTMLElement>(SETTINGS_FOCUSABLE);
+    const nodes = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(SETTINGS_FOCUSABLE) ?? [])
+      .filter((node) => node.getClientRects().length > 0);
     if (!nodes || !nodes.length) return;
     const first = nodes[0];
     const last = nodes[nodes.length - 1];
@@ -1130,12 +1133,6 @@ function cleanSongs(songs: ProfileSong[]): ProfileSong[] {
     .slice(0, 3);
 }
 
-function padSongs(songs: ProfileSong[]): ProfileSong[] {
-  const clean = cleanSongs(songs);
-  while (clean.length < 3) clean.push({ title: "", artist: "", url: "" });
-  return clean.slice(0, 3);
-}
-
 function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, type?: "info" | "success" | "error") => void }) {
   const [bio, setBio] = useState("");
   const [status, setStatus] = useState("");
@@ -1152,7 +1149,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
     showSongs: true,
     showSocials: true,
   });
-  const [topSongs, setTopSongs] = useState<ProfileSong[]>([{ title: "", artist: "", url: "" }, { title: "", artist: "", url: "" }, { title: "", artist: "", url: "" }]);
+  const [topSongs, setTopSongs] = useState<ProfileSong[]>([]);
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
   const bannerFileRef = useRef<HTMLInputElement>(null);
   // Read-only base fields (name, @handle, avatar, socials) used by the live preview.
@@ -1175,7 +1172,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
           showSocials: true,
           ...(d.profile_theme ?? { vibe: "sunset", accent: d.banner_color ?? "#ff7a45", pattern: "stars", glow: true, emoji: "✨" }),
         });
-        setTopSongs(padSongs(d.top_songs ?? []));
+        setTopSongs(cleanSongs(d.top_songs ?? []));
         setBannerUrl(d.banner_url ?? null);
         setBase({
           username: d.username,
@@ -1193,7 +1190,12 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
       .catch((e) => console.warn("[kikkacord] couldn't load profile", e));
   }, [token]);
 
+  const [saving, setSaving] = useState(false);
   async function save() {
+    if (saving) return;
+    const invalidSong = topSongs.map(songError).find(Boolean);
+    if (invalidSong) { onToast(invalidSong, "error"); return; }
+    setSaving(true);
     try {
       // api.updateProfile throws on a non-OK answer, so a 400 (e.g. a field over the
       // server's length limit) shows the server's message instead of "Profile saved".
@@ -1201,6 +1203,8 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
       onToast("Profile saved", "success");
     } catch (err) {
       onToast(errorMessage(err, "Failed to save"), "error");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -1247,15 +1251,18 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
   };
 
   return (
-    <div>
+    <div className="kc-profile-editor">
       <h2 className="mb-1 text-xl font-bold">Profile</h2>
       <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
-        Edit on the left — see exactly how others see you on the right.
+        Make it yours. Your preview updates as you edit.
       </p>
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="flex-1">
+      <div className="kc-profile-layout">
+        <div className="kc-profile-form">
+          <section className="kc-profile-section" aria-label="About you">
           <Field label="Custom Status" hint="Shown below your username">
             <input
+              aria-label="Custom status"
+              aria-describedby="profile-status-count"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
               maxLength={128}
@@ -1263,9 +1270,12 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
               className="w-full rounded px-3 py-2 text-sm outline-none"
               style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
             />
+            <p id="profile-status-count" className="kc-profile-character-count">{status.length}/128</p>
           </Field>
           <Field label="Bio">
             <textarea
+              aria-label="Bio"
+              aria-describedby="profile-bio-count"
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               maxLength={500}
@@ -1274,45 +1284,12 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
               className="w-full rounded px-3 py-2 text-sm outline-none resize-none"
               style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
             />
+            <p id="profile-bio-count" className="kc-profile-character-count">{bio.length}/500</p>
           </Field>
-          <Field label="Top 3 Songs" hint="Show your current favorites on your profile. Link is optional.">
-            <div className="flex flex-col gap-2">
-              {topSongs.map((song, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl border p-2"
-                  style={{ background: "var(--bg-input)", borderColor: "var(--bg-hover)" }}
-                >
-                  <div className="mb-1 text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-                    Song {i + 1}
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <input
-                      value={song.title}
-                      onChange={(e) => setTopSongs((prev) => prev.map((s, idx) => idx === i ? { ...s, title: e.target.value } : s))}
-                      placeholder="Song title"
-                      className="rounded px-3 py-2 text-sm outline-none"
-                      style={{ background: "var(--bg-sidebar)", color: "var(--text-primary)" }}
-                    />
-                    <input
-                      value={song.artist ?? ""}
-                      onChange={(e) => setTopSongs((prev) => prev.map((s, idx) => idx === i ? { ...s, artist: e.target.value } : s))}
-                      placeholder="Artist"
-                      className="rounded px-3 py-2 text-sm outline-none"
-                      style={{ background: "var(--bg-sidebar)", color: "var(--text-primary)" }}
-                    />
-                  </div>
-                  <input
-                    value={song.url ?? ""}
-                    onChange={(e) => setTopSongs((prev) => prev.map((s, idx) => idx === i ? { ...s, url: e.target.value } : s))}
-                    placeholder="Spotify / YouTube / SoundCloud link"
-                    className="mt-2 w-full rounded px-3 py-2 text-sm outline-none"
-                    style={{ background: "var(--bg-sidebar)", color: "var(--text-primary)" }}
-                  />
-                </div>
-              ))}
-            </div>
-          </Field>
+          </section>
+          <ProfileSongsEditor songs={topSongs} onChange={setTopSongs} />
+          <section className="kc-profile-section" aria-label="Profile appearance">
+          <div className="kc-profile-section-heading"><div><h3>Make it yours</h3><p>Colors, details, and what you share.</p></div></div>
           <Field label="Banner Color">
             <div className="flex items-center gap-3">
               <input
@@ -1339,6 +1316,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
                     key={id}
                     type="button"
                     onClick={() => setProfileTheme((t) => ({ ...t, vibe: id as ProfileTheme["vibe"], accent: vibe.a }))}
+                    aria-pressed={active}
                     className="kc-interactive rounded-xl px-3 py-2 text-left text-xs font-bold"
                     style={{
                       border: `1px solid ${active ? vibe.a : "var(--bg-hover)"}`,
@@ -1353,6 +1331,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
               })}
               <button
                 type="button"
+                aria-pressed={profileTheme.vibe === "custom"}
                 onClick={() => setProfileTheme((t) => ({ ...t, vibe: "custom", accent: bannerColor }))}
                 className="kc-interactive rounded-xl px-3 py-2 text-left text-xs font-bold"
                 style={{ border: `1px solid ${profileTheme.vibe === "custom" ? bannerColor : "var(--bg-hover)"}`, background: "var(--bg-input)", color: "var(--text-primary)" }}
@@ -1377,7 +1356,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
                   value={profileTheme.emoji ?? ""}
                   onChange={(e) => setProfileTheme((t) => ({ ...t, emoji: e.target.value.slice(0, 2) }))}
                   placeholder="✨"
-                  className="w-16 rounded px-2 py-1 text-sm outline-none"
+                  className="kc-profile-sticker w-16 rounded px-2 py-1 text-sm outline-none"
                   style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
                 />
               </label>
@@ -1395,6 +1374,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
                 <button
                   key={p.id}
                   type="button"
+                  aria-pressed={(profileTheme.pattern ?? "stars") === p.id}
                   onClick={() => setProfileTheme((t) => ({ ...t, pattern: p.id }))}
                   className="kc-interactive rounded-full px-3 py-1.5 text-xs font-semibold"
                   style={{
@@ -1422,6 +1402,7 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
                   <button
                     key={key}
                     type="button"
+                    aria-pressed={on}
                     onClick={() => setProfileTheme((t) => ({ ...t, [key]: !(t[key] ?? true) }))}
                     className="kc-interactive rounded-full px-3 py-2 text-xs font-bold"
                     style={{
@@ -1463,20 +1444,25 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
               />
             </div>
             <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-              An image covers the banner color. GIFs supported.
+              An image covers the banner color. GIFs supported. Uploads save immediately.
             </p>
           </Field>
+          </section>
+          <div className="kc-profile-save">
+          <span className="kc-profile-hint">Preview changes before saving.</span>
           <button
+            disabled={saving || topSongs.some((song) => Boolean(songError(song)))}
             onClick={save}
             className="mt-2 rounded px-4 py-2 text-sm font-semibold text-white"
             style={{ background: "var(--accent)" }}
           >
-            Save Profile
+            {saving ? "Saving…" : "Save profile"}
           </button>
+          </div>
         </div>
 
         {/* Live preview — exactly the card others see on hover */}
-        <div className="flex-shrink-0 lg:w-[300px]">
+        <div className="kc-profile-preview">
           <div
             className="mb-2 text-xs font-bold uppercase"
             style={{ color: "var(--text-muted)", letterSpacing: "0.04em" }}

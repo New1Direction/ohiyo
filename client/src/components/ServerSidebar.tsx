@@ -1,5 +1,6 @@
 import type { ServerWithChannels } from "../api";
 import type { OhiyoHome } from "../lib/homes";
+import { BirdMark } from "./BirdMark";
 import { Icon } from "./Icon";
 
 type Props = {
@@ -14,7 +15,6 @@ type Props = {
   activeHomeId: string;
   onSwitchHome: (id: string) => void;
   onAddHome: () => void;
-  onOpenInstantServers: () => void;
 };
 
 function ServerIcon({
@@ -87,7 +87,6 @@ export function ServerSidebar({
   activeHomeId,
   onSwitchHome,
   onAddHome,
-  onOpenInstantServers,
 }: Props) {
   return (
     <div
@@ -106,6 +105,7 @@ export function ServerSidebar({
               onClick={() => onSwitchHome(h.id)}
               title={`${h.name} — ${h.url}`}
               aria-label={`Switch to ${h.name}`}
+              aria-pressed={selected}
               className="kc-interactive flex h-8 w-8 items-center justify-center text-[10px] font-bold"
               style={{
                 borderRadius: selected ? "30%" : "50%",
@@ -115,7 +115,7 @@ export function ServerSidebar({
                 boxShadow: selected ? "0 0 0 2px color-mix(in oklch, var(--accent) 24%, transparent)" : undefined,
               }}
             >
-              {label || "OH"}
+              {h.name.trim().toLowerCase() === "ohiyo" ? <BirdMark size={23} /> : label || "OH"}
             </button>
           );
         })}
@@ -128,16 +128,6 @@ export function ServerSidebar({
           style={{ borderRadius: "50%", background: "var(--bg-sidebar)", color: "var(--accent)", border: "none" }}
         >
           +
-        </button>
-        <button
-          type="button"
-          onClick={onOpenInstantServers}
-          title="Create or manage Instant Servers"
-          aria-label="Create or manage Instant Servers"
-          className="kc-interactive flex h-8 w-8 items-center justify-center text-xs font-black"
-          style={{ borderRadius: "50%", background: "var(--bg-sidebar)", color: "var(--green)", border: "none" }}
-        >
-          ⚡
         </button>
       </div>
 
