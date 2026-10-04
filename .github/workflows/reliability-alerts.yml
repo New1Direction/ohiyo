@@ -13,7 +13,6 @@ on:
         default: false
   schedule:
     - cron: "*/30 * * * *" # public status/app/API/push checks
-    - cron: "17 8 * * *"  # daily Instant Server provision smoke too
 
 permissions:
   contents: read
@@ -30,14 +29,16 @@ jobs:
     env:
       LANDING_URL: https://ohiyo.gg
       APP_URL: https://app.ohiyo.gg
-      API_URL: https://ohiyo.fly.dev
+      API_URL: https://ohiyo-server-production.up.railway.app
       ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
       # Optional repo variable, comma-separated: assets/index-abc.js,assets/index-def.css
       # Set this after manual Cloudflare Pages deploys when you want stale-bundle alerts.
       EXPECTED_APP_BUNDLE: ${{ vars.OHIYO_EXPECTED_APP_BUNDLE }}
       SMOKE_USERNAME: ${{ secrets.OHIYO_RELIABILITY_SMOKE_USERNAME }}
       SMOKE_PASSWORD: ${{ secrets.OHIYO_RELIABILITY_SMOKE_PASSWORD }}
-      CHECK_INSTANT_SERVER_PROVISION: ${{ (github.event_name == 'schedule' && github.event.schedule == '17 8 * * *') || (github.event_name == 'workflow_dispatch' && inputs.instant_server_smoke) }}
+      # Instant Servers need Fly Machines; the hosted service on Railway does not provision
+      # them, so the smoke runs only when asked for by hand.
+      CHECK_INSTANT_SERVER_PROVISION: ${{ github.event_name == 'workflow_dispatch' && inputs.instant_server_smoke }}
     steps:
       - uses: actions/checkout@v7
       - name: Run beta reliability alert checks

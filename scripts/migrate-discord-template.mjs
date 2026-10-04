@@ -4,7 +4,7 @@
  *
  * Usage:
  *   OHIYO_TOKEN=<jwt> node scripts/migrate-discord-template.mjs https://discord.new/abc123
- *   E2E_API=https://ohiyo.fly.dev/api/v1 OHIYO_TOKEN=<jwt> scripts/migrate-discord-template.mjs abc123
+ *   E2E_API=https://ohiyo-server-production.up.railway.app/api/v1 OHIYO_TOKEN=<jwt> scripts/migrate-discord-template.mjs abc123
  *
  * The template API reconstructs channel hierarchy, categories, roles, best-effort
  * server-level permissions, permission-overwrite snapshots, server icon, and custom
@@ -13,7 +13,7 @@
 
 const template = process.argv[2];
 if (!template || template === "-h" || template === "--help") {
-  console.error(`Usage: OHIYO_TOKEN=<jwt> ${process.argv[1]} <discord-template-url-or-code>\n\nOptional env:\n  E2E_API / OHIYO_API  Ohiyo API base (default: https://ohiyo.fly.dev/api/v1)`);
+  console.error(`Usage: OHIYO_TOKEN=<jwt> ${process.argv[1]} <discord-template-url-or-code>\n\nOptional env:\n  E2E_API / OHIYO_API  Ohiyo API base (default: https://ohiyo-server-production.up.railway.app/api/v1)`);
   process.exit(template ? 0 : 2);
 }
 
@@ -23,7 +23,7 @@ if (!token) {
   process.exit(2);
 }
 
-const api = (process.env.E2E_API || process.env.OHIYO_API || "https://ohiyo.fly.dev/api/v1").replace(/\/$/, "");
+const api = (process.env.E2E_API || process.env.OHIYO_API || "https://ohiyo-server-production.up.railway.app/api/v1").replace(/\/$/, "");
 
 const started = Date.now();
 const res = await fetch(`${api}/imports/discord/template`, {

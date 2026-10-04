@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_URL="${APP_URL:-https://app.ohiyo.gg}"
 LANDING_URL="${LANDING_URL:-https://ohiyo.gg}"
-API_URL="${API_URL:-https://ohiyo.fly.dev}"
+API_URL="${API_URL:-https://ohiyo-server-production.up.railway.app}"
 STATUS_URL="${STATUS_URL:-$API_URL/api/v1/reliability/status}"
 PUSH_CONFIG_URL="${PUSH_CONFIG_URL:-$API_URL/api/v1/push/config}"
 EXPECTED_APP_BUNDLE="${EXPECTED_APP_BUNDLE:-}"
