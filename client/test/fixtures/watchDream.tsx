@@ -10,6 +10,7 @@ function Fixture() {
   const [guest, setGuest] = useState(false);
   const [playback, setPlayback] = useState(session);
   const [controls, setControls] = useState<string[]>([]);
+  const [positions, setPositions] = useState<(number | undefined)[]>([]);
   const [extra, setExtra] = useState(false);
   Object.assign(window, {
     dreamFixture: {
@@ -19,6 +20,7 @@ function Fixture() {
       addSibling: () => setExtra(true),
       unmount: () => root.unmount(),
       controls,
+      positions,
     },
   });
   return <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--bg-channel)" }}>
@@ -27,7 +29,8 @@ function Fixture() {
     </aside>
     <main style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
       <header style={{ padding: 16 }}><button># {channel}</button></header>
-      {active && <WatchParty key={channel} session={playback} isHost={!guest} onControl={(action) => {
+      {active && <WatchParty key={channel} session={playback} isHost={!guest} onControl={(action, payload) => {
+        setPositions(values => [...values, payload?.position]);
         setControls(values => [...values, action]);
         if (action === "stop") setActive(false);
         else setPlayback(value => ({ ...value, paused: action === "pause", updated_at: Date.now() / 1000 }));

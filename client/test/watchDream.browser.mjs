@@ -33,7 +33,7 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
   let browser;
   try {
     browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
-    const page = await browser.newPage({ viewport: { width: 1454, height: 864 } });
+    const page = await browser.newPage({ viewport: { width: 1454, height: 864 }, hasTouch: true });
     // Deliberately stub the cross-origin media, never claim playback was exercised.
     const playerHtml = `<body style="margin:0;background:rgb(25,85,245);color:white;display:grid;place-items:center;height:100vh"><button style="position:absolute;bottom:16px;left:16px">Video controls (test stand-in)</button><h1>Sharp video center</h1><button style="position:absolute;bottom:16px;right:16px" onclick="document.body.style.background='rgb(245,40,30)'">Red scene</button><script>
       let volume = 55;
@@ -58,6 +58,7 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     const enabled = () => toggle.getAttribute("aria-pressed");
     await load();
     await page.locator("iframe").waitFor();
+    await page.frameLocator("iframe").getByRole("heading", { name: "Sharp video center" }).waitFor();
     const frame = await page.locator("iframe").elementHandle();
     const bounds = await page.locator(".kc-watch").boundingBox();
     await toggle.click();
@@ -83,11 +84,14 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     await page.locator(".kc-watch-ambient").evaluate(node => node.style.removeProperty("visibility"));
     const colorBounds = await page.locator("iframe").boundingBox();
     const colorClip = { x: Math.floor(colorBounds.x + colorBounds.width / 2), y: Math.floor(colorBounds.y) - 24, width: 1, height: 1 };
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const blue = screenshotPixel(await page.screenshot({ clip: colorClip }));
     if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/watch-dream-live-blue.png` });
     await page.frameLocator("iframe").getByRole("button", { name: "Red scene" }).click();
     await page.mouse.move(0, 0);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const red = screenshotPixel(await page.screenshot({ clip: colorClip }));
+    console.log("live-color sample diagnostics", { blue, red, colorClip, colorBounds });
     assert.ok(blue[2] > blue[0] + 10, `blue live halo: ${blue}`);
     assert.ok(red[0] > red[2] + 10, `red live halo: ${red}`);
     console.log("outside-only live-color pixel proof", { blue, red, colorClip });
@@ -140,6 +144,12 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     await page.waitForFunction(() => window.dreamFixture.controls.includes("play"));
     await surround.dblclick({ position: { x: 10, y: 50 } });
     await page.waitForFunction(() => window.dreamFixture.controls.includes("pause"));
+    assert.deepEqual(await page.evaluate(() => window.dreamFixture.positions), [48, 48], "stalled player position, not advancing session clock, drives host gestures");
+    const surroundBounds = await surround.boundingBox();
+    await page.touchscreen.tap(surroundBounds.x + 10, surroundBounds.y + 50);
+    await page.touchscreen.tap(surroundBounds.x + 10, surroundBounds.y + 50);
+    await page.waitForFunction(() => window.dreamFixture.controls.length === 3);
+    assert.equal(await page.evaluate(() => window.dreamFixture.controls.at(-1)), "play", "real touch sequence includes terminal pointerleave");
     await page.setViewportSize({ width: 390, height: 844 });
     if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/watch-dream-mobile.png` });
     const mobileRail = await rail.boundingBox();

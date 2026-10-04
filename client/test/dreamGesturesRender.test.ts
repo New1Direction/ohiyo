@@ -76,16 +76,34 @@ test("volume drag captures pointer and cancellation releases it without toggling
     assert.equal(f.toggles(), 0);
   } finally { f.cleanup(); }
 });
-test("surround double tap toggles once; synthetic doubleclick is ignored", () => {
+test("surround touch double tap survives terminal pointer leaves; synthetic doubleclick is ignored", () => {
   const f = setup();
   try {
     f.pointer(f.surround, "pointerdown", 200, "touch", 100);
     f.pointer(f.surround, "pointerup", 200, "touch", 130);
+    f.pointer(f.surround, "pointerout", 200, "touch", 131);
+    f.pointer(f.surround, "pointerleave", 200, "touch", 132);
     f.pointer(f.surround, "pointerdown", 200, "touch", 220);
     f.pointer(f.surround, "pointerup", 200, "touch", 250);
+    f.pointer(f.surround, "pointerout", 200, "touch", 251);
+    f.pointer(f.surround, "pointerleave", 200, "touch", 252);
     assert.equal(f.toggles(), 1);
     bundle.mod.act(() => { const event = new window.MouseEvent("dblclick", { bubbles: true }); Object.defineProperty(event, "timeStamp", { value: 260 }); f.surround.dispatchEvent(event); });
     assert.equal(f.toggles(), 1);
+  } finally { f.cleanup(); }
+});
+test("leaving during an active surround gesture cancels the tap sequence", () => {
+  const f = setup();
+  try {
+    f.pointer(f.surround, "pointerdown", 200, "touch", 100);
+    f.pointer(f.surround, "pointerup", 200, "touch", 130);
+    f.pointer(f.surround, "pointerout", 200, "touch", 131);
+    f.pointer(f.surround, "pointerdown", 200, "touch", 180);
+    f.pointer(f.surround, "pointerout", 200, "touch", 190);
+    f.pointer(f.surround, "pointerup", 200, "touch", 200);
+    f.pointer(f.surround, "pointerdown", 200, "touch", 220);
+    f.pointer(f.surround, "pointerup", 200, "touch", 250);
+    assert.equal(f.toggles(), 0);
   } finally { f.cleanup(); }
 });
 test("surround drag is not a tap and guests cannot toggle", () => {

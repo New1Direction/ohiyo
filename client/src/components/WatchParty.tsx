@@ -268,10 +268,14 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
   const [volumeNotice, setVolumeNotice] = useState("");
   const volumeCheck = useRef<number | undefined>(undefined);
   const reportedVolume = useRef<number | null>(null);
+  const reportedClock = useRef<PlayerClock>(NEW_PLAYER_CLOCK);
+  const positionKnown = useRef(false);
 
   // Read only the public player message contract, never cross-origin frame pixels.
   useEffect(() => {
     reportedVolume.current = null;
+    reportedClock.current = NEW_PLAYER_CLOCK;
+    positionKnown.current = false;
     setVolume(null);
     setVolumeNotice("");
     const video = playerRef.current?.querySelector("video");
@@ -284,6 +288,10 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
       const frame = playerRef.current?.querySelector("iframe");
       if (!frame || event.source !== frame.contentWindow) return;
       const update = parseYouTubeMessage(event.origin, event.data);
+      if (update) {
+        reportedClock.current = advanceClock(reportedClock.current, update, Date.now()).clock;
+        if (typeof update.time === "number") positionKnown.current = true;
+      }
       if (typeof update?.volume === "number") {
         reportedVolume.current = update.volume;
         setVolume(update.volume);
@@ -326,8 +334,13 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
   const togglePlayback = () => {
     if (!isHost) return;
     const native = playerRef.current?.querySelector("video");
+    if (ytId && !positionKnown.current) {
+      setModeError("The player is still loading. Try again shortly.");
+      return;
+    }
+    setModeError("");
     onControl(session.paused ? "play" : "pause", {
-      position: native?.currentTime ?? Math.max(0, livePosition(session, nowSeconds())),
+      position: native?.currentTime ?? playerTimeAt(reportedClock.current, Date.now()),
     });
   };
   useWatchDream(playerRef, toggleRef, dream, () => setDream(false));

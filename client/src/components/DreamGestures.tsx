@@ -90,7 +90,13 @@ export function DreamGestures({ volume, onVolumeChange, onTogglePlayback, isHost
           } else previousTap.current = current;
         }}
         onPointerCancel={() => { touch.current = null; previousTap.current = null; }}
-        onPointerLeave={() => { touch.current = null; previousTap.current = null; }}
+        onPointerLeave={() => {
+          // Non-hover pointers leave immediately after pointerup. Keep that
+          // completed tap so a second touch can form a double-tap; only an
+          // in-progress gesture leaving the surround cancels the sequence.
+          if (touch.current) previousTap.current = null;
+          touch.current = null;
+        }}
       />
       <div
         ref={railRef}
