@@ -1308,7 +1308,7 @@ async fn handle_watch_control(
     } else {
         None
     };
-    let now = crate::types::now_unix();
+    let now = crate::types::now_unix_f64();
     // Compute the new session under the lock; broadcast after it's dropped (no await held).
     let session = {
         let mut watch = state.watch.write().unwrap_or_else(|e| e.into_inner());
@@ -1323,6 +1323,7 @@ async fn handle_watch_control(
                     position: 0.0,
                     updated_at: now,
                     host_id: user_id.to_string(),
+                    server_time: now,
                 };
                 watch.insert(channel_id.to_string(), s.clone());
                 Some(s)
@@ -1345,6 +1346,7 @@ async fn handle_watch_control(
                     s.position = p.max(0.0);
                 }
                 s.updated_at = now;
+                s.server_time = now;
                 Some(s.clone())
             }
             "stop" => {

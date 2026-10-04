@@ -23,6 +23,11 @@ pub async fn get_watch(
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .get(&channel_id)
-        .cloned();
+        .cloned()
+        // Stamp the copy with the clock as it is now, not as it was at the last update.
+        .map(|s| WatchSession {
+            server_time: crate::types::now_unix_f64(),
+            ..s
+        });
     Ok(Json(session))
 }
