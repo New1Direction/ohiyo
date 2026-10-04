@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "vite";
 import { chromium } from "playwright-core";
+import { mkdir } from "node:fs/promises";
 
 const executablePath = process.env.KIKKA_CHROMIUM;
 test("Dream mode preserves media, isolates surroundings and cleans up", { skip: !executablePath }, async () => {
@@ -14,7 +15,23 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
     const page = await browser.newPage({ viewport: { width: 1454, height: 864 } });
     // Deliberately stub the cross-origin media, never claim playback was exercised.
-    await page.route("https://www.youtube-nocookie.com/**", route => route.fulfill({ contentType: "text/html", body: '<body style="margin:0;background:#121319;color:#fff;display:grid;place-items:center;height:100vh"><button>Video controls (test stand-in)</button></body>' }));
+    const playerHtml = `<body style="margin:0;background:linear-gradient(120deg,#171c88,#8e9be5);color:white;display:grid;place-items:center;height:100vh"><button style="position:absolute;bottom:16px;left:16px">Video controls (test stand-in)</button><h1>Sharp video center</h1><script>
+      let volume = 55;
+      window.addEventListener('message', event => {
+        const message = JSON.parse(event.data);
+        if (message.event === 'listening') {
+          parent.postMessage(JSON.stringify({event:'onReady'}), '*');
+          parent.postMessage(JSON.stringify({event:'infoDelivery',info:{volume,currentTime:48,playerState:2}}), '*');
+        }
+        if (message.func === 'setVolume') {
+          volume = message.args[0];
+          parent.postMessage(JSON.stringify({event:'infoDelivery',info:{volume}}), '*');
+        }
+      });
+    </script></body>`;
+    await page.route("https://www.youtube-nocookie.com/**", route => route.fulfill({ contentType: "text/html", body: playerHtml }));
+    await page.route("https://i.ytimg.com/**", route => route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360"><defs><linearGradient id="g"><stop stop-color="#2222a5"/><stop offset="1" stop-color="#adb7df"/></linearGradient></defs><path fill="url(#g)" d="M0 0h480v360H0z"/></svg>' }));
+    if (process.env.KIKKA_SHOTS) await mkdir(process.env.KIKKA_SHOTS, { recursive: true });
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     const load = () => page.goto("http://localhost:1437/test/fixtures/watchDream.html");
@@ -27,7 +44,8 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     await toggle.click();
     assert.equal(await enabled(), "true");
     await page.waitForTimeout(300);
-    assert.deepEqual(await page.locator(".kc-watch").boundingBox(), bounds);
+    assert.ok((await page.locator(".kc-watch").boundingBox()).height > bounds.height);
+    await page.waitForFunction(() => { const image = document.querySelector(".kc-watch-ambient img"); return image?.complete && image.naturalWidth > 0; });
     assert.equal(await frame.evaluate(node => node === document.querySelector("iframe")), true);
     assert.equal(await page.locator("aside").evaluate(node => getComputedStyle(node).filter), "blur(12px) brightness(0.8)");
     assert.equal(await page.locator("aside").evaluate(node => node.inert), true);
@@ -56,6 +74,32 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     assert.equal(await frame.evaluate(node => node === document.querySelector("iframe")), true);
     await toggle.click();
     if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/watch-dream-desktop.png` });
+    const rail = page.getByRole("slider", { name: "Your listening volume" });
+    await page.waitForFunction(() => document.querySelector('[role="slider"]')?.getAttribute("aria-valuenow") === "55");
+    await rail.focus();
+    await page.keyboard.press("ArrowUp");
+    await page.waitForFunction(() => document.querySelector('[role="slider"]')?.getAttribute("aria-valuenow") === "60");
+    const railBounds = await rail.boundingBox();
+    const frameBounds = await page.locator("iframe").boundingBox();
+    assert.ok(railBounds.x >= frameBounds.x + frameBounds.width, "volume rail never overlays provider");
+    await page.mouse.move(railBounds.x + 22, railBounds.y + railBounds.height * .6);
+    await page.mouse.down();
+    await page.mouse.move(railBounds.x + 22, railBounds.y + railBounds.height * .3, { steps: 6 });
+    await page.mouse.up();
+    assert.ok(Number(await rail.getAttribute("aria-valuenow")) > 60);
+    assert.equal(await frame.evaluate(node => node === document.querySelector("iframe")), true);
+    assert.deepEqual(await page.evaluate(() => window.dreamFixture.controls), []);
+    const surround = page.locator(".kc-watch-gesture-surround");
+    await surround.dblclick({ position: { x: 10, y: 50 } });
+    await page.waitForFunction(() => window.dreamFixture.controls.includes("play"));
+    await surround.dblclick({ position: { x: 10, y: 50 } });
+    await page.waitForFunction(() => window.dreamFixture.controls.includes("pause"));
+    await page.setViewportSize({ width: 390, height: 844 });
+    if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/watch-dream-mobile.png` });
+    const mobileRail = await rail.boundingBox();
+    const mobileFrame = await page.locator("iframe").boundingBox();
+    assert.ok(mobileRail.x >= mobileFrame.x + mobileFrame.width);
+    await page.setViewportSize({ width: 1454, height: 864 });
     await page.evaluate(() => window.dreamFixture.navigate());
     // External fixture callbacks schedule React work; wait for the new channel commit.
     await page.waitForFunction(() => document.querySelector("main header button")?.textContent === "# another");
@@ -69,6 +113,7 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     await page.evaluate(() => window.dreamFixture.guest());
     await toggle.click();
     assert.equal(await page.getByRole("button", { name: "End", exact: true }).count(), 0);
+    assert.equal(await page.locator(".kc-watch-gesture-surround").isDisabled(), true);
     await page.evaluate(() => window.dreamFixture.endRemotely());
     await page.locator("iframe").waitFor({ state: "detached" });
     assert.equal(await page.locator("[inert]").count(), 0);

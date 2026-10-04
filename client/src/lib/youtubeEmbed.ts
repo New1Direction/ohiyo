@@ -30,7 +30,7 @@ export const youtubeListening = (): string => envelope({ event: "listening" });
 export const youtubeCommand = (func: string, args: unknown[] = []): string => envelope({ event: "command", func, args });
 
 /** What a message from the player says: it is ready, its state changed, where it is. */
-export type YouTubeUpdate = { ready?: true; state?: number; time?: number };
+export type YouTubeUpdate = { ready?: true; state?: number; time?: number; volume?: number };
 
 /** Read a `message` event from the embed; null when it is not from the player. */
 export function parseYouTubeMessage(origin: string, data: unknown): YouTubeUpdate | null {
@@ -50,7 +50,8 @@ export function parseYouTubeMessage(origin: string, data: unknown): YouTubeUpdat
   if (event === "initialDelivery" || event === "infoDelivery") {
     const out: YouTubeUpdate = {};
     if (typeof info === "object" && info !== null) {
-      const { playerState, currentTime } = info as { playerState?: unknown; currentTime?: unknown };
+      const { playerState, currentTime, volume } = info as { playerState?: unknown; currentTime?: unknown; volume?: unknown };
+      if (typeof volume === "number" && Number.isFinite(volume) && volume >= 0 && volume <= 100) out.volume = volume;
       if (typeof playerState === "number") out.state = playerState;
       if (typeof currentTime === "number") out.time = currentTime;
     }

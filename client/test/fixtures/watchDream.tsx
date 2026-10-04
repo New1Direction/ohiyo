@@ -8,6 +8,8 @@ function Fixture() {
   const [channel, setChannel] = useState("general");
   const [active, setActive] = useState(true);
   const [guest, setGuest] = useState(false);
+  const [playback, setPlayback] = useState(session);
+  const [controls, setControls] = useState<string[]>([]);
   const [extra, setExtra] = useState(false);
   Object.assign(window, {
     dreamFixture: {
@@ -16,6 +18,7 @@ function Fixture() {
       guest: () => setGuest(true),
       addSibling: () => setExtra(true),
       unmount: () => root.unmount(),
+      controls,
     },
   });
   return <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--bg-channel)" }}>
@@ -24,7 +27,11 @@ function Fixture() {
     </aside>
     <main style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
       <header style={{ padding: 16 }}><button># {channel}</button></header>
-      {active && <WatchParty key={channel} session={session} isHost={!guest} onControl={() => setActive(false)} />}
+      {active && <WatchParty key={channel} session={playback} isHost={!guest} onControl={(action) => {
+        setControls(values => [...values, action]);
+        if (action === "stop") setActive(false);
+        else setPlayback(value => ({ ...value, paused: action === "pause", updated_at: Date.now() / 1000 }));
+      }} />}
       <section style={{ flex: 1, padding: 24 }}><p>Kikka</p><p>This is such a good part.</p><button>React to message</button></section>
       {extra && <button id="new-sibling">New background control</button>}
       <footer style={{ padding: 16 }}><input aria-label="Message" placeholder="Say something to #general…" /></footer>
