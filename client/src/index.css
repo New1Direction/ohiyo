@@ -3599,8 +3599,12 @@ button:disabled,
   box-shadow: none;
   isolation: isolate;
   color: #f5f5ff;
+  /* How far the video's edge melts into the glow. Narrower top and bottom, where the player's
+     title and controls sit, so they stay readable. */
+  --dream-feather-x: 28px;
+  --dream-feather-y: 16px;
 }
-.kc-watch--dream::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background: rgb(7 8 13 / 60%); }
+.kc-watch--dream::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background: rgb(7 8 13 / 30%); }
 .kc-watch--dream .kc-watch-header { margin: 0 -32px; padding: 8px 0 18px; }
 .kc-watch--dream .kc-watch-header > span { color: #f5f5ff !important; }
 .kc-watch--dream .kc-watch-header span span,
@@ -3618,6 +3622,13 @@ button:disabled,
   width: min(100%, calc((100dvh - 132px) * 16 / 9)) !important;
 }
 .kc-watch--dream .kc-watch-media > div:has(video) { width: 100%; }
+.kc-watch--dream .kc-watch-media > div:has(iframe),
+.kc-watch--dream .kc-watch-media > div:has(video) {
+  mask-image:
+    linear-gradient(to right, transparent, #000 var(--dream-feather-x), #000 calc(100% - var(--dream-feather-x)), transparent),
+    linear-gradient(to bottom, transparent, #000 var(--dream-feather-y), #000 calc(100% - var(--dream-feather-y)), transparent);
+  mask-composite: intersect;
+}
 .kc-watch--dream video { max-height: calc(100dvh - 132px) !important; object-fit: contain; }
 /* Keep `-webkit-backdrop-filter` BEFORE `backdrop-filter`. The production build keeps only the
    later of the two when the values match, and Chrome/Edge/Firefox ignore the -webkit- one. */
@@ -3628,19 +3639,20 @@ button:disabled,
   pointer-events: none;
   visibility: hidden;
   background: transparent;
-  -webkit-backdrop-filter: blur(100px) saturate(1.05);
-  backdrop-filter: blur(100px) saturate(1.05);
+  -webkit-backdrop-filter: blur(190px) saturate(2.4) brightness(1.3);
+  backdrop-filter: blur(190px) saturate(2.4) brightness(1.3);
   mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);
-  mask-size: 100% 100%, var(--halo-width) var(--halo-height);
-  mask-position: 0 0, var(--halo-x) var(--halo-y);
+  /* The hole is the player's box pulled in by the feather, so the glow blooms over the faded edge. */
+  mask-size: 100% 100%, calc(var(--halo-width) - 2 * var(--dream-feather-x)) calc(var(--halo-height) - 2 * var(--dream-feather-y));
+  mask-position: 0 0, calc(var(--halo-x) + var(--dream-feather-x)) calc(var(--halo-y) + var(--dream-feather-y));
   mask-repeat: no-repeat;
   mask-composite: exclude;
-  opacity: .78;
+  opacity: .92;
   animation: kc-watch-halo-breathe 18s ease-in-out infinite alternate;
 }
 .kc-watch-ambient[data-ready="true"] { visibility: visible; }
 /* Only intensity changes. Never transform the layer or its provider-sized hole. */
-@keyframes kc-watch-halo-breathe { from { opacity: .65; } to { opacity: .85; } }
+@keyframes kc-watch-halo-breathe { from { opacity: .82; } to { opacity: 1; } }
 .kc-watch-gestures { position: absolute; inset: 50px 0 0; pointer-events: none; }
 .kc-watch-gesture-surround { position: absolute; inset: 0; z-index: 1; border: 0; background: transparent; pointer-events: auto; color: inherit; cursor: default; touch-action: manipulation; }
 .kc-watch-gesture-surround:focus-visible { outline: 1px solid #bdbcf1; outline-offset: 3px; border-radius: 16px; }
@@ -3655,7 +3667,7 @@ button:disabled,
 }
 @media (prefers-reduced-motion: reduce) {
   .kc-watch, .kc-watch-surrounding, .kc-watch-dream-toggle { transition: none; }
-  .kc-watch-ambient { animation: none; opacity: .75; }
+  .kc-watch-ambient { animation: none; opacity: .92; }
 }
 
 /* Fullscreen promotes this exact element into the top layer without moving media. */
