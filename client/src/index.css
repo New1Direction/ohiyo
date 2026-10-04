@@ -3582,6 +3582,8 @@ button:disabled,
   box-shadow: none;
 }
 .kc-watch-media { position: relative; z-index: 2; }
+/* YouTube requires a viewport at least 200px tall, including on narrow screens. */
+.kc-watch-media > div:has(iframe) { min-height: 200px; }
 .kc-watch--dream {
   position: fixed;
   inset: 20px 20px 20px clamp(20px, 17vw, 288px);
@@ -3689,7 +3691,7 @@ button:disabled,
   position: absolute;
   top: 0;
   right: 0;
-  z-index: 2;
+  z-index: 5;
   background: rgb(0 0 0 / 85%);
   border-radius: 0 0 0 14px;
   opacity: 0;

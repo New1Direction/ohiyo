@@ -130,6 +130,7 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
       for (let el = node; el; el = el.parentElement) if (getComputedStyle(el).filter !== "none" || el.inert) return false;
       return true;
     }), true);
+    await toggle.focus();
     await page.getByRole("button", { name: "Invite", includeHidden: true }).evaluate(node => node.focus());
     assert.equal(await toggle.evaluate(node => node === document.activeElement), true);
     await page.keyboard.press("Tab");
