@@ -20,6 +20,7 @@ import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions";
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
+import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, messageGroupTextPx, messageLineCount, messageRowMetrics } from "../lib/messageLayout";
 import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode } from "../lib/linkPreviews";
 import { loadDraft, persistDraft } from "../lib/drafts";
@@ -458,11 +459,15 @@ export function ChatPane({
   const profileAnchorRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<List>(null);
   const listOuterRef = useRef<HTMLDivElement>(null);
+  // The box the list fills, which is where the list's width is read from for the
+  // row-height estimate. Held in state, not a ref: it only mounts once a channel is open,
+  // and the measuring effect has to start then.
+  const [listBox, setListBox] = useState<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLInputElement>(null);
-  // Row-height metrics read from the density/font-scale CSS vars. Cached in a ref and
-  // refreshed only on the appearance-changed event (not per render) so estimateHeight
-  // stays cheap. estimateHeight reads metricsRef.current; the listener re-measures.
-  const metricsRef = useRef({ linePx: 20, basePx: 44, fontScale: 1 });
+  // Row-height metrics: the density/font-scale CSS vars plus how many characters fit on a
+  // line at the list's width. Cached in a ref and refreshed only when the appearance or the
+  // width changes (not per render) so estimateHeight stays cheap.
+  const metricsRef = useRef(DEFAULT_ROW_METRICS);
   // Scroll anchoring: only follow new messages when the user is already at the
   // bottom (or we explicitly want it). forceBottomRef wins for own-send / switch.
   const atBottomRef = useRef(true);
@@ -546,28 +551,48 @@ export function ChatPane({
     setComposerPickerOpen(false);
   }
 
-  // Refresh the row-height metrics from the density/font-scale CSS vars on mount and
-  // whenever the user changes density or font scale, then drop react-window's cached
-  // heights so every row re-measures at the new scale.
+  // Refresh the row-height metrics on mount, whenever the user changes density or font
+  // scale, and whenever the list gets wider or narrower (a phone fits about a third of the
+  // characters a desktop pane does), then drop react-window's cached heights so every row
+  // is sized again.
   useEffect(() => {
-    const readMetrics = () => {
+    const phoneLayout = window.matchMedia(PHONE_LAYOUT_QUERY);
+    const readMetrics = (): boolean => {
       const cs = getComputedStyle(document.documentElement);
-      const fontScale = Number.parseFloat(cs.getPropertyValue("--msg-font-scale")) || 1;
-      const linePx = (Number.parseFloat(cs.getPropertyValue("--msg-line-px")) || 20) * fontScale;
-      const basePx = Number.parseFloat(cs.getPropertyValue("--msg-base-px")) || 44;
-      metricsRef.current = { linePx, basePx, fontScale };
+      const next = messageRowMetrics({
+        listWidth: listBox?.clientWidth ?? 0,
+        fontScale: Number.parseFloat(cs.getPropertyValue("--msg-font-scale")) || 1,
+        isPhone: phoneLayout.matches,
+        lineHeight: Number.parseFloat(cs.getPropertyValue("--msg-line-height")) || 1.45,
+        densityBasePx: Number.parseFloat(cs.getPropertyValue("--msg-base-px")) || 44,
+      });
+      const previous = metricsRef.current;
+      metricsRef.current = next;
+      return previous.linePx !== next.linePx || previous.basePx !== next.basePx || previous.charsPerLine !== next.charsPerLine;
     };
     readMetrics();
     // The ref initializes to the cozy defaults; if the saved density/scale differs,
     // re-measure now so the first paint isn't sized for the wrong density.
     listRef.current?.resetAfterIndex(0);
-    const onChange = () => {
+    const onAppearanceChange = () => {
       readMetrics();
       listRef.current?.resetAfterIndex(0);
     };
-    window.addEventListener(APPEARANCE_CHANGED_EVENT, onChange);
-    return () => window.removeEventListener(APPEARANCE_CHANGED_EVENT, onChange);
-  }, []);
+    // Resizes fire continuously while a window edge is dragged; only re-size the rows
+    // when the estimate actually changed.
+    const onResize = () => {
+      if (readMetrics()) listRef.current?.resetAfterIndex(0);
+    };
+    window.addEventListener(APPEARANCE_CHANGED_EVENT, onAppearanceChange);
+    phoneLayout.addEventListener("change", onResize);
+    const observer = listBox && typeof ResizeObserver !== "undefined" ? new ResizeObserver(onResize) : null;
+    if (listBox) observer?.observe(listBox);
+    return () => {
+      window.removeEventListener(APPEARANCE_CHANGED_EVENT, onAppearanceChange);
+      phoneLayout.removeEventListener("change", onResize);
+      observer?.disconnect();
+    };
+  }, [listBox]);
 
   // Re-measure rows, then auto-scroll to the latest ONLY if the user is at the
   // bottom (or we forced it). If they're reading history, surface a jump pill
@@ -784,10 +809,11 @@ export function ChatPane({
       if (!row) return 60;
       if (row.kind === "activity") return 48;
       const g = row.group;
-      const { linePx, basePx, fontScale } = metricsRef.current;
-      // Fewer characters fit per line as the font scales up, so the wrap estimate tracks it.
-      const charsPerLine = Math.max(20, Math.round(80 / fontScale));
-      const textLines = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 1 : Math.ceil(m.content.length / charsPerLine)), 0);
+      const { linePx, basePx, charsPerLine } = metricsRef.current;
+      const textH = messageGroupTextPx(
+        g.msgs.map((m) => (hiddenMessageIds.has(m.id) ? 1 : messageLineCount(m.content, charsPerLine))),
+        linePx
+      );
       // Reserve the rendered attachment height so images/videos do not get clipped in the virtualized list.
       const mediaH = g.msgs.reduce(
         (sum, m) =>
@@ -808,7 +834,7 @@ export function ChatPane({
       const failed = g.msgs.filter((m) => m._state === "failed").length;
       const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
       const embedsH = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 0 : messageEmbedHeight(m, e2eEnabled)), 0);
-      return basePx + Math.max(textLines, 1) * linePx + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH;
+      return Math.ceil(basePx + textH + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH);
     },
     [rows, hiddenMessageIds, e2eEnabled]
   );
@@ -1037,7 +1063,7 @@ export function ChatPane({
 
   return (
     <OgAuthTokenContext.Provider value={token}>
-    <div className="kc-chat-shell flex flex-1 flex-col" style={{ background: "var(--bg-channel)" }} {...getRootProps()}>
+    <div className="kc-chat-shell flex min-w-0 flex-1 flex-col" style={{ background: "var(--bg-channel)" }} {...getRootProps()}>
       <input {...getInputProps({ "aria-label": "Attach files" })} />
 
       {/* Drop overlay */}
@@ -1529,7 +1555,7 @@ export function ChatPane({
       )}
 
       {/* Messages — virtualized */}
-      <div className={`flex-1 overflow-hidden relative${e2eEnabled ? " kc-e2e" : ""}`}>
+      <div ref={setListBox} className={`flex-1 overflow-hidden relative${e2eEnabled ? " kc-e2e" : ""}`}>
         {/* Screen-reader announcement of the latest message (the list is virtualized). */}
         <div className="sr-only" role="log" aria-live="polite" aria-relevant="additions">
           {displayMessages.length > 0
