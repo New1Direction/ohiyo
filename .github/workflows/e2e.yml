@@ -59,7 +59,7 @@ jobs:
 
       - name: Upload UI screenshots
         if: always() && matrix.client_mode == 'dev'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ui-regression-screenshots
           path: /tmp/ohiyo-ui-shots
@@ -132,7 +132,7 @@ jobs:
 
       - name: Upload E2E artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-${{ matrix.client_mode }}-${{ github.run_attempt }}
           if-no-files-found: ignore
