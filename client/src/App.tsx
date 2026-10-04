@@ -1292,9 +1292,13 @@ function MainApp({
     }
   }
 
-  // Keyboard shortcut: Ctrl+, opens settings; Alt+N jumps to server N.
+  // Core shortcuts work without the optional Keyboard Navigator plugin.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setShowCommandPalette(true);
+      }
       if (e.ctrlKey && e.key === ",") {
         e.preventDefault();
         setShowSettings((s) => !s);
@@ -2197,6 +2201,13 @@ function MainApp({
 
   const commandActions: CommandAction[] = [
     {
+      id: "action-instant-servers",
+      label: "Create or manage Instant Servers",
+      sub: "Hosted communities and self-hosting",
+      icon: "+",
+      run: () => setShowInstantServers(true),
+    },
+    {
       id: "action-private-dm-link",
       label: "Create private DM link",
       sub: "One-time link or QR for a private thread",
@@ -2320,7 +2331,6 @@ function MainApp({
             activeHomeId={activeHomeId}
             onSwitchHome={onSwitchHome}
             onAddHome={onAddHome}
-            onOpenInstantServers={() => setShowInstantServers(true)}
           />
         </div>
 

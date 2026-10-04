@@ -5,6 +5,26 @@ import assert from "node:assert/strict";
 import { createServer } from "vite";
 import { chromium } from "playwright-core";
 import { mkdir } from "node:fs/promises";
+import { inflateSync } from "node:zlib";
+
+// Chromium PNG screenshots use 8-bit RGB/RGBA. A 1x1 crop needs no filter-neighbor reconstruction.
+function screenshotPixel(png) {
+  const chunks = [];
+  for (let offset = 8; offset < png.length;) {
+    const length = png.readUInt32BE(offset);
+    const type = png.toString("ascii", offset + 4, offset + 8);
+    if (type === "IHDR") {
+      assert.equal(png.readUInt32BE(offset + 8), 1);
+      assert.equal(png.readUInt32BE(offset + 12), 1);
+      assert.equal(png[offset + 16], 8);
+      assert.ok([2, 6].includes(png[offset + 17]));
+    }
+    if (type === "IDAT") chunks.push(png.subarray(offset + 8, offset + 8 + length));
+    offset += length + 12;
+  }
+  return [...inflateSync(Buffer.concat(chunks)).subarray(1, 4)];
+}
+
 
 const executablePath = process.env.KIKKA_CHROMIUM;
 test("Dream mode preserves media, isolates surroundings and cleans up", { skip: !executablePath }, async () => {
@@ -15,7 +35,7 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
     const page = await browser.newPage({ viewport: { width: 1454, height: 864 } });
     // Deliberately stub the cross-origin media, never claim playback was exercised.
-    const playerHtml = `<body style="margin:0;background:linear-gradient(120deg,#171c88,#8e9be5);color:white;display:grid;place-items:center;height:100vh"><button style="position:absolute;bottom:16px;left:16px">Video controls (test stand-in)</button><h1>Sharp video center</h1><script>
+    const playerHtml = `<body style="margin:0;background:rgb(25,85,245);color:white;display:grid;place-items:center;height:100vh"><button style="position:absolute;bottom:16px;left:16px">Video controls (test stand-in)</button><h1>Sharp video center</h1><button style="position:absolute;bottom:16px;right:16px" onclick="document.body.style.background='rgb(245,40,30)'">Red scene</button><script>
       let volume = 55;
       window.addEventListener('message', event => {
         const message = JSON.parse(event.data);
@@ -30,7 +50,6 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
       });
     </script></body>`;
     await page.route("https://www.youtube-nocookie.com/**", route => route.fulfill({ contentType: "text/html", body: playerHtml }));
-    await page.route("https://i.ytimg.com/**", route => route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360"><defs><linearGradient id="g"><stop stop-color="#2222a5"/><stop offset="1" stop-color="#adb7df"/></linearGradient></defs><path fill="url(#g)" d="M0 0h480v360H0z"/></svg>' }));
     if (process.env.KIKKA_SHOTS) await mkdir(process.env.KIKKA_SHOTS, { recursive: true });
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -45,7 +64,34 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     assert.equal(await enabled(), "true");
     await page.waitForTimeout(300);
     assert.ok((await page.locator(".kc-watch").boundingBox()).height > bounds.height);
-    await page.waitForFunction(() => { const image = document.querySelector(".kc-watch-ambient img"); return image?.complete && image.naturalWidth > 0; });
+    assert.equal(await page.locator(".kc-watch-ambient img, .kc-watch-dream-edge").count(), 0);
+    await page.waitForFunction(() => document.querySelector(".kc-watch-ambient")?.getAttribute("data-ready") === "true");
+    const hole = await page.locator(".kc-watch-ambient").evaluate(node => {
+      const media = document.querySelector("iframe").getBoundingClientRect();
+      const style = getComputedStyle(node);
+      const x = parseFloat(style.getPropertyValue("--halo-x"));
+      const y = parseFloat(style.getPropertyValue("--halo-y"));
+      const width = parseFloat(style.getPropertyValue("--halo-width"));
+      const height = parseFloat(style.getPropertyValue("--halo-height"));
+      return x < media.left && y < media.top && x + width > media.right && y + height > media.bottom;
+    });
+    assert.equal(hole, true, "every provider pixel is inside the guarded mask hole");
+    const frameWithHalo = await page.locator("iframe").screenshot();
+    await page.locator(".kc-watch-ambient").evaluate(node => { node.style.visibility = "hidden"; });
+    const frameWithoutHalo = await page.locator("iframe").screenshot();
+    assert.deepEqual(frameWithHalo, frameWithoutHalo, "whole iframe pixels remain unaltered");
+    await page.locator(".kc-watch-ambient").evaluate(node => node.style.removeProperty("visibility"));
+    const colorBounds = await page.locator("iframe").boundingBox();
+    const colorClip = { x: Math.floor(colorBounds.x + colorBounds.width / 2), y: Math.floor(colorBounds.y) - 24, width: 1, height: 1 };
+    const blue = screenshotPixel(await page.screenshot({ clip: colorClip }));
+    if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/watch-dream-live-blue.png` });
+    await page.frameLocator("iframe").getByRole("button", { name: "Red scene" }).click();
+    await page.mouse.move(0, 0);
+    const red = screenshotPixel(await page.screenshot({ clip: colorClip }));
+    assert.ok(blue[2] > blue[0] + 10, `blue live halo: ${blue}`);
+    assert.ok(red[0] > red[2] + 10, `red live halo: ${red}`);
+    console.log("outside-only live-color pixel proof", { blue, red, colorClip });
+    if (process.env.KIKKA_SHOTS) await page.screenshot({ path: `${process.env.KIKKA_SHOTS}/watch-dream-live-red.png` });
     assert.equal(await frame.evaluate(node => node === document.querySelector("iframe")), true);
     assert.equal(await page.locator("aside").evaluate(node => getComputedStyle(node).filter), "blur(12px) brightness(0.8)");
     assert.equal(await page.locator("aside").evaluate(node => node.inert), true);
@@ -99,6 +145,14 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     const mobileRail = await rail.boundingBox();
     const mobileFrame = await page.locator("iframe").boundingBox();
     assert.ok(mobileRail.x >= mobileFrame.x + mobileFrame.width);
+    await page.waitForFunction(() => {
+      const halo = document.querySelector(".kc-watch-ambient");
+      const media = document.querySelector("iframe").getBoundingClientRect();
+      const style = getComputedStyle(halo);
+      const x = parseFloat(style.getPropertyValue("--halo-x"));
+      const width = parseFloat(style.getPropertyValue("--halo-width"));
+      return x < media.left && x + width > media.right;
+    });
     await page.setViewportSize({ width: 1454, height: 864 });
     await page.evaluate(() => window.dreamFixture.navigate());
     // External fixture callbacks schedule React work; wait for the new channel commit.
@@ -121,6 +175,7 @@ test("Dream mode preserves media, isolates surroundings and cleans up", { skip: 
     await page.emulateMedia({ reducedMotion: "reduce" });
     await toggle.click();
     assert.equal(await page.locator("aside").evaluate(node => getComputedStyle(node).transitionDuration), "0s");
+    assert.equal(await page.locator(".kc-watch-ambient").evaluate(node => getComputedStyle(node).animationName), "none");
     await toggle.click();
     const cinemaFrame = await page.locator("iframe").elementHandle();
     await page.getByRole("button", { name: "Cinema", exact: true }).click();

@@ -1,5 +1,6 @@
 import type { ProfileTheme, UserProfile } from "../api";
 import { safeHttpUrl } from "../lib/url";
+import { AvatarMark } from "./BirdMark";
 
 /** The fields the profile card renders — shared by the hover popover and the
  *  live editor preview (container/presentational split). */
@@ -110,7 +111,6 @@ function patternOverlay(pattern: ProfileTheme["pattern"]): React.CSSProperties {
 export function ProfileCardView({ data, preview = false }: { data: ProfileCardData; preview?: boolean }) {
   const bannerColor = data.banner_color ?? "#5865f2";
   const theme = cleanTheme(data.profile_theme, bannerColor);
-  const initial = (data.display_name || "?")[0]?.toUpperCase();
   const showStatus = data.profile_theme?.showStatus ?? true;
   const showBio = data.profile_theme?.showBio ?? true;
   const showActive = data.profile_theme?.showActive ?? true;
@@ -164,13 +164,14 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
         )}
       </div>
 
-      <div style={{ padding: "0 16px 16px" }}>
+      <div className="kc-profile-details" style={{ position: "relative", zIndex: 1, padding: "0 16px 16px", overflowWrap: "anywhere" }}>
         {/* Avatar — overlaps banner */}
         <div style={{ marginTop: -34, marginBottom: 10, display: "flex", alignItems: "end", gap: 10 }}>
           <div
             style={{
               width: 68,
               height: 68,
+              flexShrink: 0,
               borderRadius: "50%",
               padding: 3,
               background: `linear-gradient(135deg, white, ${theme.accent})`,
@@ -195,7 +196,7 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
               {data.avatar_url ? (
                 <img src={data.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                initial
+                <AvatarMark />
               )}
             </div>
           </div>
@@ -273,7 +274,7 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
                 letterSpacing: "0.08em",
               }}
             >
-              Top 3 songs
+              On repeat
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {songs.map((song, i) => {
@@ -281,8 +282,8 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
                   <>
                     <span
                       style={{
-                        width: 22,
-                        height: 22,
+                        width: 30,
+                        height: 34,
                         flexShrink: 0,
                         borderRadius: 8,
                         display: "grid",
@@ -293,13 +294,13 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
                         fontWeight: 900,
                       }}
                     >
-                      {i + 1}
+                      {String(i + 1).padStart(2, "0")}
                     </span>
                     <span style={{ minWidth: 0, flex: 1 }}>
                       <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)", fontWeight: 750 }}>{song.title}</span>
                       {song.artist && <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-muted)", fontSize: 11 }}>{song.artist}</span>}
                     </span>
-                    <span aria-hidden style={{ color: theme.accent }}>♪</span>
+                    <span aria-hidden style={{ color: "var(--text-muted)", fontSize: 14 }}>{safeHttpUrl(song.url) ? "↗" : "♪"}</span>
                   </>
                 );
                 const style: React.CSSProperties = {
@@ -307,15 +308,14 @@ export function ProfileCardView({ data, preview = false }: { data: ProfileCardDa
                   alignItems: "center",
                   gap: 8,
                   minWidth: 0,
-                  padding: "7px 8px",
-                  borderRadius: 12,
-                  background: "linear-gradient(135deg, color-mix(in oklch, var(--bg-input) 88%, transparent), color-mix(in oklch, var(--bg-hover) 46%, transparent))",
-                  border: `1px solid color-mix(in oklch, ${theme.accent} 12%, transparent)`,
+                  padding: "8px 0",
+                  borderRadius: 6,
+                  background: "transparent",
                   textDecoration: "none",
                 };
                 const songHref = safeHttpUrl(song.url);
                 return !preview && songHref ? (
-                  <a key={`${song.title}-${i}`} href={songHref} target="_blank" rel="noopener noreferrer" style={style}>{body}</a>
+                  <a key={`${song.title}-${i}`} href={songHref} aria-label={`Listen to ${song.title}${song.artist ? ` by ${song.artist}` : ""} (opens in a new tab)`} target="_blank" rel="noopener noreferrer" style={style}>{body}</a>
                 ) : (
                   <div key={`${song.title}-${i}`} style={style}>{body}</div>
                 );

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Channel, PublicUser } from "../api";
 import { api } from "../api";
+import { AvatarMark } from "./BirdMark";
 
 type Props = {
   channel: Channel;
@@ -22,7 +23,7 @@ function Avatar({ user, small }: { user: PublicUser; small?: boolean }) {
       style={{ backgroundImage: user.avatar_url ? `url(${user.avatar_url})` : undefined }}
       aria-hidden
     >
-      {!user.avatar_url && (label(user)[0] ?? "?").toUpperCase()}
+      {!user.avatar_url && <AvatarMark />}
     </span>
   );
 }

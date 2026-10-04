@@ -93,6 +93,16 @@ try {
   await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("LANDED in #general channel immediately after create ✓");
   await settle(page, 600);
+
+  // A member with no profile picture shows the Ohiyo logo, on a circle that is actually painted.
+  const ownAvatar = await page.evaluate(() => {
+    const el = document.querySelector('button[aria-label="Edit status"] > div');
+    return { logo: Boolean(el?.querySelector('svg[viewBox="0 -23 746 746"]')), bg: el ? getComputedStyle(el).backgroundImage : null };
+  });
+  if (!ownAvatar.logo || !ownAvatar.bg || ownAvatar.bg === "none") {
+    throw new Error(`own default avatar is not the logo on a painted circle: ${JSON.stringify(ownAvatar)}`);
+  }
+  log("default avatar: the Ohiyo logo on a painted circle ✓");
   await shot(page, "04-inapp-channel-1440");
 
   // Verify the owner checklist + seeded voice channel exist.
@@ -123,10 +133,16 @@ try {
   log("invite link generated + activation recorded ✓");
   await page.click('button:has-text("Done")');
 
-  // ── Instant Servers manager is exposed from the rail ──────────────
-  await page.click('button[aria-label="Create or manage Instant Servers"]');
+  // ── Instant Servers stays reachable after removing the lightning shortcut ──
+  if (await page.locator('button[aria-label="Create or manage Instant Servers"]').count()) {
+    throw new Error("the removed lightning shortcut returned");
+  }
+  // Fresh accounts have no optional keyboard plugin enabled.
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Search channels and DMs" }).fill("Instant Servers");
+  await page.getByRole("option", { name: /Create or manage Instant Servers/ }).click();
   await page.waitForSelector("text=Managed encrypted homes you can leave anytime", { timeout: 8000 });
-  log("Instant Servers manager opens from rail ✓");
+  log("Instant Servers manager opens from the core command palette ✓");
   await page.keyboard.press("Escape");
   await settle(page, 200);
 

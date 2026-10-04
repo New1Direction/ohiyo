@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DreamGestures } from "./DreamGestures";
+import { useDreamHalo } from "../hooks/useDreamHalo";
 import { useWatchDream } from "../hooks/useWatchDream";
 import type { WatchSession } from "../gateway";
 import { isAutoplayBlock, livePosition, needsSeek, youtubeId } from "../lib/watchSync";
@@ -261,6 +262,8 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
   const [modeError, setModeError] = useState("");
   const playerRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const haloRef = useRef<HTMLDivElement>(null);
+  useDreamHalo(playerRef, haloRef, dream, session.url);
   const [volume, setVolume] = useState<number | null>(null);
   const [volumeNotice, setVolumeNotice] = useState("");
   const volumeCheck = useRef<number | undefined>(undefined);
@@ -300,7 +303,8 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
     const frame = playerRef.current?.querySelector("iframe");
     setVolumeNotice("");
     if (video) {
-      video.volume = next / 100;
+      try { video.volume = next / 100; }
+      catch { setVolumeNotice("Use your device volume buttons in this browser."); return; }
       if (Math.abs(video.volume * 100 - next) > 1) {
         setVolumeNotice("Use your device volume buttons in this browser.");
         return;
@@ -370,9 +374,7 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
       ref={playerRef}
       className={`kc-watch${dream ? " kc-watch--dream" : ""}${cinema ? " kc-watch--cinema" : ""}`}
     >
-      {dream && <div className="kc-watch-ambient" aria-hidden="true">
-        {ytId && <img src={`https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`} alt="" referrerPolicy="no-referrer" />}
-      </div>}
+      {dream && <div ref={haloRef} className="kc-watch-ambient" aria-hidden="true" />}
       <div className="kc-watch-header flex flex-wrap items-center justify-between gap-2" >
         <span className="flex items-center gap-1.5 text-sm" style={{ fontWeight: 600, color: "var(--text-primary)" }}>
           📺 Watch party
@@ -391,7 +393,7 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
             ref={toggleRef}
             type="button"
             aria-pressed={dream}
-            title={dream ? "Leave Dream mode (Esc)" : "Soft room lighting from the video thumbnail"}
+            title={dream ? "Leave Dream mode (Esc)" : "Live outside-only room glow (availability varies by browser)"}
             onClick={() => void toggleDream()}
             className="kc-interactive kc-watch-dream-toggle rounded-full px-2.5 py-1 text-xs font-semibold"
           >

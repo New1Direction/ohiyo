@@ -171,3 +171,53 @@ test("a denied Cinema request leaves Dream mode and the iframe unchanged", async
     assert.match(f.container.querySelector('[role="status"]')!.textContent!, /Fullscreen was not allowed/);
   } finally { f.cleanup(); }
 });
+
+test("live halo measures a whole-player guard, follows resize, fails closed and disconnects", () => {
+  const proto = window.HTMLElement.prototype;
+  const boundsDescriptor = Object.getOwnPropertyDescriptor(proto, "getBoundingClientRect");
+  const widthDescriptor = Object.getOwnPropertyDescriptor(proto, "clientWidth");
+  const heightDescriptor = Object.getOwnPropertyDescriptor(proto, "clientHeight");
+  const observerDescriptor = Object.getOwnPropertyDescriptor(window, "ResizeObserver");
+  const supportsDescriptor = Object.getOwnPropertyDescriptor(window.CSS, "supports");
+  let mediaBounds = new window.DOMRect(100.5, 90.25, 600, 337.5);
+  let resize = () => {};
+  let disconnected = false;
+  Object.defineProperty(window.CSS, "supports", { configurable: true, value: () => true });
+  Object.defineProperty(window, "ResizeObserver", { configurable: true, value: class {
+    constructor(callback: () => void) { resize = callback; }
+    observe() {}
+    disconnect() { disconnected = true; }
+  } });
+  Object.defineProperty(proto, "getBoundingClientRect", { configurable: true, value: function(this: HTMLElement) {
+    return this.tagName === "IFRAME" ? mediaBounds : new window.DOMRect(0, 0, 1000, 700);
+  } });
+  Object.defineProperty(proto, "clientWidth", { configurable: true, get: () => 1000 });
+  Object.defineProperty(proto, "clientHeight", { configurable: true, get: () => 700 });
+  const f = setup();
+  try {
+    f.click();
+    const halo = f.container.querySelector<HTMLElement>(".kc-watch-ambient")!;
+    assert.equal(halo.dataset.ready, "true");
+    assert.equal(halo.style.getPropertyValue("--halo-x"), "98px");
+    assert.equal(halo.style.getPropertyValue("--halo-width"), "605px");
+    mediaBounds = new window.DOMRect(80.1, 40.4, 480, 270);
+    resize();
+    assert.equal(halo.style.getPropertyValue("--halo-x"), "78px");
+    assert.equal(halo.style.getPropertyValue("--halo-width"), "485px");
+    mediaBounds = new window.DOMRect(0, 0, 0, 0);
+    resize();
+    assert.equal(halo.dataset.ready, undefined);
+    f.click();
+    assert.equal(disconnected, true);
+  } finally {
+    f.cleanup();
+    for (const [target, key, descriptor] of [
+      [proto, "getBoundingClientRect", boundsDescriptor], [proto, "clientWidth", widthDescriptor],
+      [proto, "clientHeight", heightDescriptor], [window, "ResizeObserver", observerDescriptor],
+      [window.CSS, "supports", supportsDescriptor],
+    ] as const) {
+      if (descriptor) Object.defineProperty(target, key, descriptor);
+      else Reflect.deleteProperty(target, key);
+    }
+  }
+});

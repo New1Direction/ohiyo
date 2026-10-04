@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Channel, type PrivateDmLinkPreview, type PublicUser } from "../api";
+import { AvatarMark } from "./BirdMark";
 
 function timeLeft(expiresAt: number): string {
   const left = Math.max(0, expiresAt - Math.floor(Date.now() / 1000));
@@ -99,7 +100,7 @@ export function PrivateDmLinkAccept({
                   backgroundPosition: "center",
                 }}
               >
-                {!creator.avatar_url && (creator.display_name[0] ?? creator.username[0] ?? "?").toUpperCase()}
+                {!creator.avatar_url && <AvatarMark />}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-bold" style={{ color: "var(--text-primary)" }}>{creator.display_name}</div>

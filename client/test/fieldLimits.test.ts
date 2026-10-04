@@ -64,3 +64,9 @@ test("a failed save shows the server's message", () => {
 test("with no message from the server, the fallback is shown", () => {
   for (const err of [new Error(""), new Error("   "), "boom", undefined]) assert.equal(errorMessage(err, "Failed to save"), "Failed to save");
 });
+
+test("profile settings do not imply that unsaved edits auto-save", () => {
+  const html = profileTab();
+  assert.match(html, /Save your profile when ready/);
+  assert.doesNotMatch(html, /Changes save as you go/);
+});

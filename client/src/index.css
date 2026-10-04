@@ -3546,8 +3546,8 @@ button:disabled,
   background: color-mix(in oklch, var(--bg-input) 38%, transparent);
 }
 
-/* The player keeps its DOM identity in both modes. Dream's room wash uses only
-   the public thumbnail: it is intentionally not represented as live frame light. */
+/* Live compositor-only halo. The mask excludes the ENTIRE provider viewport.
+   No thumbnail, canvas sampling, capture permission, or duplicate player. */
 .kc-watch {
   position: relative;
   margin: 8px 12px 0;
@@ -3558,7 +3558,7 @@ button:disabled,
   box-shadow: var(--shadow-lg);
   transition: background 300ms ease, border-color 300ms ease, box-shadow 300ms ease;
 }
-.kc-watch-header { position: relative; z-index: 3; padding: 10px 14px; }
+.kc-watch-header { position: relative; z-index: 4; padding: 10px 14px; }
 .kc-watch-surrounding { transition: filter 400ms ease; }
 .kc-watch-surrounding--dream {
   filter: blur(12px) brightness(.8);
@@ -3598,6 +3598,7 @@ button:disabled,
   isolation: isolate;
   color: #f5f5ff;
 }
+.kc-watch--dream::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background: rgb(7 8 13 / 60%); }
 .kc-watch--dream .kc-watch-header { margin: 0 -32px; padding: 8px 0 18px; }
 .kc-watch--dream .kc-watch-header > span { color: #f5f5ff !important; }
 .kc-watch--dream .kc-watch-header span span,
@@ -3608,8 +3609,8 @@ button:disabled,
   max-height: 100%;
   display: grid;
   place-items: center;
-  /* The feather is outside the provider. No pixels, controls or attribution are covered. */
-  box-shadow: 0 0 54px 12px rgb(8 10 25 / 16%);
+  /* No border/glow on the frame: only the live, outside-only room haze. */
+  box-shadow: none;
 }
 .kc-watch--dream .kc-watch-media > div:has(iframe) {
   width: min(100%, calc((100dvh - 132px) * 16 / 9)) !important;
@@ -3618,36 +3619,33 @@ button:disabled,
 .kc-watch--dream video { max-height: calc(100dvh - 132px) !important; object-fit: contain; }
 .kc-watch-ambient {
   position: fixed;
-  inset: -72px;
-  z-index: -2;
-  pointer-events: none;
-  overflow: hidden;
-  background: #10121e;
-  animation: kc-dream-enter 500ms ease both;
-}
-.kc-watch-ambient img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: blur(64px) saturate(1.35) brightness(.65);
-  opacity: .8;
-}
-.kc-watch-ambient::after {
-  content: "";
-  position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 60% 52%, transparent 15%, rgb(6 8 20 / 35%) 72%), linear-gradient(90deg, rgb(4 6 16 / 48%), transparent 35%);
+  z-index: 3;
+  pointer-events: none;
+  visibility: hidden;
+  background: transparent;
+  backdrop-filter: blur(100px) saturate(1.05);
+  -webkit-backdrop-filter: blur(100px) saturate(1.05);
+  mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);
+  mask-size: 100% 100%, var(--halo-width) var(--halo-height);
+  mask-position: 0 0, var(--halo-x) var(--halo-y);
+  mask-repeat: no-repeat;
+  mask-composite: exclude;
+  opacity: .78;
+  animation: kc-watch-halo-breathe 18s ease-in-out infinite alternate;
 }
-.kc-watch-gestures { position: absolute; inset: 50px 0 0; z-index: 1; pointer-events: none; }
-.kc-watch-gesture-surround { position: absolute; inset: 0; border: 0; background: transparent; pointer-events: auto; color: inherit; cursor: default; touch-action: manipulation; }
+.kc-watch-ambient[data-ready="true"] { visibility: visible; }
+/* Only intensity changes. Never transform the layer or its provider-sized hole. */
+@keyframes kc-watch-halo-breathe { from { opacity: .65; } to { opacity: .85; } }
+.kc-watch-gestures { position: absolute; inset: 50px 0 0; pointer-events: none; }
+.kc-watch-gesture-surround { position: absolute; inset: 0; z-index: 1; border: 0; background: transparent; pointer-events: auto; color: inherit; cursor: default; touch-action: manipulation; }
 .kc-watch-gesture-surround:focus-visible { outline: 1px solid #bdbcf1; outline-offset: 3px; border-radius: 16px; }
-.kc-watch-volume-rail { position: absolute; top: 0; bottom: 0; right: 0; width: 44px; pointer-events: auto; touch-action: none; cursor: ns-resize; outline: none; }
+.kc-watch-volume-rail { position: absolute; z-index: 5; top: 0; bottom: 0; right: 0; width: 44px; pointer-events: auto; touch-action: none; cursor: ns-resize; outline: none; }
 .kc-watch-volume-rail:focus-visible { box-shadow: inset -2px 0 #cbcafa; border-radius: 8px; }
 .kc-watch-volume-rail[aria-disabled="true"] { cursor: default; }
-.kc-watch-volume-indicator { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); padding: 8px 10px; border-radius: 20px; background: rgb(20 22 42 / 65%); color: #fff; font-size: 12px; pointer-events: none; white-space: nowrap; backdrop-filter: blur(16px); }
+.kc-watch-volume-indicator { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); padding: 8px 6px; border-radius: 20px; background: rgb(20 22 42 / 65%); color: #fff; font-size: 12px; pointer-events: none; white-space: nowrap; backdrop-filter: blur(16px); }
 .kc-watch-volume-notice { position: absolute; bottom: 0; right: 36px; z-index: 4; color: #dedff0; font-size: 12px; margin: 0; }
 .kc-watch-mode-error { position: absolute; top: 44px; z-index: 4; margin: 0; padding: 8px 12px; color: var(--text-secondary); font-size: 12px; }
-@keyframes kc-dream-enter { from { opacity: 0; } to { opacity: 1; } }
 @media (max-width: 700px) {
   .kc-watch--dream { inset: 8px; padding: 0 44px 28px 8px; }
   .kc-watch--dream .kc-watch-header { margin: 0 -32px 0 0; gap: 4px; padding-bottom: 12px; }
@@ -3656,7 +3654,7 @@ button:disabled,
 }
 @media (prefers-reduced-motion: reduce) {
   .kc-watch, .kc-watch-surrounding, .kc-watch-dream-toggle { transition: none; }
-  .kc-watch-ambient { animation: none; }
+  .kc-watch-ambient { animation: none; opacity: .75; }
 }
 
 /* Fullscreen promotes this exact element into the top layer without moving media. */

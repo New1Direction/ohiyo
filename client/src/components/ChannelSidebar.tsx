@@ -4,6 +4,11 @@ import { ActivationChecklist } from "./ActivationChecklist";
 import type { Channel, ServerWithChannels, PublicUser } from "../api";
 import type { ActivationState } from "../lib/activation";
 import type { ConnectionStatus, Activity } from "../gateway";
+import { AvatarMark } from "./BirdMark";
+
+// Set through backgroundImage (not the `background` shorthand): React clears backgroundImage
+// to "" when there is no picture, which would wipe a gradient set by the shorthand.
+const AVATAR_FALLBACK_BG = "linear-gradient(135deg, var(--text-primary), var(--text-muted))";
 
 type VoiceSidebarParticipant = {
   user_id: string;
@@ -228,13 +233,13 @@ export function ChannelSidebar({
             <div
               className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold"
               style={{
-                background: "linear-gradient(135deg, var(--text-primary), var(--text-muted))", color: "var(--bg-base)",
+                color: "var(--bg-base)",
                 boxShadow: isSel ? "0 0 0 2px color-mix(in oklch, var(--accent) 22%, transparent)" : undefined,
-                backgroundImage: other?.avatar_url ? `url(${other.avatar_url})` : undefined,
+                backgroundImage: other?.avatar_url ? `url(${other.avatar_url})` : AVATAR_FALLBACK_BG,
                 backgroundSize: "cover", backgroundPosition: "center",
               }}
             >
-              {!other?.avatar_url && label[0]?.toUpperCase()}
+              {!other?.avatar_url && (other ? <AvatarMark /> : label[0]?.toUpperCase())}
             </div>
             {online && (
               <OnlineDot
@@ -615,13 +620,13 @@ export function ChannelSidebar({
             <div
               className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold"
               style={{
-                background: "linear-gradient(135deg, var(--text-primary), var(--text-muted))", color: "var(--bg-base)",
+                color: "var(--bg-base)",
                 boxShadow: "0 0 0 2px color-mix(in oklch, var(--accent) 22%, transparent)",
-                backgroundImage: currentUser.avatar_url ? `url(${currentUser.avatar_url})` : undefined,
+                backgroundImage: currentUser.avatar_url ? `url(${currentUser.avatar_url})` : AVATAR_FALLBACK_BG,
                 backgroundSize: "cover", backgroundPosition: "center",
               }}
             >
-              {!currentUser.avatar_url && currentUser.display_name[0]?.toUpperCase()}
+              {!currentUser.avatar_url && <AvatarMark />}
             </div>
             <OnlineDot color={selfOnline ? "var(--green)" : "#E8A23D"} />
           </button>
@@ -943,7 +948,7 @@ function VoiceChannelRow({
                   }}
                   aria-hidden="true"
                 >
-                  {!p.user.avatar_url && label[0]?.toUpperCase()}
+                  {!p.user.avatar_url && <AvatarMark />}
                 </div>
                 <span className="kc-voice-participant-name">{label}{p.isSelf ? " (you)" : ""}</span>
                 <span className="kc-voice-participant-status" title={status} aria-label={status}>

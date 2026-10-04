@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "node --experimental-strip-types --test 'test/**/*.test.ts'",
     "test:e2e": "node ../e2e/run.mjs",
-    "test:watch-dream": "node --test test/watchDream.browser.mjs"
+    "test:watch-dream": "node --test test/watchDream.browser.mjs",
+    "test:server-sidebar": "node --test test/serverSidebar.browser.mjs",
+    "test:profile-editor": "node --test test/profileEditor.browser.mjs"
   },
   "dependencies": {
     "@privacyresearch/libsignal-protocol-typescript": "^0.0.16",
