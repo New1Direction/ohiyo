@@ -19,11 +19,18 @@ test("profile editing, save validation, avatar stacking and responsive layout", 
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(profile) });
     });
     await page.goto("http://localhost:1439/test/fixtures/profileEditor.html");
-    await page.getByLabel("Custom status", { exact: true }).fill("A fresh status");
     await page.getByRole("button", { name: /Pink \+ White/ }).click();
+    await page.getByLabel("Custom status", { exact: true }).fill("A fresh status");
     await page.getByLabel("Song title", { exact: true }).fill("Changed song");
     await page.getByLabel("Listen link", { exact: false }).fill("javascript:alert(1)");
     assert.equal(await page.getByRole("button", { name: "Save profile", exact: true }).isDisabled(), true);
+    // Save is disabled: the focus trap must skip hidden song/banner inputs.
+    const firstControl = page.getByRole("dialog").getByRole("button").first();
+    await firstControl.focus();
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(await page.getByRole("button", { name: "Upload image", exact: true }).evaluate(el => el === document.activeElement), true);
+    await page.keyboard.press("Tab");
+    assert.equal(await firstControl.evaluate(el => el === document.activeElement), true);
     await page.getByLabel("Listen link", { exact: false }).fill("https://youtube.com/watch?v=example");
     await page.getByRole("button", { name: "Save profile", exact: true }).click();
     await page.getByLabel("Save result").filter({ hasText: "Profile saved" }).waitFor();
