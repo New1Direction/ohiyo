@@ -1,0 +1,13 @@
+# Keep the build context small and never ship local state into the image.
+node_modules/
+dist/
+dist-ssr/
+src-tauri/
+test/
+uploads/
+*.log
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
+.DS_Store

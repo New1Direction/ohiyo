@@ -79,7 +79,7 @@ box; server channels are stored like any chat server's.
 | Client   | React 19, TypeScript, Tailwind CSS v4, Vite |
 | Desktop  | Tauri 2 |
 | Realtime | WebRTC (voice/video/screen-share), WS gateway with one-time tickets |
-| Deploy   | Fly.io + Docker (see [`DEPLOY.md`](DEPLOY.md)) |
+| Deploy   | Docker on Railway or Fly.io (see [`DEPLOY.md`](DEPLOY.md)) |
 | Quality  | ESLint (hooks-as-error), `tsc`, unit tests, `cargo test`, 28-suite e2e, GitHub Actions CI |
 
 ## Repo layout
@@ -149,10 +149,10 @@ push, CI runs the full gate: **ESLint**, **`tsc`**, **unit tests** (`test:unit`)
 
 ## Deploy
 
-Production runs on Fly.io, the browser app is deployed on Cloudflare Pages, and the
-landing site is published to GitHub Pages. Full walkthrough — Docker image,
-volume-backed SQLite, `fly secrets` for `JWT_SECRET`/TURN, and optional coturn — is in
-[`DEPLOY.md`](DEPLOY.md).
+The hosted service runs on Railway: the server from `server/Dockerfile` and the browser
+app from `client/Dockerfile`. The landing site is published to GitHub Pages. The full
+walkthrough — Docker image, volume-backed SQLite, secrets for `JWT_SECRET`/TURN,
+optional coturn, and the Fly.io and Railway specifics — is in [`DEPLOY.md`](DEPLOY.md).
 
 ## Public privacy docs
 

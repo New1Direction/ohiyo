@@ -1,6 +1,8 @@
 # Cloudflare Pages response headers. The page's <meta> CSP (injected at build time) can't
 # set frame-ancestors, so it is sent here. Calls need the microphone, camera and screen
 # capture: don't restrict them in Permissions-Policy.
+# The container image sets the same headers in ../Caddyfile; keep the two in step
+# (test/webHeaders.test.ts checks).
 /*
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'

@@ -8,14 +8,19 @@ list under "Web beta ready" has not been re-verified since July._
 - The backend now runs on Railway at `https://ohiyo-server-production.up.railway.app`
   with a **new, empty database**. Accounts, messages and files on the old Fly server
   were not carried over.
-- The web app is built against that address. A browser that still has the old
-  `ohiyo.fly.dev` home stored drops it on load and shows the sign-in screen.
+- The web app at `https://app.ohiyo.gg` is served from a second Railway service (built
+  from `client/Dockerfile`, deployed with `scripts/deploy-web.sh`) and talks to that
+  address. A browser that still has the old `ohiyo.fly.dev` home stored drops it on
+  load and shows the sign-in screen.
 - Desktop builds released before this point still talk to `ohiyo.fly.dev` and need a
   new release.
 - Instant Servers are unavailable on the hosted service (they need Fly Machines); the
   server refuses to create them and the daily provisioning smoke is off.
-- Still to do by the owner: shut down the old Fly app, set `OHIYO_OPERATOR_USER_IDS`
-  on Railway, and (optional) point `api.ohiyo.gg` at Railway as a custom domain.
+- `OHIYO_OPERATOR_USER_IDS` is set on Railway.
+- Still to do by the owner: shut down the old Fly apps, and delete the unused
+  Cloudflare Pages project `ohiyo-app`. The wildcard `*.ohiyo.gg` record (and so
+  `api.ohiyo.gg`) still points at `ohiyo.fly.dev`; remove it or repoint it when Fly is
+  shut down.
 - Everything under "Web beta ready" below that names `ohiyo.fly.dev` describes the old
   host as of July.
 
@@ -87,7 +92,7 @@ After the deploy, confirm with `curl -sI https://app.ohiyo.gg | grep -i -E
 
 - Add a real `ALERT_WEBHOOK_URL` GitHub secret so Reliability Alerts page a human. The workflow is installed and passing; only the receiver URL is missing.
 - Recommended: add `OHIYO_RELIABILITY_SMOKE_USERNAME` and `OHIYO_RELIABILITY_SMOKE_PASSWORD` GitHub secrets for the daily Instant Server smoke. Without these, the smoke script registers a temporary user before creating/deleting the instance.
-- After any manual Cloudflare Pages deploy, update `OHIYO_EXPECTED_APP_BUNDLE` to the new `assets/index-*.js,assets/index-*.css` pair.
+- App deploys go through `scripts/deploy-web.sh`, which updates `OHIYO_EXPECTED_APP_BUNDLE` to the new `assets/index-*.js,assets/index-*.css` pair. After a deploy made any other way, update it by hand.
 
 ## Not blocking web launch
 

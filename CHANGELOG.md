@@ -115,7 +115,8 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   database.** Existing hosted accounts, messages and files were not carried over, and
   the web app drops a stored `ohiyo.fly.dev` home and asks you to sign in again.
   Instant Servers are unavailable on the hosted service until they are rebuilt for
-  another provider.
+  another provider. The hosted web app is served from a container (`client/Dockerfile`)
+  on Railway as well, and `scripts/deploy-web.sh` deploys it.
 - Group encryption is now labelled **Experimental** in the app, with a note that it can
   miss messages sent while a member was offline.
 - Deleting a message now also deletes its attachments when nothing else refers to them.
