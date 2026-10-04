@@ -3,9 +3,26 @@
 _Last full check: 2026-07-03. Open problems and new settings added 2026-10-03; the
 list under "Web beta ready" has not been re-verified since July._
 
+## Hosting moved to Railway (2026-10-03)
+
+- The backend now runs on Railway at `https://ohiyo-server-production.up.railway.app`
+  with a **new, empty database**. Accounts, messages and files on the old Fly server
+  were not carried over.
+- The web app is built against that address. A browser that still has the old
+  `ohiyo.fly.dev` home stored drops it on load and shows the sign-in screen.
+- Desktop builds released before this point still talk to `ohiyo.fly.dev` and need a
+  new release.
+- Instant Servers are unavailable on the hosted service (they need Fly Machines); the
+  server refuses to create them and the daily provisioning smoke is off.
+- Still to do by the owner: shut down the old Fly app, set `OHIYO_OPERATOR_USER_IDS`
+  on Railway, and (optional) point `api.ohiyo.gg` at Railway as a custom domain.
+- Everything under "Web beta ready" below that names `ohiyo.fly.dev` describes the old
+  host as of July.
+
 ## Open problems (2026-10-03)
 
-- **Instant Server provisioning returns 502 in production.** The daily smoke has failed
+- **Instant Server provisioning returned 502 on the old Fly host** (moot now that the
+  hosted service does not provision them). The daily smoke had failed
   every day since at least 2026-09-02 (the earliest failing run GitHub still lists is
   2026-07-09). Check `fly logs` for the provisioner error: an expired `FLY_API_TOKEN`,
   a missing `FLY_IMAGE`, or a quota. The smoke script now prints the response body.

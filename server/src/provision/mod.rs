@@ -62,6 +62,13 @@ pub trait MachineProvisioner: Send + Sync {
 /// Max instances a single owner may hold on the free tier (cost-honest cap).
 pub const MAX_FREE_INSTANCES: i64 = 3;
 
+/// Whether this deployment can really provision Instant Servers. Without a Fly API token
+/// `build_state` falls back to the in-memory fake, which exists for tests and local
+/// development; a release build must not hand out instances from it.
+pub fn provisioning_available(has_fly_token: bool, debug_build: bool) -> bool {
+    has_fly_token || debug_build
+}
+
 /// Slugify a display name and append a short unique suffix from the instance id, so
 /// the subdomain is human-readable yet collision-resistant (`the-roost-a1b2c3`).
 fn make_subdomain(name: &str, id: &str) -> String {
@@ -363,6 +370,18 @@ pub async fn delete_instance(
 #[cfg(test)]
 mod create_tests {
     use super::*;
+
+    #[test]
+    fn a_release_build_without_a_fly_token_cannot_provision() {
+        assert!(!provisioning_available(false, false));
+    }
+
+    #[test]
+    fn a_fly_token_or_a_debug_build_can_provision() {
+        assert!(provisioning_available(true, false));
+        assert!(provisioning_available(false, true));
+        assert!(provisioning_available(true, true));
+    }
     use crate::provision::fake::FakeProvisioner;
     use async_trait::async_trait;
     use sqlx::sqlite::SqlitePoolOptions;

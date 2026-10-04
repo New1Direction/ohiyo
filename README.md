@@ -127,7 +127,7 @@ npm run tauri build           # produces the platform bundle (.dmg on macOS)
 ```
 
 The packaged app connects to the backend in `client/.env.production`
-(`VITE_SERVER_URL`, e.g. `https://ohiyo.fly.dev` or your own server). The public beta
+(`VITE_SERVER_URL`, e.g. `https://ohiyo-server-production.up.railway.app` or your own server). The public beta
 uses the hosted Ohiyo backend; you can also point the app at **your own** Fly app,
 self-hosted server, or custom home. See [`DEPLOY.md`](DEPLOY.md) to stand one up.
 

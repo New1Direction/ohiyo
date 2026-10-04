@@ -94,6 +94,7 @@ import {
   setHomeToken,
   upsertHome,
   type OhiyoHome,
+  takeRetiredHomeDropped,
 } from "./lib/homes";
 import type { AbuseReport, Channel, Message, ModerationAction, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
@@ -169,6 +170,14 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  // The hosted backend moved with a fresh database. If loading dropped the home stored
+  // for its old address and nothing else is signed in, the cached messages, outbox and
+  // drafts belong to an account that no longer exists: remove them.
+  useEffect(() => {
+    if (!vaultReady) return;
+    if (takeRetiredHomeDropped() && !loadHomes().some((h) => h.token)) clearSignedOutMessageData();
+  }, [vaultReady]);
 
   // Set by signOut when the sign-out removes local data. Clearing waits for the
   // signed-out render to commit: the chat saves its draft as it unmounts, and effects run

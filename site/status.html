@@ -38,9 +38,9 @@
 
   <h2>Public probes</h2>
   <ul>
-    <li><a href="https://ohiyo.fly.dev/healthz">Backend healthz</a></li>
-    <li><a href="https://ohiyo.fly.dev/api/v1/reliability/status">Status JSON</a></li>
-    <li><a href="https://ohiyo.fly.dev/api/v1/reliability/cost-model">Hosted community cost model</a></li>
+    <li><a href="https://ohiyo-server-production.up.railway.app/healthz">Backend healthz</a></li>
+    <li><a href="https://ohiyo-server-production.up.railway.app/api/v1/reliability/status">Status JSON</a></li>
+    <li><a href="https://ohiyo-server-production.up.railway.app/api/v1/reliability/cost-model">Hosted community cost model</a></li>
   </ul>
 
   <h2>Latest raw status</h2>
@@ -60,7 +60,7 @@
   <div>oh, hi · ohiyo.gg · free &amp; open · built in Rust + React + Tauri</div>
 </div></footer>
 <script>
-const endpoint = 'https://ohiyo.fly.dev/api/v1/reliability/status';
+const endpoint = 'https://ohiyo-server-production.up.railway.app/api/v1/reliability/status';
 const fmt = (ts) => new Date(ts * 1000).toLocaleString();
 async function loadStatus(){
   const overall = document.getElementById('overall');

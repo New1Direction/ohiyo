@@ -6,10 +6,12 @@ import {
   homeIdForUrl,
   loadActiveHomeId,
   loadHomes,
+  nameFromUrl,
   normalizeHomeUrl,
   saveActiveHomeId,
   saveHomes,
   setHomeToken,
+  takeRetiredHomeDropped,
   upsertHome,
   type OhiyoHome,
 } from "../src/lib/homes.ts";
@@ -71,4 +73,42 @@ test("setHomeToken and active-home persistence are scoped by home id", () => {
   const updated = setHomeToken(homes, homes[0].id, "self-token");
   assert.equal(updated[0].token, "self-token");
   assert.equal(updated.find((h) => h.id !== homes[0].id)?.token, null);
+});
+
+// The hosted backend moved off ohiyo.fly.dev with a fresh database. A home stored for that
+// address can never connect again (the web build's CSP refuses it), so loading drops it.
+test("loadHomes drops a home stored for the retired hosted backend, with its token", () => {
+  localStorage.setItem(
+    "kc:homes:v1",
+    JSON.stringify([{ id: "ohiyo.fly.dev", name: "Ohiyo", url: "https://ohiyo.fly.dev", token: null }])
+  );
+  localStorage.setItem("kc:tok:ohiyo.fly.dev", "old-session-token");
+  localStorage.setItem("kc:active-home:v1", "ohiyo.fly.dev");
+
+  const homes = loadHomes();
+
+  assert.equal(homes.some((h) => h.id === "ohiyo.fly.dev"), false, "the retired home is gone");
+  assert.equal(localStorage.getItem("kc:tok:ohiyo.fly.dev"), null, "and so is its session token");
+  const def = homeIdForUrl(DEFAULT_HOME_URL);
+  assert.equal(loadActiveHomeId(homes), def, "the default home becomes the active one");
+  assert.equal(homes.find((h) => h.id === def)?.token, null, "which is signed out");
+  assert.equal(JSON.parse(localStorage.getItem("kc:homes:v1") ?? "[]").some((h: OhiyoHome) => h.id === "ohiyo.fly.dev"), false);
+  assert.equal(takeRetiredHomeDropped(), true, "the drop is reported");
+  assert.equal(takeRetiredHomeDropped(), false, "once");
+});
+
+test("loadHomes keeps other homes and reports nothing when no retired home is stored", () => {
+  takeRetiredHomeDropped();
+  saveHomes([{ id: homeIdForUrl("https://my.server.test"), name: "Mine", url: "https://my.server.test", token: "tok" }]);
+
+  const homes = loadHomes();
+
+  assert.equal(homes.find((h) => h.id === "my.server.test")?.token, "tok");
+  assert.equal(takeRetiredHomeDropped(), false);
+});
+
+test("the official hosted backends are named Ohiyo", () => {
+  assert.equal(nameFromUrl("https://ohiyo-server-production.up.railway.app"), "Ohiyo");
+  assert.equal(nameFromUrl("https://api.ohiyo.gg"), "Ohiyo");
+  assert.equal(nameFromUrl("https://my.server.test"), "my.server.test");
 });

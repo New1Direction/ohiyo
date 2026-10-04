@@ -3,7 +3,7 @@
  * Lightweight Ohiyo load smoke for message send + gateway connection setup.
  * Defaults are intentionally small; raise USERS / MESSAGES_PER_USER for staging.
  */
-const API = process.env.E2E_API || "https://ohiyo.fly.dev/api/v1";
+const API = process.env.E2E_API || "https://ohiyo-server-production.up.railway.app/api/v1";
 const ORIGIN = process.env.KIKKA_ORIGIN || "https://app.ohiyo.gg";
 // More than 10 users needs OHIYO_REGISTER_LIMIT_PER_HOUR raised or set to 0 on the target server.
 const USERS = Number(process.env.USERS || 5);

@@ -141,9 +141,9 @@ FCM payloads are content-free:
 ## Smoke checks
 
 ```bash
-curl -fsS https://ohiyo.fly.dev/api/v1/push/config | jq .privacy_note
+curl -fsS https://ohiyo-server-production.up.railway.app/api/v1/push/config | jq .privacy_note
 
-curl -X POST https://ohiyo.fly.dev/api/v1/push/dispatch \
+curl -X POST https://ohiyo-server-production.up.railway.app/api/v1/push/dispatch \
   -H "Authorization: Bearer $OHIYO_PUSH_RELAY_SECRET"
 ```
 

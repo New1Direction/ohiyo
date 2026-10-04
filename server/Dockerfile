@@ -21,9 +21,15 @@ RUN touch src/main.rs && cargo build --release
 # ── Discrawl stage ────────────────────────────────────────────────────────────
 # Managed Discord clone uses discrawl to mirror a Discord server into SQLite, then
 # the Ohiyo importer maps that SQLite archive into a new Ohiyo space.
-FROM golang:1.26-bookworm AS discrawl-builder
+# Pinned to a release tag and its commit: an unpinned clone of HEAD broke this build when
+# upstream raised its Go requirement, and it pulled unreviewed third-party code into the
+# image. To update, change the tag and the commit together.
+FROM golang:1.27-bookworm AS discrawl-builder
+ARG DISCRAWL_VERSION=v0.15.6
+ARG DISCRAWL_COMMIT=cd7fa1ce5eb762891b84a334e8eecff2f3e67600
 WORKDIR /discrawl
-RUN git clone --depth 1 https://github.com/steipete/discrawl.git . \
+RUN git clone --depth 1 --branch "${DISCRAWL_VERSION}" https://github.com/steipete/discrawl.git . \
+    && test "$(git rev-parse HEAD)" = "${DISCRAWL_COMMIT}" \
     && go build -o /usr/local/bin/discrawl ./cmd/discrawl
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────

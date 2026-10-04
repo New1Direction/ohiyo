@@ -1,5 +1,10 @@
 # Go live — `ohiyo.gg`
 
+> **2026-10-03:** the hosted backend moved from Fly.io to Railway
+> (`https://ohiyo-server-production.up.railway.app`) with a fresh database. The Fly steps
+> below describe the original launch; see `DEPLOY.md` ("Running on Railway") and
+> `LAUNCH-STATUS.md` for the current setup.
+
 You own `ohiyo.gg` (Porkbun). This is the runbook to make it *do things*: serve the
 landing page, and (when you're ready) power live **Instant Servers**. Steps marked
 **[you]** need your accounts; everything else is already in the repo.
