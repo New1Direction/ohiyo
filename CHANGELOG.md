@@ -115,6 +115,15 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
+- **ohiyo.gg redesign:** a new landing page in plain language, built from real app
+  screenshots and the Kikka mark. It explains how Ohiyo works in three steps, shows what the
+  lock does with a small demo, and states the mission. Fonts are self-hosted, so the site
+  now loads nothing from other websites. The privacy, terms, threat model and status pages
+  share the new look.
+- **ohiyo.gg claims brought up to date:** the page no longer advertises Instant Servers (off
+  on the hosted service) or the desktop downloads (the released builds still point at the
+  old server), and it says plainly that channels in a space are not end-to-end encrypted.
+  The privacy and terms pages name the current server address.
 - **Dream mode glow:** the whole room now takes the video's colours (a wider, much more
   saturated blur, with a lighter dimmer over the page), and the video no longer ends in a
   rectangle: the glow fades in over its edges, so the picture dissolves into a blur of itself.
