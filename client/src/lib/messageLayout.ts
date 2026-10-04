@@ -52,15 +52,23 @@ export interface MessageRowMetrics {
   /** Height of one line of message text. */
   linePx: number;
   charsPerLine: number;
+  /** Width of the message text column; 0 when the list has not been measured. */
+  textWidth: number;
+}
+
+/** Width of the message text column: the list minus padding, avatar and gap. */
+function messageTextWidth({ listWidth, isPhone }: Pick<MessageListMetrics, "listWidth" | "isPhone">): number {
+  if (!Number.isFinite(listWidth) || listWidth <= 0) return 0;
+  return Math.max(0, listWidth - (isPhone ? PHONE_GUTTER_PX : DESKTOP_GUTTER_PX));
 }
 
 /** How many characters of message text fit on one line of the list. */
 export function messageCharsPerLine({ listWidth, fontScale, isPhone }: MessageListMetrics): number {
   const scale = fontScale > 0 ? fontScale : 1;
-  if (!Number.isFinite(listWidth) || listWidth <= 0) {
+  const textWidth = messageTextWidth({ listWidth, isPhone });
+  if (textWidth <= 0) {
     return Math.max(MIN_CHARS_PER_LINE, Math.round(DEFAULT_CHARS_PER_LINE / scale));
   }
-  const textWidth = listWidth - (isPhone ? PHONE_GUTTER_PX : DESKTOP_GUTTER_PX);
   const fontPx = isPhone ? PHONE_FONT_PX : DESKTOP_FONT_PX * scale;
   return Math.max(MIN_CHARS_PER_LINE, Math.floor(textWidth / (fontPx * AVG_CHAR_EM)));
 }
@@ -72,11 +80,31 @@ function columns(text: string): number {
   return wide === 0 ? text.length : Array.from(text).length + wide;
 }
 
+/** Lines one paragraph takes when words wrap whole and only an over-long word is broken. */
+function wrappedLines(paragraph: string, charsPerLine: number): number {
+  let lines = 1;
+  let used = 0; // columns taken on the current line
+  for (const word of paragraph.split(" ")) {
+    const width = columns(word);
+    const needed = used === 0 ? width : used + 1 + width;
+    if (needed <= charsPerLine) {
+      used = needed;
+    } else if (width <= charsPerLine) {
+      lines += 1;
+      used = width;
+    } else {
+      // Too long for any line (a link, say): it starts a fresh line, then is cut to fit.
+      if (used > 0) lines += 1;
+      lines += Math.ceil(width / charsPerLine) - 1;
+      used = width % charsPerLine || charsPerLine;
+    }
+  }
+  return lines;
+}
+
 /** How many lines a message takes: every line break starts a new one, long lines wrap. */
 export function messageLineCount(text: string, charsPerLine: number): number {
-  return text
-    .split("\n")
-    .reduce((lines, segment) => lines + Math.max(1, Math.ceil(columns(segment) / charsPerLine)), 0);
+  return text.split("\n").reduce((lines, paragraph) => lines + wrappedLines(paragraph, charsPerLine), 0);
 }
 
 /** The numbers a row's height is built from, for the current width, density and font scale. */
@@ -87,7 +115,7 @@ export function messageRowMetrics(inputs: MessageRowInputs): MessageRowMetrics {
   // The density base was tuned as "a one-message group minus one line of text", so it
   // already holds that message's own padding; take it back out and count it per message.
   const basePx = densityBasePx - MESSAGE_PAD_PX + (isPhone ? PHONE_ROW_EXTRA_PX : 0);
-  return { basePx, linePx, charsPerLine: messageCharsPerLine(inputs) };
+  return { basePx, linePx, charsPerLine: messageCharsPerLine(inputs), textWidth: messageTextWidth(inputs) };
 }
 
 /** Cozy density on an unmeasured list: what the list uses until the first measurement. */

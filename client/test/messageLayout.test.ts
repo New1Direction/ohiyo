@@ -79,6 +79,28 @@ test("what fits on a line matches what a browser showed", () => {
   assert.equal(messageLineCount(plan, messageCharsPerLine(phone)), 5);
 });
 
+test("words wrap whole, and a long link moves to its own line before it breaks", () => {
+  // "movie night?" fits on the first line; the 49-character link does not fit after it, so
+  // it starts the second line and runs onto a third.
+  const link = "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=43s";
+  assert.equal(link.length, 49);
+  assert.equal(messageLineCount(`movie night? ${link}`, 41), 3);
+  // Counting characters alone would say two.
+  assert.equal(Math.ceil(`movie night? ${link}`.length / 41), 2);
+  // Whole words: "aaaa bbbb cccc" in lines of 9 is "aaaa bbbb" then "cccc".
+  assert.equal(messageLineCount("aaaa bbbb cccc", 9), 2);
+  assert.equal(messageLineCount("aaaa bbbb cccc", 8), 3);
+  // A word that exactly fills the line does not spill.
+  assert.equal(messageLineCount("a".repeat(80), 80), 1);
+});
+
+test("the width of the text column is known, for cards that scale with it", () => {
+  // Desktop: 16px padding each side, a 40px avatar and a 12px gap. Phone: 62px in all.
+  assert.equal(messageRowMetrics({ ...desktop, ...cozy }).textWidth, 968 - 84);
+  assert.equal(messageRowMetrics({ ...phone, ...cozy }).textWidth, 390 - 62);
+  assert.equal(messageRowMetrics({ listWidth: 0, fontScale: 1, isPhone: false, ...cozy }).textWidth, 0);
+});
+
 test("a line of text is as tall as the stylesheet makes it", () => {
   // 0.875rem (14px) at line-height 1.45, and the phone's fixed 0.98rem (15.68px) at 1.45.
   assert.ok(Math.abs(messageRowMetrics({ ...desktop, ...cozy }).linePx - 20.3) < 0.01);
