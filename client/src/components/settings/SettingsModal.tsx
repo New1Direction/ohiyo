@@ -183,7 +183,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
           <div className="kc-settings-sidebar__footer">
             <div className="kc-settings-sidebar__hint">
               <span aria-hidden="true" />
-              Changes save as you go.
+              {tab === "profile" ? "Save your profile when ready." : "Changes save as you go."}
             </div>
             <button type="button" onClick={onClose} className="kc-settings-close kc-interactive">
               Back to Ohiyo

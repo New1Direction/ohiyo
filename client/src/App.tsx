@@ -1292,9 +1292,13 @@ function MainApp({
     }
   }
 
-  // Keyboard shortcut: Ctrl+, opens settings; Alt+N jumps to server N.
+  // Core shortcuts work without the optional Keyboard Navigator plugin.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setShowCommandPalette(true);
+      }
       if (e.ctrlKey && e.key === ",") {
         e.preventDefault();
         setShowSettings((s) => !s);
