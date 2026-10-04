@@ -1524,7 +1524,7 @@ export function ChatPane({
       )}
       {watchSession && onWatchControl && (
         <ErrorBoundary label="Watch party">
-          <WatchParty session={watchSession} isHost={isWatchHost(watchSession, currentUserId)} onControl={onWatchControl} />
+          <WatchParty key={channel.id} session={watchSession} isHost={isWatchHost(watchSession, currentUserId)} onControl={onWatchControl} />
         </ErrorBoundary>
       )}
 

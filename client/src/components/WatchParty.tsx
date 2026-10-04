@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useWatchDream } from "../hooks/useWatchDream";
 import type { WatchSession } from "../gateway";
 import { isAutoplayBlock, livePosition, needsSeek, youtubeId } from "../lib/watchSync";
 import {
@@ -254,19 +255,63 @@ function YouTubeWatch({ videoId, session, isHost, onControl }: PlayerProps & { v
  */
 export function WatchParty({ session, isHost, onControl }: PlayerProps) {
   const ytId = youtubeId(session.url);
+  const [dream, setDream] = useState(false);
+  const [cinema, setCinema] = useState(false);
+  const [modeError, setModeError] = useState("");
+  const playerRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  useWatchDream(playerRef, toggleRef, dream, () => setDream(false));
+
+  useEffect(() => {
+    const player = playerRef.current;
+    const onFullscreen = () => {
+      const active = document.fullscreenElement === playerRef.current;
+      setCinema(active);
+      if (active) setDream(false);
+    };
+    document.addEventListener("fullscreenchange", onFullscreen);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreen);
+      if (document.fullscreenElement === player) void document.exitFullscreen().catch(() => {});
+    };
+  }, []);
+
+  const toggleCinema = async () => {
+    setModeError("");
+    try {
+      if (document.fullscreenElement === playerRef.current) {
+        await document.exitFullscreen();
+      } else if (playerRef.current?.requestFullscreen) {
+        // Must run directly from the click gesture. Never move/remount the iframe.
+        await playerRef.current.requestFullscreen();
+      } else {
+        setModeError("Cinema fullscreen is not available in this browser.");
+      }
+    } catch {
+      setModeError("Fullscreen was not allowed. Try Cinema again or use the video's fullscreen control.");
+    }
+  };
+  const toggleDream = async () => {
+    setModeError("");
+    if (document.fullscreenElement === playerRef.current) {
+      try { await document.exitFullscreen(); }
+      catch { setModeError("Leave fullscreen first to use Dream mode."); return; }
+    }
+    setDream((value) => !value);
+  };
   return (
     <div
-      className="kc-watch"
+      ref={playerRef}
+      className={`kc-watch${dream ? " kc-watch--dream" : ""}${cinema ? " kc-watch--cinema" : ""}`}
       style={{
         margin: "8px 12px 0",
         borderRadius: "var(--radius-lg)",
         overflow: "hidden",
         background: "var(--bg-sidebar)",
         border: "1px solid var(--bg-hover)",
-        boxShadow: "var(--shadow-lg)",
       }}
     >
-      <div className="flex items-center justify-between gap-2" style={{ padding: "8px 12px" }}>
+      <div className="kc-watch-header flex flex-wrap items-center justify-between gap-2" style={{ padding: "8px 12px" }}>
         <span className="flex items-center gap-1.5 text-sm" style={{ fontWeight: 600, color: "var(--text-primary)" }}>
           📺 Watch party
           <span
@@ -279,26 +324,51 @@ export function WatchParty({ session, isHost, onControl }: PlayerProps) {
             {session.paused ? "Paused" : "● Live"}
           </span>
         </span>
-        {isHost ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            ref={toggleRef}
+            type="button"
+            aria-pressed={dream}
+            title={dream ? "Leave Dream mode (Esc)" : "Feather the video edges into a soft, dreamy room"}
+            onClick={() => void toggleDream()}
+            className="kc-interactive kc-watch-dream-toggle rounded-full px-2.5 py-1 text-xs font-semibold"
+          >
+            <span aria-hidden="true">☾ </span>Dream mode
+          </button>
           <button
             type="button"
-            onClick={() => onControl("stop")}
-            className="kc-interactive rounded-full px-2.5 py-1 text-xs font-semibold"
-            style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none", cursor: "pointer" }}
+            aria-pressed={cinema}
+            title={cinema ? "Leave fullscreen Cinema" : "Fullscreen video with a black surround"}
+            onClick={() => void toggleCinema()}
+            className="kc-interactive kc-watch-dream-toggle rounded-full px-2.5 py-1 text-xs font-semibold"
           >
-            End
+            {cinema ? "Exit Cinema" : "Cinema"}
           </button>
-        ) : (
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-            Only the host controls playback
-          </span>
-        )}
+          {isHost ? (
+            <button
+              type="button"
+              onClick={() => { setDream(false); onControl("stop"); }}
+              className="kc-interactive rounded-full px-2.5 py-1 text-xs font-semibold"
+              style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none", cursor: "pointer" }}
+            >
+              End
+            </button>
+          ) : (
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Only the host controls playback
+            </span>
+          )}
+        </div>
       </div>
-      {ytId ? (
-        <YouTubeWatch key={ytId} videoId={ytId} session={session} isHost={isHost} onControl={onControl} />
-      ) : (
-        <DirectVideo key={session.url} session={session} isHost={isHost} onControl={onControl} />
-      )}
+      {modeError && <p className="kc-watch-mode-error" role="status">{modeError}</p>}
+      <div className="kc-watch-media">
+        {ytId ? (
+          <YouTubeWatch key={ytId} videoId={ytId} session={session} isHost={isHost} onControl={onControl} />
+        ) : (
+          <DirectVideo key={session.url} session={session} isHost={isHost} onControl={onControl} />
+        )}
+        <div className="kc-watch-dream-edge" aria-hidden="true" />
+      </div>
     </div>
   );
 }
