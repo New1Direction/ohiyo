@@ -45,6 +45,7 @@ import { type Density, DENSITIES, FONT_SCALES } from "../../lib/density";
 import { pushAppearance } from "../../lib/appearanceSync";
 import { LinkedDevices } from "./LinkedDevices";
 import type { PrivacyPrefs } from "../../lib/privacyPrefs";
+import { AvatarMark } from "../BirdMark";
 
 export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security" | "notifications";
 
@@ -942,7 +943,7 @@ function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate }: { curr
                 className="flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold"
                 style={{ background: "var(--accent)", color: "#fff" }}
               >
-                {currentUser.display_name[0]?.toUpperCase()}
+                <AvatarMark />
               </div>
             )}
             <button

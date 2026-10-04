@@ -10,6 +10,7 @@ import {
   supportsDisplayAudio,
   type ScreenSharePresetId,
 } from "../webrtc/screenShare";
+import { AvatarMark } from "./BirdMark";
 
 type Props = {
   webrtc: UseWebRTCReturn;
@@ -204,7 +205,6 @@ function VideoTile({
     };
   }, [stream, showVideo]);
 
-  const initial = name.charAt(0).toUpperCase();
 
   return (
     <div
@@ -246,7 +246,7 @@ function VideoTile({
         }}>
           {avatarUrl ? (
             <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-          ) : initial}
+          ) : <AvatarMark />}
         </div>
       )}
 
@@ -524,7 +524,7 @@ function ControlBtn({
   );
 }
 
-function AvatarOrb({ name, avatarUrl, size = 112 }: { name: string; avatarUrl: string | null; size?: number }) {
+function AvatarOrb({ avatarUrl, size = 112 }: { avatarUrl: string | null; size?: number }) {
   return (
     <div
       style={{
@@ -543,7 +543,7 @@ function AvatarOrb({ name, avatarUrl, size = 112 }: { name: string; avatarUrl: s
         boxShadow: "inset 0 0 0 3px color-mix(in oklch, white 18%, transparent)",
       }}
     >
-      {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : name.charAt(0).toUpperCase()}
+      {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <AvatarMark />}
     </div>
   );
 }
@@ -581,7 +581,7 @@ function VoiceParticipantRow({
           : undefined,
       }}
     >
-      <AvatarOrb name={name} avatarUrl={avatarUrl} size={58} />
+      <AvatarOrb avatarUrl={avatarUrl} size={58} />
       <div className="kc-call-voice-row__body">
         <div className="kc-call-voice-row__name">{name}{isSelf ? " (you)" : ""}</div>
         <div className="kc-call-voice-row__status">
@@ -627,7 +627,7 @@ function ScreenShareParticipantChip({
 
   return (
     <div className={`kc-screen-chip${speaking ? " kc-screen-chip--speaking" : ""}${muted ? " kc-screen-chip--muted" : ""}`}>
-      <AvatarOrb name={name} avatarUrl={avatarUrl} size={38} />
+      <AvatarOrb avatarUrl={avatarUrl} size={38} />
       <div className="kc-screen-chip__body">
         <div className="kc-screen-chip__name">{name}{isSelf ? " (you)" : ""}</div>
         <div className="kc-screen-chip__status">
@@ -810,7 +810,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       {minimized ? (
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <AvatarOrb name={selfName} avatarUrl={selfAvatar} size={46} />
+            <AvatarOrb avatarUrl={selfAvatar} size={46} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <LivePill />
@@ -877,7 +877,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
                 }}
               >
                 <div style={{ padding: 18, borderRadius: "50%", background: "radial-gradient(circle, color-mix(in oklch, var(--accent) 28%, transparent), transparent 68%)", boxShadow: "0 0 0 12px color-mix(in oklch, var(--accent) 7%, transparent), 0 0 0 25px color-mix(in oklch, var(--accent) 4%, transparent)" }}>
-                  <AvatarOrb name={selfName} avatarUrl={selfAvatar} size={118} />
+                  <AvatarOrb avatarUrl={selfAvatar} size={118} />
                 </div>
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 850, letterSpacing: "-0.05em", color: "var(--text-primary)" }}>{selfName}</div>

@@ -298,3 +298,40 @@ test("item M3: no watch party in encrypted mode; offered otherwise", () => {
   assert.equal(hasWatchButton(watchableChat("group_dm", true)), false);
   assert.ok(hasWatchButton(watchableChat("dm", false)));
 });
+
+// A member who has not set a profile picture shows the Ohiyo logo, not their initial.
+const LOGO = 'viewBox="0 -23 746 746"';
+function messageAvatars(html: string): string[] {
+  return [...html.matchAll(/<button[^>]*class="msg-avatar[^"]*"[^>]*>(.*?)<\/button>/g)].map((m) => m[1]);
+}
+
+test("default avatar: a member with no picture shows the Ohiyo logo, hidden from screen readers", () => {
+  const avatars = messageAvatars(chat("dm", false, false));
+  assert.ok(avatars.length > 0, "the messages render avatars");
+  for (const inner of avatars) {
+    assert.ok(inner.includes(LOGO), "the logo is drawn");
+    assert.ok(inner.includes('aria-hidden="true"'), "decorative");
+    assert.equal(inner.includes('aria-label="Ohiyo"'), false, "not announced as 'Ohiyo' for every person");
+    assert.equal(/>B</.test(inner), false, "no initial letter");
+  }
+});
+
+test("default avatar: a member with a picture keeps it and gets no logo", () => {
+  const withPic = { ...peer, avatar_url: "https://files.example/bea.png" };
+  const html = renderChatPane({
+    channel: { id: "c1", server_id: null, name: "chat", channel_type: "dm", position: 0, topic: null, created_at: 0 },
+    messages: [{ channel_id: "c1", author: withPic, created_at: 1, edited_at: null, reactions: [], id: "m1", content: "hi" }],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s },
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    e2eEnabled: false,
+    onToggleE2e() {},
+  });
+  const [inner] = messageAvatars(html);
+  assert.equal(inner, "", "no fallback content over a picture");
+  assert.ok(html.includes("bea.png"));
+});

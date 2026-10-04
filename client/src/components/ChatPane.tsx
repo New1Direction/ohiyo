@@ -13,7 +13,7 @@ import { api, getApiBase, getFileBase } from "../api";
 import type { PluginManager } from "../plugins/registry";
 import { UserProfileCard } from "./UserProfileCard";
 import { GroupMembersPopover } from "./GroupMembersPopover";
-import { BirdMark } from "./BirdMark";
+import { AvatarMark, BirdMark } from "./BirdMark";
 import { ChannelWelcome } from "./ChannelWelcome";
 import { PollWidget } from "./PollWidget";
 import { PollComposer } from "./PollComposer";
@@ -1081,7 +1081,7 @@ export function ChatPane({
                   }}
                   aria-hidden="true"
                 >
-                  {!other?.avatar_url && label[0]?.toUpperCase()}
+                  {!other?.avatar_url && (other ? <AvatarMark /> : label[0]?.toUpperCase())}
                 </span>
                 <span className="kc-dm-tab__label">{label}</span>
               </button>
@@ -1168,7 +1168,7 @@ export function ChatPane({
                     border: "2px solid var(--bg-channel)",
                   }}
                 >
-                  {!member.avatar_url && member.display_name[0]?.toUpperCase()}
+                  {!member.avatar_url && <AvatarMark />}
                 </span>
               ))}
             </span>
@@ -1586,7 +1586,7 @@ export function ChatPane({
                       }}
                       title={`View ${g.author.display_name}'s profile`}
                     >
-                      {!g.author.avatar_url && g.author.display_name[0]?.toUpperCase()}
+                      {!g.author.avatar_url && <AvatarMark />}
                     </button>
                     <div className="min-w-0 flex-1">
                       <div className="msg-meta flex items-baseline gap-2">
@@ -3112,7 +3112,7 @@ function ActivityNoticeRow({ notice, style }: { notice: ChatActivityNotice; styl
             }}
             aria-hidden="true"
           >
-            {!notice.user.avatar_url && notice.user.display_name[0]?.toUpperCase()}
+            {!notice.user.avatar_url && <AvatarMark />}
           </span>
         )}
         <span className="truncate">{notice.text}</span>
