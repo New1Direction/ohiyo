@@ -8,7 +8,9 @@
 <link rel="stylesheet" href="site.css" />
 <style>
   body { width: 1200px; height: 630px; overflow: hidden; }
-  .card-og { position: relative; display: grid; align-content: space-between; width: 1200px; height: 630px; padding: 64px 72px; }
+  .card-og { position: relative; isolation: isolate; display: grid; align-content: space-between; width: 1200px; height: 630px; padding: 64px 72px; background: linear-gradient(180deg, #cde5f4 0%, #e2f0f5 40%, #fbefdb 78%, #fde2c0 100%); }
+  .card-og::after { content: ""; position: absolute; z-index: -1; left: 0; right: 0; bottom: 0; height: 150px; background: #d2e8cb; clip-path: path("M0 60C180 20 330 10 520 34s330 56 540 28 100-22 140-18V150H0Z"); }
+  .card-og::before { content: ""; position: absolute; z-index: -1; left: 0; right: 0; bottom: 0; height: 250px; background: #abd0bd; clip-path: path("M0 120C150 60 300 150 470 110S760 40 930 90s200 60 270 20V250H0Z"); }
   .card-og .brand { font-size: 40px; }
   .card-og .brand .mark { width: 56px; }
   .card-og h1 { font-size: 92px; max-width: 760px; }
