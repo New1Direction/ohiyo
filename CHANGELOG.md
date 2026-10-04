@@ -140,6 +140,12 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- **Watch parties work on the web app.** A YouTube party showed an empty box, because
+  the site's security policy blocks YouTube's player script; the player is now an embed
+  driven by messages, so nothing from YouTube runs inside the app. Guests are kept in
+  step when they pause or scrub (only the host controls playback) and no longer get an
+  End button that did nothing. Sync no longer depends on each device's clock being
+  right, and a browser that blocks autoplay shows a "Click to join the party" button.
 - The server image builds again: the Discord import tool it bundles is pinned to a
   release instead of cloning its latest commit, which had started to need a newer Go.
 - Turning on encryption in a DM right after a reload no longer fails with "your friend

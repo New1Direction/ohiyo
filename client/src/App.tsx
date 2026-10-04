@@ -85,6 +85,7 @@ import {
   type PrivacyPrefs,
 } from "./lib/privacyPrefs";
 import { useToast } from "./hooks/useToast";
+import { onLocalClock } from "./lib/watchSync";
 import {
   loadActiveHomeId,
   loadHomes,
@@ -1194,7 +1195,8 @@ function MainApp({
 
       case "WatchUpdate": {
         if (event.d.channel_id === selectedChannelRef.current?.id) {
-          setWatchSession(event.d.session);
+          const s = event.d.session;
+          setWatchSession(s ? onLocalClock(s, Date.now() / 1000) : null);
         }
         break;
       }
@@ -1353,7 +1355,9 @@ function MainApp({
     // Reset + fetch the watch-party state for the channel we're entering.
     setWatchSession(null);
     api.getWatch(token, channel.id)
-      .then((s) => { if (selectedChannelRef.current?.id === channel.id) setWatchSession(s); })
+      .then((s) => {
+        if (selectedChannelRef.current?.id === channel.id) setWatchSession(s ? onLocalClock(s, Date.now() / 1000) : null);
+      })
       .catch(() => {});
     // Opening a channel marks it read (and clears any mention).
     setUnread((prev) => {

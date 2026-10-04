@@ -220,8 +220,14 @@ pub struct WatchSession {
     pub url: String,
     pub paused: bool,
     pub position: f64,
-    pub updated_at: i64,
+    /// When `position` was true, in seconds on the server's clock (with fractions: a
+    /// whole-second stamp would put guests up to a second off).
+    pub updated_at: f64,
     pub host_id: String,
+    /// The server's clock when this copy was sent. Clients compare it with their own
+    /// clock, so a device whose clock is wrong still lands on the right position.
+    #[serde(default)]
+    pub server_time: f64,
 }
 
 // ── WebSocket gateway events ───────────────────────────────────────────────────
@@ -482,6 +488,11 @@ pub fn new_id() -> String {
 
 pub fn now_unix() -> i64 {
     Utc::now().timestamp()
+}
+
+/// Unix time in seconds with millisecond fractions.
+pub fn now_unix_f64() -> f64 {
+    Utc::now().timestamp_millis() as f64 / 1000.0
 }
 
 /// A provisioned Instant-Server instance. Mirrors the `hosted_instances` table —

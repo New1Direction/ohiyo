@@ -20,8 +20,11 @@ export type WatchSession = {
   url: string;
   paused: boolean;
   position: number;
+  /** When `position` was true, in seconds (see lib/watchSync.ts for whose clock). */
   updated_at: number;
   host_id: string;
+  /** The server's clock when it sent this copy; absent from older servers. */
+  server_time?: number;
 };
 
 export type GatewayEvent =
