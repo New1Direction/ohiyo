@@ -115,6 +115,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
+- **Dream mode is desktop only:** the button no longer appears on phones or touch-first
+  tablets (including a phone held sideways), or in a window narrower than 701px. If a
+  desktop window is shrunk to that size while Dream is on, Dream turns off and stays off
+  when the window grows again. Cinema is unchanged.
 - **Default avatar:** a member who has not set a profile picture now shows the Ohiyo logo
   instead of their first initial, in chat, the member lists, profile cards, calls and settings.
   Group chats keep their letter. The two sidebar circles that painted no background (so the
