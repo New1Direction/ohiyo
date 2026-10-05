@@ -1,6 +1,7 @@
 /* ohiyo.gg. One stylesheet for every page, no build step.
-   Direction: a day in a valley. A dawn painting at the top, meadow in the middle, a starry
-   night behind the privacy section, sunrise behind the mission, morning at the end. Soft
+   Direction: a day in a valley. The first screen is a sunlit meadow with the Ohiyo mark in
+   stone and Kikka beside it; then pale green bands, a starry night behind the privacy
+   section, sunrise behind the mission, morning at the end. Soft
    shapes and soft shadows. The paintings are in assets/scenery; the markup around them is
    written by scripts/site-scenery.py. */
 
@@ -123,18 +124,37 @@ a:hover { text-decoration-color: currentColor; }
 @media (max-width: 860px) { .nav__links { display: none; } .nav__in > .btn { margin-left: auto; } }
 
 /* ── Hero ────────────────────────────────────────────────────────────────── */
-.hero { position: relative; isolation: isolate; margin-top: -4.5rem; padding-block: calc(4.5rem + clamp(2rem, 1rem + 4vw, 4.5rem)) calc(var(--space-section) + var(--wave) + clamp(2rem, 8vw, 8rem)); background: linear-gradient(180deg, #a9d2f3 0%, #b5daf6 40%, #b5daf6 80%, #e3f0da 100%); }
-.hero__grid { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: clamp(2rem, 4vw, 4.5rem); align-items: center; }
-.hero__copy { display: grid; gap: 1.6rem; justify-items: start; }
-.hero .lead { color: #263730; }
-.cta { display: flex; flex-wrap: wrap; gap: 0.9rem 0.9rem; padding-bottom: var(--edge); }
-.hero__facts { font-size: 0.9375rem; color: #263730; font-weight: 600; }
-.hero__art { position: relative; padding-top: clamp(4.5rem, 9vw, 7.5rem); padding-bottom: 6%; }
-.kikka-hello { position: absolute; right: 5%; top: 0; z-index: 2; display: flex; align-items: flex-start; gap: 0.75rem; }
-.kikka { width: clamp(5.5rem, 11vw, 9.5rem); height: auto; display: block; transform-origin: 50% 90%; }
-.bubble { position: relative; margin-top: 0.35rem; padding: 0.5em 0.9em; background: #fff; border-radius: 20px; box-shadow: var(--shadow); font: 800 clamp(1.05rem, 0.9rem + 0.7vw, 1.5rem)/1.1 var(--font-display); letter-spacing: -0.03em; white-space: nowrap; }
-.bubble::after { content: ""; position: absolute; right: -6px; top: 55%; width: 14px; height: 14px; background: #fff; border-radius: 3px; transform: rotate(45deg); }
+/* The first screen is one painting, edge to edge: the meadow, the stone mark, Kikka beside it.
+   The words sit on the bright sky at the left. The backdrop is the painting's own sky, so
+   nothing flashes while it loads. The screen is as tall as the painting is at this width. */
+.hero { position: relative; isolation: isolate; display: grid; align-items: center; margin-top: -4.5rem; min-height: min(calc(100vw * 905 / 1738), 64rem); padding-block: clamp(5.25rem, 2rem + 4.2vw, 6.5rem) calc(var(--wave) + clamp(1.75rem, -6rem + 10vw, 8rem)); background: linear-gradient(90deg, #f4ecd6 0%, #cfdcea 22%, #9ec9ef 48%, #86bff3 100%); }
+.hero__in { width: min(100% - 2 * var(--gutter), var(--wrap)); }
+/* The words stop short of the stone mark, which begins 47% of the way across the painting. */
+.hero__copy { display: grid; gap: clamp(1.1rem, 0.8rem + 1vw, 1.75rem); justify-items: start; max-width: calc(45.5vw - max(var(--gutter), (100vw - var(--wrap)) / 2)); }
+/* Three lines, as painted: each of the first two is one line whatever the width. */
+.hero h1 { font-size: clamp(2.75rem, 0.3rem + 4.1vw, 4.75rem); text-wrap: wrap; }
+.hero__line { display: block; white-space: nowrap; }
+/* A stroke of sun-yellow paint under the last word. */
+.hero .hl::after { left: -7%; right: -9%; bottom: -0.1em; height: 0.3em; rotate: -1.6deg; -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 220 30' preserveAspectRatio='none'%3E%3Cpath d='M3 21C38 12 86 7 132 8c30 1 58 4 84 2-18 6-46 7-70 9-48 4-98 6-143 7z'/%3E%3Cpath d='M9 17C60 8 120 4 214 9' fill='none' stroke='%23000' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 220 30' preserveAspectRatio='none'%3E%3Cpath d='M3 21C38 12 86 7 132 8c30 1 58 4 84 2-18 6-46 7-70 9-48 4-98 6-143 7z'/%3E%3Cpath d='M9 17C60 8 120 4 214 9' fill='none' stroke='%23000' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.hero .lead { max-width: 30rem; color: #1d2c25; font-size: clamp(1.125rem, 0.95rem + 0.75vw, 1.5rem); line-height: 1.35; }
+/* The small print lands on the tree line at some widths, so it carries its own light backing. */
+.hero__facts { margin-left: -0.75em; padding: 0.3em 0.75em; border-radius: 999px; background: rgb(255 252 242 / 90%); font-size: 0.9375rem; color: #1d2c25; font-weight: 600; }
 
+/* On tablets and phones the words would run into the stone mark, so they go first, on open
+   sky, with the stone mark and Kikka below them. */
+@media (max-width: 999px) {
+  .hero { --meadow-w: max(100vw, min(190vw, 68rem)); align-items: start; min-height: 0; padding-block: 6.25rem calc(var(--meadow-w) * 0.485 + var(--wave)); background: linear-gradient(180deg, #d3e6f8 0%, #b3d5f4 48%, #8fc3f2 100%); }
+  .hero__copy { max-width: 40rem; }
+  .hero h1 { font-size: clamp(2.75rem, 1.6rem + 5vw, 4.5rem); text-wrap: balance; }
+  .hero__facts { margin-left: 0; padding: 0; background: none; }
+  .hero__line { display: inline; white-space: normal; }
+}
+
+/* ── The app, right under the first screen ───────────────────────────────── */
+/* Tucked up towards the meadow's edge, so the app is the next thing you see. */
+.peek { position: relative; width: min(100%, 62rem); margin: calc(var(--space-section) * -0.4) auto clamp(3rem, 7vw, 6rem); padding-bottom: 4%; }
+.peek .window { transform: rotate(0.6deg); }
+.cta { display: flex; flex-wrap: wrap; gap: 0.9rem 0.9rem; padding-bottom: var(--edge); }
 .window { margin: 0; border: 1px solid rgb(22 36 29 / 14%); border-radius: 16px; background: var(--app); box-shadow: var(--shadow-l); overflow: hidden; }
 .window__bar { display: flex; align-items: center; gap: 7px; padding: 10px 14px; background: #f3efe6; border-bottom: 1px solid var(--hair); }
 .window__bar i { width: 10px; height: 10px; border-radius: 50%; background: #e3a48c; }
@@ -142,23 +162,15 @@ a:hover { text-decoration-color: currentColor; }
 .window__bar i:nth-child(3) { background: #9cc9a2; }
 .window__bar span { margin-left: 0.6rem; font: 600 0.75rem/1 var(--font-body); color: var(--muted); }
 .window img { display: block; width: 100%; height: auto; }
-.hero .window { transform: rotate(0.8deg); }
 .phone { position: absolute; left: -3.5%; bottom: 0; width: 22%; margin: 0; border: 5px solid #1b1a19; border-radius: clamp(16px, 2.2vw, 26px); background: var(--app); box-shadow: var(--shadow-l); overflow: hidden; transform: rotate(-5deg); }
 .phone img { display: block; width: 100%; height: auto; }
-
-@media (max-width: 900px) {
-  .hero__grid { grid-template-columns: minmax(0, 1fr); }
-  .hero__art { margin-inline: 2%; }
-}
 /* On a phone, show the phone. The desktop window is unreadable at that size. */
 @media (max-width: 560px) {
-  .hero .window { display: none; }
+  .peek { padding-bottom: 0; }
+  .peek .window { display: none; }
   .phone { position: relative; left: auto; bottom: auto; width: min(66%, 15.5rem); margin-inline: auto; transform: rotate(-2deg); }
-  .hero__art { padding-top: 4.75rem; padding-bottom: 0; }
-  .kikka-hello { right: 6%; }
 }
 
-/* ── Bands and waves ─────────────────────────────────────────────────────── */
 .band { position: relative; isolation: isolate; padding-block: var(--space-section); }
 .band--paper { background: var(--paper); }
 .band--deep { background: linear-gradient(180deg, #e3f0da, #edf5e6); }
@@ -241,7 +253,7 @@ a:hover { text-decoration-color: currentColor; }
 .lock__copy { display: grid; gap: 1.4rem; }
 .lock__copy h2 .hl { --hl: rgb(98 176 220 / 75%); }
 .plain-list { display: grid; gap: 0.9rem; list-style: none; margin: 0.5rem 0 0; padding: 0; }
-.plain-list li { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--night-line); color: #dde5ea; }
+.plain-list li { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--night-line); color: #eef2f5; }
 .plain-list b { color: var(--paper); font: 700 0.8125rem/1.5 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; }
 .lock__links { display: flex; flex-wrap: wrap; gap: 0.9rem; padding-bottom: var(--edge); }
 @media (max-width: 900px) { .lock__grid { grid-template-columns: minmax(0, 1fr); } }
@@ -367,13 +379,20 @@ a:hover { text-decoration-color: currentColor; }
    percentages, so the glow stays on the sun and Kikka stays on her hill at any width. */
 .scene__stage { position: absolute; right: 0; bottom: 0; width: max(100%, 40rem); aspect-ratio: 1672 / 941; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 24%), #000 calc(100% - var(--fade-bottom, 0%)), transparent); mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 24%), #000 calc(100% - var(--fade-bottom, 0%)), transparent); }
 .scene__paint { display: block; width: 100%; height: 100%; }
-.scene--dawn .scene__stage { --fade-bottom: 13%; }
+/* The meadow covers the whole first screen. Its stage is still the painting's own box, scaled
+   up to cover and pinned bottom right, so the stone mark and Kikka stay in view at any shape
+   and everything placed on the painting stays where it belongs. */
+.scene--meadow { container-type: size; }
+.scene--meadow .scene__stage { --fade-top: 0%; aspect-ratio: 1738 / 905; }
+@supports (width: 1cqh) { .scene--meadow .scene__stage { width: max(100cqw, calc(100cqh * 1738 / 905)); } }
+@media (max-width: 999px) { .scene--meadow .scene__stage { --fade-top: 15%; width: var(--meadow-w); } }
+/* Birds far off, high in the painted sky: above the words on a wide screen, below them on a narrow one. */
+.scene--meadow .flock--far { top: 8%; }
 .scene--night .scene__stage { --fade-top: 10%; }
 .scene__glow { position: absolute; width: 24%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; background: radial-gradient(circle, rgb(255 240 190 / 70%) 0%, rgb(255 224 160 / 30%) 38%, transparent 70%); animation: breathe 9s ease-in-out infinite alternate; }
-.scene--dawn .scene__glow { left: 80.3%; top: 52%; }
+.scene--meadow .scene__glow { left: 9.3%; top: 39%; width: 30%; }
 .scene--sunrise .scene__glow { left: 82%; top: 72%; width: 46%; }
 .scene--night .scene__glow { left: 94.6%; top: 11%; width: 16%; background: radial-gradient(circle, rgb(253 243 207 / 34%) 0%, rgb(253 243 207 / 10%) 40%, transparent 70%); animation-duration: 6s; }
-.scene__mist { position: absolute; left: -12%; right: -12%; top: 59%; height: 9%; background: linear-gradient(to bottom, transparent, rgb(255 255 255 / 45%), transparent); filter: blur(8px); animation: drift 40s ease-in-out infinite alternate; }
 .scene__sky { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
 /* Birds: each wing is its own stroke and turns around the body. */
@@ -419,9 +438,16 @@ a:hover { text-decoration-color: currentColor; }
 .seed--6 { left: 78%; bottom: 22%; animation-delay: -5s; animation-duration: 17s; }
 .seed--7 { left: 91%; animation-delay: -11s; }
 
-/* The rabbit waits below the hill line and comes up for a look. */
-.rabbit { position: absolute; left: 17%; bottom: calc(var(--wave) * 0.7); width: clamp(1.9rem, 3.2vw, 2.9rem); height: auto; transform: translateY(108%); animation: peek 17s ease-in-out infinite; }
-.rabbit__ear { transform-origin: 18px 30px; animation: twitch 17s ease-in-out infinite; }
+/* Leaves on the wind, like the ones painted into the meadow. They cross the right side of the
+   picture, away from the words. */
+.leaf { position: absolute; top: -4%; width: clamp(0.7rem, 1.15vw, 1.2rem); aspect-ratio: 2.3; border-radius: 0 100% 0 100%; background: linear-gradient(135deg, #c3cf62, #86a03d); opacity: 0; animation: leaf-fall 21s linear infinite; }
+.leaf--1 { left: 97%; }
+.leaf--2 { left: 84%; animation-duration: 26s; animation-delay: -9s; background: linear-gradient(135deg, #d9c75a, #a8a13c); }
+.leaf--3 { left: 74%; top: 6%; animation-duration: 18s; animation-delay: -4s; }
+.leaf--4 { left: 104%; top: 12%; animation-duration: 24s; animation-delay: -15s; width: clamp(0.9rem, 1.5vw, 1.6rem); filter: blur(1px); }
+.leaf--5 { left: 63%; animation-duration: 29s; animation-delay: -20s; background: linear-gradient(135deg, #d9c75a, #a8a13c); }
+.leaf--6 { left: 91%; top: 20%; animation-duration: 22s; animation-delay: -12s; width: clamp(0.55rem, 0.9vw, 0.95rem); }
+
 
 .scene__kikka { position: absolute; right: 7%; bottom: 16%; width: 17%; height: auto; transform-origin: 50% 100%; animation: breathing 4.8s ease-in-out infinite alternate; }
 
@@ -448,16 +474,14 @@ a:hover { text-decoration-color: currentColor; }
 .scene__rays { position: absolute; inset: 0; clip-path: polygon(0 0, 100% 0, 100% 74%, 80% 79%, 62% 86%, 40% 94%, 24% 100%, 0 100%); }
 .rays { position: absolute; left: 82%; top: 71%; width: 96%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; background: repeating-conic-gradient(rgb(255 246 208 / 26%) 0deg 5deg, transparent 5deg 18deg); -webkit-mask-image: radial-gradient(circle, transparent 0 15%, #000 19%, transparent 62%); mask-image: radial-gradient(circle, transparent 0 15%, #000 19%, transparent 62%); animation: turn 150s linear infinite; }
 
-@keyframes drift { from { transform: translateX(-3%); } to { transform: translateX(4%); } }
 @keyframes fly { from { transform: translate(-14vw, 6vh); } to { transform: translate(114vw, -10vh); } }
 @keyframes bob { from { translate: 0 -3px; } to { translate: 0 4px; } }
 @keyframes flap-l { from { transform: rotate(26deg); } to { transform: rotate(-30deg); } }
 @keyframes flap-r { from { transform: rotate(-26deg); } to { transform: rotate(30deg); } }
 @keyframes flutter { from { transform: scaleX(1); } to { transform: scaleX(0.18); } }
 @keyframes flit { 0% { translate: 0 0; rotate: -8deg; } 22% { translate: 3rem -2.2rem; rotate: 12deg; } 47% { translate: 6.2rem -0.5rem; rotate: -6deg; } 71% { translate: 8.6rem -3.1rem; rotate: 10deg; } 100% { translate: 11.5rem -1.2rem; rotate: -10deg; } }
+@keyframes leaf-fall { 0% { translate: 0 0; rotate: 20deg; opacity: 0; } 8% { opacity: 0.9; } 50% { translate: -12rem 14rem; rotate: 250deg; } 88% { opacity: 0.85; } 100% { translate: -26rem 30rem; rotate: 520deg; opacity: 0; } }
 @keyframes lift { 0% { translate: 0 0; opacity: 0; } 12% { opacity: 0.9; } 70% { opacity: 0.7; } 100% { translate: 7rem -11rem; opacity: 0; } }
-@keyframes peek { 0%, 54%, 94%, 100% { transform: translateY(108%); } 60%, 88% { transform: translateY(8%); } }
-@keyframes twitch { 0%, 66%, 74%, 100% { transform: rotate(0deg); } 68% { transform: rotate(-14deg); } 70% { transform: rotate(4deg); } 72% { transform: rotate(-10deg); } }
 @keyframes breathing { from { transform: scale(1); } to { transform: scale(1.022, 1.03); } }
 @keyframes breathe { from { opacity: 0.55; scale: 0.94; } to { opacity: 1; scale: 1.06; } }
 @keyframes twinkle { from { opacity: 0.2; } to { opacity: 1; } }
@@ -465,21 +489,9 @@ a:hover { text-decoration-color: currentColor; }
 @keyframes wander { 0% { transform: translate(0, 0); } 50% { transform: translate(34px, -26px); } 100% { transform: translate(-18px, -50px); } }
 @keyframes glimmer { from { opacity: 0.12; } to { opacity: 1; } }
 @keyframes turn { to { rotate: 360deg; } }
-/* The valley falls behind a little as you scroll. Browsers without scroll timelines skip it. */
-@supports (animation-timeline: scroll()) {
-  .scene--dawn .scene__stage { animation: sink linear both; animation-timeline: scroll(root); animation-range: 0 90vh; }
-}
-@keyframes sink { to { transform: translateY(42px); } }
-
 /* ── Motion ──────────────────────────────────────────────────────────────── */
 @keyframes blink { 50% { opacity: 0; } }
 @keyframes talk { 0%, 100% { outline-offset: 3px; } 50% { outline-offset: 6px; } }
-@keyframes pop { from { opacity: 0; transform: scale(0.6) translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes nod { 0% { transform: rotate(-9deg) translateY(10px); opacity: 0; } 60% { transform: rotate(3deg); opacity: 1; } 100% { transform: none; } }
-.kikka { animation: nod 700ms var(--ease) 150ms both; }
-.bubble { animation: pop 420ms var(--ease-pop) 700ms both; transform-origin: 100% 70%; }
-.kikka-hello:hover .kikka { animation: wiggle 600ms var(--ease); }
-@keyframes wiggle { 25% { transform: rotate(-5deg); } 60% { transform: rotate(4deg); } }
 .step, .card, .also { transition: translate var(--normal) var(--ease), box-shadow var(--normal) var(--ease); }
 @media (hover: hover) { .step:hover, .card:hover, .also:hover { translate: 0 -4px; box-shadow: var(--shadow-l); } }
 .js .reveal { opacity: 0; transform: translateY(18px); transition: opacity 600ms var(--ease), transform 600ms var(--ease), translate var(--normal) var(--ease), box-shadow var(--normal) var(--ease); }

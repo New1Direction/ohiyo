@@ -8,26 +8,22 @@
 <link rel="stylesheet" href="site.css" />
 <style>
   body { width: 1200px; height: 630px; overflow: hidden; }
-  .card-og { position: relative; display: grid; align-content: space-between; width: 1200px; height: 630px; padding: 64px 72px; background: #b5daf6 url("assets/scenery/dawn-1672.webp") center bottom / cover no-repeat; }
+  /* The same painting as the first screen of the site: the words on the sky, the stone mark and Kikka on the right. */
+  .card-og { position: relative; display: grid; align-content: space-between; justify-items: start; width: 1200px; height: 630px; padding: 56px 72px 60px; background: #9ec9ef url("assets/scenery/meadow-1738.webp") right bottom / cover no-repeat; }
   .card-og .brand { font-size: 40px; }
   .card-og .brand .mark { width: 56px; }
-  .card-og h1 { font-size: 92px; max-width: 760px; }
-  .card-og p { justify-self: start; padding: 10px 20px; border-radius: 999px; background: rgb(255 253 248 / 85%); font: 600 26px/1.3 var(--font-body); color: var(--ink); }
-  .card-og .kikka-hello { right: 64px; top: 150px; }
-  .card-og .kikka { width: 300px; animation: none; }
-  .card-og .bubble { font-size: 40px; padding: 18px 28px; border-radius: 28px; border-width: 3px; box-shadow: 0 7px 0 var(--ink); animation: none; }
-  .card-og .bubble::after { width: 22px; height: 22px; right: -14px; border-width: 3px; }
+  .card-og h1 { font-size: 70px; }
+  .card-og h1 span { display: block; white-space: nowrap; }
+  .card-og h1 .hl { display: inline-block; }
+  .card-og .hl::after { left: -7%; right: -9%; bottom: -0.1em; height: 0.3em; rotate: -1.6deg; }
+  .card-og p { padding: 10px 20px; border-radius: 999px; background: rgb(255 252 242 / 90%); font: 600 26px/1.3 var(--font-body); color: var(--ink); }
 </style>
 </head>
 <body>
 <div class="card-og">
   <span class="brand"><span class="mark"></span><span>o<b>Hi</b>Yo</span></span>
-  <h1>Group chat that's actually <span class="hl">yours.</span></h1>
+  <h1><span>Group chat</span> <span>that's actually</span> <span class="hl">yours.</span></h1>
   <p>Free and open source. Runs in your browser.</p>
-  <div class="kikka-hello">
-    <span class="bubble">oh, hi.</span>
-    <img class="kikka" src="assets/kikka-color.svg" alt="" />
-  </div>
 </div>
 </body>
 </html>
