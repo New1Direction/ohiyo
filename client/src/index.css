@@ -3354,6 +3354,33 @@ button:disabled,
   .kc-embed__poster:hover img, .kc-embed__poster:focus-visible img { transform: none; }
 }
 
+/* ─── Update bar (desktop app) ───────────────────────────────────────────────── */
+.kc-update-bar {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 24px);
+  padding: 8px 10px 8px 16px;
+  border-radius: 999px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--accent);
+  box-shadow: 0 14px 34px -18px rgb(0 0 0 / 60%);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  transform: translateX(-50%);
+}
+.kc-update-bar__text { white-space: nowrap; }
+.kc-update-bar__go,
+.kc-update-bar__later { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.kc-update-bar__go { background: var(--accent); color: #fff; }
+.kc-update-bar__later { background: var(--bg-input); color: var(--text-secondary); }
+.kc-update-bar__later:hover { color: var(--text-primary); background: var(--bg-hover); }
+
 /* ─── On/off switch (Plugins settings) ──────────────────────────────────────────
    State comes from aria-checked, so what a screen reader hears and what is drawn can't
    drift apart. The border keeps the off track visible on every theme. */

@@ -33,6 +33,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     env:
       HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+      HAS_UPDATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -54,11 +55,26 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
       - name: Install client dependencies
         working-directory: client
         run: npm ci
+
+      # Update bundles are made here and nowhere else, so a plain local
+      # `npm run tauri build` needs no signing key. The same condition sets
+      # VITE_DESKTOP_UPDATES on the build steps: only these builds look for updates,
+      # so a copy someone builds by hand is never replaced by ours. See DEPLOY.md §5.
+      - name: Turn on signed update bundles
+        if: env.HAS_UPDATE_KEY == 'true'
+        working-directory: client
+        run: |
+          node -e "const fs=require('fs'); const p='src-tauri/tauri.conf.json'; const c=JSON.parse(fs.readFileSync(p,'utf8')); c.bundle.createUpdaterArtifacts=true; fs.writeFileSync(p, JSON.stringify(c,null,2)+'\n');"
+
+      - name: Warn when update bundles are unavailable
+        if: env.HAS_UPDATE_KEY != 'true'
+        run: |
+          echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. Building installers without update bundles, so installed copies cannot be offered this release. See DEPLOY.md §5."
 
       - name: Warn when macOS notarization is unavailable
         if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING != 'true'
@@ -79,6 +95,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -128,6 +147,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}
         with:
           projectPath: client
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
@@ -142,6 +164,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}
         with:
           projectPath: client
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}

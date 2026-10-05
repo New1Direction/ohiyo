@@ -11,7 +11,17 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-04
+
 ### Added
+- **Desktop app for Mac and Linux:** it can stay in the tray when you close the window, so
+  notifications keep arriving (on by default on Mac, a setting on Linux), with the unread
+  count on the Mac dock icon and a tray menu (open, leave call, check for updates, open at
+  login, quit). The official builds offer their own updates and install one when you say
+  so; a copy you build yourself never looks. On Mac it asks for the microphone and camera properly,
+  so voice can work. It talks to the current server; 0.2.0 still pointed at the old one
+  and has to be replaced by hand once. Mac builds are a beta that Apple has not verified.
+  Windows is not included yet.
 - **YouTube videos and posts on X play in the chat:** a YouTube link shows the video's picture
   with a play button; press it and the video plays right there, from the moment the link points
   at. A link to a post on X opens the post in the chat, sized to fit. No player is loaded
@@ -204,6 +214,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- **Settings said no notification ever shows message text.** That is true of push
+  notifications only. Notifications while Ohiyo is running show who wrote and the start
+  of the message, except in encrypted chats. The page now says so.
 - **"Invite someone" gives a real invite:** the step in the first-run checklist copied a note
   about Ohiyo with a link to the project, so a friend who followed it did not land in your
   space. It now opens the space's own invite link, the same one the sidebar's Invite button
@@ -332,7 +345,8 @@ read receipts; Signal-protocol end-to-end-encrypted DMs and group chats (multi-d
 disappearing messages, safety numbers); WebRTC voice / video / screen-share; a sandboxed
 plugin system; the Daybreak and Dusk themes; and a Tauri desktop app.
 
-[Unreleased]: https://github.com/New1Direction/ohiyo/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/New1Direction/ohiyo/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/New1Direction/ohiyo/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/New1Direction/ohiyo/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/New1Direction/ohiyo/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/New1Direction/ohiyo/releases/tag/v0.1.0

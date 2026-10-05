@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version = "0.2.0"
+version = "0.3.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-notification = "2"
@@ -32,6 +32,12 @@ rand = "0.9"
 # ohiyo:// deep links into the running app on Windows/Linux). Desktop only.
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+# "Open Ohiyo when I log in". Desktop only. Held at 2.5: 2.6 and later need Tauri 2.12,
+# and moving Tauri is its own change (the npm @tauri-apps packages must move with it).
+tauri-plugin-autostart = "~2.5"
+# The app offers its own updates. Desktop only. Held at 2.12 for the same reason; the
+# npm @tauri-apps/plugin-updater is held at the same minor, as the Tauri CLI requires.
+tauri-plugin-updater = "~2.12"
 
 # OS keychain for the vault master key — native backend per platform.
 [target.'cfg(target_os = "macos")'.dependencies]

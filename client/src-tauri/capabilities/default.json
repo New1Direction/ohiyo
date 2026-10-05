@@ -11,6 +11,7 @@
       "allow": [{ "url": "https://*" }, { "url": "mailto:*" }]
     },
     "deep-link:default",
-    "notification:default"
+    "notification:default",
+    "updater:default"
   ]
 }
