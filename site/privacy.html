@@ -30,7 +30,7 @@
 <main id="main" class="legal wrap">
   <p class="eyebrow">Privacy</p>
   <h1>Privacy Policy</h1>
-  <p class="legal-updated">Effective June 27, 2026</p>
+  <p class="legal-updated">Effective June 27, 2026. Updated October 5, 2026.</p>
   <p>Ohiyo is built around a simple promise: the hosted server should not be able to read your private messages. This policy explains what the official hosted service at <b>ohiyo.gg</b>, <b>app.ohiyo.gg</b>, and <b>ohiyo-server-production.up.railway.app</b> handles. If you self-host Ohiyo, your host controls its own data practices.</p>
   <p>For a more technical, honest boundary of what Ohiyo protects and what metadata remains, read the <a href="threat-model.html">public privacy threat model</a>.</p>
 
@@ -55,7 +55,7 @@
   <p>We do not run advertising, sell personal data, or add third-party analytics trackers to the landing page.</p>
 
   <h2>Backups and retention</h2>
-  <p>The hosted production database and uploads are stored on Fly.io infrastructure with volume snapshots enabled. Some data may remain in backups for a limited period even after it is changed or removed from the live service. Ephemeral logs and staged import files may be retained only as needed for operations, safety, debugging, or legal requirements.</p>
+  <p>The hosted production database and uploads are stored on Railway infrastructure. Where backups of that storage are kept, some data may remain in them for a limited period even after it is changed or removed from the live service. Ephemeral logs and staged import files may be retained only as needed for operations, safety, debugging, or legal requirements.</p>
 
   <h2>Your choices</h2>
   <ul>
@@ -68,7 +68,8 @@
   <p>A YouTube link or a link to a post on X in a chat shows a play button. The player is only loaded when you press it, and then your browser loads the video or post directly from YouTube or X, under their own policies. In chats that are not end-to-end encrypted, Ohiyo also shows link previews: the Ohiyo server reads the linked page's title and description, and your browser loads the preview picture (for a YouTube link, the video's picture) from the site it lives on. End-to-end encrypted chats show no previews, so nothing is fetched there until you press play or follow a link.</p>
 
   <h2>Third-party providers</h2>
-  <p>Ohiyo currently relies on infrastructure providers such as GitHub, Cloudflare, Fly.io, and Apple/GitHub release tooling. Their processing is governed by their own terms and policies.</p>
+  <p>Ohiyo currently relies on these providers. Railway hosts the app, the server, the database and uploads. GitHub hosts this website, the source code and the desktop releases. Porkbun provides the domain name. Their processing is governed by their own terms and policies.</p>
+  <p>Two things in the app reach Google. The app loads its typefaces from Google Fonts. When you join a call, it asks Google's public STUN servers how your device can be reached. In both cases Google sees your IP address, not your messages or your call. Calls then connect directly between the people in them, so the people you call can see your IP address too.</p>
 
   <h2>Changes</h2>
   <p>We may update this policy as the service moves from launch to broader availability. Material changes will be reflected on this page.</p>
