@@ -2407,6 +2407,7 @@ function MainApp({
         isLoading={isLoadingMessages}
         onOpenNav={() => setMobileNavOpen(true)}
         onSaveRecovery={() => { setSettingsTab("security"); setShowSettings(true); }}
+        onInvite={selectedServer ? () => setShowInvite(true) : undefined}
         typingUsers={privacyMode ? [] : typing.typingIn(selectedChannel?.id ?? "")}
         onTyping={privacyMode ? undefined : sendTyping}
         onEditMessage={handleEditMessage}

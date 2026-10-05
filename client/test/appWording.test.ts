@@ -45,6 +45,10 @@ const UNTRUE = [
   "Space created",
   // Plugins that are not ES modules, described as if they were.
   "ES module",
+  // "Invite someone" copied a note with a link to the project. That is not an invite.
+  "note about Ohiyo",
+  "Copy invite note",
+  "Come hang out:",
 ];
 
 const INSIDER = [

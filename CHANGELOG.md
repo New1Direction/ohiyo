@@ -204,6 +204,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- **"Invite someone" gives a real invite:** the step in the first-run checklist copied a note
+  about Ohiyo with a link to the project, so a friend who followed it did not land in your
+  space. It now opens the space's own invite link, the same one the sidebar's Invite button
+  makes.
 - **ohiyo.gg could be drawn with last release's styles:** browsers keep the stylesheet for ten
   minutes, and pages linked it by a fixed name. Right after a release, a returning visitor
   could get the new page with the old stylesheet: the phone screenshot broke out of its frame,

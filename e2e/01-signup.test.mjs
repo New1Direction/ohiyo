@@ -114,6 +114,18 @@ try {
   if (hasVoice > 0) log("seeded Voice Channels section present ✓");
   else { console.warn("  WARN: voice channel section not visible"); warnings++; }
 
+  // The welcome checklist's "Invite someone" step gives a real invite to this space. It used to
+  // copy a note with a link to the project, which did not bring anyone into the space.
+  await page.click('button:has-text("Get an invite link")');
+  await page.waitForSelector('input[aria-label="Invite link"]', { timeout: 6000 });
+  await page.waitForFunction(() => document.querySelector('input[aria-label="Invite link"]')?.value.includes("?invite="), null, { timeout: 6000 })
+    .catch(() => { throw new Error("the welcome checklist's invite step did not produce an invite link to the space"); });
+  const welcomeInvite = await page.inputValue('input[aria-label="Invite link"]');
+  if (!welcomeInvite.startsWith(ORIGIN) || /github\.com|ohiyo\.gg/.test(welcomeInvite)) throw new Error(`not an invite to this space: ${welcomeInvite}`);
+  log("welcome checklist: Invite someone opens this space's own invite link ✓");
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('input[aria-label="Invite link"]', { state: "detached", timeout: 4000 });
+
   // ── Send a message ──────────────────────────────────────────────
   const composer = page.locator('input[placeholder*="Say something"]');
   await composer.click();

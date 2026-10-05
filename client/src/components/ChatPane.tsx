@@ -203,6 +203,8 @@ type Props = {
   onForward?: (msg: Message) => void;
   onReportMessage?: (msg: Message) => void;
   onSaveRecovery?: () => void;
+  /** Opens the current space's invite link (the welcome checklist offers it in an empty channel). */
+  onInvite?: () => void;
   onOpenSearch?: () => void;
   onOpenMembers?: () => void;
   /** Open/start a direct message from a user's profile card. */
@@ -361,6 +363,7 @@ export function ChatPane({
   onForward,
   onReportMessage,
   onSaveRecovery,
+  onInvite,
   onOpenSearch,
   onOpenMembers,
   onOpenDm,
@@ -1596,6 +1599,7 @@ export function ChatPane({
             encrypted={e2eEnabled}
             userId={currentUserId}
             onSaveRecovery={onSaveRecovery}
+            onInvite={channel?.server_id ? onInvite : undefined}
           />
         ) : (
           <EmbedOpenContext.Provider value={embedOpenState}>
