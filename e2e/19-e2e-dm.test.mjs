@@ -58,6 +58,16 @@ try {
   await pageA.waitForSelector(`text=${secret}`, { timeout: 8000 });
   log("A sent an encrypted message");
 
+  // The server's reply to the send and the live echo of the same message race each other,
+  // and only the send knows the text. Whichever lands second, A must go on seeing what A
+  // wrote. Before, the echo's failed decrypt won and A's own message turned into the
+  // "needs keys" notice until a reload. The echo is in by the time the pending copy is gone.
+  await pageA.waitForFunction((text) => [...document.querySelectorAll(".kc-msg")].filter((el) => el.textContent.includes(text)).length <= 1, secret, { timeout: 8000 });
+  await pageA.waitForTimeout(1200);
+  if (await pageA.locator("text=/needs keys this device/").count()) throw new Error("A's own encrypted message shows the can't-decrypt notice");
+  if (!(await pageA.locator(`text=${secret}`).first().isVisible())) throw new Error("A can no longer read its own encrypted message a moment after sending it");
+  log("A still reads its own message after the echo has arrived ✓");
+
   // ── B reloads, opens the DM, sees the DECRYPTED plaintext ──
   await pageB.reload({ waitUntil: "domcontentloaded" });
   await pageB.click('button[aria-label="Direct Messages"]');
