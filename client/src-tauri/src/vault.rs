@@ -16,7 +16,14 @@ use kikka_vault::Vault;
 use rand::RngCore;
 use tauri::{AppHandle, Manager, State};
 
-const KEYRING_SERVICE: &str = "kikkacord";
+/// The keychain entry that holds the vault's master key. Every installed copy uses
+/// "kikkacord"; changing it would lock people out of their saved keys. A test build can
+/// be given its own entry at compile time (OHIYO_KEYRING_SERVICE), so trying a build on
+/// a machine that also has the real app cannot touch the real app's key.
+const KEYRING_SERVICE: &str = match option_env!("OHIYO_KEYRING_SERVICE") {
+    Some(service) => service,
+    None => "kikkacord",
+};
 const KEYRING_ACCOUNT: &str = "vault-master";
 const VAULT_FILE: &str = "kc-vault.bin";
 const VAULT_TEMP_SUFFIX: &str = ".tmp";
@@ -436,6 +443,18 @@ mod tests {
     use super::*;
 
     const KEY: [u8; 32] = [7u8; 32];
+
+    #[test]
+    fn a_normal_build_keeps_the_keychain_entry_installed_copies_use() {
+        match option_env!("OHIYO_KEYRING_SERVICE") {
+            // Changing this name would lock everyone out of their saved keys. CI and
+            // release builds never set OHIYO_KEYRING_SERVICE.
+            None => assert_eq!(KEYRING_SERVICE, "kikkacord"),
+            // A test build asked for its own entry and must get exactly that one.
+            Some(own) => assert_eq!(KEYRING_SERVICE, own),
+        }
+        assert!(!KEYRING_SERVICE.is_empty());
+    }
 
     /// A fresh, empty directory under the system temp dir for one test.
     fn scratch_dir(name: &str) -> PathBuf {
