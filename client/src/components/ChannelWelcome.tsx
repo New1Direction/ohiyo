@@ -11,10 +11,6 @@ import { BirdMark } from "./BirdMark";
 const seenKey = (userId?: string) => `kc:welcome-manifesto-seen:${userId ?? "anon"}`;
 const recoveryNudgeKey = (userId?: string) => `kc:recovery-nudge-seen:${userId ?? "anon"}`;
 
-const SHARE_NOTE =
-  "I just switched to Ohiyo 👋 It's a free, open chat with optional end-to-end encrypted DMs and " +
-  "nothing to sell you. No ads, no tracking, no paywall. Come hang out: https://ohiyo.gg";
-
 type Props = {
   /** The channel name (server text channels). Ignored for DMs. */
   channelName?: string;
@@ -26,9 +22,11 @@ type Props = {
   userId?: string;
   /** Opens Settings → Backup & recovery; when present, a one-time recovery-code nudge shows. */
   onSaveRecovery?: () => void;
+  /** Opens this space's invite link. Only given for a channel in a space: a DM has no invite. */
+  onInvite?: () => void;
 };
 
-export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRecovery }: Props) {
+export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRecovery, onInvite }: Props) {
   // Full manifesto only the first time THIS account sees an empty channel.
   const [showManifesto] = useState(() => {
     try {
@@ -37,7 +35,6 @@ export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRec
       return false;
     }
   });
-  const [copied, setCopied] = useState(false);
   // One-time, dismissible recovery-code nudge (per account).
   const [showRecovery, setShowRecovery] = useState(() => {
     try {
@@ -76,16 +73,6 @@ export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRec
   const suggestions = isDM
     ? ["Say hi", encrypted ? "Encryption is on" : "Tap the lock to encrypt", "Verify safety number later"]
     : ["Say hi", "Share a file", "Start voice from the sidebar"];
-
-  async function copyShare() {
-    try {
-      await navigator.clipboard.writeText(SHARE_NOTE);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2200);
-    } catch {
-      /* clipboard blocked — ignore */
-    }
-  }
 
   return (
     <div
@@ -153,7 +140,9 @@ export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRec
             </div>
           )}
 
-          {showManifesto && (
+          {/* A real invite to this space. It used to copy a note with a link to the project,
+              which did not bring anyone into the space. */}
+          {showManifesto && onInvite && !isDM && (
             <div className="kc-setup-row">
               <span className="kc-setup-step" aria-hidden>{onSaveRecovery && showRecovery ? "3" : "2"}</span>
               <div className="min-w-0 flex-1">
@@ -162,11 +151,11 @@ export function ChannelWelcome({ channelName, isDM, encrypted, userId, onSaveRec
                 <div className="kc-setup-actions">
                   <button
                     type="button"
-                    onClick={copyShare}
+                    onClick={onInvite}
                     className="kc-interactive rounded-full px-4 py-2 text-sm font-semibold"
-                    style={{ background: copied ? "color-mix(in oklch, var(--green) 22%, var(--bg-input))" : "var(--bg-input)", color: copied ? "var(--green)" : "var(--text-secondary)", border: "1px solid color-mix(in oklch, var(--text-primary) 7%, transparent)", cursor: "pointer" }}
+                    style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "1px solid color-mix(in oklch, var(--text-primary) 10%, transparent)" }}
                   >
-                    {copied ? "Copied" : "Copy a note about Ohiyo"}
+                    Get an invite link
                   </button>
                 </div>
               </div>

@@ -442,3 +442,36 @@ test("links: punctuation after a link stays in the sentence and out of the link"
   assert.ok(html.includes(`href="${ARTICLE}"`));
   assert.match(html, new RegExp(`>${ARTICLE.replaceAll("/", "\\/").replaceAll(".", "\\.")}</a>\\)\\.`));
 });
+
+// The first-run checklist's "Invite someone" step copied a note about Ohiyo with a link to
+// the project (its GitHub page, later its website). That is not an invite: a friend who
+// followed it did not land in the space. The step now opens the space's real invite link.
+function emptySpaceChannel(onInvite?: () => void): string {
+  return renderChatPane({
+    channel: { id: "c1", server_id: "s1", name: "general", channel_type: "text", position: 0, topic: null, created_at: 0 },
+    messages: [],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s },
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    e2eEnabled: false,
+    onToggleE2e() {},
+    onInvite,
+  });
+}
+
+test("invite step: in a space it offers the space's own invite link, not a link to the project", () => {
+  const html = emptySpaceChannel(() => {});
+  assert.match(html, /Invite someone/);
+  assert.match(html, /<button[^>]*>Get an invite link<\/button>/);
+  assert.doesNotMatch(html, /github\.com|ohiyo\.gg|note about Ohiyo|Copy invite note/);
+});
+
+test("invite step: it is not shown where there is no space to invite someone into", () => {
+  // A DM has no invite link, and neither does a channel opened without a way to make one.
+  assert.doesNotMatch(emptyDm(false), /Invite someone|Get an invite link/);
+  assert.doesNotMatch(emptySpaceChannel(), /Invite someone|Get an invite link/);
+});
