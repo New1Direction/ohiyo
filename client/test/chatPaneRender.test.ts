@@ -390,3 +390,55 @@ test("spoilers: text between double bars is hidden behind a button for every rea
   assert.equal(row.includes("||"), false, "the bars are not shown");
   assert.ok(row.includes("the ending: ") && row.includes(" honest"), "the text around it stays");
 });
+
+// One message with the given text, in a DM with the lock on or off.
+function oneMessage(content: string, e2eEnabled = false): string {
+  return renderChatPane({
+    channel: { id: "c1", server_id: null, name: "chat", channel_type: "dm", position: 0, topic: null, created_at: 0 },
+    messages: [{ channel_id: "c1", author: peer, created_at: 1, edited_at: null, reactions: [], id: "m1", content }],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s },
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    e2eEnabled,
+    onToggleE2e() {},
+  });
+}
+const count = (html: string, needle: string) => html.split(needle).length - 1;
+
+// The list reserves room for one card per link. Two cards for a link written twice ran
+// into the next message.
+test("link cards: a link written twice gets one card, with and without the lock", () => {
+  const twice = `${YOUTUBE} and again ${YOUTUBE}`;
+  assert.equal(count(oneMessage(twice), 'class="kc-embed__poster"'), 1);
+  assert.equal(count(oneMessage(twice, true), 'aria-label="Play this YouTube video here"'), 1);
+  // Both mentions are still links.
+  assert.equal(count(oneMessage(twice), `href="${YOUTUBE}"`) >= 2, true);
+  // The same link on both sides of a code span.
+  assert.equal(count(oneMessage(`${YOUTUBE} \`code\` ${YOUTUBE}`), 'class="kc-embed__poster"'), 1);
+});
+
+test("link cards: a link inside code or a spoiler gets no card", () => {
+  for (const hidden of [`\`\`\`\n${YOUTUBE}\n\`\`\``, `||${YOUTUBE}||`, `||${X_POST}||`]) {
+    for (const locked of [false, true]) {
+      const html = oneMessage(hidden, locked);
+      assert.equal(html.includes("kc-embed"), false, `${hidden} (lock ${locked ? "on" : "off"})`);
+      assert.equal(loadsFromVideoSites(html), false);
+    }
+  }
+});
+
+test("link cards: the cards come after the message text, not in the middle of it", () => {
+  const html = oneMessage(`before ${YOUTUBE} after`);
+  const row = html.slice(html.indexOf('class="kc-msg"'));
+  assert.ok(row.indexOf(" after") < row.indexOf("kc-embed"), "the sentence is whole before the card");
+});
+
+test("links: punctuation after a link stays in the sentence and out of the link", () => {
+  const html = oneMessage(`read this (${ARTICLE}).`, true);
+  assert.ok(html.includes(`href="${ARTICLE}"`));
+  assert.match(html, new RegExp(`>${ARTICLE.replaceAll("/", "\\/").replaceAll(".", "\\.")}</a>\\)\\.`));
+});

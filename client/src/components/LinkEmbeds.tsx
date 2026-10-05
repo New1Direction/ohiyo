@@ -42,6 +42,9 @@ type Props = {
 };
 
 const FRAME_ALLOW = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+// What a player's frame may do: run its own scripts with its own storage, and open links
+// in a new tab. It gets no way to navigate this page, submit forms here or show dialogs.
+const FRAME_SANDBOX = "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox";
 
 function PlayIcon() {
   return (
@@ -123,6 +126,7 @@ function YouTubeEmbed({ url, embed, openKey, showPreview, title }: Props & { emb
             allow={FRAME_ALLOW}
             allowFullScreen
             referrerPolicy="strict-origin-when-cross-origin"
+            sandbox={FRAME_SANDBOX}
           />
         )}
       </div>
@@ -168,8 +172,7 @@ function XPostEmbed({ url, embed, openKey }: Props & { embed: Extract<LinkEmbed,
         allow={FRAME_ALLOW}
         allowFullScreen
         referrerPolicy="strict-origin-when-cross-origin"
-        // X's frame needs scripts and its own storage; it gets no way to move this page.
-        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"
+        sandbox={FRAME_SANDBOX}
         style={{ height: openHeight }}
       />
       <Caption site="X" url={url} label="Open on X" onClose={() => setOpen(undefined)} />

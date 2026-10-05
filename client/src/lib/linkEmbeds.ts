@@ -19,6 +19,8 @@ const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
 const X_POST_ID = /^\d{1,20}$/;
 const X_HANDLE = /^[A-Za-z0-9_]{1,15}$/;
 const YOUTUBE_PATHS = new Set(["embed", "shorts", "live"]);
+// /embed/videoseries?list=… is YouTube's playlist player: eleven characters, not a video.
+const NOT_A_VIDEO_ID = "videoseries";
 
 // "90", "90s", "1m30s", "1h2m3s".
 const TIMESTAMP = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/;
@@ -41,7 +43,7 @@ function youtubeEmbedFor(url: URL, host: string, segments: string[]): LinkEmbed 
   } else if (segments.length === 2 && YOUTUBE_PATHS.has(segments[0])) {
     id = segments[1];
   }
-  if (!id || !YOUTUBE_ID.test(id)) return null;
+  if (!id || !YOUTUBE_ID.test(id) || id === NOT_A_VIDEO_ID) return null;
   return { kind: "youtube", id, start: startSeconds(url.searchParams.get("t") ?? url.searchParams.get("start")) };
 }
 
@@ -145,6 +147,37 @@ export function xFrameHeight(origin: string, data: unknown, id: string): number 
 /** One link in one message: opening a video in one message leaves the others closed. */
 export function embedKey(messageId: string, url: string): string {
   return `${messageId}|${url}`;
+}
+
+// ── Which cards are open ─────────────────────────────────────────────────────────────
+// Open cards belong to the chat they were opened in. Leaving that chat closes them all, so
+// coming back later never loads a player from YouTube or X without a new press.
+export interface OpenEmbeds {
+  chatId: string;
+  /** By embedKey. For a post on X the value is its frame's height; for a video, 1. */
+  heights: ReadonlyMap<string, number>;
+}
+
+export const NO_OPEN_EMBEDS: ReadonlyMap<string, number> = new Map();
+
+/** The state on entering `chatId`: unchanged if already there, otherwise nothing is open. */
+export function enteringChat(state: OpenEmbeds, chatId: string): OpenEmbeds {
+  return state.chatId === chatId ? state : { chatId, heights: NO_OPEN_EMBEDS };
+}
+
+/** The cards open in `chatId`. */
+export function openHeightsIn(state: OpenEmbeds, chatId: string): ReadonlyMap<string, number> {
+  return state.chatId === chatId ? state.heights : NO_OPEN_EMBEDS;
+}
+
+/** `state` with one card in `chatId` opened or resized (`height`) or closed (`undefined`). */
+export function withEmbedHeight(state: OpenEmbeds, chatId: string, key: string, height: number | undefined): OpenEmbeds {
+  const current = openHeightsIn(state, chatId);
+  if (current.get(key) === height) return state.chatId === chatId ? state : { chatId, heights: current };
+  const heights = new Map(current);
+  if (height === undefined) heights.delete(key);
+  else heights.set(key, height);
+  return { chatId, heights };
 }
 
 // ── Sizes (mirrored by the .kc-embed rules in index.css) ─────────────────────────────

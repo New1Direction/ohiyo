@@ -14,10 +14,12 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ### Added
 - **YouTube videos and posts on X play in the chat:** a YouTube link shows the video's picture
   with a play button; press it and the video plays right there, from the moment the link points
-  at. A link to a post on X opens the post in the chat, sized to fit. Nothing is loaded from
-  YouTube or X until you press the button, each card has a Close button, and it also works in
-  end-to-end encrypted chats (there the card is a plain button with no picture or title, since
-  encrypted chats fetch no previews). The desktop app's security policy now allows X's frame.
+  at. A link to a post on X opens the post in the chat, sized to fit. No player is loaded
+  from YouTube or X until you press the button (outside encrypted chats the video's picture
+  is, to draw the card), each card has a Close button, and leaving the chat closes them. It
+  also works in end-to-end encrypted chats: there the card is a plain button with no picture
+  or title, and nothing at all is fetched before the press. The app's security policy now
+  allows frames from exactly two places, YouTube's player and X's post frame.
 - **Dream room lighting and gestures:** an outside-only live compositor halo where supported, lighter mode controls, local volume by sliding the right surround, and host double-click/tap playback. Provider controls stay uncovered; unsupported mobile volume uses device controls.
 - **Watch-party viewing modes:** Dream feathers the video edges into a softened room;
   Cinema opens a black fullscreen view with thin top/bottom insets. Both keep the
@@ -200,8 +202,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   Anything living in a row was reset: a playing video restarted, a revealed spoiler hid again.
   Rows now keep their identity (and keep it when older history loads in above them).
 - **Link cards no longer run into the next message:** the space kept for a YouTube card was
-  too small at full width. Cards now have fixed sizes that the list knows, and long links are
-  counted the way a browser wraps them (a link that does not fit moves to its own line).
+  too small at full width, and a link written twice got two cards with room for one. Cards
+  now have fixed sizes that the list knows, each link gets one card (none for a link inside
+  code or a spoiler), and long links are counted the way a browser wraps them.
+- **Punctuation after a link is no longer swallowed:** "(https://example.com)." lost its
+  closing bracket and full stop.
 - **The chat follows the window:** narrowing a desktop window no longer leaves the chat wide and
   the message box off screen, and on a phone a message that wraps onto a second line no longer
   runs into the one below it. Rows are now sized for the real width of the chat, for the phone

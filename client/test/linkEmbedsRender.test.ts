@@ -59,6 +59,9 @@ test("an opened YouTube card holds YouTube's no-cookie player and a way to close
   assert.equal(attr(tag, "allow"), "autoplay; encrypted-media; picture-in-picture; fullscreen");
   // YouTube refuses to play for a page that hides where the player is embedded.
   assert.equal(attr(tag, "referrerPolicy") ?? attr(tag, "referrerpolicy"), "strict-origin-when-cross-origin");
+  // Like X's frame, it cannot navigate the page it sits in.
+  assert.ok(!(attr(tag, "sandbox") ?? "allow-top-navigation").includes("allow-top-navigation"));
+  assert.ok((attr(tag, "sandbox") ?? "").split(" ").includes("allow-scripts"));
   assert.match(html, /<button[^>]*class="kc-embed__close"[^>]*>Close<\/button>/);
   // The title still links to the video itself, in a new tab.
   assert.match(html, /<a href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ&amp;t=43s" target="_blank" rel="noopener noreferrer"/);
@@ -93,11 +96,14 @@ test("a title cannot inject markup into the card", () => {
   assert.match(html, /&quot;&gt;&lt;img src=x onerror=alert\(1\)&gt;/);
 });
 
-// The frames above only load if the page's security policy lets them.
-test("the web app and the desktop app both allow the two frames, and nothing runs from them in the page", () => {
+// The frames above only load if the page's security policy lets them, and the policy lets
+// nothing else be framed: if a bug ever let a message choose a frame's address, the
+// browser would still refuse it.
+test("the web app and the desktop app allow the two players' frames, no other site, and no outside scripts", () => {
   const client = join(fixtures, "..", "..");
   const web = readFileSync(join(client, "vite.config.ts"), "utf8");
-  assert.match(web, /"frame-src https:"/);
+  assert.match(web, /"frame-src https:\/\/www\.youtube-nocookie\.com https:\/\/platform\.twitter\.com"/);
+  assert.doesNotMatch(web, /"frame-src https:"/);
   assert.match(web, /"script-src 'self'"/);
   const desktop = JSON.parse(readFileSync(join(client, "src-tauri", "tauri.conf.json"), "utf8")).app.security.csp as string;
   const frameSrc = desktop.split(";").map((d) => d.trim()).find((d) => d.startsWith("frame-src ")) ?? "";

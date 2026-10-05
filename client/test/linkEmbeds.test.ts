@@ -8,11 +8,15 @@ import assert from "node:assert/strict";
 
 import {
   EMBED_CHIP_PX,
+  NO_OPEN_EMBEDS,
   X_FRAME_ORIGIN,
   X_FRAME_START_PX,
   embedKey,
   embedRowPx,
+  enteringChat,
   linkEmbedFor,
+  openHeightsIn,
+  withEmbedHeight,
   xFrameHeight,
   xPostFrameUrl,
   youtubePlayerUrl,
@@ -62,6 +66,8 @@ test("things that only look like YouTube are not", () => {
     "https://www.youtube.com/watch?v=../../etc/passwd",
     `https://www.youtube.com/watch?v=${ID}extra`,
     "https://www.youtube.com/@somechannel",
+    // A playlist player: "videoseries" is eleven characters, but it is not a video.
+    "https://www.youtube.com/embed/videoseries?list=PL123",
     "https://www.youtube.com/playlist?list=PL123",
     `javascript:alert("${ID}")`,
     "not a link",
@@ -184,4 +190,45 @@ test("without a preview a link is a small button until it is opened", () => {
 test("an opened post on X is as tall as X says it is", () => {
   assert.equal(embedRowPx(xPost, { showPreview: true, openHeight: X_FRAME_START_PX, textWidth: 884 }), X_FRAME_START_PX + 44 + 6);
   assert.equal(embedRowPx(xPost, { showPreview: true, openHeight: 612, textWidth: 884 }), 612 + 44 + 6);
+});
+
+test("opening a card is for the chat it happened in: leaving that chat closes everything", () => {
+  const key = embedKey("m1", "https://youtu.be/a");
+  const opened = withEmbedHeight({ chatId: "", heights: NO_OPEN_EMBEDS }, "general", key, 1);
+  assert.equal(openHeightsIn(opened, "general").get(key), 1);
+  // Another chat sees nothing open, so coming back later never loads a player without a press.
+  assert.equal(openHeightsIn(opened, "random").size, 0);
+  // Opening something in the other chat forgets the first chat's open cards.
+  const moved = withEmbedHeight(opened, "random", embedKey("m9", "https://x.com/a/status/1"), 320);
+  assert.equal(openHeightsIn(moved, "general").size, 0);
+  assert.equal(openHeightsIn(moved, "random").size, 1);
+});
+
+test("resizing and closing a card change only that card, and nothing changes when nothing changed", () => {
+  const video = embedKey("m1", "https://youtu.be/a");
+  const post = embedKey("m2", "https://x.com/a/status/1");
+  let state = withEmbedHeight({ chatId: "", heights: NO_OPEN_EMBEDS }, "general", video, 1);
+  state = withEmbedHeight(state, "general", post, 320);
+  const resized = withEmbedHeight(state, "general", post, 412);
+  assert.equal(openHeightsIn(resized, "general").get(post), 412);
+  assert.equal(openHeightsIn(resized, "general").get(video), 1);
+  const closed = withEmbedHeight(resized, "general", post, undefined);
+  assert.equal(openHeightsIn(closed, "general").has(post), false);
+  assert.equal(openHeightsIn(closed, "general").get(video), 1);
+  // The same value again returns the same object, so the list is not re-laid out for nothing.
+  assert.equal(withEmbedHeight(resized, "general", post, 412), resized);
+  assert.equal(withEmbedHeight(closed, "general", post, undefined), closed);
+  // And a chat with nothing open always hands back the same empty map.
+  assert.equal(openHeightsIn(closed, "random"), openHeightsIn(closed, "elsewhere"));
+});
+
+test("going to another chat and straight back finds every card closed", () => {
+  const key = embedKey("m1", "https://youtu.be/a");
+  const opened = withEmbedHeight(enteringChat({ chatId: "", heights: NO_OPEN_EMBEDS }, "general"), "general", key, 1);
+  // Staying in the chat changes nothing (the same object, so nothing re-renders).
+  assert.equal(enteringChat(opened, "general"), opened);
+  const away = enteringChat(opened, "random");
+  assert.equal(openHeightsIn(away, "random").size, 0);
+  const back = enteringChat(away, "general");
+  assert.equal(openHeightsIn(back, "general").size, 0, "nothing opened earlier is open again");
 });

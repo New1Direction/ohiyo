@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDropzone } from "react-dropzone";
 import { VariableSizeList as List } from "react-window";
@@ -23,7 +23,8 @@ import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
 import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, messageGroupTextPx, messageLineCount, messageRowMetrics } from "../lib/messageLayout";
 import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode, type LinkPreviewMode } from "../lib/linkPreviews";
-import { embedKey, embedRowPx, linkEmbedFor, type LinkEmbed } from "../lib/linkEmbeds";
+import { NO_OPEN_EMBEDS, embedKey, embedRowPx, enteringChat, linkEmbedFor, openHeightsIn, withEmbedHeight, type LinkEmbed, type OpenEmbeds } from "../lib/linkEmbeds";
+import { linkCardUrls, trimUrlTail } from "../lib/messageLinks";
 import { EmbedOpenContext, PlayableEmbed, type EmbedOpenState } from "./LinkEmbeds";
 import { loadDraft, persistDraft } from "../lib/drafts";
 import { editBlockReason, pendingAttachmentsToKeep, REATTACH_MESSAGE } from "../lib/encryptedSend";
@@ -138,16 +139,6 @@ const GROUP_E2E_NOTE = "Group encryption can miss messages sent while you were o
 
 const DIRECT_VIDEO_EXT_RE = /\.(mp4|m4v|mov|webm|ogv|ogg)(?:$|[?#])/i;
 
-function extractSafeHttpUrlsFromText(text: string): string[] {
-  const out: string[] = [];
-  for (const match of text.matchAll(/https?:\/\/[^\s]+/g)) {
-    const raw = match[0].replace(/[.,!?)\]}>'"]+$/, "");
-    const safe = safeHttpUrl(raw);
-    if (safe && !out.includes(safe)) out.push(safe);
-  }
-  return out;
-}
-
 function isDirectVideoUrl(raw: string | null | undefined): boolean {
   if (!raw) return false;
   try {
@@ -158,16 +149,13 @@ function isDirectVideoUrl(raw: string | null | undefined): boolean {
   }
 }
 
-// What InlineText shows under a message's links.
-//   "full":    a card for every link (previews are fetched);
-//   "players": only the play button for a YouTube video or a post on X, which loads
-//              nothing until it is pressed (encrypted chats: no preview may be fetched);
-//   "off":     nothing (the server attached the cards, and they are rendered separately).
-type LinkCards = "full" | "players" | "off";
-
-function linkCardsFor(mode: LinkPreviewMode): LinkCards {
-  if (mode === "client-fetch") return "full";
-  return mode === "none" ? "players" : "off";
+/**
+ * The links that get a card under a message, each once. MessageLinkCards draws a card for
+ * each and messageEmbedHeight reserves room for each: one list, so they cannot disagree.
+ */
+function messageCardUrls(message: Message, mode: LinkPreviewMode): string[] {
+  if (mode !== "server-embeds") return linkCardUrls(message.content);
+  return [...new Set((message.embeds ?? []).map((embed) => embed.url))];
 }
 
 type EmbedSizing = { openHeights: ReadonlyMap<string, number>; textWidth: number };
@@ -184,8 +172,7 @@ function linkCardHeight(messageId: string, url: string, showPreview: boolean, si
 
 function messageEmbedHeight(message: Message, channelEncrypted: boolean, sizing: EmbedSizing): number {
   const mode = linkPreviewMode(message, channelEncrypted);
-  const urls = mode === "server-embeds" ? (message.embeds ?? []).map((embed) => embed.url) : extractSafeHttpUrlsFromText(message.content);
-  return urls.reduce((sum, url) => sum + linkCardHeight(message.id, url, mode !== "none", sizing), 0);
+  return messageCardUrls(message, mode).reduce((sum, url) => sum + linkCardHeight(message.id, url, mode !== "none", sizing), 0);
 }
 
 type Props = {
@@ -468,20 +455,21 @@ export function ChatPane({
   // Link cards the reader has opened (a YouTube video, a post on X), and how tall each is.
   // Kept here because the list needs a card's height before it renders the row, and a row
   // that scrolls out of the list is unmounted.
-  const [openEmbeds, setOpenEmbeds] = useState<ReadonlyMap<string, number>>(() => new Map());
+  // They belong to the chat they were opened in: switching chats closes them, so coming
+  // back never loads a player from YouTube or X without a new press.
+  const chatId = channel?.id ?? "";
+  const [openEmbedState, setOpenEmbedState] = useState<OpenEmbeds>(() => ({ chatId, heights: NO_OPEN_EMBEDS }));
+  // Entering another chat forgets what was open in the last one. Adjusted during render
+  // (React re-renders at once), so the new chat never draws the old chat's open cards.
+  const enteredState = enteringChat(openEmbedState, chatId);
+  if (enteredState !== openEmbedState) setOpenEmbedState(enteredState);
+  const openEmbeds = openHeightsIn(enteredState, chatId);
   const embedOpenState = useMemo<EmbedOpenState>(
     () => ({
       heights: openEmbeds,
-      set: (key, height) =>
-        setOpenEmbeds((prev) => {
-          if (prev.get(key) === height) return prev;
-          const next = new Map(prev);
-          if (height === undefined) next.delete(key);
-          else next.set(key, height);
-          return next;
-        }),
+      set: (key, height) => setOpenEmbedState((prev) => withEmbedHeight(prev, chatId, key, height)),
     }),
-    [openEmbeds]
+    [openEmbeds, chatId]
   );
   const composerRef = useRef<HTMLInputElement>(null);
   // Row-height metrics: the density/font-scale CSS vars plus how many characters fit on a
@@ -865,8 +853,9 @@ export function ChatPane({
     [rows, hiddenMessageIds, e2eEnabled, openEmbeds]
   );
 
-  // Opening, closing or resizing a link card changes its row's height.
-  useEffect(() => {
+  // Opening, closing or resizing a link card changes its row's height. Before paint, so a
+  // post that X reports as taller is never drawn over the next row for a frame.
+  useLayoutEffect(() => {
     listRef.current?.resetAfterIndex(0);
   }, [openEmbeds]);
 
@@ -1702,7 +1691,7 @@ export function ChatPane({
                               style={{ color: "var(--text-secondary)", userSelect: "text", opacity: msg._state === "pending" ? 0.5 : 1 }}
                             >
                               <MessageIdContext.Provider value={msg.id}>
-                              {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} linkCards={linkCardsFor(linkPreviewMode(msg, e2eEnabled))} />}
+                              {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} />}
                               {msg.edited_at && (
                                 <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 5 }}>(edited)</span>
                               )}
@@ -1717,9 +1706,7 @@ export function ChatPane({
                               {msg.attachments && msg.attachments.length > 0 && (
                                 <AttachmentList attachments={msg.attachments} />
                               )}
-                              {linkPreviewMode(msg, e2eEnabled) === "server-embeds" && msg.embeds?.map((em) => (
-                                <EmbedCard key={em.url} embed={em} />
-                              ))}
+                              <MessageLinkCards message={msg} mode={linkPreviewMode(msg, e2eEnabled)} />
                               </MessageIdContext.Provider>
                             </div>
                           )}
@@ -2259,7 +2246,7 @@ function UndecryptableMessage({ state, onOpenRecovery }: { state: "unknown" | "n
   );
 }
 
-function MessageContent({ content, serverEmojis, currentUsername = "", linkCards = "full" }: { content: string; serverEmojis: ServerEmoji[]; currentUsername?: string; linkCards?: LinkCards }) {
+function MessageContent({ content, serverEmojis, currentUsername = "" }: { content: string; serverEmojis: ServerEmoji[]; currentUsername?: string }) {
   // Forwarded message: 【FWD:author】<original content>
   const fwd = content.match(/^【FWD:([^】]*)】([\s\S]*)$/);
   if (fwd) {
@@ -2269,7 +2256,7 @@ function MessageContent({ content, serverEmojis, currentUsername = "", linkCards
         <span className="flex items-center gap-1" style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>
           <span style={{ color: "var(--accent)" }}>↪</span> Forwarded from <strong style={{ color: "var(--text-secondary)" }}>{author}</strong>
         </span>
-        {rest && <MessageContent content={rest} serverEmojis={serverEmojis} currentUsername={currentUsername} linkCards={linkCards} />}
+        {rest && <MessageContent content={rest} serverEmojis={serverEmojis} currentUsername={currentUsername} />}
       </>
     );
   }
@@ -2288,7 +2275,7 @@ function MessageContent({ content, serverEmojis, currentUsername = "", linkCards
 
   for (const match of content.matchAll(tokenRe)) {
     const before = content.slice(last, match.index);
-    if (before) parts.push(<InlineText key={last} text={before} serverEmojis={serverEmojis} currentUsername={currentUsername} linkCards={linkCards} />);
+    if (before) parts.push(<InlineText key={last} text={before} serverEmojis={serverEmojis} currentUsername={currentUsername} />);
 
     if (match[0].startsWith("```")) {
       parts.push(
@@ -2322,7 +2309,7 @@ function MessageContent({ content, serverEmojis, currentUsername = "", linkCards
   }
 
   const remainder = content.slice(last);
-  if (remainder) parts.push(<InlineText key={last + "r"} text={remainder} serverEmojis={serverEmojis} currentUsername={currentUsername} linkCards={linkCards} />);
+  if (remainder) parts.push(<InlineText key={last + "r"} text={remainder} serverEmojis={serverEmojis} currentUsername={currentUsername} />);
 
   return <>{parts}</>;
 }
@@ -2470,6 +2457,23 @@ function PlayerOnlyCard({ url }: { url: string }) {
   return <PlayableEmbed url={url} embed={embed} openKey={embedKey(messageId, url)} showPreview={false} />;
 }
 
+/** The cards under a message: one per link, of the kind this chat may show. */
+function MessageLinkCards({ message, mode }: { message: Message; mode: LinkPreviewMode }) {
+  const urls = messageCardUrls(message, mode);
+  if (urls.length === 0) return null;
+  return (
+    <>
+      {urls.map((url) => {
+        // Encrypted chats: no preview is fetched, only a play button for a video or a post.
+        if (mode === "none") return <PlayerOnlyCard key={url} url={url} />;
+        if (mode === "client-fetch") return <LinkPreviewCard key={url} url={url} />;
+        const embed = message.embeds?.find((candidate) => candidate.url === url);
+        return embed ? <EmbedCard key={url} embed={embed} /> : null;
+      })}
+    </>
+  );
+}
+
 /** Server-persisted link-preview card (no client fetch — fields come from the gateway). */
 function EmbedCard({ embed }: { embed: Embed }) {
   const messageId = useContext(MessageIdContext);
@@ -2480,21 +2484,19 @@ function EmbedCard({ embed }: { embed: Embed }) {
 }
 
 // Inline text with bold, italic, inline code, and URL detection.
-function InlineText({ text, serverEmojis, currentUsername = "", linkCards = "full" }: { text: string; serverEmojis: ServerEmoji[]; currentUsername?: string; linkCards?: LinkCards }) {
+function InlineText({ text, serverEmojis, currentUsername = "" }: { text: string; serverEmojis: ServerEmoji[]; currentUsername?: string }) {
   const emojiMap = new Map(serverEmojis.map((e) => [e.name, e]));
   const urlRe = /(https?:\/\/[^\s]+)/g;
   const segments: React.ReactNode[] = [];
-  const urls: string[] = [];
   let last = 0;
 
   for (const match of text.matchAll(urlRe)) {
     const before = text.slice(last, match.index);
     if (before) segments.push(...renderInlineMarkdown(before, String(last), currentUsername, emojiMap));
-    const url = match[0].replace(/[.,!?)]+$/, "");
+    const url = trimUrlTail(match[0]);
     // Defense-in-depth: the regex anchors on https?:// but re-validate the scheme
     // before it reaches href so odd inputs can't open-redirect.
     const safeUrl = safeHttpUrl(url);
-    if (safeUrl) urls.push(safeUrl);
     segments.push(
       safeUrl ? (
         <a
@@ -2511,18 +2513,13 @@ function InlineText({ text, serverEmojis, currentUsername = "", linkCards = "ful
         <span key={match.index}>{url}</span>
       )
     );
-    last = match.index! + match[0].length;
+    // Punctuation after the link stays in the sentence, outside the link.
+    last = match.index! + url.length;
   }
   const tail = text.slice(last);
   if (tail) segments.push(...renderInlineMarkdown(tail, String(last + "t"), currentUsername, emojiMap));
 
-  return (
-    <>
-      {segments}
-      {linkCards === "full" && urls.map((url) => <LinkPreviewCard key={url} url={url} />)}
-      {linkCards === "players" && urls.map((url) => <PlayerOnlyCard key={url} url={url} />)}
-    </>
-  );
+  return <>{segments}</>;
 }
 
 function renderMentions(text: string, currentUsername: string, keyPrefix: string): React.ReactNode[] {
