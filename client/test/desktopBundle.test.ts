@@ -83,12 +83,22 @@ test("release builds, and only they, look for updates", () => {
   assert.equal(workflow.split("VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}").length - 1, builds);
 });
 
-test("the window is dark before the app has loaded, never a white sheet", () => {
-  // Until the code has loaded nothing of the app paints. Both layers that show in the
-  // meantime, the native window and the bare page, default to white; on a busy machine that
-  // lasted seconds and looked like a broken app.
-  const DARK = "#10100f";
-  assert.equal(conf.app.windows[0].backgroundColor, DARK);
+test("the window is never shown empty: it starts hidden and appears once its page is there", () => {
+  // A web view paints white until its page's first frame, and no setting changes that on a
+  // Mac. So the window is created hidden and shown when the page has loaded. A timer shows
+  // it anyway if the page never reports in: a missing window is worse than an empty one.
+  assert.equal(conf.app.windows[0].visible, false);
+  // Not a background colour: measured on a Mac, the first frame was still white with one,
+  // and it turned the window's title bar white for good on top of the dark app.
+  assert.equal(conf.app.windows[0].backgroundColor, undefined);
+  const lib = readFileSync(join(tauri, "src", "lib.rs"), "utf8");
+  assert.match(lib, /\.on_page_load\(/);
+  assert.match(lib, /PageLoadEvent::Finished[\s\S]{0,160}tray::reveal_main\(/);
+  const tray = readFileSync(join(tauri, "src", "tray.rs"), "utf8");
+  assert.match(tray, /sleep\(REVEAL_FALLBACK\);\s*reveal_main\(/);
+});
+
+test("the bare page is dark before the app's stylesheet has loaded", () => {
   const html = readFileSync(join(tauri, "..", "index.html"), "utf8");
   assert.match(html, /<meta name="theme-color" content="#10100f" \/>/);
   assert.match(html, /<style>\s*html \{ background: #10100f; \}\s*<\/style>/);

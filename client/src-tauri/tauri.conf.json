@@ -13,7 +13,6 @@
     "windows": [
       {
         "title": "Ohiyo",
-        "backgroundColor": "#10100f",
         "width": 1180,
         "height": 760,
         "minWidth": 940,
@@ -21,7 +20,8 @@
         "center": true,
         "resizable": true,
         "decorations": true,
-        "transparent": false
+        "transparent": false,
+        "visible": false
       }
     ],
     "security": {

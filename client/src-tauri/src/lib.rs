@@ -43,6 +43,14 @@ pub fn run() {
             tray::init(app.handle());
             Ok(())
         })
+        .on_page_load(|webview, payload| {
+            // The main window starts hidden and is shown once there is a page to see.
+            if webview.label() == tray::MAIN_WINDOW
+                && payload.event() == tauri::webview::PageLoadEvent::Finished
+            {
+                tray::reveal_main(webview.app_handle());
+            }
+        })
         .on_window_event(|window, event| {
             if window.label() != tray::MAIN_WINDOW {
                 return;
