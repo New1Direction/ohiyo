@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Writes the scenery on ohiyo.gg into site/index.html.
 
-The page is a day in a valley: dawn at the top, a starry night behind the privacy section,
-sunrise behind the mission, morning at the end. Each scene is a gouache painting from
-site/assets/scenery with small living things on top: birds that flap, butterflies, drifting
-seeds, a rabbit that peeks over the hill, a shooting star, fireflies, turning sun rays, and Kikka
-breathing on her hill. Run this after changing a scene:
+The page is a day in a valley: a meadow in morning light at the top (the stone Ohiyo mark, with
+Kikka beside it), a starry night behind the privacy section, sunrise behind the mission, morning
+at the end. Each scene is a painting from site/assets/scenery with small living things on top:
+birds that flap, butterflies, drifting leaves and seeds, a shooting star, fireflies, turning sun
+rays, and Kikka breathing on her hill. Run this after changing a scene:
 
     python3 scripts/site-scenery.py           # rewrite the scenes
     python3 scripts/site-scenery.py --check   # exit 1 if the page is out of step with this file
@@ -35,24 +35,23 @@ def seeds(count):
     return "".join(f'<i class="seed seed--{i}"></i>' for i in range(1, count + 1))
 
 
-# A rabbit that peeks up from behind the hill at the bottom of the first scene.
-RABBIT = (
-    '<svg class="rabbit" viewBox="0 0 48 60">'
-    '<g class="rabbit__ear"><path fill="#b99b7c" d="M17 30C10 18 11 4 16 3s8 12 7 26z"/><path fill="#f1cdb9" d="M17 26c-3-8-3-16-1-18s4 8 4 17z"/></g>'
-    '<path fill="#b99b7c" d="M31 30c7-12 6-26 1-27s-8 12-7 26z"/><path fill="#f1cdb9" d="M31 26c3-8 3-16 1-18s-4 8-4 17z"/>'
-    '<path fill="#b99b7c" d="M8 60V44c0-11 7-18 16-18s16 7 16 18v16z"/>'
-    '<circle cx="18" cy="42" r="2.2" fill="#2a221c"/><circle cx="30" cy="42" r="2.2" fill="#2a221c"/>'
-    '<path d="M22 48q2 2 4 0" fill="none" stroke="#2a221c" stroke-width="1.6" stroke-linecap="round"/></svg>'
-)
+def leaves(count):
+    """Leaves on the wind, like the ones painted into the meadow."""
+    return "".join(f'<i class="leaf leaf--{i}"></i>' for i in range(1, count + 1))
+
+
+# Pixel size of each painting. Most are 1672 wide; the meadow is the size it was painted at.
+SIZES = {"meadow": (1738, 905)}
 
 
 def painting(name, first=False):
     """The painting itself. Only the first one loads eagerly; the rest wait until they are near."""
     loading = 'fetchpriority="high"' if first else 'loading="lazy"'
+    width, height = SIZES.get(name, (1672, 941))
     return (
-        f'<img class="scene__paint" src="assets/scenery/{name}-1672.webp" '
-        f'srcset="assets/scenery/{name}-900.webp 900w, assets/scenery/{name}-1672.webp 1672w" '
-        f'sizes="max(100vw, 40rem)" width="1672" height="941" alt="" {loading} />'
+        f'<img class="scene__paint" src="assets/scenery/{name}-{width}.webp" '
+        f'srcset="assets/scenery/{name}-900.webp 900w, assets/scenery/{name}-{width}.webp {width}w" '
+        f'sizes="max(100vw, 40rem)" width="{width}" height="{height}" alt="" {loading} />'
     )
 
 
@@ -75,9 +74,10 @@ def scene(name, stage, extra=""):
     return f'<div class="scene scene--{name}" aria-hidden="true"><div class="scene__stage">{stage}</div>{extra}</div>'
 
 
-def dawn():
-    stage = painting("dawn", first=True) + '<i class="scene__glow"></i><i class="scene__mist"></i>' + seeds(7) + butterflies(1, 2, 3)
-    return scene("dawn", stage, flock("far", 5) + flock("near", 3) + RABBIT)
+def meadow():
+    """The first screen. Everything sits on the stage, so it stays in place on the painting."""
+    stage = painting("meadow", first=True) + '<i class="scene__glow"></i>' + flock("far", 5) + seeds(7) + butterflies(1, 2, 3) + leaves(6)
+    return scene("meadow", stage)
 
 
 def night():
@@ -98,7 +98,7 @@ def morning():
 
 def main():
     html = PAGE.read_text()
-    for name, draw in (("dawn", dawn), ("night", night), ("sunrise", sunrise), ("morning", morning)):
+    for name, draw in (("meadow", meadow), ("night", night), ("sunrise", sunrise), ("morning", morning)):
         pattern = re.compile(rf"(<!-- scenery:{name} -->).*?(<!-- /scenery:{name} -->)", re.S)
         if not pattern.search(html):
             raise SystemExit(f"index.html has no <!-- scenery:{name} --> marker")

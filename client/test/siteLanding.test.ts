@@ -128,7 +128,7 @@ test("the site does not promise what the hosted service does not do today", () =
 test("the landscape is decoration, and matches the script that draws it", () => {
   const document = parse("index.html");
   const scenes = [...document.querySelectorAll(".scene")];
-  assert.equal(scenes.length, 4, "dawn, night, sunrise and morning");
+  assert.equal(scenes.length, 4, "meadow, night, sunrise and morning");
   for (const scene of scenes) assert.equal(scene.getAttribute("aria-hidden"), "true", "hidden from screen readers");
   // The scenes are generated. Editing them by hand would be lost on the next run.
   const check = spawnSync("python3", [join(site, "..", "scripts", "site-scenery.py"), "--check"], { encoding: "utf8" });

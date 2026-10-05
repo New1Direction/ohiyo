@@ -123,6 +123,13 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
+- **ohiyo.gg has a new first screen:** one painting, edge to edge. A sunlit meadow with the
+  Ohiyo mark as a stone sculpture and Kikka sitting beside it, with the headline, one line of
+  description and the two buttons on the sky at the left. Leaves drift across, butterflies and
+  far-off birds move, and the sun glows. On tablets and phones the words come first and the
+  sculpture and Kikka sit below them. The app screenshots moved to just under the first
+  screen, and the link preview picture (the card shown when ohiyo.gg is shared) uses the new
+  painting too.
 - **Plugins page you can read:** a plain introduction, the list first, real on/off switches that
   say which plugin they changed, and adding a plugin from a link folded away at the bottom with
   what such a plugin can and cannot do. Four switches that changed nothing are gone (Custom CSS,
