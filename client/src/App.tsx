@@ -47,6 +47,7 @@ import {
   type TrustState,
 } from "./lib/identityTrust";
 import { cachePlaintext, getCachedPlaintext, removeCachedPlaintext } from "./lib/e2eCache";
+import { afterDecryptAttempt, withOwnPlaintext } from "./lib/ownEcho";
 import { configureRecoveryCoverageScope, coverageForMessage, recordGroupSenderKeyMessage, recordSignalMessage } from "./lib/recoveryCoverage";
 import {
   groupEncrypt,
@@ -973,7 +974,7 @@ function MainApp({
           if (isEncrypted(msg.content) || isSignalCiphertext(msg.content) || isGroupCiphertext(msg.content)) {
             void decryptMessages(msg.channel_id, [msg]).then((dec) => {
               const dm = dec[0];
-              if (dm) setMessages((prev) => prev.map((m) => (m.id === dm.id ? dm : m)));
+              if (dm) setMessages((prev) => prev.map((m) => (m.id === dm.id ? afterDecryptAttempt(m, dm) : m)));
             });
           }
           const isFromMe = !currentUserRef.current || msg.author.id === currentUserRef.current.id;
@@ -1016,7 +1017,7 @@ function MainApp({
         if (isEncrypted(msg.content) || isSignalCiphertext(msg.content) || isGroupCiphertext(msg.content)) {
           void decryptMessages(msg.channel_id, [msg]).then((dec) => {
             const dm = dec[0];
-            if (dm) setMessages((prev) => prev.map((m) => (m.id === dm.id ? dm : m)));
+            if (dm) setMessages((prev) => prev.map((m) => (m.id === dm.id ? afterDecryptAttempt(m, dm) : m)));
           });
         }
         break;
@@ -1747,10 +1748,8 @@ function MainApp({
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
           cachePlaintext(created.id, privatePlaintext, messageExpiry(created));
           // If the gateway echo already rendered this as a placeholder (it can't
-          // self-decrypt), patch it back to plaintext now.
-          setMessages((prev) =>
-            prev.map((m) => (m.id === created.id ? { ...m, content, attachments: encryptedAttachments ?? m.attachments, _encrypted: true } : m))
-          );
+          // self-decrypt), put the text back and drop its "can't decrypt" notice.
+          setMessages((prev) => prev.map((m) => (m.id === created.id ? withOwnPlaintext(m, content, encryptedAttachments) : m)));
         }
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         removeFromOutbox(tempId);
@@ -1783,9 +1782,7 @@ function MainApp({
         const created = await api.sendMessage(token, msg.channel_id, wire, send.attachmentIds, send.replyTo ?? null);
         if ((isSignalCiphertext(wire) || isGroupCiphertext(wire)) && created?.id) {
           cachePlaintext(created.id, privatePlaintext, messageExpiry(created));
-          setMessages((prev) =>
-            prev.map((m) => (m.id === created.id ? { ...m, content: send.content, attachments: send.encryptedAttachments ?? m.attachments, _encrypted: true } : m))
-          );
+          setMessages((prev) => prev.map((m) => (m.id === created.id ? withOwnPlaintext(m, send.content, send.encryptedAttachments ?? undefined) : m)));
         }
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
         removeFromOutbox(msg.id);
@@ -1867,9 +1864,7 @@ function MainApp({
       // (and later history reloads) shows it — we can't re-decrypt our own ciphertext.
       if (isSignalCiphertext(wire) || isGroupCiphertext(wire)) {
         cachePlaintext(messageId, content, messageExpiry(edited));
-        setMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, content, _encrypted: true } : m))
-        );
+        setMessages((prev) => prev.map((m) => (m.id === messageId ? withOwnPlaintext(m, content) : m)));
       }
     } catch (err) {
       toast(`Couldn't edit: ${err instanceof Error ? err.message : err}`, "error");

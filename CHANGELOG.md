@@ -19,6 +19,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   tucked behind one line, and the whole form fits the desktop app's window without scrolling.
 
 ### Fixed
+- **Your own encrypted messages stay readable.** Right after you sent a message in an
+  encrypted chat, it could turn into "This message needs keys this device doesn't have" on
+  your own screen until you reloaded. The message was never lost and the other person could
+  always read it; your copy now stays readable too.
 - **Desktop: no more frozen white window at launch.** When your computer asks for a password
   before it lets Ohiyo read its saved keys (a Mac does after every update of the unsigned
   beta), the app used to sit frozen behind that prompt with an empty window. It now shows
