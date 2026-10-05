@@ -27,7 +27,8 @@ pub fn run() {
             .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
                 tray::show_main(app);
             }))
-            .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None));
+            .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+            .plugin(tauri_plugin_updater::Builder::new().build());
     }
 
     builder

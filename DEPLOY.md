@@ -16,8 +16,8 @@ from "runs on my localhost" to "my friends download an app and it just works."
 - **Backend host:** any host that runs a Docker image with one persistent volume.
   ohiyo.gg runs on Railway ([§1](#1-deploy-the-backend)); the repo also ships a
   `fly.toml` for Fly.io. Either way it is a single machine with a persistent volume.
-- **Signing:** unsigned installers for now; the seam for signing/auto-update is
-  wired and documented in [§5](#5-code-signing--auto-update-the-later-path).
+- **Signing:** Mac installers are ad-hoc signed for now (not Apple-notarized); see
+  [§5](#5-code-signing--auto-update-the-later-path). Auto-update is on and has its own key.
 
 ---
 
@@ -332,25 +332,31 @@ signing:
 Obtain a code-signing certificate (OV/EV) and set the `tauri.conf.json`
 `bundle.windows.certificateThumbprint` (or use Azure Trusted Signing).
 
-### Auto-update (silent, Discord-style)
-1. Generate the updater keypair (this is separate from code-signing certs):
-   ```bash
-   npm run tauri signer generate -- -w ~/.ohiyo/updater.key
-   ```
-   Keep the **private** key secret; the **public** key goes in config.
-2. Add to `tauri.conf.json`:
-   ```jsonc
-   "plugins": {
-     "updater": {
-       "pubkey": "<public key>",
-       "endpoints": ["https://github.com/<you>/ohiyo/releases/latest/download/latest.json"]
-     }
-   }
-   ```
-   and add `tauri-plugin-updater = "2"` (Cargo) + `.plugin(tauri_plugin_updater::Builder::new().build())`
-   (lib.rs) + `"updater:default"` (capabilities).
-3. Each release, upload the signed bundles + `latest.json`. The app checks on
-   launch and updates in the background.
+### Auto-update (on since 0.3.0)
+
+The desktop app asks the newest **published** GitHub release for `latest.json` and offers
+the update; the person chooses when to install it. A draft release is invisible to it.
+
+Updates are signed with a key made for this purpose (it is not a code-signing certificate):
+
+| GitHub secret | What it is |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | The private update key |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Its password |
+
+The public half is `plugins.updater.pubkey` in `client/src-tauri/tauri.conf.json`. Keep a
+copy of the private key and its password outside GitHub: without them, installed copies
+can no longer be updated.
+
+Update bundles are made only by the release workflow, which switches
+`bundle.createUpdaterArtifacts` on when the key is present. A plain `npm run tauri build`
+needs no key and makes no update bundle.
+
+Running your own fork? Make your own pair with `npm run tauri signer generate -- -w <file>`,
+put its public key and your release address in `plugins.updater`, and set the two secrets.
+Otherwise your builds would look for updates in this repository and reject them.
+
+Only the Linux AppImage updates itself; the deb and rpm are updated by downloading again.
 
 ---
 

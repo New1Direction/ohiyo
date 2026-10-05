@@ -36,3 +36,21 @@ test("the app is entitled to audio input and the camera, and the build uses that
 test("Mac builds stay ad-hoc signed until there is an Apple account", () => {
   assert.equal(conf.bundle.macOS.signingIdentity, "-");
 });
+
+test("updates come from the newest published release and must carry our signature", () => {
+  assert.deepEqual(conf.plugins.updater.endpoints, ["https://github.com/New1Direction/ohiyo/releases/latest/download/latest.json"]);
+  // A minisign public key, base64. Without it the app would accept any update.
+  assert.match(conf.plugins.updater.pubkey, /^[A-Za-z0-9+/=]{80,}$/);
+  const capabilities = JSON.parse(read("capabilities/default.json"));
+  assert.ok(capabilities.permissions.includes("updater:default"));
+});
+
+test("a plain local build needs no signing key: only the release workflow makes update bundles", () => {
+  assert.equal(conf.bundle.createUpdaterArtifacts, undefined);
+  const workflow = readFileSync(join(tauri, "..", "..", ".github", "workflows", "release.yml"), "utf8");
+  assert.ok(workflow.includes("c.bundle.createUpdaterArtifacts=true"), "the workflow switches update bundles on");
+  const builds = workflow.split("uses: tauri-apps/tauri-action@").length - 1;
+  assert.equal(builds, 3, "Mac signed, Mac ad-hoc and Linux");
+  assert.equal(workflow.split("TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}").length - 1, builds);
+  assert.equal(workflow.split("TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}").length - 1, builds);
+});

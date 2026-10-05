@@ -60,3 +60,29 @@ export async function onShellEvent(name: ShellEvent, handler: (payload: unknown)
     return () => {};
   }
 }
+
+export type AppUpdate = {
+  version: string;
+  /** Download, install and restart. Rejects if any step fails. */
+  install: () => Promise<void>;
+};
+
+/**
+ * Ask the release server for a newer version. Null when this copy is current or when not
+ * running as the desktop app. Unlike the calls above, this one rejects when the check
+ * itself fails, so the caller can tell "up to date" from "couldn't check".
+ */
+export async function checkForUpdate(): Promise<AppUpdate | null> {
+  if (!isDesktop()) return null;
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const update = await check();
+  if (!update) return null;
+  return {
+    version: update.version,
+    install: async () => {
+      await update.downloadAndInstall();
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("app_restart");
+    },
+  };
+}

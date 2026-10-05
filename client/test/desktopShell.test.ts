@@ -16,6 +16,7 @@ type Mod = {
   setKeepRunning: (on: boolean) => Promise<Prefs | null>;
   getOpenAtLogin: () => Promise<boolean>;
   setOpenAtLogin: (on: boolean) => Promise<boolean>;
+  checkForUpdate: () => Promise<{ version: string; install: () => Promise<void> } | null>;
 };
 let bundle: Bundle<Mod>;
 const g = globalThis as Record<string, unknown>;
@@ -92,4 +93,22 @@ test("a shell that fails does not break the app", async () => {
   await bundle.mod.setUnreadBadge(1);
   assert.equal(await bundle.mod.getDesktopPrefs(), null);
   assert.equal(await bundle.mod.getOpenAtLogin(), false);
+});
+
+test("a browser never checks for desktop updates", async () => {
+  assert.equal(await bundle.mod.checkForUpdate(), null);
+  assert.deepEqual(calls, []);
+});
+
+test("an update check tells a newer version from none, and from not being able to check", async () => {
+  asDesktop();
+  answer = (cmd) => (cmd === "plugin:updater|check" ? { rid: 7, currentVersion: "0.3.0", version: "0.3.1", rawJson: {} } : null);
+  assert.equal((await bundle.mod.checkForUpdate())?.version, "0.3.1");
+  answer = () => null;
+  assert.equal(await bundle.mod.checkForUpdate(), null);
+  // No network, or the release server is down: the caller must be able to tell.
+  answer = () => {
+    throw new Error("error sending request");
+  };
+  await assert.rejects(bundle.mod.checkForUpdate());
 });

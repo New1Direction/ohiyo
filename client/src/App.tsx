@@ -90,6 +90,8 @@ import { VOICE_UNAVAILABLE, callEnvironment, canCall } from "./lib/voiceSupport"
 import { arrivalInOpenChat, isLookingAt, lastRealMessageId } from "./lib/attention";
 import { unreadTotal, withoutUnread } from "./lib/unreadTotal";
 import { useDesktopShell } from "./hooks/useDesktopShell";
+import { useAppUpdate } from "./hooks/useAppUpdate";
+import { UpdateBar } from "./components/UpdateBar";
 import {
   loadActiveHomeId,
   loadHomes,
@@ -696,13 +698,14 @@ function MainApp({
   useEffect(() => {
     lastMessageIdRef.current = lastRealMessageId(messages);
   }, [messages]);
+  const appUpdate = useAppUpdate({ isSignedIn: currentUser !== null, onMessage: toast });
   useDesktopShell({
     unread: totalUnread,
     inCall: webrtc.channelId !== null,
     onLeaveCall: () => {
       if (webrtc.channelId !== null) webrtc.hangUp();
     },
-    onCheckUpdates: () => {},
+    onCheckUpdates: () => void appUpdate.check(true),
     onWindowHidden: (hidden) => {
       windowHiddenRef.current = hidden;
       const open = selectedChannelRef.current;
@@ -2520,6 +2523,14 @@ function MainApp({
 
       {/* Toast notifications */}
       <ToastStack toasts={toasts} />
+      {appUpdate.update && (
+        <UpdateBar
+          version={appUpdate.update.version}
+          isInstalling={appUpdate.isInstalling}
+          onInstall={() => void appUpdate.install()}
+          onLater={appUpdate.dismiss}
+        />
+      )}
 
       {/* Command palette — Ctrl+K or kikkacord:open-search */}
       {showCommandPalette && (
