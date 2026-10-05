@@ -82,3 +82,26 @@ test("release builds, and only they, look for updates", () => {
   const builds = workflow.split("uses: tauri-apps/tauri-action@").length - 1;
   assert.equal(workflow.split("VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}").length - 1, builds);
 });
+
+test("the window is dark before the app has loaded, never a white sheet", () => {
+  // Until the code has loaded nothing of the app paints. Both layers that show in the
+  // meantime, the native window and the bare page, default to white; on a busy machine that
+  // lasted seconds and looked like a broken app.
+  const DARK = "#10100f";
+  assert.equal(conf.app.windows[0].backgroundColor, DARK);
+  const html = readFileSync(join(tauri, "..", "index.html"), "utf8");
+  assert.match(html, /<meta name="theme-color" content="#10100f" \/>/);
+  assert.match(html, /<style>\s*html \{ background: #10100f; \}\s*<\/style>/);
+});
+
+test("the one command that waits for the keychain runs off the main thread", () => {
+  // The keychain can hold the answer back behind a password prompt. `vault_snapshot` waits
+  // for it; a plain (non-async) command would do that waiting on the main thread, and the
+  // window would freeze unpainted for as long as the prompt is up.
+  const vault = readFileSync(join(tauri, "src", "vault.rs"), "utf8");
+  assert.match(vault, /#\[tauri::command\(async\)\]\npub fn vault_snapshot\(/);
+  // Start-up must not unlock inline either: it hands the unlock to its own thread.
+  const init = vault.slice(vault.indexOf("pub fn init("), vault.indexOf("#[tauri::command]"));
+  assert.match(init, /std::thread::spawn\(/);
+  assert.doesNotMatch(init, /= unlock\(/);
+});

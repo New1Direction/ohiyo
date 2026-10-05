@@ -37,7 +37,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             prefs::init(app.handle());
-            // Locked-RAM E2E key vault (replaces on-disk localStorage for the keys).
+            // Locked-RAM E2E key vault (replaces on-disk localStorage for the keys). Starts
+            // the unlock on its own thread: it can wait on an OS password prompt.
             vault::init(app.handle());
             tray::init(app.handle());
             Ok(())

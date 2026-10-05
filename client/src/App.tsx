@@ -66,6 +66,7 @@ import { decryptEach } from "./lib/decryptEach";
 import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
 import { parseVaultLocked, type VaultLocked } from "./lib/vaultLock";
 import { VaultLockedScreen } from "./components/VaultLockedScreen";
+import { VaultUnlocking } from "./components/VaultUnlocking";
 import { SignOutDialog } from "./components/SignOutDialog";
 import { signInRemovesLocalDataNow, signOutRemovesLocalDataNow } from "./lib/signOut";
 import { clearLocalMessageData } from "./lib/logoutCleanup";
@@ -258,7 +259,7 @@ export default function App() {
   if (!vaultReady) {
     // Desktop only: a brief wait while the encrypted vault unlocks and the session token
     // hydrates, so an already-signed-in user never flashes the login screen.
-    return <div className="fixed inset-0 grid place-items-center text-sm opacity-60">Unlocking…</div>;
+    return <VaultUnlocking />;
   }
   if (vaultLocked !== null) {
     // Desktop only: don't start with an empty vault, which would replace the saved keys.

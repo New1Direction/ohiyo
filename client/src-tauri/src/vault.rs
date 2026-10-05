@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use kikka_vault::Vault;
 use rand::RngCore;
@@ -97,11 +97,19 @@ impl Locked {
     }
 }
 
+/// What a vault command returns while the unlock has not finished. Deliberately not a
+/// `vault_locked` error: nothing is wrong yet, and the locked screen would offer a reset.
+const VAULT_UNLOCKING: &str = "vault_unlocking: the saved keys are still being unlocked";
+
 pub struct VaultState {
     path: PathBuf,
     /// The unlocked vault, or why it stayed locked. A locked vault never writes the sealed
     /// file, so a keychain or decrypt failure can't replace it with an empty one.
-    vault: Result<UnlockedVault, Locked>,
+    ///
+    /// Empty until the unlock has finished. Reading the keychain can wait on an OS password
+    /// prompt for as long as the person takes to answer it, so the unlock never runs on the
+    /// main thread (see `init`), and only `vault_snapshot` waits for it.
+    vault: OnceLock<Result<UnlockedVault, Locked>>,
 }
 
 struct UnlockedVault {
@@ -113,12 +121,28 @@ struct UnlockedVault {
 }
 
 impl VaultState {
+    /// The vault if the unlock has finished and worked. Never waits.
     fn unlocked(&self) -> Result<&UnlockedVault, String> {
-        self.vault.as_ref().map_err(Locked::error)
+        match self.vault.get() {
+            Some(vault) => vault.as_ref().map_err(Locked::error),
+            None => Err(VAULT_UNLOCKING.to_string()),
+        }
+    }
+
+    /// Unlock on first use and return how it went. A second caller that arrives while the
+    /// first is still waiting on the OS waits for the same answer; the key is asked for
+    /// once. Call this off the main thread only.
+    fn unlock_once(
+        &self,
+        unlock: impl FnOnce(&Path) -> Result<UnlockedVault, Locked>,
+    ) -> &Result<UnlockedVault, Locked> {
+        self.vault.get_or_init(|| unlock(&self.path))
     }
 
     fn persist(&self, vault: &Vault) {
-        let Ok(unlocked) = &self.vault else { return };
+        let Some(Ok(unlocked)) = self.vault.get() else {
+            return;
+        };
         if unlocked.burned.load(Ordering::SeqCst) {
             return;
         }
@@ -142,12 +166,16 @@ impl VaultState {
     /// interrupted write left behind, and any file a reset moved aside. Returns how each
     /// deletion went.
     fn burn_local(&self) -> (io::Result<()>, io::Result<()>, io::Result<()>) {
-        let _guard = self.vault.as_ref().ok().map(|unlocked| {
-            let mut v = unlocked.inner.lock().unwrap();
-            unlocked.burned.store(true, Ordering::SeqCst);
-            v.wipe();
-            v
-        });
+        let _guard = self
+            .vault
+            .get()
+            .and_then(|vault| vault.as_ref().ok())
+            .map(|unlocked| {
+                let mut v = unlocked.inner.lock().unwrap();
+                unlocked.burned.store(true, Ordering::SeqCst);
+                v.wipe();
+                v
+            });
         (
             std::fs::remove_file(&self.path),
             std::fs::remove_file(temp_path(&self.path)),
@@ -205,13 +233,14 @@ fn keychain_reset(stored: Result<String, keyring::Error>) -> Result<KeychainRese
 /// keys. A reset can't help when the keychain can't be reached, and must never touch a
 /// vault that opened.
 fn reset_target(state: &VaultState) -> Result<&Path, String> {
-    match &state.vault {
-        Err(Locked {
+    match state.vault.get() {
+        Some(Err(Locked {
             kind: LockKind::Vault,
             ..
-        }) => Ok(&state.path),
-        Err(_) => Err("a reset can't help: the OS keychain can't be reached".to_string()),
-        Ok(_) => Err("the vault isn't locked".to_string()),
+        })) => Ok(&state.path),
+        Some(Err(_)) => Err("a reset can't help: the OS keychain can't be reached".to_string()),
+        Some(Ok(_)) => Err("the vault isn't locked".to_string()),
+        None => Err(VAULT_UNLOCKING.to_string()),
     }
 }
 
@@ -328,6 +357,11 @@ fn unlock(path: &Path) -> Result<UnlockedVault, Locked> {
 
 /// Load the vault on startup: keychain master key + decrypt the sealed blob (if any).
 /// If that fails the vault stays locked and every command reports why.
+///
+/// The unlock gets its own thread. When the OS decides to ask for a password first (macOS
+/// does for a copy of the app it has not seen read this key), the read does not return
+/// until the person answers. Done here on the main thread, that left the app frozen with
+/// a white, unpainted window behind the prompt.
 pub fn init(app: &AppHandle) {
     let dir = app
         .path()
@@ -335,8 +369,14 @@ pub fn init(app: &AppHandle) {
         .unwrap_or_else(|_| PathBuf::from("."));
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join(VAULT_FILE);
-    let vault = unlock(&path);
-    app.manage(VaultState { path, vault });
+    app.manage(VaultState {
+        path,
+        vault: OnceLock::new(),
+    });
+    let app = app.clone();
+    std::thread::spawn(move || {
+        app.state::<VaultState>().unlock_once(unlock);
+    });
 }
 
 #[tauri::command]
@@ -344,10 +384,14 @@ pub fn vault_available() -> bool {
     true
 }
 
-/// All key→value pairs, to hydrate the webview's in-memory mirror once at startup.
-#[tauri::command]
+/// All key→value pairs, to hydrate the webview's in-memory mirror once at startup. The
+/// webview calls this first and nothing else until it returns, so this is the one command
+/// that waits for the unlock. It must stay `async` (run off the main thread): a plain
+/// command would do that waiting on the main thread and freeze the window.
+#[tauri::command(async)]
 pub fn vault_snapshot(state: State<VaultState>) -> Result<HashMap<String, String>, String> {
-    let v = state.unlocked()?.inner.lock().unwrap();
+    let unlocked = state.unlock_once(unlock).as_ref().map_err(Locked::error)?;
+    let v = unlocked.inner.lock().unwrap();
     Ok(v.keys()
         .into_iter()
         .filter_map(|k| v.get(&k).map(|val| (k, val)))
@@ -472,11 +516,23 @@ mod tests {
     fn unlocked_state(path: PathBuf) -> VaultState {
         VaultState {
             path,
-            vault: Ok(UnlockedVault {
-                inner: Mutex::new(Vault::new()),
-                master: KEY,
-                burned: AtomicBool::new(false),
-            }),
+            vault: OnceLock::from(Ok(unlocked_vault())),
+        }
+    }
+
+    fn unlocked_vault() -> UnlockedVault {
+        UnlockedVault {
+            inner: Mutex::new(Vault::new()),
+            master: KEY,
+            burned: AtomicBool::new(false),
+        }
+    }
+
+    /// A state whose unlock has not finished: the OS is still being asked for the key.
+    fn pending_state(path: PathBuf) -> VaultState {
+        VaultState {
+            path,
+            vault: OnceLock::new(),
         }
     }
 
@@ -686,9 +742,9 @@ mod tests {
     fn batch_removal_on_a_locked_vault_reports_it_locked() {
         let state = VaultState {
             path: PathBuf::from("unused"),
-            vault: Err(Locked::keychain(
+            vault: OnceLock::from(Err(Locked::keychain(
                 "the OS keychain could not be read: denied",
-            )),
+            ))),
         };
         let err = state.remove_many(&["kc:outbox".to_string()]).unwrap_err();
         assert!(err.starts_with(VAULT_LOCKED_PREFIX), "{err}");
@@ -698,9 +754,9 @@ mod tests {
     fn a_locked_vault_reports_its_kind_and_why_in_the_form_the_webview_parses() {
         let keychain = VaultState {
             path: PathBuf::from("unused"),
-            vault: Err(Locked::keychain(
+            vault: OnceLock::from(Err(Locked::keychain(
                 "the OS keychain could not be read: denied",
-            )),
+            ))),
         };
         assert_eq!(
             keychain.unlocked().err().as_deref(),
@@ -708,7 +764,7 @@ mod tests {
         );
         let vault = VaultState {
             path: PathBuf::from("unused"),
-            vault: Err(Locked::vault("the sealed vault could not be opened")),
+            vault: OnceLock::from(Err(Locked::vault("the sealed vault could not be opened"))),
         };
         assert_eq!(
             vault.unlocked().err().as_deref(),
@@ -780,11 +836,84 @@ mod tests {
     fn reset_is_only_for_a_vault_that_is_locked_on_its_saved_keys() {
         let at = |vault| VaultState {
             path: PathBuf::from("kc-vault.bin"),
-            vault,
+            vault: OnceLock::from(vault),
         };
         assert!(reset_target(&at(Err(Locked::vault("could not be opened")))).is_ok());
         assert!(reset_target(&at(Err(Locked::keychain("denied")))).is_err());
         assert!(reset_target(&unlocked_state(PathBuf::from("kc-vault.bin"))).is_err());
+    }
+
+    #[test]
+    fn while_the_os_is_still_being_asked_for_the_key_nothing_waits_and_nothing_is_written() {
+        // The unlock can sit behind an OS password prompt for as long as the person takes
+        // to answer. These calls run on the main thread: if one waited there, the window
+        // would freeze unpainted, which is how a launch came to show only a white window.
+        let dir = scratch_dir("pending");
+        let state = pending_state(dir.join(VAULT_FILE));
+        assert_eq!(state.unlocked().err().as_deref(), Some(VAULT_UNLOCKING));
+        assert_eq!(
+            state
+                .remove_many(&["kc:outbox".to_string()])
+                .err()
+                .as_deref(),
+            Some(VAULT_UNLOCKING)
+        );
+        assert_eq!(reset_target(&state).err().as_deref(), Some(VAULT_UNLOCKING));
+        state.persist(&Vault::new());
+        assert!(!state.path.exists());
+        // "Still unlocking" must not read as "locked": the locked screen offers a reset.
+        assert!(!VAULT_UNLOCKING.starts_with(VAULT_LOCKED_PREFIX));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_key_is_asked_for_once_and_everyone_waiting_gets_that_answer() {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::{mpsc, Arc};
+
+        let state = Arc::new(pending_state(PathBuf::from("unused")));
+        let asked = Arc::new(AtomicUsize::new(0));
+        let (asking, is_asking) = mpsc::channel();
+        let (answer, answered) = mpsc::channel::<()>();
+
+        // The launch thread asks and is held up, as if a password prompt were on screen.
+        let launch = {
+            let (state, asked) = (Arc::clone(&state), Arc::clone(&asked));
+            std::thread::spawn(move || {
+                state
+                    .unlock_once(|_| {
+                        asked.fetch_add(1, Ordering::SeqCst);
+                        asking.send(()).unwrap();
+                        answered.recv().unwrap();
+                        Err(Locked::keychain(
+                            "the OS keychain could not be read: denied",
+                        ))
+                    })
+                    .is_err()
+            })
+        };
+        is_asking.recv().unwrap();
+        // Meanwhile the main thread is told so at once.
+        assert_eq!(state.unlocked().err().as_deref(), Some(VAULT_UNLOCKING));
+        // The webview's snapshot arrives while the prompt is still up. It must wait for
+        // that answer, not ask the keychain a second time (a second prompt).
+        let snapshot = {
+            let (state, asked) = (Arc::clone(&state), Arc::clone(&asked));
+            std::thread::spawn(move || {
+                state
+                    .unlock_once(|_| {
+                        asked.fetch_add(1, Ordering::SeqCst);
+                        Ok(unlocked_vault())
+                    })
+                    .is_err()
+            })
+        };
+        answer.send(()).unwrap();
+        assert!(launch.join().unwrap());
+        assert!(snapshot.join().unwrap(), "the snapshot used its own answer");
+        assert_eq!(asked.load(Ordering::SeqCst), 1);
+        let err = state.unlocked().err().unwrap();
+        assert!(err.starts_with(VAULT_LOCKED_PREFIX), "{err}");
     }
 
     #[test]
