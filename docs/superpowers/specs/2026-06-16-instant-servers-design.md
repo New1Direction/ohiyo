@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-16
 **Status:** Approved design (pre-implementation)
-**Author:** Brainstormed with Connor
+**Author:** Brainstormed with ares
 
 ---
 
