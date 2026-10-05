@@ -54,7 +54,9 @@ async function joinVoice(page) {
   await row.click();
   const previewJoin = page.locator('.kc-voice-join-preview button:has-text("Join")').first();
   if (await previewJoin.isVisible({ timeout: 750 }).catch(() => false)) await previewJoin.click();
-  await page.waitForSelector("text=LIVE", { timeout: 10000 });
+  // Exactly the call's "LIVE" badge. A bare text=LIVE also matches "…feel alive." in the
+  // launch checklist, which used to be on screen and let this wait pass before any call.
+  await page.getByText("LIVE", { exact: true }).first().waitFor({ state: "visible", timeout: 10000 });
 }
 
 async function blockMicrophone(page) {

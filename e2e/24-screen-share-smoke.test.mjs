@@ -91,7 +91,9 @@ async function joinVoice(page) {
   await row.click();
   const previewJoin = page.locator('.kc-voice-join-preview button:has-text("Join")').first();
   if (await previewJoin.isVisible({ timeout: 750 }).catch(() => false)) await previewJoin.click();
-  await page.waitForSelector("text=LIVE", { timeout: 10000 });
+  // Exactly the call's "LIVE" badge. A bare text=LIVE also matches "…feel alive." in the
+  // launch checklist, which used to be on screen and let this wait pass before any call.
+  await page.getByText("LIVE", { exact: true }).first().waitFor({ state: "visible", timeout: 10000 });
 }
 
 async function waitForScreenTrackIfInspectable(page) {
@@ -144,8 +146,10 @@ try {
     : "late joiner sees active screen share in production UI ✓");
 
   await pageA.click('button[aria-label="Stop sharing"]');
-  await pageA.waitForSelector("text=Voice room", { timeout: 12000 });
-  await pageB.waitForSelector("text=Voice room", { timeout: 12000 });
+  // The call screen's own label. A bare text=Voice room also matches "Try the voice room"
+  // in the launch checklist, which used to be on screen and let this pass by itself.
+  await pageA.waitForSelector('.kc-call-kicker:has-text("Voice room")', { timeout: 12000 });
+  await pageB.waitForSelector('.kc-call-kicker:has-text("Voice room")', { timeout: 12000 });
   log("stop sharing returns both users to voice room ✓");
 
   console.log("\n✅ SCREEN SHARE SMOKE PASSED (sharp default · live share · late join · stop share)");
