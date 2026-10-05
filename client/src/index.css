@@ -4138,3 +4138,50 @@ button:disabled,
   .ohiyo-door__life { display: none; }
   .ohiyo-door__panel > *, .ohiyo-door__fact { animation: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   The frame around the chat
+   ═══════════════════════════════════════════════════════════ */
+/* The rail: your spaces come first. The home switcher and its own "+" go to the bottom, so
+   the "+" beside the spaces is the only one in reach. */
+.server-sidebar { display: flex; }
+.kc-rail-homes-rule { order: 19; margin-top: auto !important; }
+.kc-rail-homes { order: 20; }
+
+/* The "+" beside the message box opens upward, from the button it belongs to. */
+.kc-composer-add { position: relative; display: flex; }
+.kc-composer-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 30;
+  display: grid;
+  gap: 2px;
+  min-width: 12rem;
+  padding: 6px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
+  border-radius: 14px;
+  background: var(--bg-sidebar);
+  box-shadow: 0 18px 40px -18px rgb(0 0 0 / 70%);
+  transform-origin: bottom left;
+  animation: kc-composer-menu-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes kc-composer-menu-in { from { opacity: 0; transform: translateY(4px) scale(0.96); } }
+.kc-composer-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.kc-composer-menu button:active { transform: scale(0.98); }
+@media (hover: hover) and (pointer: fine) { .kc-composer-menu button:hover { background: var(--bg-hover); } }
+@media (prefers-reduced-motion: reduce) { .kc-composer-menu { animation: none; } }
+/* While the "Getting started" row is there it already says what to do next; the separate
+   hint card above it only repeated it. */
+.channel-sidebar:has(.kc-activation) .kc-sidebar-hint { display: none; }

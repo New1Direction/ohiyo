@@ -338,7 +338,8 @@ export function ChannelSidebar({
               <Icon name="calendar" size={16} />
             </button>
           )}
-          {server && onReportServer && (
+          {/* Not for the people who run the space: reporting your own space to yourself helps nobody. */}
+          {server && onReportServer && !canManageServer && (
             <button
               onClick={onReportServer}
               title="Report server"
