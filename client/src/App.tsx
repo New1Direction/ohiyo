@@ -86,6 +86,7 @@ import {
 } from "./lib/privacyPrefs";
 import { useToast } from "./hooks/useToast";
 import { onLocalClock } from "./lib/watchSync";
+import { VOICE_UNAVAILABLE, callEnvironment, canCall } from "./lib/voiceSupport";
 import {
   loadActiveHomeId,
   loadHomes,
@@ -2150,6 +2151,10 @@ function MainApp({
 
   function handleJoinVoice(channel: Channel, opts?: { muted?: boolean; video?: boolean }) {
     setMobileNavOpen(false);
+    if (!canCall(callEnvironment())) {
+      toast(VOICE_UNAVAILABLE, "error");
+      return;
+    }
     if (webrtc.channelId === channel.id) return;
     webrtc.joinVoice(channel.id, { video: opts?.video ?? false, muted: opts?.muted ?? false })
       .then(() => completeActivation("call"))
