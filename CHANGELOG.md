@@ -19,6 +19,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   tucked behind one line, and the whole form fits the desktop app's window without scrolling.
 
 ### Fixed
+- **Desktop: no more frozen white window at launch.** When your computer asks for a password
+  before it lets Ohiyo read its saved keys (a Mac does after every update of the unsigned
+  beta), the app used to sit frozen behind that prompt with an empty window. It now shows
+  "Unlocking your keys" and says what the prompt is for.
 - **A calmer first screen.** The owner's launch checklist no longer fills the sidebar: it is
   one "Getting started" row under the channels that opens when you want it. The message box
   has a single "+" with "Upload a file" and "Create a poll" inside. The home switcher and its

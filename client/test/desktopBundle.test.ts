@@ -82,3 +82,54 @@ test("release builds, and only they, look for updates", () => {
   const builds = workflow.split("uses: tauri-apps/tauri-action@").length - 1;
   assert.equal(workflow.split("VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}").length - 1, builds);
 });
+
+test("the window is on screen from the start, with no colour of its own", () => {
+  // Two ways of hiding the web view's white first frame were tried and measured on a Mac.
+  // Both made things worse, so neither may come back without being measured again:
+  // - Hidden until its page has loaded. A password prompt takes the app out of the
+  //   foreground, so the window was then shown behind whatever else was open; WebKit
+  //   counted it as covered, paused the page and dropped its picture after three seconds.
+  //   The screen that explains the prompt was never seen.
+  // - A window background colour. The first frame was still white, and the title bar
+  //   turned white for good on top of the dark app.
+  const [main] = conf.app.windows;
+  assert.notEqual(main.visible, false);
+  assert.equal(main.backgroundColor, undefined);
+  const lib = readFileSync(join(tauri, "src", "lib.rs"), "utf8");
+  assert.doesNotMatch(lib, /on_page_load/);
+});
+
+test("the page carries no inline style element", () => {
+  // The desktop build adds a nonce to every <style> in this file and to the style policy.
+  // A policy with a nonce ignores 'unsafe-inline', so the <style> elements the app creates
+  // later (plugin CSS: Compact chat, Focus mode, anything third-party) would be blocked.
+  const html = readFileSync(join(tauri, "..", "index.html"), "utf8");
+  assert.doesNotMatch(html, /<style[\s>]/);
+  assert.match(conf.app.security.csp, /style-src 'self' 'unsafe-inline'/);
+});
+
+test("the one command that waits for the keychain runs off the main thread", () => {
+  // The keychain can hold the answer back behind a password prompt. `vault_snapshot` waits
+  // for it; a plain (non-async) command would do that waiting on the main thread, and the
+  // window would freeze unpainted for as long as the prompt is up.
+  const vault = readFileSync(join(tauri, "src", "vault.rs"), "utf8");
+  assert.match(vault, /#\[tauri::command\(async\)\]\npub fn vault_snapshot\(/);
+  // Start-up must not unlock inline either: nothing before the thread it starts may touch
+  // the unlock.
+  const init = vault.slice(vault.indexOf("pub fn init("), vault.indexOf("#[tauri::command]"));
+  const [before, ...threads] = init.split("std::thread::spawn(");
+  assert.equal(threads.length, 1);
+  assert.doesNotMatch(before, /unlock/);
+  assert.match(threads[0], /unlock_once\(unlock\)/);
+});
+
+test("no command that talks to the keychain runs on the main thread", () => {
+  // Any keychain call can end up behind a password prompt. A plain command runs on the main
+  // thread, where waiting for that prompt freezes the whole window.
+  const vault = readFileSync(join(tauri, "src", "vault.rs"), "utf8");
+  const commands = [...vault.matchAll(/#\[tauri::command(\(async\))?\]\n(?:pub )?fn (\w+)[\s\S]*?\n\}\n/g)];
+  assert.ok(commands.length >= 7, `found ${commands.length} commands`);
+  const onMainThread = commands.filter(([, isAsync]) => !isAsync);
+  const offenders = onMainThread.filter(([body]) => /keyring::|unlock_once\(/.test(body)).map(([, , name]) => name);
+  assert.deepEqual(offenders, []);
+});

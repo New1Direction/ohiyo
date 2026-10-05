@@ -290,6 +290,43 @@ button:disabled,
   background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--accent) 82%, var(--text-primary)), transparent);
   animation: ohiyo-boot-progress 1.15s var(--ease-out) infinite;
 }
+/* Desktop: the wait while the key vault unlocks. Same frame as the boot splash it leads into. */
+.ohiyo-vault-wait {
+  padding: var(--space-6);
+  background: radial-gradient(circle at 50% 35%, color-mix(in oklch, var(--accent) 14%, var(--bg-base)) 0%, var(--bg-base) 60%);
+}
+.ohiyo-vault-wait__title {
+  position: relative;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-xl);
+  color: var(--text-primary);
+}
+/* Room for the explanation is kept from the start, so nothing above it moves when it arrives. */
+.ohiyo-vault-wait__why {
+  position: relative;
+  max-width: 27rem;
+  min-height: 6.2em; /* four lines at this line height */
+  margin: var(--space-5) 0 0;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.ohiyo-vault-wait__why span {
+  display: block;
+  animation: ohiyo-vault-why-in 260ms var(--ease-out) both;
+}
+@keyframes ohiyo-vault-why-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes ohiyo-vault-why-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ohiyo-vault-wait__why span { animation-name: ohiyo-vault-why-fade; }
+}
 @keyframes ohiyo-boot-mark-in {
   from { opacity: 0; transform: translateY(6px) scale(0.96); filter: blur(4px); }
   to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
