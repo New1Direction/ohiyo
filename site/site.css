@@ -60,6 +60,8 @@
   --fast: 150ms;
   --normal: 360ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* A stronger ease-out for things arriving on screen: quick off the mark, long settle. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -514,8 +516,17 @@ a:hover { text-decoration-color: currentColor; }
 @media (hover: hover) { .step:hover, .card:hover, .also:hover { translate: 0 -4px; box-shadow: var(--shadow-l); } }
 .js .reveal { opacity: 0; transform: translateY(18px); transition: opacity 600ms var(--ease), transform 600ms var(--ease), translate var(--normal) var(--ease), box-shadow var(--normal) var(--ease); }
 .js .reveal.is-in { opacity: 1; transform: none; }
+/* The app preview arrives in two beats instead of as one slab: the window rises first,
+   the phone follows a moment later from a little lower. Transform and opacity only,
+   and never from nothing: each starts at nearly full size. */
+.js .peek.reveal { opacity: 1; transform: none; }
+.js .peek .window, .js .peek .phone, .js .peek::before { opacity: 0; transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out); }
+.js .peek .window { transform: translateY(22px) scale(0.985); }
+.js .peek .phone { transform: translateY(40px) scale(0.97); transition-delay: 90ms; }
+.js .peek.is-in .window, .js .peek.is-in .phone, .js .peek.is-in::before { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .js .reveal { opacity: 1; transform: none; }
+  .js .peek .window, .js .peek .phone, .js .peek::before { opacity: 1; transform: none; transition: none; }
 }
