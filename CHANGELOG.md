@@ -11,6 +11,13 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
 
+### Changed
+- **A new sign-in screen.** A painting fills the screen and follows your local time:
+  sunrise, morning, the meadow in the afternoon, sunset, and a starry night with fireflies.
+  It greets you to match ("Good morning.", "Good evening.", "Still up?"). The fields sit
+  straight on the scene with no card around them, the long note about forgotten passwords is
+  tucked behind one line, and the whole form fits the desktop app's window without scrolling.
+
 ### Fixed
 - **The app on phones:** message text no longer runs underneath each message's ⋯ button,
   and touching a message no longer pops the desktop toolbar over its neighbours. The ⋯ menu

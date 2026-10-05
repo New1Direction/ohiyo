@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import sunriseUrl from "../assets/door/sunrise.webp";
+import morningUrl from "../assets/door/morning.webp";
+import meadowUrl from "../assets/door/meadow.webp";
+import nightUrl from "../assets/door/night.webp";
+import { doorScene, type DoorSceneKey } from "../lib/doorScene";
 import { api } from "../api";
 import type { OhiyoHome } from "../lib/homes";
 import { BirdMark } from "./BirdMark";
@@ -20,6 +25,25 @@ const LAST_USERNAME_KEY = "kc:last-username";
 const MIN_PASSWORD = 8;
 const MIN_USERNAME = 2;
 const MAX_USERNAME = 32;
+// One painting per time of day. Sunset is the sunrise painting with an evening grade.
+const SCENE_IMAGE: Record<DoorSceneKey, string> = {
+  sunrise: sunriseUrl,
+  morning: morningUrl,
+  day: meadowUrl,
+  sunset: sunriseUrl,
+  night: nightUrl,
+};
+
+const MOTE_COUNT = 14;
+/** Where each drifting leaf (or firefly) starts and how it moves. Fixed, so the scene is the same every visit. */
+const LIFE: CSSProperties[] = Array.from({ length: MOTE_COUNT }, (_, i) => ({
+  ["--x" as string]: `${(i * 37 + 11) % 100}%`,
+  ["--y" as string]: `${(i * 53 + 23) % 100}%`,
+  ["--dur" as string]: `${9 + (i % 5) * 2.5}s`,
+  ["--delay" as string]: `${(-i * 1.7).toFixed(1)}s`,
+  ["--size" as string]: `${0.7 + (i % 4) * 0.2}`,
+}));
+
 const AUTH_FACTS = [
   "Chinchillas take dust baths to keep their fur soft.",
   "Sea otters hold hands so they don’t drift apart.",
@@ -58,6 +82,8 @@ function EyeIcon({ off }: { off: boolean }) {
 
 export function AuthScreen({ home, onAuth }: Props) {
   const [mode, setMode] = useState<Mode>("login");
+  // The hour is read once, when the door opens.
+  const [scene] = useState(() => doorScene(new Date().getHours()));
   const [username, setUsername] = useState(() => localStorage.getItem(LAST_USERNAME_KEY) ?? "");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -163,69 +189,36 @@ export function AuthScreen({ home, onAuth }: Props) {
       : "var(--text-muted)";
 
   return (
-    <main
-      className="kc-screen relative flex w-screen overflow-x-hidden overflow-y-auto"
-      style={{
-        background:
-          "radial-gradient(circle at 30% 20%, color-mix(in oklch, var(--accent) 16%, var(--bg-base)) 0%, var(--bg-base) 55%)",
-        padding: "var(--space-4)",
-      }}
-    >
-      <div className="ohiyo-auth-sticks" aria-hidden="true">
-        {Array.from({ length: 18 }, (_, i) => <span key={`twig-${i}`} />)}
-        {Array.from({ length: 30 }, (_, i) => <i key={`leaf-${i}`} />)}
+    <main className="ohiyo-door kc-screen" data-scene={scene.key} data-tone={scene.tone}>
+      {/* The painting for this hour, with a few leaves (or, at night, fireflies) drifting over it. */}
+      <div className="ohiyo-door__sky" aria-hidden="true">
+        <img src={SCENE_IMAGE[scene.key]} alt="" decoding="async" />
+        <div className="ohiyo-door__life">
+          {LIFE.map((mote, i) => <span key={i} style={mote} />)}
+        </div>
       </div>
-      <div className="relative z-10 m-auto flex w-full max-w-sm flex-col items-center">
-      <div
-        className="ohiyo-auth-card w-full"
-        style={{
-          background: "var(--bg-channel)",
-          borderRadius: "var(--radius-xl)",
-          padding: "var(--space-8)",
-          boxShadow: "var(--shadow-lg)",
-          border: "1px solid color-mix(in oklch, var(--text-primary) 6%, transparent)",
-        }}
-      >
-        {/* Brand */}
-        <div className="mb-6 flex flex-col items-center text-center">
-          <div
-            className="kc-float mb-3 flex items-center justify-center"
-            style={{
-              width: 64, height: 64, borderRadius: "var(--radius-lg)",
-              background: "color-mix(in oklch, var(--accent) 14%, transparent)",
-              color: "var(--accent)",
-            }}
-          >
-            <BirdMark size={40} />
+      <div className="ohiyo-door__stage">
+        <div className="ohiyo-door__panel">
+          <div className="ohiyo-door__brand">
+            <BirdMark size={30} />
+            <span>o<b>Hi</b>Yo</span>
           </div>
-          <div key={mode} className="ohiyo-auth-mode-copy w-full">
-            <h1
-              style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-2xl)", color: "var(--text-primary)" }}
-            >
-              {mode === "login" ? "Welcome back" : mode === "register" ? "Join Ohiyo" : "Link this device"}
+          <div key={mode} className="ohiyo-auth-mode-copy">
+            <h1 className="ohiyo-door__greeting">
+              {mode === "login" ? scene.greeting : mode === "register" ? "Join Ohiyo" : "Link this device"}
             </h1>
-            <p className="mt-1 text-base" style={{ color: "var(--text-secondary)" }}>
+            <p className="ohiyo-door__line">
               {mode === "login"
-                ? "Good to see you again."
+                ? scene.line
                 : mode === "register"
                   ? "Free forever. Takes ten seconds."
                   : "Enter the code from a device you're already signed in on."}
             </p>
-            <div
-              className="ohiyo-auth-status-pill mt-4 flex w-full items-center justify-center gap-2 rounded-full px-3 py-2 text-xs"
-              title={home.url}
-              style={{
-                background: "color-mix(in oklch, var(--text-primary) 6%, transparent)",
-                color: "var(--text-muted)",
-                border: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)",
-              }}
-            >
-              <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: "var(--green)", boxShadow: "0 0 10px color-mix(in oklch, var(--green) 48%, transparent)" }} />
+            <div className="ohiyo-auth-status-pill" title={home.url}>
+              <span aria-hidden className="ohiyo-door__dot" />
               <span>{mode === "login" ? "Secure Ohiyo sign-in" : mode === "register" ? "Private account setup" : "Safe device link"}</span>
             </div>
           </div>
-        </div>
-
         <div className="ohiyo-auth-form-zone">
         {mode !== "link" && (
         <form
@@ -415,50 +408,54 @@ export function AuthScreen({ home, onAuth }: Props) {
         )}
         </div>
 
-        <p className="mt-5 text-center text-base leading-relaxed" style={{ color: "var(--text-muted)" }}>
-          {mode === "login" ? (
-            <>
-              New to Ohiyo?{" "}
-              <button type="button" onClick={() => switchMode("register")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
-                Create an account
-              </button>
-              <br />
-              Already signed in elsewhere?{" "}
-              <button type="button" onClick={() => switchMode("link")} className="kc-interactive font-semibold" style={{ color: "var(--green)", textShadow: "0 0 12px color-mix(in oklch, var(--green) 30%, transparent)" }}>
-                Link a device
-              </button>
-              <br />
-              <span style={{ color: "var(--text-muted)", opacity: 0.85 }}>
-                Forgot your password? Ohiyo can't reset it. If you're still signed in somewhere, you can{" "}
-                <button type="button" onClick={() => switchMode("link")} className="kc-interactive font-semibold" style={{ color: "var(--green)", textShadow: "0 0 12px color-mix(in oklch, var(--green) 28%, transparent)" }}>
-                  link this device
-                </button>{" "}
-                from there. If not, you can{" "}
-                <button type="button" onClick={() => switchMode("register")} className="kc-interactive font-semibold" style={{ color: "var(--danger)", textShadow: "0 0 12px color-mix(in oklch, var(--danger) 28%, transparent)" }}>
-                  start a new account
+          <div className="ohiyo-door__links">
+            {mode === "login" ? (
+              <>
+                <p>
+                  New to Ohiyo?{" "}
+                  <button type="button" onClick={() => switchMode("register")} className="ohiyo-door__link">
+                    Create an account
+                  </button>
+                </p>
+                <p>
+                  Already signed in elsewhere?{" "}
+                  <button type="button" onClick={() => switchMode("link")} className="ohiyo-door__link">
+                    Link a device
+                  </button>
+                </p>
+                <details className="ohiyo-door__forgot">
+                  <summary>Forgot your password?</summary>
+                  <p>
+                    Ohiyo can't reset it. If you're still signed in somewhere, you can{" "}
+                    <button type="button" onClick={() => switchMode("link")} className="ohiyo-door__link">
+                      link this device
+                    </button>{" "}
+                    from there. If not, you can{" "}
+                    <button type="button" onClick={() => switchMode("register")} className="ohiyo-door__link">
+                      start a new account
+                    </button>
+                    .
+                  </p>
+                </details>
+              </>
+            ) : (
+              <p>
+                Already settled in?{" "}
+                <button type="button" onClick={() => switchMode("login")} className="ohiyo-door__link">
+                  Sign in
                 </button>
-                .
-              </span>
-            </>
-          ) : (
-            <>
-              Already settled in?{" "}
-              <button type="button" onClick={() => switchMode("login")} className="kc-interactive font-semibold" style={{ color: "var(--accent)" }}>
-                Sign in
-              </button>
-            </>
-          )}
-        </p>
+              </p>
+            )}
+          </div>
 
-        <p className="ohiyo-trust-text mt-4 text-center text-base leading-relaxed" aria-label="Optional end-to-end encrypted DMs. No ads. No tracking. Yours.">
-          <span className="ohiyo-trust-primary">Optional end-to-end encrypted DMs</span>
-          <span className="ohiyo-trust-secondary">No ads · No tracking · Yours</span>
-        </p>
+          <p className="ohiyo-door__trust" aria-label="Optional end-to-end encrypted DMs. No ads. No tracking. Yours.">
+            No ads · No tracking · Yours
+          </p>
+        </div>
       </div>
-      <p key={factIndex} className="ohiyo-auth-fact mt-4 text-center text-base leading-relaxed" aria-live="off">
+      <p key={factIndex} className="ohiyo-door__fact" aria-live="off">
         {AUTH_FACTS[factIndex]}
       </p>
-      </div>
     </main>
   );
 }

@@ -170,24 +170,10 @@ button:disabled,
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-@keyframes ohiyo-auth-card-spawn {
-  0%   { opacity: 0; transform: translateY(22px) scale(0.96); filter: blur(8px); }
-  58%  { opacity: 1; transform: translateY(-2px) scale(1.006); filter: blur(0); }
-  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
-}
-@keyframes ohiyo-auth-edge-sheen {
-  0%   { opacity: 0; transform: translateX(-34%) rotate(-10deg); }
-  28%  { opacity: 0.46; }
-  100% { opacity: 0; transform: translateX(42%) rotate(-10deg); }
-}
-@keyframes ohiyo-auth-content-spawn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes ohiyo-auth-fact-in {
-  from { opacity: 0; transform: translateY(5px); filter: blur(3px); }
-  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
-}
+
+
+
+
 @keyframes ohiyo-auth-mode-copy-in {
   from { opacity: 0; transform: translateY(7px) scale(0.985); filter: blur(4px); }
   to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
@@ -734,31 +720,8 @@ button:disabled,
 @keyframes kc-pop-in { from { opacity: 0; transform: scale(0.96) translateY(-2px); } to { opacity: 1; transform: none; } }
 .kc-shake { animation: kc-shake 380ms var(--ease-out) both; }
 
-.ohiyo-auth-card {
-  position: relative;
-  animation: ohiyo-auth-card-spawn 620ms var(--ease-out) both;
-  isolation: isolate;
-  overflow: hidden;
-}
-.ohiyo-auth-card::before {
-  content: "";
-  position: absolute;
-  inset: -35%;
-  z-index: 0;
-  pointer-events: none;
-  background: linear-gradient(105deg,
-    transparent 35%,
-    color-mix(in oklch, var(--text-primary) 10%, transparent) 47%,
-    color-mix(in oklch, var(--accent) 14%, transparent) 51%,
-    transparent 63%
-  );
-  animation: ohiyo-auth-edge-sheen 760ms var(--ease-out) 110ms both;
-}
-.ohiyo-auth-card > * {
-  position: relative;
-  z-index: 1;
-  animation: ohiyo-auth-content-spawn 430ms var(--ease-out) 180ms both;
-}
+
+
 .ohiyo-auth-mode-copy {
   animation: ohiyo-auth-mode-copy-in 260ms var(--ease-out) both;
 }
@@ -774,32 +737,10 @@ button:disabled,
 .ohiyo-auth-mode-panel {
   animation: ohiyo-auth-mode-panel-in 300ms var(--ease-out) both;
 }
-.ohiyo-trust-text {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  margin: 0;
-  line-height: 1.35;
-}
-.ohiyo-trust-primary {
-  color: color-mix(in oklch, var(--text-secondary) 88%, transparent);
-  font-weight: 650;
-  letter-spacing: 0.015em;
-}
-.ohiyo-trust-secondary {
-  color: color-mix(in oklch, var(--text-muted) 84%, transparent);
-  font-weight: 500;
-  letter-spacing: 0.01em;
-}
-.ohiyo-auth-fact {
-  max-width: min(24rem, calc(100vw - 2rem));
-  min-height: 1.25rem;
-  color: color-mix(in oklch, var(--text-muted) 72%, transparent);
-  letter-spacing: 0.01em;
-  text-shadow: 0 1px 8px rgba(0,0,0,0.28);
-  animation: ohiyo-auth-fact-in 420ms var(--ease-out) both;
-}
+
+
+
+
 
 .ohiyo-onboarding-screen {
   background-attachment: fixed;
@@ -972,116 +913,61 @@ button:disabled,
 }
 
 /* Auth backdrop: chrome-blue woodland texture — faint twigs + extra soft leaves. */
-.ohiyo-auth-sticks {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-  opacity: 0.58;
-  mask-image: radial-gradient(circle at center, black 0%, black 68%, transparent 92%);
-}
-.ohiyo-auth-sticks span,
-.ohiyo-auth-sticks i {
-  position: absolute;
-  display: block;
-}
-.ohiyo-auth-sticks span {
-  width: clamp(52px, 7vw, 112px);
-  height: 2.5px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg,
-    transparent,
-    color-mix(in oklch, #7a563c 30%, transparent),
-    color-mix(in oklch, var(--text-primary) 28%, transparent),
-    color-mix(in oklch, var(--accent) 18%, transparent),
-    transparent
-  );
-  box-shadow: 0 0 10px color-mix(in oklch, var(--accent) 5%, transparent);
-  transform: rotate(var(--stick-rotate, -18deg));
-}
-.ohiyo-auth-sticks span::before,
-.ohiyo-auth-sticks span::after {
-  content: "";
-  position: absolute;
-  left: var(--sprout-left, 54%);
-  top: 50%;
-  width: 28%;
-  height: 1.5px;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklch, var(--green) 24%, transparent);
-  transform-origin: left center;
-  transform: rotate(var(--sprout-angle, 34deg));
-}
-.ohiyo-auth-sticks span::after {
-  left: var(--sprout-left-2, 24%);
-  transform: rotate(var(--sprout-angle-2, -42deg));
-  opacity: 0.7;
-}
-.ohiyo-auth-sticks i {
-  width: clamp(14px, 2.2vw, 25px);
-  height: clamp(7px, 1.2vw, 13px);
-  border-radius: 999px 0 999px 0;
-  background: radial-gradient(circle at 35% 35%,
-    color-mix(in oklch, var(--text-primary) 14%, transparent),
-    color-mix(in oklch, var(--green) 30%, transparent) 42%,
-    color-mix(in oklch, var(--accent) 10%, transparent)
-  );
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--text-primary) 5%, transparent);
-  transform: rotate(var(--leaf-rotate, -28deg));
-}
-.ohiyo-auth-sticks span:nth-child(1) { left: 8%; top: 14%; --stick-rotate: -28deg; --sprout-left: 62%; opacity: 0.42; }
-.ohiyo-auth-sticks span:nth-child(2) { left: 18%; top: 30%; --stick-rotate: 18deg; --sprout-angle: -34deg; opacity: 0.32; }
-.ohiyo-auth-sticks span:nth-child(3) { left: 5%; top: 68%; --stick-rotate: 34deg; opacity: 0.3; }
-.ohiyo-auth-sticks span:nth-child(4) { left: 24%; top: 80%; --stick-rotate: -12deg; --sprout-left-2: 42%; opacity: 0.23; }
-.ohiyo-auth-sticks span:nth-child(5) { left: 66%; top: 15%; --stick-rotate: 22deg; opacity: 0.4; }
-.ohiyo-auth-sticks span:nth-child(6) { left: 78%; top: 33%; --stick-rotate: -30deg; --sprout-angle: 46deg; opacity: 0.31; }
-.ohiyo-auth-sticks span:nth-child(7) { left: 70%; top: 74%; --stick-rotate: 14deg; opacity: 0.26; }
-.ohiyo-auth-sticks span:nth-child(8) { left: 86%; top: 61%; --stick-rotate: -18deg; opacity: 0.2; }
-.ohiyo-auth-sticks span:nth-child(9) { left: 34%; top: 8%; --stick-rotate: 8deg; opacity: 0.16; }
-.ohiyo-auth-sticks span:nth-child(10) { left: 50%; top: 89%; --stick-rotate: -36deg; opacity: 0.17; }
-.ohiyo-auth-sticks span:nth-child(11) { left: 13%; top: 49%; --stick-rotate: -8deg; opacity: 0.16; }
-.ohiyo-auth-sticks span:nth-child(12) { left: 81%; top: 11%; --stick-rotate: 42deg; opacity: 0.14; }
-.ohiyo-auth-sticks span:nth-child(13) { left: 2%; top: 40%; --stick-rotate: 72deg; opacity: 0.12; }
-.ohiyo-auth-sticks span:nth-child(14) { left: 90%; top: 82%; --stick-rotate: 70deg; opacity: 0.13; }
-.ohiyo-auth-sticks span:nth-child(15) { left: 42%; top: 22%; --stick-rotate: -42deg; opacity: 0.1; }
-.ohiyo-auth-sticks span:nth-child(16) { left: 57%; top: 62%; --stick-rotate: 28deg; opacity: 0.09; }
-.ohiyo-auth-sticks span:nth-child(17) { left: 30%; top: 54%; --stick-rotate: 46deg; opacity: 0.08; }
-.ohiyo-auth-sticks span:nth-child(18) { left: 62%; top: 43%; --stick-rotate: -62deg; opacity: 0.08; }
-.ohiyo-auth-sticks i:nth-of-type(1) { left: 13%; top: 18%; --leaf-rotate: -46deg; opacity: 0.44; }
-.ohiyo-auth-sticks i:nth-of-type(2) { left: 21%; top: 35%; --leaf-rotate: 28deg; opacity: 0.32; }
-.ohiyo-auth-sticks i:nth-of-type(3) { left: 11%; top: 73%; --leaf-rotate: 60deg; opacity: 0.3; }
-.ohiyo-auth-sticks i:nth-of-type(4) { left: 31%; top: 76%; --leaf-rotate: -24deg; opacity: 0.22; }
-.ohiyo-auth-sticks i:nth-of-type(5) { left: 72%; top: 19%; --leaf-rotate: 34deg; opacity: 0.42; }
-.ohiyo-auth-sticks i:nth-of-type(6) { left: 82%; top: 38%; --leaf-rotate: -52deg; opacity: 0.3; }
-.ohiyo-auth-sticks i:nth-of-type(7) { left: 75%; top: 69%; --leaf-rotate: 18deg; opacity: 0.25; }
-.ohiyo-auth-sticks i:nth-of-type(8) { left: 91%; top: 58%; --leaf-rotate: -38deg; opacity: 0.18; }
-.ohiyo-auth-sticks i:nth-of-type(9) { left: 38%; top: 12%; --leaf-rotate: 20deg; opacity: 0.16; }
-.ohiyo-auth-sticks i:nth-of-type(10) { left: 54%; top: 84%; --leaf-rotate: -58deg; opacity: 0.17; }
-.ohiyo-auth-sticks i:nth-of-type(11) { left: 17%; top: 46%; --leaf-rotate: -18deg; opacity: 0.14; }
-.ohiyo-auth-sticks i:nth-of-type(12) { left: 85%; top: 15%; --leaf-rotate: 64deg; opacity: 0.14; }
-.ohiyo-auth-sticks i:nth-of-type(13) { left: 6%; top: 43%; --leaf-rotate: 92deg; opacity: 0.12; }
-.ohiyo-auth-sticks i:nth-of-type(14) { left: 93%; top: 79%; --leaf-rotate: 88deg; opacity: 0.12; }
-.ohiyo-auth-sticks i:nth-of-type(15) { left: 47%; top: 25%; --leaf-rotate: -62deg; opacity: 0.1; }
-.ohiyo-auth-sticks i:nth-of-type(16) { left: 61%; top: 59%; --leaf-rotate: 42deg; opacity: 0.09; }
-.ohiyo-auth-sticks i:nth-of-type(17) { left: 35%; top: 58%; --leaf-rotate: 70deg; opacity: 0.08; }
-.ohiyo-auth-sticks i:nth-of-type(18) { left: 66%; top: 47%; --leaf-rotate: -78deg; opacity: 0.08; }
-.ohiyo-auth-sticks i:nth-of-type(19) { left: 9%; top: 26%; --leaf-rotate: 12deg; opacity: 0.16; }
-.ohiyo-auth-sticks i:nth-of-type(20) { left: 26%; top: 18%; --leaf-rotate: -72deg; opacity: 0.13; }
-.ohiyo-auth-sticks i:nth-of-type(21) { left: 24%; top: 63%; --leaf-rotate: 38deg; opacity: 0.12; }
-.ohiyo-auth-sticks i:nth-of-type(22) { left: 43%; top: 82%; --leaf-rotate: -18deg; opacity: 0.11; }
-.ohiyo-auth-sticks i:nth-of-type(23) { left: 57%; top: 16%; --leaf-rotate: 54deg; opacity: 0.13; }
-.ohiyo-auth-sticks i:nth-of-type(24) { left: 70%; top: 31%; --leaf-rotate: -12deg; opacity: 0.12; }
-.ohiyo-auth-sticks i:nth-of-type(25) { left: 80%; top: 53%; --leaf-rotate: 72deg; opacity: 0.11; }
-.ohiyo-auth-sticks i:nth-of-type(26) { left: 68%; top: 86%; --leaf-rotate: -34deg; opacity: 0.1; }
-.ohiyo-auth-sticks i:nth-of-type(27) { left: 4%; top: 84%; --leaf-rotate: -16deg; opacity: 0.1; }
-.ohiyo-auth-sticks i:nth-of-type(28) { left: 96%; top: 28%; --leaf-rotate: 42deg; opacity: 0.09; }
-.ohiyo-auth-sticks i:nth-of-type(29) { left: 40%; top: 40%; --leaf-rotate: 24deg; opacity: 0.06; }
-.ohiyo-auth-sticks i:nth-of-type(30) { left: 59%; top: 36%; --leaf-rotate: -44deg; opacity: 0.06; }
-@media (max-width: 640px) {
-  .ohiyo-auth-sticks span:nth-child(n+11),
-  .ohiyo-auth-sticks i:nth-of-type(n+17) { display: none; }
-  .ohiyo-auth-sticks { opacity: 0.5; }
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* Premium text input: warm fill, calm idle, accent focus ring handled globally */
 .kc-field {
@@ -1184,8 +1070,8 @@ button:disabled,
 @media (prefers-reduced-motion: reduce) {
   .kc-message-in, .kc-fade-up, .kc-reaction-add, .kc-loader svg, .kc-pulse, .kc-spinner,
   .kc-backdrop, .kc-modal, .kc-float, .kc-shake, .kc-skeleton, .kc-typing-dots i,
-  .kc-receipt, .kc-jump-bottom, .ohiyo-auth-card, .ohiyo-auth-card::before, .ohiyo-auth-card > *,
-  .ohiyo-auth-mode-copy, .ohiyo-auth-mode-panel, .ohiyo-auth-fact,
+  .kc-receipt, .kc-jump-bottom,
+  .ohiyo-auth-mode-copy, .ohiyo-auth-mode-panel,
   .ohiyo-onboarding-glow, .ohiyo-onboarding-hero, .ohiyo-boot-mark, .ohiyo-boot-progress span {
     animation: none !important;
   }
@@ -4017,4 +3903,216 @@ button:disabled,
   .kc-nav .channel-sidebar .kc-touch-scroll { display: flex; flex-direction: column; }
   .kc-nav .channel-sidebar .kc-touch-scroll > * { flex-shrink: 0; }
   .kc-nav .kc-activation-card { order: 9; margin-top: 0.9rem; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   The door: sign in, create an account, link a device
+   A painting that follows the hour fills the screen. The words and the fields sit straight
+   on it, on a veil of light, with no card around them.
+   ═══════════════════════════════════════════════════════════ */
+.ohiyo-door {
+  position: relative;
+  display: flex;
+  width: 100vw;
+  overflow: hidden;
+  isolation: isolate;
+  background: #cfe3f3;
+  color: var(--text-primary);
+  --door-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  /* The shared fields and button take the scene's colours here, and become pills. */
+  --radius-md: 999px;
+  --text-primary: #16241d;
+  --text-secondary: #2f4238;
+  --text-muted: #4a5a51;
+  --bg-input: rgb(255 255 255 / 68%);
+  --bg-channel: rgb(255 255 255 / 90%);
+  --bg-hover: rgb(22 36 29 / 10%);
+  --accent: #1f6f43;
+  --green: #1f6f43;
+  --danger: #b3261e;
+  --door-veil: 255 251 242;
+}
+.ohiyo-door[data-tone="dark"] {
+  background: #0b1626;
+  --text-primary: #f3f6ee;
+  --text-secondary: #d5ddd6;
+  --text-muted: #aab7c5;
+  --bg-input: rgb(255 255 255 / 12%);
+  --bg-channel: rgb(255 255 255 / 18%);
+  --bg-hover: rgb(255 255 255 / 14%);
+  --accent: #8fd0ff;
+  --green: #8fe0a6;
+  --danger: #ff9a8f;
+  --door-veil: 8 15 28;
+}
+
+.ohiyo-door__sky { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
+.ohiyo-door__sky img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 78% 62%; }
+/* Evening is the sunrise painting an hour before dark. */
+.ohiyo-door[data-scene="sunset"] .ohiyo-door__sky img { filter: saturate(1.14) hue-rotate(-10deg) brightness(0.9); }
+/* Light poured in from the side the words are on, gone before it reaches the painting's subject. */
+.ohiyo-door__sky::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(var(--door-veil) / 80%) 0%, rgb(var(--door-veil) / 54%) 30%, rgb(var(--door-veil) / 0%) 62%);
+}
+
+/* A few leaves crossing the scene; at night the same motes are fireflies near the ground. */
+.ohiyo-door__life { position: absolute; inset: 0; pointer-events: none; }
+.ohiyo-door__life span {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: calc(11px * var(--size));
+  height: calc(5px * var(--size));
+  border-radius: 80% 20% 80% 20%;
+  background: rgb(255 255 255 / 60%);
+  opacity: 0;
+  animation: ohiyo-door-leaf var(--dur) linear var(--delay) infinite;
+}
+.ohiyo-door[data-scene="night"] .ohiyo-door__life span {
+  top: calc(50% + var(--y) * 0.46);
+  width: calc(4px * var(--size));
+  height: calc(4px * var(--size));
+  border-radius: 50%;
+  background: #ffe9a3;
+  box-shadow: 0 0 10px 3px rgb(255 226 140 / 55%);
+  animation-name: ohiyo-door-firefly;
+  animation-timing-function: ease-in-out;
+}
+@keyframes ohiyo-door-leaf {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(0deg); }
+  12% { opacity: 0.8; }
+  88% { opacity: 0.6; }
+  100% { opacity: 0; transform: translate3d(-16vw, 14vh, 0) rotate(240deg); }
+}
+@keyframes ohiyo-door-firefly {
+  0%, 100% { opacity: 0; transform: translate3d(0, 0, 0); }
+  20% { opacity: 0.95; }
+  50% { opacity: 0.25; transform: translate3d(3vw, -4vh, 0); }
+  75% { opacity: 0.9; }
+}
+
+.ohiyo-door__stage {
+  position: relative;
+  display: flex;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: clamp(20px, 4vh, 44px) clamp(20px, 6vw, 88px);
+}
+.ohiyo-door__panel { display: flex; flex-direction: column; width: min(100%, 23.5rem); margin: auto 0; }
+/* Each part arrives a beat after the one above it. */
+.ohiyo-door__panel > * { animation: ohiyo-door-in 560ms var(--door-ease) both; }
+.ohiyo-door__panel > :nth-child(2) { animation-delay: 60ms; }
+.ohiyo-door__panel > :nth-child(3) { animation-delay: 120ms; }
+.ohiyo-door__panel > :nth-child(4) { animation-delay: 180ms; }
+.ohiyo-door__panel > :nth-child(5) { animation-delay: 240ms; }
+@keyframes ohiyo-door-in { from { opacity: 0; transform: translateY(14px); } }
+
+.ohiyo-door__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: clamp(16px, 5vh, 44px);
+  font: 800 1.35rem/1 var(--font-display);
+  letter-spacing: -0.02em;
+}
+.ohiyo-door__brand svg, .ohiyo-door__brand b { color: var(--accent); }
+.ohiyo-door__brand b { font-weight: inherit; }
+.ohiyo-door__greeting {
+  width: max-content;
+  max-width: min(88vw, 40rem);
+  margin: 0;
+  font: 800 clamp(2.5rem, 4.4vw + 1rem, 4.4rem)/1 var(--font-display);
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.ohiyo-door__line { margin: 0.7rem 0 0; font-size: 1.125rem; line-height: 1.4; color: var(--text-secondary); }
+.ohiyo-door .ohiyo-auth-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 0.9rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.ohiyo-door__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px color-mix(in oklch, var(--green) 22%, transparent); }
+
+.ohiyo-door .ohiyo-auth-form-zone { margin-top: clamp(16px, 3.4vh, 30px); }
+.ohiyo-door .kc-field {
+  padding: 0.95rem 1.25rem;
+  border-color: rgb(255 255 255 / 60%);
+  box-shadow: 0 12px 30px -20px rgb(22 36 29 / 55%);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+.ohiyo-door[data-tone="dark"] .kc-field { border-color: rgb(255 255 255 / 18%); }
+.ohiyo-door .kc-field:focus, .ohiyo-door .kc-field:focus-within { border-color: var(--accent); }
+.ohiyo-door .kc-cta { padding-block: 0.95rem; font-weight: 700; box-shadow: 0 16px 30px -16px color-mix(in oklch, var(--accent) 70%, black); }
+.ohiyo-door .kc-cta:active { transform: scale(0.97); }
+.ohiyo-door[data-tone="dark"] .kc-cta { color: #0b1626; }
+
+.ohiyo-door__links { display: grid; gap: 0.3rem; margin-top: 1.3rem; font-size: 0.9375rem; line-height: 1.5; color: var(--text-secondary); }
+.ohiyo-door__links p { margin: 0; }
+.ohiyo-door__link {
+  padding-block: 3px;
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--accent) 35%, transparent);
+  transition: text-decoration-color 160ms ease;
+}
+@media (hover: hover) and (pointer: fine) { .ohiyo-door__link:hover { text-decoration-color: currentColor; } }
+.ohiyo-door__forgot summary { width: fit-content; padding-block: 3px; font-weight: 600; color: var(--text-muted); list-style: none; cursor: pointer; }
+.ohiyo-door__forgot summary::-webkit-details-marker { display: none; }
+.ohiyo-door__forgot summary::after { content: "  +"; }
+.ohiyo-door__forgot[open] summary::after { content: "  –"; }
+.ohiyo-door__forgot p { max-width: 22rem; margin-top: 0.3rem; font-size: 0.875rem; }
+.ohiyo-door__trust { margin: 1.4rem 0 0; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em; color: var(--text-muted); }
+
+/* A small fact in the far corner, on the painting. */
+.ohiyo-door__fact {
+  position: absolute;
+  right: clamp(16px, 3vw, 36px);
+  bottom: clamp(14px, 3vh, 30px);
+  max-width: min(21rem, 42vw);
+  margin: 0;
+  padding: 0.6rem 0.95rem;
+  border-radius: 18px;
+  background: rgb(var(--door-veil) / 62%);
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  animation: ohiyo-door-in 420ms var(--door-ease) both;
+}
+
+/* Phones: the words go on top, the veil comes down from above, the painting keeps the bottom. */
+@media (max-width: 720px) {
+  .ohiyo-door__sky img { object-position: 74% 100%; }
+  .ohiyo-door__sky::after { background: linear-gradient(180deg, rgb(var(--door-veil) / 93%) 0%, rgb(var(--door-veil) / 84%) 58%, rgb(var(--door-veil) / 0%) 96%); }
+  .ohiyo-door__stage { padding: max(22px, env(safe-area-inset-top, 0px)) 22px 28px; }
+  .ohiyo-door__panel { width: min(100%, 24rem); margin: 0 auto auto; padding-top: 5vh; }
+  .ohiyo-door__fact { display: none; }
+}
+
+/* Short windows (the desktop app can be 600px tall): tighten the gaps so nothing scrolls. */
+@media (max-height: 660px) and (min-width: 721px) {
+  .ohiyo-door__stage { padding-block: 16px; }
+  .ohiyo-door__brand { margin-bottom: 12px; }
+  .ohiyo-door__greeting { font-size: clamp(2.25rem, 3.4vw + 1rem, 3.4rem); }
+  .ohiyo-door__links { margin-top: 0.9rem; }
+  .ohiyo-door__trust { margin-top: 0.8rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ohiyo-door__life { display: none; }
+  .ohiyo-door__panel > *, .ohiyo-door__fact { animation: none; }
 }
