@@ -1,6 +1,7 @@
 // Checks on the static landing site in /site (ohiyo.gg). It has no build step, so nothing else
 // catches a broken link, a missing image or a claim the hosted service no longer keeps.
 //   node --experimental-strip-types --test test/siteLanding.test.ts
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -132,6 +133,26 @@ test("the landscape is decoration, and matches the script that draws it", () => 
   for (const scene of scenes) assert.equal(scene.getAttribute("aria-hidden"), "true", "hidden from screen readers");
   // The scenes are generated. Editing them by hand would be lost on the next run.
   const check = spawnSync("python3", [join(site, "..", "scripts", "site-scenery.py"), "--check"], { encoding: "utf8" });
+  if (check.error) return; // no python3 on this machine
+  assert.equal(check.status, 0, check.stderr || check.stdout);
+});
+
+// A browser keeps site.css and site.js for ten minutes. A page that linked plain "site.css"
+// could be drawn with the stylesheet from before a release: the phone screenshot broke loose
+// from its frame, the headline ran across the sculpture and the menu sat on the stone. Every
+// page links both files by a hash of their contents, so a new page always asks for the new file.
+test("pages link the stylesheet and the script by a version that matches the file", () => {
+  const version = (file: string) => createHash("sha256").update(readFileSync(join(site, file))).digest("hex").slice(0, 10);
+  const wanted = { css: `site.css?v=${version("site.css")}`, js: `site.js?v=${version("site.js")}` };
+  for (const page of pages) {
+    const document = parse(page);
+    const sheets = [...document.querySelectorAll('link[rel="stylesheet"]')].map((el) => el.getAttribute("href"));
+    assert.deepEqual(sheets, [wanted.css], `${page} stylesheet`);
+    const scripts = [...document.querySelectorAll("script[src]")].map((el) => el.getAttribute("src"));
+    for (const src of scripts) assert.equal(src, wanted.js, `${page} script`);
+  }
+  // The stamps are written by a script; this is the reminder to run it after an edit.
+  const check = spawnSync("python3", [join(site, "..", "scripts", "site-version.py"), "--check"], { encoding: "utf8" });
   if (check.error) return; // no python3 on this machine
   assert.equal(check.status, 0, check.stderr || check.stdout);
 });

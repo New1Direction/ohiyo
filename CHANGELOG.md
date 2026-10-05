@@ -204,6 +204,15 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- **ohiyo.gg could be drawn with last release's styles:** browsers keep the stylesheet for ten
+  minutes, and pages linked it by a fixed name. Right after a release, a returning visitor
+  could get the new page with the old stylesheet: the phone screenshot broke out of its frame,
+  the headline ran across the sculpture and the menu sat on the stone. Pages now link the
+  stylesheet and script by a hash of their contents, so a new page always loads the new files.
+- **The menu and headline on ohiyo.gg stand out more:** a veil of light sits behind the menu
+  and a soft haze behind the words, and the menu's letters are heavier. On very wide screens
+  the first screen now follows the painting's full height, so the sculpture's top is not cut
+  off and the menu never lands on it.
 - **Settings on a phone:** under 560px wide the settings tabs shrank to eight identical dots
   with no names, and the only "Back to Ohiyo" button was hidden with them, so there was no
   way to tell the tabs apart or to leave Settings. The tabs are now a row of named pills that
