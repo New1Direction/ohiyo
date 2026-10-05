@@ -197,6 +197,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- **Settings on a phone:** under 560px wide the settings tabs shrank to eight identical dots
+  with no names, and the only "Back to Ohiyo" button was hidden with them, so there was no
+  way to tell the tabs apart or to leave Settings. The tabs are now a row of named pills that
+  scrolls sideways, with "Back to Ohiyo" always at the top.
 - **Videos in chat no longer start over:** every row of the chat was thrown away and rebuilt
   whenever the chat re-rendered, which happens on each letter you type and each new message.
   Anything living in a row was reset: a playing video restarted, a revealed spoiler hid again.

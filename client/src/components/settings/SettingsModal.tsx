@@ -82,6 +82,10 @@ const SETTINGS_FOCUSABLE =
 export function SettingsModal({ currentUser, pluginManager, token, servers, dms, initialTab, onClose, onToast, privacyPrefs, onPrivacyPrefsChange, onCurrentUserUpdate }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "appearance");
   const dialogRef = useRef<HTMLDivElement>(null);
+  // On a phone the tabs are a row that scrolls sideways: keep the open one in view.
+  useEffect(() => {
+    dialogRef.current?.querySelector(".kc-settings-nav__item--active")?.scrollIntoView?.({ block: "nearest", inline: "center" });
+  }, [tab]);
   // Keep onClose current without re-running the focus-management effect.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -132,7 +136,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
         role="dialog"
         aria-modal="true"
         aria-labelledby="kc-settings-dialog-title"
-        className="flex h-full w-full overflow-hidden"
+        className="kc-settings-dialog flex h-full w-full overflow-hidden"
         style={{ background: "var(--bg-channel)" }}
         onKeyDown={trapTab}
       >
