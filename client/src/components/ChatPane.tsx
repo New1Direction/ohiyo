@@ -1828,7 +1828,11 @@ export function ChatPane({
                               type="button"
                               className="kc-msg-more"
                               aria-label="Message actions"
-                              onClick={(e) => { e.stopPropagation(); setActionSheetMsg(msg); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+                                setActionSheetMsg(msg);
+                              }}
                             >
                               <Icon name="more" size={18} />
                             </button>

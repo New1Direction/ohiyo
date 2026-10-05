@@ -973,7 +973,7 @@ button:disabled,
 
 /* Auth backdrop: chrome-blue woodland texture — faint twigs + extra soft leaves. */
 .ohiyo-auth-sticks {
-  position: absolute;
+  position: fixed;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
@@ -2068,6 +2068,14 @@ button:disabled,
   box-shadow: 0 -10px 40px -12px rgba(0, 0, 0, 0.35);
   animation: kc-sheet-up 200ms var(--ease-out);
 }
+.kc-sheet-preview {
+  margin: 0 8px 6px; padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-input); color: var(--text-muted);
+  font-size: 13px; line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.kc-sheet-preview b { color: var(--text-primary); font-weight: 600; margin-right: 6px; }
 .kc-sheet-grip { width: 36px; height: 4px; border-radius: 2px; background: var(--bg-hover); margin: 4px auto 8px; }
 .kc-sheet-row {
   display: flex; align-items: center; gap: 14px;
@@ -3968,7 +3976,9 @@ button:disabled,
   .kc-msg-actions[data-confirm="1"] { opacity: 1; transform: none; pointer-events: auto; }
   /* Room for the ⋯ so text never runs underneath it (messageLayout.ts counts these 44px). */
   .kc-msg { padding-right: 44px; }
-  .kc-msg-more { top: 0; right: 2px; background: transparent; box-shadow: none; }
+  /* As tall as its message, within reason: at a fixed 40px it reached into the next
+     short message's row and opened the wrong sheet. */
+  .kc-msg-more { top: -2px; right: 2px; height: 100%; min-height: 28px; max-height: 40px; background: transparent; box-shadow: none; }
   /* Under 16px an iPhone zooms the whole page when a field takes focus. */
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
   textarea,
@@ -3991,6 +4001,10 @@ button:disabled,
     min-width: 36px;
     min-height: 36px;
   }
+  /* With 36px icons beside it the Invite button was squeezed to a sliver; it takes its
+     own line when there is no room. */
+  .kc-nav :has(> .kc-sidebar-invite) { flex-wrap: wrap; row-gap: 8px; }
+  .kc-nav .kc-sidebar-invite { flex: 1 1 6.5rem; min-height: 36px; }
 }
 
 @media (max-width: 768px) {
@@ -3999,10 +4013,6 @@ button:disabled,
   .kc-nav .channel-sidebar > div { width: max(12rem, min(19rem, calc(100vw - 8rem))); }
   /* The server rail runs the full height instead of stopping under its last icon. */
   .kc-nav .server-sidebar { display: flex; background: var(--bg-base); }
-  /* The Invite button gets its own line under the icons instead of being squeezed to
-     a sliver beside them. */
-  .kc-nav :has(> .kc-sidebar-invite) { flex-wrap: wrap; row-gap: 8px; }
-  .kc-nav .kc-sidebar-invite { flex: 1 1 6.5rem; min-height: 36px; }
   /* Channels first: the launch checklist used to fill the drawer's first screen. */
   .kc-nav .channel-sidebar .kc-touch-scroll { display: flex; flex-direction: column; }
   .kc-nav .channel-sidebar .kc-touch-scroll > * { flex-shrink: 0; }

@@ -19,9 +19,9 @@ try {
   await page.fill("#kc-space-name", "Pocket");
   await page.click('button:has-text("Let\'s go")');
   await page.waitForSelector(COMPOSER, { timeout: 12000 });
-  // The driver's own touch emulation is usually lost when the page reloads during sign-up
-  // (maxTouchPoints comes back 0), and the touch styles are what is under test, so switch
-  // it on again now that the app has loaded.
+  // The driver's own touch emulation is not reliably applied (maxTouchPoints often comes
+  // back 0, even in a fresh browser), and the touch styles are what is under test, so
+  // switch it on explicitly now that the app has loaded.
   const cdp = await ctx.newCDPSession(page);
   await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
   await settle(page, 200);
@@ -35,8 +35,13 @@ try {
   if (!shell || shell.height !== shell.inner) throw new Error(`the app shell is not sized to the visible screen: ${JSON.stringify(shell)}`);
 
   // Toasts appear at the top on a phone, clear of the message box and the newest messages.
-  const toastTop = await page.evaluate(() => document.querySelector(".ohiyo-toast-stack")?.getBoundingClientRect().top ?? null);
-  if (toastTop === null || toastTop > 120) throw new Error(`toasts are not anchored to the top on a phone (top ${toastTop})`);
+  // (The welcome toast is still up at this point.)
+  await page.waitForSelector(".ohiyo-toast", { timeout: 4000 });
+  const toast = await page.evaluate((composer) => ({
+    bottom: document.querySelector(".ohiyo-toast").getBoundingClientRect().bottom,
+    composerTop: document.querySelector(composer).getBoundingClientRect().top,
+  }), COMPOSER);
+  if (toast.bottom > 200 || toast.bottom > toast.composerTop - 200) throw new Error(`a toast sits low on the phone, near the message box: ${JSON.stringify(toast)}`);
   log("phone: the shell fits the visible screen and toasts sit at the top ✓");
 
   for (const text of [
@@ -66,7 +71,9 @@ try {
   if (covered.length) throw new Error(`message text runs under the ⋯ button: ${covered.join(" | ")}`);
   const moreCount = await page.locator(".kc-msg-more").count();
   if (moreCount < 3) throw new Error(`expected a ⋯ on each of the 3 messages, found ${moreCount}`);
-  log("phone: no message text is hidden under a ⋯ button ✓");
+  const cramped = await page.evaluate(() => [...document.querySelectorAll(".kc-message-row")].filter((row) => row.scrollHeight > row.clientHeight + 1).length);
+  if (cramped) throw new Error(`${cramped} message row(s) are taller than the height estimated for them`);
+  log("phone: no message text is hidden under a ⋯ button, and rows fit their estimated height ✓");
 
   // Touching a message does not bring up the desktop hover toolbar.
   await page.locator(".kc-msg .msg-content").first().tap();
@@ -83,6 +90,9 @@ try {
   // The ⋯ sheet can add a reaction, and the picker it opens is on screen.
   await page.locator('button[aria-label="Message actions"]').first().tap();
   await page.waitForSelector(".kc-sheet", { timeout: 4000 });
+  // The sheet says which message it is about: ⋯ buttons on short messages sit close together.
+  const preview = (await page.locator(".kc-sheet .kc-sheet-preview").textContent({ timeout: 2000 }).catch(() => null)) ?? "";
+  if (!preview.includes("hey everyone")) throw new Error(`the action sheet does not show which message it acts on (got "${preview}")`);
   await page.locator(".kc-sheet button", { hasText: "Add reaction" }).tap();
   await page.waitForSelector(".kc-react-picker", { timeout: 4000 });
   const picker = await page.evaluate(() => {
@@ -157,6 +167,26 @@ try {
   if (dialog.smallText.length) throw new Error(`fields under 16px make an iPhone zoom: ${dialog.smallText.join(", ")}`);
   log("phone: the Events dialog fits and its fields are 16px ✓");
   await shot(page, "32-phone-dialog");
+
+  const tabletCtx = await browser.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true });
+  const tablet = await tabletCtx.newPage();
+  await register(tablet, `tb_${uniq()}`, "Tablet Tam");
+  await tablet.waitForSelector("#kc-space-name", { timeout: 12000 });
+  await tablet.fill("#kc-space-name", "Slate");
+  await tablet.click('button:has-text("Let\'s go")');
+  await tablet.waitForSelector(COMPOSER, { timeout: 12000 });
+  const tabletCdp = await tabletCtx.newCDPSession(tablet);
+  await tabletCdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+  await settle(tablet, 300);
+  if (!(await tablet.evaluate(() => matchMedia("(hover: none) and (pointer: coarse)").matches))) throw new Error("the tablet context is not reporting a touch screen");
+  const invite = await tablet.evaluate(() => {
+    const button = document.querySelector(".kc-sidebar-invite");
+    const label = button?.querySelector("span");
+    return button && label ? { width: Math.round(button.getBoundingClientRect().width), clipped: label.scrollWidth > label.clientWidth + 1 } : null;
+  });
+  if (!invite || invite.width < 88 || invite.clipped) throw new Error(`on a touch tablet the Invite button is squeezed: ${JSON.stringify(invite)}`);
+  log("tablet: the Invite button keeps its label on a touch screen ✓");
+  await tabletCtx.close();
 
   console.log("\n✅ PHONE LAYOUT PASSED");
 } catch (e) {
