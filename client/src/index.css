@@ -3181,6 +3181,147 @@ button:disabled,
   padding-bottom: var(--msg-group-gap, 0.125rem);
 }
 
+/* ─── Links that play in the chat (components/LinkEmbeds.tsx) ───────────────────
+   A YouTube video or a post on X. Every height here is mirrored in lib/linkEmbeds.ts,
+   which the virtualized list uses to size rows: change the two together. The edge is an
+   outline, not a border, so it adds nothing to those heights. */
+.kc-embed {
+  margin-top: 6px;
+  width: min(480px, 100%);
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--bg-sidebar);
+  outline: 1px solid var(--bg-hover);
+  outline-offset: -1px;
+}
+.kc-embed__stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+.kc-embed__stage > iframe,
+.kc-embed__poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.kc-embed__poster {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  background: #000;
+  cursor: pointer;
+}
+.kc-embed__poster img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--dur-base) var(--ease-out), filter var(--dur-base) var(--ease-out);
+}
+.kc-embed__poster:hover img,
+.kc-embed__poster:focus-visible img { transform: scale(1.03); filter: brightness(1.1); }
+.kc-embed__play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  padding: 17px 15px 17px 19px;
+  border-radius: 50%;
+  background: rgb(10 12 14 / 72%);
+  color: #fff;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 40%);
+  transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+.kc-embed__poster:hover .kc-embed__play,
+.kc-embed__poster:focus-visible .kc-embed__play { background: var(--accent); transform: scale(1.08); }
+.kc-embed__play--small {
+  position: static;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 9px 8px 9px 10px;
+  background: var(--accent);
+  box-shadow: none;
+}
+.kc-embed__caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 8px 0 12px;
+}
+.kc-embed__site {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.kc-embed__title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.kc-embed__title:hover { text-decoration: underline; }
+.kc-embed__close {
+  flex-shrink: 0;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  cursor: pointer;
+}
+.kc-embed__close:hover { color: var(--text-primary); background: var(--bg-hover); }
+.kc-embed--chip { width: min(360px, 100%); }
+.kc-embed__chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 56px;
+  padding: 0 14px 0 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.kc-embed__chip:hover { background: var(--bg-hover); }
+.kc-embed__chip:hover .kc-embed__play--small { transform: scale(1.08); }
+.kc-embed__chip-text { display: grid; min-width: 0; }
+.kc-embed__chip-title,
+.kc-embed__chip-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kc-embed__chip-title { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.kc-embed__chip-note { font-size: 11px; color: var(--text-muted); }
+.kc-embed--post > iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kc-embed__poster img, .kc-embed__play, .kc-embed__chip { transition: none; }
+  .kc-embed__poster:hover img, .kc-embed__poster:focus-visible img { transform: none; }
+}
+
 /* ─── On/off switch (Plugins settings) ──────────────────────────────────────────
    State comes from aria-checked, so what a screen reader hears and what is drawn can't
    drift apart. The border keeps the off track visible on every theme. */

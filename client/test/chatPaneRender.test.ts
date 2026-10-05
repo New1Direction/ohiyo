@@ -2,8 +2,9 @@
 // and rendered with react-dom/server (both already client dependencies), so these run
 // under plain `node --test`:
 //   - C-H2: a decrypted message, or any message in a chat in encrypted mode, gets no
-//     link-preview card and no embed card
-//     (no /og request, no YouTube iframe), while the links stay clickable;
+//     link-preview card and no embed card (no /og request, no picture or frame from
+//     YouTube or X), while the links stay clickable. A YouTube video or a post on X gets
+//     a play button, which loads nothing until it is pressed;
 //   - item 7: no poll button and no poll composer (polls are stored unencrypted);
 //   - item 8: group encryption is labelled Experimental, with the offline caveat.
 //   node --experimental-strip-types --test test/chatPaneRender.test.ts
@@ -87,6 +88,7 @@ after(async () => {
 
 const YOUTUBE = "https://youtu.be/dQw4w9WgXcQ";
 const ARTICLE = "https://news.example/story";
+const X_POST = "https://x.com/kikka/status/1790000000000000001";
 const EMBED_TITLE = "EMBED-CARD-TITLE";
 const GROUP_NOTE = "Group encryption can miss messages sent while you were offline.";
 const peer = { id: "u2", username: "bea", display_name: "Bea", avatar_url: null };
@@ -107,6 +109,8 @@ function chat(type: "dm" | "group_dm", e2eEnabled: boolean, decrypted: boolean):
         embeds: [{ url: ARTICLE, title: EMBED_TITLE, description: null, image: null, site_name: null, favicon: null }],
         ...marks,
       },
+      // A post on X.
+      { ...base, id: "m3", content: `lol ${X_POST}`, ...marks },
     ],
     currentUserId: "u1",
     token: "t",
@@ -120,7 +124,13 @@ function chat(type: "dm" | "group_dm", e2eEnabled: boolean, decrypted: boolean):
   });
 }
 
-const hasPreviewCard = (html: string) => html.includes("youtube-nocookie.com/embed/");
+// Anything a browser would fetch from YouTube or X just by showing the chat.
+const loadsFromVideoSites = (html: string) => /<iframe|ytimg\.com|youtube-nocookie\.com|platform\.twitter\.com|twimg\.com/.test(html);
+// The card with the video's picture, shown where previews are allowed.
+const hasPreviewCard = (html: string) => html.includes("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
+// The small buttons that load a video or a post only when pressed.
+const hasYouTubePlayButton = (html: string) => html.includes('aria-label="Play this YouTube video here"');
+const hasXPostButton = (html: string) => html.includes('aria-label="Show this post from X here. Post by @kikka"');
 const hasEmbedCard = (html: string) => html.includes(EMBED_TITLE);
 const linksClickable = (html: string) => html.includes(`href="${YOUTUBE}"`) && html.includes(`href="${ARTICLE}"`);
 const hasPollButton = (html: string) => html.includes('aria-label="Create a poll"');
@@ -143,8 +153,15 @@ for (const [what, html] of [
 ] as const) {
   test(`C-H2: ${what} renders no link-preview card`, () => {
     const out = html();
-    assert.equal(hasPreviewCard(out), false, "no link-preview card / YouTube iframe");
+    assert.equal(hasPreviewCard(out), false, "no link-preview card");
+    assert.equal(loadsFromVideoSites(out), false, "nothing is fetched from YouTube or X");
     assert.ok(linksClickable(out), "links stay clickable");
+  });
+  test(`C-H2: ${what} can still play a video or a post, on a click`, () => {
+    const out = html();
+    assert.ok(hasYouTubePlayButton(out), "a play button for the YouTube link");
+    assert.ok(hasXPostButton(out), "a button for the post on X");
+    assert.equal(loadsFromVideoSites(out), false, "the buttons load nothing by being shown");
   });
   test(`C-H2: ${what} renders no embed card`, () => {
     const out = html();
@@ -157,6 +174,19 @@ test("C-H2: the same messages in plaintext in an unencrypted chat keep both card
   const html = chat("dm", false, false);
   assert.ok(hasPreviewCard(html), "link-preview card");
   assert.ok(hasEmbedCard(html), "embed card");
+});
+
+test("link players: a YouTube link shows its picture and a play button, and no player until it is pressed", () => {
+  const html = chat("dm", false, false);
+  assert.match(html, /<button[^>]*class="kc-embed__poster"[^>]*aria-label="Play YouTube video here"/);
+  assert.doesNotMatch(html, /<iframe/);
+  assert.doesNotMatch(html, /youtube-nocookie\.com/);
+});
+
+test("link players: a post on X is a button, and nothing is fetched from X until it is pressed", () => {
+  const html = chat("dm", false, false);
+  assert.ok(hasXPostButton(html));
+  assert.doesNotMatch(html, /platform\.twitter\.com|twimg\.com/);
 });
 
 test("item 7: no poll button in encrypted mode; present otherwise", () => {
@@ -359,4 +389,56 @@ test("spoilers: text between double bars is hidden behind a button for every rea
   const row = html.slice(html.indexOf('class="kc-msg"'));
   assert.equal(row.includes("||"), false, "the bars are not shown");
   assert.ok(row.includes("the ending: ") && row.includes(" honest"), "the text around it stays");
+});
+
+// One message with the given text, in a DM with the lock on or off.
+function oneMessage(content: string, e2eEnabled = false): string {
+  return renderChatPane({
+    channel: { id: "c1", server_id: null, name: "chat", channel_type: "dm", position: 0, topic: null, created_at: 0 },
+    messages: [{ channel_id: "c1", author: peer, created_at: 1, edited_at: null, reactions: [], id: "m1", content }],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s },
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    e2eEnabled,
+    onToggleE2e() {},
+  });
+}
+const count = (html: string, needle: string) => html.split(needle).length - 1;
+
+// The list reserves room for one card per link. Two cards for a link written twice ran
+// into the next message.
+test("link cards: a link written twice gets one card, with and without the lock", () => {
+  const twice = `${YOUTUBE} and again ${YOUTUBE}`;
+  assert.equal(count(oneMessage(twice), 'class="kc-embed__poster"'), 1);
+  assert.equal(count(oneMessage(twice, true), 'aria-label="Play this YouTube video here"'), 1);
+  // Both mentions are still links.
+  assert.equal(count(oneMessage(twice), `href="${YOUTUBE}"`) >= 2, true);
+  // The same link on both sides of a code span.
+  assert.equal(count(oneMessage(`${YOUTUBE} \`code\` ${YOUTUBE}`), 'class="kc-embed__poster"'), 1);
+});
+
+test("link cards: a link inside code or a spoiler gets no card", () => {
+  for (const hidden of [`\`\`\`\n${YOUTUBE}\n\`\`\``, `||${YOUTUBE}||`, `||${X_POST}||`]) {
+    for (const locked of [false, true]) {
+      const html = oneMessage(hidden, locked);
+      assert.equal(html.includes("kc-embed"), false, `${hidden} (lock ${locked ? "on" : "off"})`);
+      assert.equal(loadsFromVideoSites(html), false);
+    }
+  }
+});
+
+test("link cards: the cards come after the message text, not in the middle of it", () => {
+  const html = oneMessage(`before ${YOUTUBE} after`);
+  const row = html.slice(html.indexOf('class="kc-msg"'));
+  assert.ok(row.indexOf(" after") < row.indexOf("kc-embed"), "the sentence is whole before the card");
+});
+
+test("links: punctuation after a link stays in the sentence and out of the link", () => {
+  const html = oneMessage(`read this (${ARTICLE}).`, true);
+  assert.ok(html.includes(`href="${ARTICLE}"`));
+  assert.match(html, new RegExp(`>${ARTICLE.replaceAll("/", "\\/").replaceAll(".", "\\.")}</a>\\)\\.`));
 });

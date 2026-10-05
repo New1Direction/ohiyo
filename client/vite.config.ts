@@ -64,7 +64,9 @@ function buildCsp(serverUrl: string | undefined): string {
     `media-src ${Array.from(media).join(" ")}`,
     `connect-src ${Array.from(connect).join(" ")}`,
     "worker-src 'self' blob:",
-    "frame-src https:",
+    // The only frames the app ever creates: YouTube's player (link cards, watch party) and
+    // X's frame for one post (link cards). See lib/linkEmbeds.ts and lib/youtubeEmbed.ts.
+    "frame-src https://www.youtube-nocookie.com https://platform.twitter.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

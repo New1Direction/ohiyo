@@ -35,7 +35,8 @@ box; server channels are stored like any chat server's.
   server channels are not end-to-end encrypted. Multi-device, with disappearing
   messages, safety numbers, padded plaintext, encrypted attachments, and Privacy Mode
   for quieter metadata. Encrypted messages show no link previews and cannot be
-  forwarded, so their content stays off the server. **Group encryption is
+  forwarded, so their content stays off the server. (A YouTube link or a post on X
+  there gets a play button, which loads nothing until you press it.) **Group encryption is
   experimental** and can miss messages sent while you were offline. Ohiyo is not
   anonymous or SimpleX-level metadata privacy; it keeps Discord-like convenience while
   reducing avoidable leaks. See

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDropzone } from "react-dropzone";
 import { VariableSizeList as List } from "react-window";
@@ -22,7 +22,10 @@ import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
 import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, messageGroupTextPx, messageLineCount, messageRowMetrics } from "../lib/messageLayout";
 import { safeHttpUrl } from "../lib/url";
-import { linkPreviewMode } from "../lib/linkPreviews";
+import { linkPreviewMode, type LinkPreviewMode } from "../lib/linkPreviews";
+import { NO_OPEN_EMBEDS, embedKey, embedRowPx, enteringChat, linkEmbedFor, openHeightsIn, withEmbedHeight, type LinkEmbed, type OpenEmbeds } from "../lib/linkEmbeds";
+import { linkCardUrls, trimUrlTail } from "../lib/messageLinks";
+import { EmbedOpenContext, PlayableEmbed, type EmbedOpenState } from "./LinkEmbeds";
 import { loadDraft, persistDraft } from "../lib/drafts";
 import { editBlockReason, pendingAttachmentsToKeep, REATTACH_MESSAGE } from "../lib/encryptedSend";
 import { filesThatFit, holdingSlots, TOO_MANY_ATTACHMENTS } from "../lib/attachmentLimit";
@@ -85,6 +88,8 @@ type OgData = {
 // so the deeply-nested LinkPreviewCard can read it without a module-level mutable
 // `let` written during render (which is a side effect in render, and not concurrent-safe).
 const OgAuthTokenContext = createContext<string>("");
+// The message a link card belongs to: with the link, it names the card (see embedKey).
+const MessageIdContext = createContext<string>("");
 
 const QUICK_EMOJI = ["👍", "❤️", "😂", "😮", "😢", "🔥", "✅", "🎉", "👀", "🚀", "💯", "🙏", "😍", "😎", "🤔"];
 const EMOJI_CATALOG = [
@@ -122,46 +127,17 @@ export type ChatActivityNotice = {
 type MsgGroup = { author: Message["author"]; msgs: Message[]; isMe: boolean };
 type ChatRow = { kind: "messages"; group: MsgGroup } | { kind: "activity"; notice: ChatActivityNotice };
 
+// A row keeps its identity when rows above it come or go (older history loading in), so
+// what lives in it (a playing video, a revealed spoiler) is not rebuilt.
+function rowKey(row: ChatRow | undefined, index: number): string {
+  if (!row) return `row-${index}`;
+  return row.kind === "activity" ? `activity-${row.notice.id}` : `messages-${row.group.msgs[0]?.id ?? index}`;
+}
+
 // Shown wherever group encryption is offered (sender keys reach only connected members).
 const GROUP_E2E_NOTE = "Group encryption can miss messages sent while you were offline.";
 
 const DIRECT_VIDEO_EXT_RE = /\.(mp4|m4v|mov|webm|ogv|ogg)(?:$|[?#])/i;
-
-function extractSafeHttpUrlsFromText(text: string): string[] {
-  const out: string[] = [];
-  for (const match of text.matchAll(/https?:\/\/[^\s]+/g)) {
-    const raw = match[0].replace(/[.,!?)\]}>'"]+$/, "");
-    const safe = safeHttpUrl(raw);
-    if (safe && !out.includes(safe)) out.push(safe);
-  }
-  return out;
-}
-
-function youtubeIdFromUrl(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  try {
-    const u = new URL(raw);
-    const host = u.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
-    let id: string | null = null;
-    if (host === "youtu.be") {
-      id = u.pathname.split("/").filter(Boolean)[0] ?? null;
-    } else if (host === "youtube.com" || host.endsWith(".youtube.com")) {
-      if (u.pathname === "/watch") id = u.searchParams.get("v");
-      else {
-        const parts = u.pathname.split("/").filter(Boolean);
-        if (["embed", "shorts", "live"].includes(parts[0])) id = parts[1] ?? null;
-      }
-    }
-    return id && /^[A-Za-z0-9_-]{6,32}$/.test(id) ? id : null;
-  } catch {
-    return null;
-  }
-}
-
-function youtubeEmbedUrl(raw: string): string | null {
-  const id = youtubeIdFromUrl(raw);
-  return id ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}` : null;
-}
 
 function isDirectVideoUrl(raw: string | null | undefined): boolean {
   if (!raw) return false;
@@ -173,17 +149,30 @@ function isDirectVideoUrl(raw: string | null | undefined): boolean {
   }
 }
 
-function linkPreviewHeight(url: string): number {
-  if (youtubeIdFromUrl(url)) return 306;
-  if (isDirectVideoUrl(url)) return 286;
-  return 98;
+/**
+ * The links that get a card under a message, each once. MessageLinkCards draws a card for
+ * each and messageEmbedHeight reserves room for each: one list, so they cannot disagree.
+ */
+function messageCardUrls(message: Message, mode: LinkPreviewMode): string[] {
+  if (mode !== "server-embeds") return linkCardUrls(message.content);
+  return [...new Set((message.embeds ?? []).map((embed) => embed.url))];
 }
 
-function messageEmbedHeight(message: Message, channelEncrypted: boolean): number {
+type EmbedSizing = { openHeights: ReadonlyMap<string, number>; textWidth: number };
+
+/** Height a link's card takes in the row. `showPreview` is false in encrypted chats. */
+function linkCardHeight(messageId: string, url: string, showPreview: boolean, sizing: EmbedSizing): number {
+  const embed = linkEmbedFor(url);
+  if (embed) {
+    return embedRowPx(embed, { showPreview, openHeight: sizing.openHeights.get(embedKey(messageId, url)), textWidth: sizing.textWidth });
+  }
+  if (!showPreview) return 0;
+  return isDirectVideoUrl(url) ? 286 : 98;
+}
+
+function messageEmbedHeight(message: Message, channelEncrypted: boolean, sizing: EmbedSizing): number {
   const mode = linkPreviewMode(message, channelEncrypted);
-  if (mode === "none") return 0;
-  if (mode === "server-embeds") return (message.embeds ?? []).reduce((sum, embed) => sum + linkPreviewHeight(embed.url), 0);
-  return extractSafeHttpUrlsFromText(message.content).reduce((sum, url) => sum + linkPreviewHeight(url), 0);
+  return messageCardUrls(message, mode).reduce((sum, url) => sum + linkCardHeight(message.id, url, mode !== "none", sizing), 0);
 }
 
 type Props = {
@@ -463,6 +452,25 @@ export function ChatPane({
   // row-height estimate. Held in state, not a ref: it only mounts once a channel is open,
   // and the measuring effect has to start then.
   const [listBox, setListBox] = useState<HTMLDivElement | null>(null);
+  // Link cards the reader has opened (a YouTube video, a post on X), and how tall each is.
+  // Kept here because the list needs a card's height before it renders the row, and a row
+  // that scrolls out of the list is unmounted.
+  // They belong to the chat they were opened in: switching chats closes them, so coming
+  // back never loads a player from YouTube or X without a new press.
+  const chatId = channel?.id ?? "";
+  const [openEmbedState, setOpenEmbedState] = useState<OpenEmbeds>(() => ({ chatId, heights: NO_OPEN_EMBEDS }));
+  // Entering another chat forgets what was open in the last one. Adjusted during render
+  // (React re-renders at once), so the new chat never draws the old chat's open cards.
+  const enteredState = enteringChat(openEmbedState, chatId);
+  if (enteredState !== openEmbedState) setOpenEmbedState(enteredState);
+  const openEmbeds = openHeightsIn(enteredState, chatId);
+  const embedOpenState = useMemo<EmbedOpenState>(
+    () => ({
+      heights: openEmbeds,
+      set: (key, height) => setOpenEmbedState((prev) => withEmbedHeight(prev, chatId, key, height)),
+    }),
+    [openEmbeds, chatId]
+  );
   const composerRef = useRef<HTMLInputElement>(null);
   // Row-height metrics: the density/font-scale CSS vars plus how many characters fit on a
   // line at the list's width. Cached in a ref and refreshed only when the appearance or the
@@ -568,7 +576,12 @@ export function ChatPane({
       });
       const previous = metricsRef.current;
       metricsRef.current = next;
-      return previous.linePx !== next.linePx || previous.basePx !== next.basePx || previous.charsPerLine !== next.charsPerLine;
+      return (
+        previous.linePx !== next.linePx ||
+        previous.basePx !== next.basePx ||
+        previous.charsPerLine !== next.charsPerLine ||
+        previous.textWidth !== next.textWidth
+      );
     };
     readMetrics();
     // The ref initializes to the cozy defaults; if the saved density/scale differs,
@@ -809,7 +822,8 @@ export function ChatPane({
       if (!row) return 60;
       if (row.kind === "activity") return 48;
       const g = row.group;
-      const { linePx, basePx, charsPerLine } = metricsRef.current;
+      const { linePx, basePx, charsPerLine, textWidth } = metricsRef.current;
+      const embedSizing = { openHeights: openEmbeds, textWidth };
       const textH = messageGroupTextPx(
         g.msgs.map((m) => (hiddenMessageIds.has(m.id) ? 1 : messageLineCount(m.content, charsPerLine))),
         linePx
@@ -833,11 +847,17 @@ export function ChatPane({
       const pins = g.msgs.filter((m) => m.pinned).length;
       const failed = g.msgs.filter((m) => m._state === "failed").length;
       const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
-      const embedsH = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 0 : messageEmbedHeight(m, e2eEnabled)), 0);
+      const embedsH = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 0 : messageEmbedHeight(m, e2eEnabled, embedSizing)), 0);
       return Math.ceil(basePx + textH + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH);
     },
-    [rows, hiddenMessageIds, e2eEnabled]
+    [rows, hiddenMessageIds, e2eEnabled, openEmbeds]
   );
+
+  // Opening, closing or resizing a link card changes its row's height. Before paint, so a
+  // post that X reports as taller is never drawn over the next row for a frame.
+  useLayoutEffect(() => {
+    listRef.current?.resetAfterIndex(0);
+  }, [openEmbeds]);
 
   const handleSend = useCallback(
     (e: React.FormEvent) => {
@@ -1578,10 +1598,12 @@ export function ChatPane({
             onSaveRecovery={onSaveRecovery}
           />
         ) : (
+          <EmbedOpenContext.Provider value={embedOpenState}>
           <AutoSizedList
             listRef={listRef}
             outerRef={listOuterRef}
             itemCount={rows.length}
+            itemKey={(index) => rowKey(rows[index], index)}
             estimatedItemSize={60}
             estimateHeight={estimateHeight}
             onScroll={handleListScroll}
@@ -1668,7 +1690,8 @@ export function ChatPane({
                               className="msg-content"
                               style={{ color: "var(--text-secondary)", userSelect: "text", opacity: msg._state === "pending" ? 0.5 : 1 }}
                             >
-                              {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={linkPreviewMode(msg, e2eEnabled) !== "client-fetch"} />}
+                              <MessageIdContext.Provider value={msg.id}>
+                              {msg.content && <MessageContent content={msg.content} serverEmojis={serverEmojis} currentUsername={currentUsername} />}
                               {msg.edited_at && (
                                 <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 5 }}>(edited)</span>
                               )}
@@ -1683,9 +1706,8 @@ export function ChatPane({
                               {msg.attachments && msg.attachments.length > 0 && (
                                 <AttachmentList attachments={msg.attachments} />
                               )}
-                              {linkPreviewMode(msg, e2eEnabled) === "server-embeds" && msg.embeds?.map((em) => (
-                                <EmbedCard key={em.url} embed={em} />
-                              ))}
+                              <MessageLinkCards message={msg} mode={linkPreviewMode(msg, e2eEnabled)} />
+                              </MessageIdContext.Provider>
                             </div>
                           )}
                           {msg._state === "failed" && (
@@ -1811,6 +1833,7 @@ export function ChatPane({
               );
             }}
           </AutoSizedList>
+          </EmbedOpenContext.Provider>
         )}
         </ErrorBoundary>
         {showJump && (
@@ -2101,10 +2124,23 @@ export function PollComposerSlot({
 
 import { AutoSizer } from "react-virtualized-auto-sizer";
 
+type RowRenderer = (props: { index: number; style: React.CSSProperties }) => React.ReactNode;
+
+// The row component react-window mounts. It must be the same function on every render:
+// react-window creates each row as an element of this type, and a function made inside a
+// render is a new component each time, so every row was unmounted and rebuilt whenever
+// the chat re-rendered (each letter typed, each new message). That reset whatever lived
+// in a row: a playing video started over, a revealed spoiler hid again. The latest
+// renderer arrives as itemData instead.
+function ListRow({ index, style, data }: { index: number; style: React.CSSProperties; data: RowRenderer }) {
+  return <>{data({ index, style })}</>;
+}
+
 function AutoSizedList({
   listRef,
   outerRef,
   itemCount,
+  itemKey,
   estimatedItemSize,
   estimateHeight,
   onScroll,
@@ -2113,10 +2149,11 @@ function AutoSizedList({
   listRef: React.Ref<List>;
   outerRef: React.Ref<HTMLDivElement>;
   itemCount: number;
+  itemKey: (index: number) => string;
   estimatedItemSize: number;
   estimateHeight: (index: number) => number;
   onScroll?: () => void;
-  children: (props: { index: number; style: React.CSSProperties }) => React.ReactNode;
+  children: RowRenderer;
 }) {
   return (
     <AutoSizer
@@ -2128,14 +2165,14 @@ function AutoSizedList({
           width={width ?? 0}
           height={height ?? 0}
           itemCount={itemCount}
+          itemData={children}
+          itemKey={itemKey}
           itemSize={estimateHeight}
           estimatedItemSize={estimatedItemSize}
           overscanCount={5}
           onScroll={onScroll}
         >
-          {({ index, style }: { index: number; style: React.CSSProperties }) =>
-            children({ index, style })
-          }
+          {ListRow}
         </List>
       )}
     />
@@ -2209,7 +2246,7 @@ function UndecryptableMessage({ state, onOpenRecovery }: { state: "unknown" | "n
   );
 }
 
-function MessageContent({ content, serverEmojis, currentUsername = "", suppressLinkPreviews = false }: { content: string; serverEmojis: ServerEmoji[]; currentUsername?: string; suppressLinkPreviews?: boolean }) {
+function MessageContent({ content, serverEmojis, currentUsername = "" }: { content: string; serverEmojis: ServerEmoji[]; currentUsername?: string }) {
   // Forwarded message: 【FWD:author】<original content>
   const fwd = content.match(/^【FWD:([^】]*)】([\s\S]*)$/);
   if (fwd) {
@@ -2219,7 +2256,7 @@ function MessageContent({ content, serverEmojis, currentUsername = "", suppressL
         <span className="flex items-center gap-1" style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>
           <span style={{ color: "var(--accent)" }}>↪</span> Forwarded from <strong style={{ color: "var(--text-secondary)" }}>{author}</strong>
         </span>
-        {rest && <MessageContent content={rest} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={suppressLinkPreviews} />}
+        {rest && <MessageContent content={rest} serverEmojis={serverEmojis} currentUsername={currentUsername} />}
       </>
     );
   }
@@ -2238,7 +2275,7 @@ function MessageContent({ content, serverEmojis, currentUsername = "", suppressL
 
   for (const match of content.matchAll(tokenRe)) {
     const before = content.slice(last, match.index);
-    if (before) parts.push(<InlineText key={last} text={before} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={suppressLinkPreviews} />);
+    if (before) parts.push(<InlineText key={last} text={before} serverEmojis={serverEmojis} currentUsername={currentUsername} />);
 
     if (match[0].startsWith("```")) {
       parts.push(
@@ -2272,7 +2309,7 @@ function MessageContent({ content, serverEmojis, currentUsername = "", suppressL
   }
 
   const remainder = content.slice(last);
-  if (remainder) parts.push(<InlineText key={last + "r"} text={remainder} serverEmojis={serverEmojis} currentUsername={currentUsername} suppressLinkPreviews={suppressLinkPreviews} />);
+  if (remainder) parts.push(<InlineText key={last + "r"} text={remainder} serverEmojis={serverEmojis} currentUsername={currentUsername} />);
 
   return <>{parts}</>;
 }
@@ -2321,47 +2358,6 @@ function useOgPreview(url: string): OgData | null {
     return () => controller.abort();
   }, [url, token]);
   return data;
-}
-
-function YouTubeEmbedCard({ url, title, description }: { url: string; title?: string | null; description?: string | null }) {
-  const embedUrl = youtubeEmbedUrl(url);
-  if (!embedUrl) return null;
-  const label = title || "YouTube video";
-  return (
-    <div
-      className="kc-video-embed"
-      style={{
-        marginTop: 6,
-        width: "min(520px, 100%)",
-        overflow: "hidden",
-        borderRadius: 12,
-        background: "var(--bg-sidebar)",
-        border: "1px solid var(--bg-hover)",
-        boxShadow: "0 10px 28px rgba(0,0,0,.16)",
-      }}
-    >
-      <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 9", background: "#000" }}>
-        <iframe
-          src={embedUrl}
-          title={label}
-          loading="lazy"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
-        />
-      </div>
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ display: "block", padding: "9px 11px", color: "var(--text-primary)", textDecoration: "none" }}
-      >
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>YouTube</div>
-        <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-        {description && <div style={{ marginTop: 2, fontSize: 12, color: "var(--text-secondary)" }}>{description}</div>}
-      </a>
-    </div>
-  );
 }
 
 function DirectVideoLinkPreview({ url }: { url: string }) {
@@ -2434,37 +2430,73 @@ function StandardLinkPreviewCard({ url, data }: { url: string; data: OgData | Em
   );
 }
 
-function LinkPreviewCard({ url }: { url: string }) {
+/** A link that is not a YouTube video or a post on X: a preview fetched through the server. */
+function FetchedLinkCard({ url, playable }: { url: string; playable: LinkEmbed | null }) {
+  const messageId = useContext(MessageIdContext);
   const og = useOgPreview(url);
-  if (youtubeIdFromUrl(url)) return <YouTubeEmbedCard url={url} title={og?.title} description={og?.description} />;
+  // A YouTube card uses the fetched title; the video itself loads only when it is played.
+  if (playable) return <PlayableEmbed url={url} embed={playable} openKey={embedKey(messageId, url)} showPreview title={og?.title} />;
   if (isDirectVideoUrl(url)) return <DirectVideoLinkPreview url={url} />;
   if (!og) return null;
   return <StandardLinkPreviewCard url={url} data={og} />;
 }
 
+function LinkPreviewCard({ url }: { url: string }) {
+  const messageId = useContext(MessageIdContext);
+  const embed = linkEmbedFor(url);
+  // X gives the server nothing to preview, so there is nothing to fetch for a post.
+  if (embed?.kind === "x") return <PlayableEmbed url={url} embed={embed} openKey={embedKey(messageId, url)} showPreview />;
+  return <FetchedLinkCard url={url} playable={embed} />;
+}
+
+/** Encrypted chats: no preview is fetched, but a video or a post can still be played. */
+function PlayerOnlyCard({ url }: { url: string }) {
+  const messageId = useContext(MessageIdContext);
+  const embed = linkEmbedFor(url);
+  if (!embed) return null;
+  return <PlayableEmbed url={url} embed={embed} openKey={embedKey(messageId, url)} showPreview={false} />;
+}
+
+/** The cards under a message: one per link, of the kind this chat may show. */
+function MessageLinkCards({ message, mode }: { message: Message; mode: LinkPreviewMode }) {
+  const urls = messageCardUrls(message, mode);
+  if (urls.length === 0) return null;
+  return (
+    <>
+      {urls.map((url) => {
+        // Encrypted chats: no preview is fetched, only a play button for a video or a post.
+        if (mode === "none") return <PlayerOnlyCard key={url} url={url} />;
+        if (mode === "client-fetch") return <LinkPreviewCard key={url} url={url} />;
+        const embed = message.embeds?.find((candidate) => candidate.url === url);
+        return embed ? <EmbedCard key={url} embed={embed} /> : null;
+      })}
+    </>
+  );
+}
+
 /** Server-persisted link-preview card (no client fetch — fields come from the gateway). */
 function EmbedCard({ embed }: { embed: Embed }) {
-  if (youtubeIdFromUrl(embed.url)) return <YouTubeEmbedCard url={embed.url} title={embed.title} description={embed.description} />;
+  const messageId = useContext(MessageIdContext);
+  const playable = linkEmbedFor(embed.url);
+  if (playable) return <PlayableEmbed url={embed.url} embed={playable} openKey={embedKey(messageId, embed.url)} showPreview title={embed.title} />;
   if (isDirectVideoUrl(embed.url)) return <DirectVideoLinkPreview url={embed.url} />;
   return <StandardLinkPreviewCard url={embed.url} data={embed} />;
 }
 
 // Inline text with bold, italic, inline code, and URL detection.
-function InlineText({ text, serverEmojis, currentUsername = "", suppressLinkPreviews = false }: { text: string; serverEmojis: ServerEmoji[]; currentUsername?: string; suppressLinkPreviews?: boolean }) {
+function InlineText({ text, serverEmojis, currentUsername = "" }: { text: string; serverEmojis: ServerEmoji[]; currentUsername?: string }) {
   const emojiMap = new Map(serverEmojis.map((e) => [e.name, e]));
   const urlRe = /(https?:\/\/[^\s]+)/g;
   const segments: React.ReactNode[] = [];
-  const urls: string[] = [];
   let last = 0;
 
   for (const match of text.matchAll(urlRe)) {
     const before = text.slice(last, match.index);
     if (before) segments.push(...renderInlineMarkdown(before, String(last), currentUsername, emojiMap));
-    const url = match[0].replace(/[.,!?)]+$/, "");
+    const url = trimUrlTail(match[0]);
     // Defense-in-depth: the regex anchors on https?:// but re-validate the scheme
     // before it reaches href so odd inputs can't open-redirect.
     const safeUrl = safeHttpUrl(url);
-    if (safeUrl) urls.push(safeUrl);
     segments.push(
       safeUrl ? (
         <a
@@ -2481,17 +2513,13 @@ function InlineText({ text, serverEmojis, currentUsername = "", suppressLinkPrev
         <span key={match.index}>{url}</span>
       )
     );
-    last = match.index! + match[0].length;
+    // Punctuation after the link stays in the sentence, outside the link.
+    last = match.index! + url.length;
   }
   const tail = text.slice(last);
   if (tail) segments.push(...renderInlineMarkdown(tail, String(last + "t"), currentUsername, emojiMap));
 
-  return (
-    <>
-      {segments}
-      {!suppressLinkPreviews && urls.map((url) => <LinkPreviewCard key={url} url={url} />)}
-    </>
-  );
+  return <>{segments}</>;
 }
 
 function renderMentions(text: string, currentUsername: string, keyPrefix: string): React.ReactNode[] {
