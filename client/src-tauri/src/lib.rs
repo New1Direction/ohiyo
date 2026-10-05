@@ -1,5 +1,6 @@
 use tauri::Manager;
 
+mod prefs;
 mod vault;
 
 /// Restart the app: "Try again" on the locked vault screen, and after a reset or burn.
@@ -34,6 +35,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         // Locked-RAM E2E key vault (replaces on-disk localStorage for the keys).
         .setup(|app| {
+            prefs::init(app.handle());
             vault::init(app.handle());
             Ok(())
         })
@@ -45,6 +47,8 @@ pub fn run() {
             vault::vault_remove_many,
             vault::vault_reset,
             vault::vault_burn,
+            prefs::desktop_prefs_get,
+            prefs::desktop_prefs_set,
             app_restart,
         ])
         .run(tauri::generate_context!())
