@@ -417,6 +417,24 @@ export function ChatPane({
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [emojiPickerFor, setEmojiPickerFor] = useState<string | null>(null);
   const [pickerPos, setPickerPos] = useState<{ x: number; y: number } | null>(null);
+  // The "+" beside the message box opens a small menu (file, poll).
+  const [composerMenuOpen, setComposerMenuOpen] = useState(false);
+  const composerMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!composerMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!composerMenuRef.current?.contains(e.target as Node)) setComposerMenuOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setComposerMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [composerMenuOpen]);
   const [composerPickerOpen, setComposerPickerOpen] = useState(false);
   const [composerPickerTab, setComposerPickerTab] = useState<"emoji" | "gif">("emoji");
   const [emojiQuery, setEmojiQuery] = useState("");
@@ -1946,26 +1964,44 @@ export function ChatPane({
         style={{ marginBottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
         <div className="kc-composer-tools" aria-label="Message tools">
-          <button
-            type="button"
-            onClick={open}
-            className="kc-icon-btn flex-shrink-0 text-lg"
-            title="Upload a file"
-            aria-label="Attach a file"
-          >
-            <Icon name="plus" size={18} />
-          </button>
-          {/* Polls are stored unencrypted, so there are none in an encrypted chat. */}
-          {!e2eEnabled && (
+          {/* One "+" for everything you can add. Polls are stored unencrypted, so an encrypted
+              chat has only files, and there the "+" opens the file picker directly. */}
+          {e2eEnabled ? (
             <button
               type="button"
-              onClick={() => setShowPoll(true)}
-              className="kc-icon-btn flex-shrink-0 text-base"
-              title="Create a poll"
-              aria-label="Create a poll"
+              onClick={open}
+              className="kc-icon-btn flex-shrink-0 text-lg"
+              title="Upload a file"
+              aria-label="Attach a file"
             >
-              <Icon name="poll" />
+              <Icon name="plus" size={18} />
             </button>
+          ) : (
+            <div className="kc-composer-add" ref={composerMenuRef}>
+              <button
+                type="button"
+                onClick={() => setComposerMenuOpen((v) => !v)}
+                className={`kc-icon-btn flex-shrink-0 text-lg${composerMenuOpen ? " active" : ""}`}
+                title="Add a file or a poll"
+                aria-label="Add to your message"
+                aria-haspopup="menu"
+                aria-expanded={composerMenuOpen}
+              >
+                <Icon name="plus" size={18} />
+              </button>
+              {composerMenuOpen && (
+                <div className="kc-composer-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => { setComposerMenuOpen(false); open(); }}>
+                    <Icon name="plus" size={16} />
+                    Upload a file
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => { setComposerMenuOpen(false); setShowPoll(true); }}>
+                    <Icon name="poll" />
+                    Create a poll
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           <button
             type="button"

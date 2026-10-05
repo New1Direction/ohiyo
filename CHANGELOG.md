@@ -19,6 +19,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   tucked behind one line, and the whole form fits the desktop app's window without scrolling.
 
 ### Fixed
+- **A calmer first screen.** The owner's launch checklist no longer fills the sidebar: it is
+  one "Getting started" row under the channels that opens when you want it. The message box
+  has a single "+" with "Upload a file" and "Create a poll" inside. The home switcher and its
+  own "+" moved to the bottom of the far-left rail, so the "+" beside your spaces is the only
+  one in reach. People who run a space are no longer offered a button to report it.
 - **The app on phones:** message text no longer runs underneath each message's ⋯ button,
   and touching a message no longer pops the desktop toolbar over its neighbours. The ⋯ menu
   can add a reaction. The app is sized to the part of the screen the browser leaves

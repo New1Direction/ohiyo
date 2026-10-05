@@ -1424,6 +1424,32 @@ button:disabled,
   font-weight: 800;
   line-height: 1.2;
 }
+/* The checklist's row: a name, a count and a thin bar. It opens to the full card. */
+.kc-activation { margin: 0.9rem 0.75rem 0.5rem; }
+.kc-activation > summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid color-mix(in oklch, var(--accent) 16%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--accent) 6%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+.kc-activation > summary::-webkit-details-marker { display: none; }
+.kc-activation__count { color: var(--text-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+.kc-activation > summary .kc-activation-progress { grid-column: 1 / -1; margin: 0; }
+@media (hover: hover) and (pointer: fine) {
+  .kc-activation > summary:hover { background: color-mix(in oklch, var(--accent) 11%, transparent); }
+}
+.kc-activation[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.kc-activation[open] .kc-activation-card { margin: 0; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .kc-activation-card {
   margin: 0.25rem 0.75rem 0.9rem;
   padding: 0.85rem;
@@ -3899,10 +3925,6 @@ button:disabled,
   .kc-nav .channel-sidebar > div { width: max(12rem, min(19rem, calc(100vw - 8rem))); }
   /* The server rail runs the full height instead of stopping under its last icon. */
   .kc-nav .server-sidebar { display: flex; background: var(--bg-base); }
-  /* Channels first: the launch checklist used to fill the drawer's first screen. */
-  .kc-nav .channel-sidebar .kc-touch-scroll { display: flex; flex-direction: column; }
-  .kc-nav .channel-sidebar .kc-touch-scroll > * { flex-shrink: 0; }
-  .kc-nav .kc-activation-card { order: 9; margin-top: 0.9rem; }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -4116,3 +4138,50 @@ button:disabled,
   .ohiyo-door__life { display: none; }
   .ohiyo-door__panel > *, .ohiyo-door__fact { animation: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   The frame around the chat
+   ═══════════════════════════════════════════════════════════ */
+/* The rail: your spaces come first. The home switcher and its own "+" go to the bottom, so
+   the "+" beside the spaces is the only one in reach. */
+.server-sidebar { display: flex; }
+.kc-rail-homes-rule { order: 19; margin-top: auto !important; }
+.kc-rail-homes { order: 20; }
+
+/* The "+" beside the message box opens upward, from the button it belongs to. */
+.kc-composer-add { position: relative; display: flex; }
+.kc-composer-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 30;
+  display: grid;
+  gap: 2px;
+  min-width: 12rem;
+  padding: 6px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
+  border-radius: 14px;
+  background: var(--bg-sidebar);
+  box-shadow: 0 18px 40px -18px rgb(0 0 0 / 70%);
+  transform-origin: bottom left;
+  animation: kc-composer-menu-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes kc-composer-menu-in { from { opacity: 0; transform: translateY(4px) scale(0.96); } }
+.kc-composer-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.kc-composer-menu button:active { transform: scale(0.98); }
+@media (hover: hover) and (pointer: fine) { .kc-composer-menu button:hover { background: var(--bg-hover); } }
+@media (prefers-reduced-motion: reduce) { .kc-composer-menu { animation: none; } }
+/* While the "Getting started" row is there it already says what to do next; the separate
+   hint card above it only repeated it. */
+.channel-sidebar:has(.kc-activation) .kc-sidebar-hint { display: none; }

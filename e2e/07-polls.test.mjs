@@ -39,7 +39,9 @@ try {
   log("A + B both in #general");
 
   // ── A creates a poll ──
-  await pageA.click('button[aria-label="Create a poll"]');
+  // The poll lives inside the message box's "+".
+  await pageA.click('button[aria-label="Add to your message"]');
+  await pageA.locator('.kc-composer-menu button', { hasText: "Create a poll" }).click();
   await pageA.waitForSelector("text=New poll", { timeout: 5000 });
   await pageA.fill('input[aria-label="Poll question"]', "Lunch spot?");
   await pageA.fill('input[aria-label="Poll option 1"]', "Pizza");

@@ -133,7 +133,10 @@ const hasYouTubePlayButton = (html: string) => html.includes('aria-label="Play t
 const hasXPostButton = (html: string) => html.includes('aria-label="Show this post from X here. Post by @kikka"');
 const hasEmbedCard = (html: string) => html.includes(EMBED_TITLE);
 const linksClickable = (html: string) => html.includes(`href="${YOUTUBE}"`) && html.includes(`href="${ARTICLE}"`);
-const hasPollButton = (html: string) => html.includes('aria-label="Create a poll"');
+// The poll lives in the message box's "+" menu, which exists only where polls are allowed.
+// In an encrypted chat the "+" opens the file picker directly and there is no menu.
+const hasPollButton = (html: string) => html.includes('aria-label="Add to your message"');
+const hasPlainAttach = (html: string) => html.includes('aria-label="Attach a file"');
 
 function lockTitle(html: string): string {
   const button = /<button[^>]*aria-label="Turn (?:on|off) end-to-end encryption"[^>]*>/.exec(html)?.[0] ?? "";
@@ -189,10 +192,12 @@ test("link players: a post on X is a button, and nothing is fetched from X until
   assert.doesNotMatch(html, /platform\.twitter\.com|twimg\.com/);
 });
 
-test("item 7: no poll button in encrypted mode; present otherwise", () => {
+test("item 7: no way to a poll in encrypted mode; the + menu offers one otherwise", () => {
   assert.equal(hasPollButton(chat("dm", true, false)), false);
   assert.equal(hasPollButton(chat("group_dm", true, false)), false);
+  assert.ok(hasPlainAttach(chat("dm", true, false)), "an encrypted chat can still attach a file");
   assert.ok(hasPollButton(chat("dm", false, false)));
+  assert.doesNotMatch(chat("dm", true, false), /Create a poll/);
 });
 
 test("item 7: the poll composer never opens in encrypted mode; opens otherwise", () => {

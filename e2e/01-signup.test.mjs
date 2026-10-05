@@ -106,7 +106,20 @@ try {
   await shot(page, "04-inapp-channel-1440");
 
   // Verify the owner checklist + seeded voice channel exist.
-  await page.waitForSelector("text=Owner launch checklist", { timeout: 8000 });
+  // The checklist is one quiet row under the channels ("Getting started", 2 of 5) until it
+  // is opened; it used to fill the sidebar and push the channels out of sight.
+  const started = page.locator(".kc-activation > summary");
+  await started.waitFor({ timeout: 8000 });
+  if (!/Getting started/.test(await started.textContent()) || !/2 of 5/.test(await started.textContent())) throw new Error(`unexpected checklist row: ${await started.textContent()}`);
+  const layout = await page.evaluate(() => {
+    const row = document.querySelector(".kc-activation").getBoundingClientRect();
+    const general = [...document.querySelectorAll(".channel-sidebar button")].find((b) => b.textContent.trim() === "general").getBoundingClientRect();
+    return { rowHeight: Math.round(row.height), channelAboveRow: general.bottom <= row.top, isOpen: document.querySelector(".kc-activation").open };
+  });
+  if (layout.isOpen || layout.rowHeight > 70 || !layout.channelAboveRow) throw new Error(`the checklist should start as a slim row below the channels: ${JSON.stringify(layout)}`);
+  await started.click();
+  await page.waitForSelector("text=Owner launch checklist", { timeout: 4000 });
+  await started.click();
   const afterCreate = await activation(page);
   if (!afterCreate.account || !afterCreate.server) throw new Error("activation did not record account + server milestones");
   log("owner launch checklist visible + account/server milestones recorded locally ✓");

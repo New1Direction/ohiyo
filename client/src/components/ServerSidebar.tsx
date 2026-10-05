@@ -93,8 +93,10 @@ export function ServerSidebar({
       className="flex w-[72px] flex-shrink-0 flex-col items-center gap-2 py-3"
       style={{ background: "var(--bg-base)" }}
     >
-      {/* Runtime server homes (Instant Servers / self-hosts). */}
-      <div className="flex w-full flex-col items-center gap-1" aria-label="Ohiyo homes">
+      {/* Runtime server homes (Instant Servers / self-hosts). Shown at the bottom of the rail
+          (see .kc-rail-homes): most people have one home, and its "+" used to sit right
+          above the "+" that makes a space. */}
+      <div className="kc-rail-homes flex w-full flex-col items-center gap-1" aria-label="Ohiyo homes">
         {homes.map((h) => {
           const label = h.name.slice(0, 2).toUpperCase();
           const selected = h.id === activeHomeId;
@@ -131,7 +133,7 @@ export function ServerSidebar({
         </button>
       </div>
 
-      <div className="w-8 border-t my-1" style={{ borderColor: "var(--bg-hover)" }} />
+      <div className="kc-rail-homes-rule w-8 border-t my-1" style={{ borderColor: "var(--bg-hover)" }} />
 
       {/* DMs / Home button */}
       <button
