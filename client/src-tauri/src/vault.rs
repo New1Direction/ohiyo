@@ -110,14 +110,16 @@ pub struct VaultState {
     /// prompt for as long as the person takes to answer it, so the unlock never runs on the
     /// main thread (see `init`), and only `vault_snapshot` waits for it.
     vault: OnceLock<Result<UnlockedVault, Locked>>,
+    /// Set by `vault_burn`: the master key is being destroyed, so nothing may be sealed
+    /// under it again (the next launch would find a file no key can open). It lives here
+    /// and not on the unlocked vault so that a burn also counts when it arrives while the
+    /// unlock is still waiting on the OS.
+    burned: AtomicBool,
 }
 
 struct UnlockedVault {
     inner: Mutex<Vault>,
     master: [u8; 32],
-    /// Set by `vault_burn`: the master key is being destroyed, so nothing may be sealed
-    /// under it again (the next launch would find a file no key can open).
-    burned: AtomicBool,
 }
 
 impl VaultState {
@@ -136,14 +138,24 @@ impl VaultState {
         &self,
         unlock: impl FnOnce(&Path) -> Result<UnlockedVault, Locked>,
     ) -> &Result<UnlockedVault, Locked> {
-        self.vault.get_or_init(|| unlock(&self.path))
+        let vault = self.vault.get_or_init(|| unlock(&self.path));
+        // A burn may have come and gone while the OS was still being asked for the key. It
+        // found nothing in RAM to wipe then, so what the unlock brought back is wiped now.
+        // (The burn sets its flag before it looks for a vault, and this looks at the flag
+        // after the vault is in place, so one of the two always sees the other.)
+        if self.burned.load(Ordering::SeqCst) {
+            if let Ok(unlocked) = vault {
+                unlocked.inner.lock().unwrap().wipe();
+            }
+        }
+        vault
     }
 
     fn persist(&self, vault: &Vault) {
         let Some(Ok(unlocked)) = self.vault.get() else {
             return;
         };
-        if unlocked.burned.load(Ordering::SeqCst) {
+        if self.burned.load(Ordering::SeqCst) {
             return;
         }
         if let Ok(blob) = vault.seal(&unlocked.master) {
@@ -166,13 +178,13 @@ impl VaultState {
     /// interrupted write left behind, and any file a reset moved aside. Returns how each
     /// deletion went.
     fn burn_local(&self) -> (io::Result<()>, io::Result<()>, io::Result<()>) {
+        self.burned.store(true, Ordering::SeqCst);
         let _guard = self
             .vault
             .get()
             .and_then(|vault| vault.as_ref().ok())
             .map(|unlocked| {
                 let mut v = unlocked.inner.lock().unwrap();
-                unlocked.burned.store(true, Ordering::SeqCst);
                 v.wipe();
                 v
             });
@@ -351,7 +363,6 @@ fn unlock(path: &Path) -> Result<UnlockedVault, Locked> {
     Ok(UnlockedVault {
         inner: Mutex::new(vault),
         master,
-        burned: AtomicBool::new(false),
     })
 }
 
@@ -372,6 +383,7 @@ pub fn init(app: &AppHandle) {
     app.manage(VaultState {
         path,
         vault: OnceLock::new(),
+        burned: AtomicBool::new(false),
     });
     let app = app.clone();
     std::thread::spawn(move || {
@@ -426,8 +438,9 @@ pub fn vault_remove_many(state: State<VaultState>, keys: Vec<String>) -> Result<
 
 /// "Reset this device" on the locked screen, only when the saved keys can't be opened:
 /// move the sealed file aside, then delete the keychain key only if it is malformed. On
-/// success the webview restarts the app, which then starts an empty vault.
-#[tauri::command]
+/// success the webview restarts the app, which then starts an empty vault. `async` (off
+/// the main thread) because the keychain may put up a password prompt first.
+#[tauri::command(async)]
 pub fn vault_reset(state: State<VaultState>) -> Result<(), String> {
     let path = reset_target(&state)?;
     move_sealed_aside(path).map_err(|e| format!("the saved keys could not be moved aside: {e}"))?;
@@ -474,8 +487,10 @@ fn burn_outcome(
 }
 
 /// The dead-man's switch: wipe RAM and try to delete the vault files and the keychain key,
-/// reporting anything that couldn't be deleted. On success the webview restarts.
-#[tauri::command]
+/// reporting anything that couldn't be deleted. On success the webview restarts. `async`
+/// (off the main thread) because deleting the key may put up a password prompt first; the
+/// writes sent before it have already run, and any sent after find the vault burned.
+#[tauri::command(async)]
 pub fn vault_burn(state: State<VaultState>) -> Result<(), String> {
     let (file, temp, aside) = state.burn_local();
     let key = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
@@ -517,6 +532,7 @@ mod tests {
         VaultState {
             path,
             vault: OnceLock::from(Ok(unlocked_vault())),
+            burned: AtomicBool::new(false),
         }
     }
 
@@ -524,7 +540,6 @@ mod tests {
         UnlockedVault {
             inner: Mutex::new(Vault::new()),
             master: KEY,
-            burned: AtomicBool::new(false),
         }
     }
 
@@ -533,6 +548,7 @@ mod tests {
         VaultState {
             path,
             vault: OnceLock::new(),
+            burned: AtomicBool::new(false),
         }
     }
 
@@ -745,6 +761,7 @@ mod tests {
             vault: OnceLock::from(Err(Locked::keychain(
                 "the OS keychain could not be read: denied",
             ))),
+            burned: AtomicBool::new(false),
         };
         let err = state.remove_many(&["kc:outbox".to_string()]).unwrap_err();
         assert!(err.starts_with(VAULT_LOCKED_PREFIX), "{err}");
@@ -757,6 +774,7 @@ mod tests {
             vault: OnceLock::from(Err(Locked::keychain(
                 "the OS keychain could not be read: denied",
             ))),
+            burned: AtomicBool::new(false),
         };
         assert_eq!(
             keychain.unlocked().err().as_deref(),
@@ -765,6 +783,7 @@ mod tests {
         let vault = VaultState {
             path: PathBuf::from("unused"),
             vault: OnceLock::from(Err(Locked::vault("the sealed vault could not be opened"))),
+            burned: AtomicBool::new(false),
         };
         assert_eq!(
             vault.unlocked().err().as_deref(),
@@ -837,6 +856,7 @@ mod tests {
         let at = |vault| VaultState {
             path: PathBuf::from("kc-vault.bin"),
             vault: OnceLock::from(vault),
+            burned: AtomicBool::new(false),
         };
         assert!(reset_target(&at(Err(Locked::vault("could not be opened")))).is_ok());
         assert!(reset_target(&at(Err(Locked::keychain("denied")))).is_err());
@@ -897,9 +917,11 @@ mod tests {
         assert_eq!(state.unlocked().err().as_deref(), Some(VAULT_UNLOCKING));
         // The webview's snapshot arrives while the prompt is still up. It must wait for
         // that answer, not ask the keychain a second time (a second prompt).
+        let (calling, is_calling) = mpsc::channel();
         let snapshot = {
             let (state, asked) = (Arc::clone(&state), Arc::clone(&asked));
             std::thread::spawn(move || {
+                calling.send(()).unwrap();
                 state
                     .unlock_once(|_| {
                         asked.fetch_add(1, Ordering::SeqCst);
@@ -908,12 +930,50 @@ mod tests {
                     .is_err()
             })
         };
+        // Answer only once the snapshot has had time to get in line behind the prompt, so
+        // this is the waiting path and not a call that finds the answer already there.
+        is_calling.recv().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(50));
         answer.send(()).unwrap();
         assert!(launch.join().unwrap());
         assert!(snapshot.join().unwrap(), "the snapshot used its own answer");
         assert_eq!(asked.load(Ordering::SeqCst), 1);
         let err = state.unlocked().err().unwrap();
         assert!(err.starts_with(VAULT_LOCKED_PREFIX), "{err}");
+    }
+
+    #[test]
+    fn a_burn_while_the_key_is_still_being_asked_for_leaves_nothing_to_read_or_write() {
+        // The app's own screens can't burn before the unlock has finished, but the burn is
+        // the last line of defence and must hold whatever calls it. Here the unlock comes
+        // back, with the old keys in hand, after the burn has deleted everything.
+        let dir = scratch_dir("burn-pending");
+        let state = pending_state(dir.join(VAULT_FILE));
+        std::fs::write(&state.path, b"sealed").unwrap();
+
+        let (file, _, _) = state.burn_local();
+        assert!(file.is_ok());
+
+        let late = state.unlock_once(|_| {
+            let mut vault = Vault::new();
+            vault.set("kc:sig:identityKey", "secret").unwrap();
+            Ok(UnlockedVault {
+                inner: Mutex::new(vault),
+                master: KEY,
+            })
+        });
+        let unlocked = late.as_ref().ok().expect("the late unlock itself worked");
+        assert!(
+            unlocked.inner.lock().unwrap().keys().is_empty(),
+            "old keys were handed out after a burn"
+        );
+
+        // Nothing is sealed under the burned key again either.
+        let mut v = state.unlocked().unwrap().inner.lock().unwrap();
+        v.set("kc:tok:home", "token").unwrap();
+        state.persist(&v);
+        assert!(!state.path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

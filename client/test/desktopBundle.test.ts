@@ -98,10 +98,13 @@ test("the window is never shown empty: it starts hidden and appears once its pag
   assert.match(tray, /sleep\(REVEAL_FALLBACK\);\s*reveal_main\(/);
 });
 
-test("the bare page is dark before the app's stylesheet has loaded", () => {
+test("the page carries no inline style element", () => {
+  // The desktop build adds a nonce to every <style> in this file and to the style policy.
+  // A policy with a nonce ignores 'unsafe-inline', so the <style> elements the app creates
+  // later (plugin CSS: Compact chat, Focus mode, anything third-party) would be blocked.
   const html = readFileSync(join(tauri, "..", "index.html"), "utf8");
-  assert.match(html, /<meta name="theme-color" content="#10100f" \/>/);
-  assert.match(html, /<style>\s*html \{ background: #10100f; \}\s*<\/style>/);
+  assert.doesNotMatch(html, /<style[\s>]/);
+  assert.match(conf.app.security.csp, /style-src 'self' 'unsafe-inline'/);
 });
 
 test("the one command that waits for the keychain runs off the main thread", () => {
@@ -110,8 +113,22 @@ test("the one command that waits for the keychain runs off the main thread", () 
   // window would freeze unpainted for as long as the prompt is up.
   const vault = readFileSync(join(tauri, "src", "vault.rs"), "utf8");
   assert.match(vault, /#\[tauri::command\(async\)\]\npub fn vault_snapshot\(/);
-  // Start-up must not unlock inline either: it hands the unlock to its own thread.
+  // Start-up must not unlock inline either: nothing before the thread it starts may touch
+  // the unlock.
   const init = vault.slice(vault.indexOf("pub fn init("), vault.indexOf("#[tauri::command]"));
-  assert.match(init, /std::thread::spawn\(/);
-  assert.doesNotMatch(init, /= unlock\(/);
+  const [before, ...threads] = init.split("std::thread::spawn(");
+  assert.equal(threads.length, 1);
+  assert.doesNotMatch(before, /unlock/);
+  assert.match(threads[0], /unlock_once\(unlock\)/);
+});
+
+test("no command that talks to the keychain runs on the main thread", () => {
+  // Any keychain call can end up behind a password prompt. A plain command runs on the main
+  // thread, where waiting for that prompt freezes the whole window.
+  const vault = readFileSync(join(tauri, "src", "vault.rs"), "utf8");
+  const commands = [...vault.matchAll(/#\[tauri::command(\(async\))?\]\n(?:pub )?fn (\w+)[\s\S]*?\n\}\n/g)];
+  assert.ok(commands.length >= 7, `found ${commands.length} commands`);
+  const onMainThread = commands.filter(([, isAsync]) => !isAsync);
+  const offenders = onMainThread.filter(([body]) => /keyring::|unlock_once\(/.test(body)).map(([, , name]) => name);
+  assert.deepEqual(offenders, []);
 });

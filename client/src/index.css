@@ -306,7 +306,7 @@ button:disabled,
 .ohiyo-vault-wait__why {
   position: relative;
   max-width: 27rem;
-  min-height: 5.2em;
+  min-height: 6.2em; /* four lines at this line height */
   margin: var(--space-5) 0 0;
   color: var(--text-secondary);
   line-height: 1.55;
