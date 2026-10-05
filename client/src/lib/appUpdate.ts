@@ -2,7 +2,25 @@
 
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-export type UpdateCheckOutcome = { kind: "available"; version: string } | { kind: "current" } | { kind: "failed" };
+/** Shown when a download or install fails. Retrying rarely helps: a Mac app run from the
+ * disk image or the Downloads folder can never replace itself. */
+export const UPDATE_INSTALL_FAILED = "The update couldn't be installed. Download the new version from ohiyo.gg instead.";
+
+export type UpdateCheckOutcome =
+  | { kind: "available"; version: string }
+  | { kind: "current" }
+  | { kind: "failed" }
+  /** This copy was not built by the release workflow, so it never looks. */
+  | { kind: "unavailable" };
+
+/**
+ * Only a build made by the release workflow looks for updates (it sets
+ * VITE_DESKTOP_UPDATES=1). A copy someone builds by hand still carries the official key
+ * and address; if it looked, it would install the official build over theirs.
+ */
+export function updatesEnabled(flag: string | undefined): boolean {
+  return flag === "1";
+}
 
 export function updateReadyLabel(version: string): string {
   return `Ohiyo ${version} is ready`;
@@ -14,6 +32,7 @@ export function updateReadyLabel(version: string): string {
  */
 export function updateCheckMessage(outcome: UpdateCheckOutcome, isManual: boolean): string | null {
   if (outcome.kind === "available" || !isManual) return null;
+  if (outcome.kind === "unavailable") return "This copy of Ohiyo doesn't update itself.";
   return outcome.kind === "current" ? "Ohiyo is up to date." : "Couldn't check for updates. Try again later.";
 }
 

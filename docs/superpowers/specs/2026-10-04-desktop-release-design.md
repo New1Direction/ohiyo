@@ -106,7 +106,11 @@ operating system through `tauri-plugin-autostart`.
   (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). A copy is saved to a
   file on the owner's Desktop to move into a password manager. Without the key, installed
   copies can no longer be updated.
-- Linux: only the AppImage updates itself. The deb and rpm are updated by downloading again.
+- Linux: the AppImage replaces itself in place. A deb or rpm install updates through the
+  system's package tool, which asks for the administrator password.
+- Only builds made by the release workflow look for updates. A copy someone builds by hand
+  carries the official key and address, so it must never look: it would install the
+  official build over theirs.
 - v0.2.0 has no updater. Its users download once more.
 
 ## 8. Code layout
@@ -116,7 +120,7 @@ client/src-tauri/
   Info.plist                 microphone and camera usage text         (new)
   Entitlements.plist         audio input, camera                      (new)
   Cargo.toml                 tauri "tray-icon"; autostart and updater plugins
-  tauri.conf.json            version, entitlements, updater key + endpoint, updater artifacts
+  tauri.conf.json            version, entitlements, updater key + endpoint
   capabilities/default.json  updater (everything else goes through our own commands)
   src/lib.rs                 registers plugins, tray and window lifecycle
   src/tray.rs                tray icon, menu, events                  (new)
@@ -128,7 +132,7 @@ client/src/
   hooks/useDesktopShell.ts   keeps badge, tray and call state in step  (new)
   components/UpdateBar.tsx   "Ohiyo x is ready"                        (new)
   components/settings/DesktopAppCard.tsx  the two switches           (new)
-.github/workflows/release.yml  updater signing, updater artifacts
+.github/workflows/release.yml  updater signing, updater artifacts, turns update checks on
 ```
 
 Everything desktop-only sits behind `isDesktop()`, so the web app is unchanged.

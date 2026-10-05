@@ -13,6 +13,15 @@ export function canCall(env: CallEnvironment): boolean {
   return typeof env.RTCPeerConnection === "function";
 }
 
+/**
+ * Whether to refuse a call before trying it. Only the desktop app does: its message sends
+ * people to the browser, which is no help to someone already in one. A browser tries the
+ * call as it always has and reports whatever goes wrong.
+ */
+export function refusesCall(isDesktopApp: boolean, env: CallEnvironment): boolean {
+  return isDesktopApp && !canCall(env);
+}
+
 /** The real environment, read at call time. */
 export function callEnvironment(): CallEnvironment {
   return {

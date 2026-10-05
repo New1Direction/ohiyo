@@ -51,6 +51,8 @@ test("the desktop app shows the card with two named switches", () => {
   try {
     const html = notificationsTab();
     assert.match(html, /Desktop app/);
+    // Some Linux desktops show no tray: the card says how to get the window back regardless.
+    assert.match(html, /Opening Ohiyo again brings the window back/);
     for (const name of ["Keep running when I close the window", "Open Ohiyo when I log in"]) {
       assert.match(html, new RegExp(`<button[^>]*role="switch"[^>]*aria-label="${name}"`), name);
     }
@@ -62,6 +64,7 @@ test("the desktop app shows the card with two named switches", () => {
 test("the page says which notifications carry message text", () => {
   const html = notificationsTab();
   assert.doesNotMatch(html, /A notification never includes/);
-  assert.match(html, /Push notifications, which reach you when Ohiyo is closed, never include/);
+  // "Closed" would be ambiguous: closing the desktop window keeps Ohiyo running.
+  assert.match(html, /Push notifications, which reach you when Ohiyo isn(&#x27;|')t running, never include/);
   assert.match(html, /show who wrote and the start of the message, except in encrypted chats/);
 });

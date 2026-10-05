@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { VOICE_UNAVAILABLE, canCall } from "../src/lib/voiceSupport.ts";
+import { VOICE_UNAVAILABLE, canCall, refusesCall } from "../src/lib/voiceSupport.ts";
 
 class FakePeerConnection {}
 
@@ -25,4 +25,11 @@ test("a shell without peer connections cannot call", () => {
 
 test("the message tells the person where a call does work", () => {
   assert.equal(VOICE_UNAVAILABLE, "Voice isn't available in this app yet. Open Ohiyo in your browser to join.");
+});
+
+test("only the desktop app refuses up front; a browser tries the call as it always has", () => {
+  assert.equal(refusesCall(true, {}), true);
+  assert.equal(refusesCall(true, { RTCPeerConnection: FakePeerConnection }), false);
+  // "Open Ohiyo in your browser" is no help to someone already in a browser.
+  assert.equal(refusesCall(false, {}), false);
 });

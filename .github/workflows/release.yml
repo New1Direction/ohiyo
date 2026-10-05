@@ -55,14 +55,16 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
       - name: Install client dependencies
         working-directory: client
         run: npm ci
 
       # Update bundles are made here and nowhere else, so a plain local
-      # `npm run tauri build` needs no signing key. See DEPLOY.md §5.
+      # `npm run tauri build` needs no signing key. The same condition sets
+      # VITE_DESKTOP_UPDATES on the build steps: only these builds look for updates,
+      # so a copy someone builds by hand is never replaced by ours. See DEPLOY.md §5.
       - name: Turn on signed update bundles
         if: env.HAS_UPDATE_KEY == 'true'
         working-directory: client
@@ -95,6 +97,7 @@ jobs:
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -146,6 +149,7 @@ jobs:
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}
         with:
           projectPath: client
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
@@ -162,6 +166,7 @@ jobs:
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}
         with:
           projectPath: client
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}

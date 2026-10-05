@@ -49,12 +49,13 @@ pub fn on_close(prefs: DesktopPrefs, has_tray: bool) -> CloseAction {
     }
 }
 
-/// Where the first-time hint says the app went.
-fn hint_text() -> &'static str {
-    if cfg!(target_os = "macos") {
+/// Where the first-time hint says the app went. Off the Mac it also says how to get the
+/// window back, because some Linux desktops show no tray at all.
+fn hint_text(is_mac: bool) -> &'static str {
+    if is_mac {
         "Ohiyo is still running in the menu bar."
     } else {
-        "Ohiyo is still running in the tray."
+        "Ohiyo is still running in the tray. Open Ohiyo again to bring the window back."
     }
 }
 
@@ -107,7 +108,8 @@ pub fn hide_main(app: &AppHandle) {
     let prefs = app.state::<PrefsState>();
     if !prefs.get().tray_hint_shown {
         prefs.update(|p| p.tray_hint_shown = true);
-        let _ = app.notification().builder().title("Ohiyo").body(hint_text()).show();
+        let hint = hint_text(cfg!(target_os = "macos"));
+        let _ = app.notification().builder().title("Ohiyo").body(hint).show();
     }
 }
 
@@ -188,7 +190,10 @@ pub fn init(app: &AppHandle) {
     app.manage(TrayState::default());
     match build_tray(app) {
         Ok(()) => app.state::<TrayState>().has_tray.store(true, Ordering::Relaxed),
-        // No tray on this desktop: Ohiyo still runs, and closing the window quits.
+        // Creating the tray failed outright: Ohiyo still runs, and closing the window quits.
+        // This cannot tell whether a Linux desktop actually shows the tray (GNOME without an
+        // extension does not), which is why "keep running" is off there by default and the
+        // hint and the setting both say that opening Ohiyo again brings the window back.
         Err(e) => eprintln!("[ohiyo] couldn't create the tray icon: {e}"),
     }
 }
@@ -252,6 +257,13 @@ mod tests {
         // Nothing to click to get the window back: hiding would look like a crash.
         assert_eq!(on_close(KEEP, false), CloseAction::Quit);
         assert_eq!(on_close(QUIT, false), CloseAction::Quit);
+    }
+
+    #[test]
+    fn the_first_hide_hint_says_how_to_get_the_window_back_where_a_tray_may_be_missing() {
+        assert_eq!(hint_text(true), "Ohiyo is still running in the menu bar.");
+        // Some Linux desktops show no tray at all, so the hint cannot point only at one.
+        assert_eq!(hint_text(false), "Ohiyo is still running in the tray. Open Ohiyo again to bring the window back.");
     }
 
     #[test]

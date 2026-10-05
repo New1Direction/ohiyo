@@ -14,10 +14,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ## [0.3.0] — 2026-10-04
 
 ### Added
-- **Desktop app for Mac and Linux:** it stays in the tray when you close the window, so
-  notifications keep arriving, with the unread count on the dock icon and a tray menu
-  (open, leave call, check for updates, open at login, quit). It offers its own updates
-  and installs one when you say so. On Mac it asks for the microphone and camera properly,
+- **Desktop app for Mac and Linux:** it can stay in the tray when you close the window, so
+  notifications keep arriving (on by default on Mac, a setting on Linux), with the unread
+  count on the Mac dock icon and a tray menu (open, leave call, check for updates, open at
+  login, quit). The official builds offer their own updates and install one when you say
+  so; a copy you build yourself never looks. On Mac it asks for the microphone and camera properly,
   so voice can work. It talks to the current server; 0.2.0 still pointed at the old one
   and has to be replaced by hand once. Mac builds are a beta that Apple has not verified.
   Windows is not included yet.

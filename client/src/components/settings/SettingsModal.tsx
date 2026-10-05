@@ -1454,7 +1454,7 @@ function NotificationsTab({ token, onToast }: { token: string; onToast: (t: stri
     <div>
       <h2 className="mb-1 text-xl font-bold">Notifications &amp; mobile</h2>
       <p className="mb-6 max-w-3xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-        Get a nudge when something new arrives. Notifications while Ohiyo is running show who wrote and the start of the message, except in encrypted chats. Push notifications, which reach you when Ohiyo is closed, never include message text, file names, channel names or encryption keys.
+        Get a nudge when something new arrives. Notifications while Ohiyo is running show who wrote and the start of the message, except in encrypted chats. Push notifications, which reach you when Ohiyo isn&apos;t running, never include message text, file names, channel names or encryption keys.
       </p>
 
       {isDesktop() && <DesktopAppCard onToast={onToast} />}

@@ -19,7 +19,8 @@ use tauri::{AppHandle, Manager, State};
 /// The keychain entry that holds the vault's master key. Every installed copy uses
 /// "kikkacord"; changing it would lock people out of their saved keys. A test build can
 /// be given its own entry at compile time (OHIYO_KEYRING_SERVICE), so trying a build on
-/// a machine that also has the real app cannot touch the real app's key.
+/// a machine that also has the real app cannot touch the real app's key. The sealed vault
+/// file is found by the app's identifier, so a test build needs its own identifier too.
 const KEYRING_SERVICE: &str = match option_env!("OHIYO_KEYRING_SERVICE") {
     Some(service) => service,
     None => "kikkacord",

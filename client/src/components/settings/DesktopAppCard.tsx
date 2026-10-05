@@ -66,7 +66,7 @@ export function DesktopAppCard({ onToast }: Props) {
       <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Desktop app</div>
       <SwitchRow
         name="Keep running when I close the window"
-        hint="Ohiyo stays in the tray, so notifications keep arriving. Quit from the tray menu."
+        hint="Ohiyo stays in the tray, so notifications keep arriving. Opening Ohiyo again brings the window back; quit from the tray menu."
         isOn={keepRunning}
         onToggle={() => void toggleKeepRunning()}
       />

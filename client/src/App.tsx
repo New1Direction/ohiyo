@@ -86,7 +86,7 @@ import {
 } from "./lib/privacyPrefs";
 import { useToast } from "./hooks/useToast";
 import { onLocalClock } from "./lib/watchSync";
-import { VOICE_UNAVAILABLE, callEnvironment, canCall } from "./lib/voiceSupport";
+import { VOICE_UNAVAILABLE, callEnvironment, refusesCall } from "./lib/voiceSupport";
 import { arrivalInOpenChat, isLookingAt, lastRealMessageId } from "./lib/attention";
 import { unreadTotal, withoutUnread } from "./lib/unreadTotal";
 import { useDesktopShell } from "./hooks/useDesktopShell";
@@ -2182,7 +2182,7 @@ function MainApp({
 
   function handleJoinVoice(channel: Channel, opts?: { muted?: boolean; video?: boolean }) {
     setMobileNavOpen(false);
-    if (!canCall(callEnvironment())) {
+    if (refusesCall(isDesktop(), callEnvironment())) {
       toast(VOICE_UNAVAILABLE, "error");
       return;
     }

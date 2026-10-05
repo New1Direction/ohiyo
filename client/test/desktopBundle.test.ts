@@ -64,3 +64,21 @@ test("the app, the crate and the bundle agree on the version, and the changelog 
   assert.ok(changelog.includes(`## [${conf.version}] — `), `CHANGELOG.md has a section for ${conf.version}`);
   assert.ok(changelog.includes(`[${conf.version}]: https://github.com/New1Direction/ohiyo/compare/`), "and its compare link");
 });
+
+test("Linux packages depend on the tray library that Debian and Ubuntu both ship", () => {
+  // The bundler names the package dependency after whichever dev package is installed where
+  // it builds. libappindicator3-1 is gone from Debian; the ayatana one is in both.
+  for (const name of ["release.yml", "ci.yml"]) {
+    const workflow = readFileSync(join(tauri, "..", "..", ".github", "workflows", name), "utf8");
+    assert.match(workflow, /apt-get install[^\n]*libayatana-appindicator3-dev/, name);
+    assert.doesNotMatch(workflow, /libappindicator3-dev/, name);
+  }
+});
+
+test("release builds, and only they, look for updates", () => {
+  // A copy someone builds by hand still carries our key and address. If it looked for
+  // updates it would install the official build, which talks to the official server.
+  const workflow = readFileSync(join(tauri, "..", "..", ".github", "workflows", "release.yml"), "utf8");
+  const builds = workflow.split("uses: tauri-apps/tauri-action@").length - 1;
+  assert.equal(workflow.split("VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}").length - 1, builds);
+});

@@ -352,11 +352,21 @@ Update bundles are made only by the release workflow, which switches
 `bundle.createUpdaterArtifacts` on when the key is present. A plain `npm run tauri build`
 needs no key and makes no update bundle.
 
-Running your own fork? Make your own pair with `npm run tauri signer generate -- -w <file>`,
-put its public key and your release address in `plugins.updater`, and set the two secrets.
-Otherwise your builds would look for updates in this repository and reject them.
+**A copy you build yourself never looks for updates.** Only the release workflow switches
+that on, by setting `VITE_DESKTOP_UPDATES=1` for its builds. This matters because the
+config in this repository names the official key and release address: a hand-built copy
+that looked for updates would be offered the official build, install it over yours, and
+end up talking to the official server.
 
-Only the Linux AppImage updates itself; the deb and rpm are updated by downloading again.
+Want your own fork to update itself? Make your own pair with
+`npm run tauri signer generate -- -w <file>`, put its public key and your release address
+in `plugins.updater`, and set the two secrets; your release workflow then turns updates
+on for your builds. Do not set `VITE_DESKTOP_UPDATES` while the config still names this
+repository's key and address.
+
+On Linux the AppImage replaces itself in place. A deb or rpm install updates through the
+system's package tool, which asks for the administrator password; if that is not possible,
+download the new package instead.
 
 ---
 

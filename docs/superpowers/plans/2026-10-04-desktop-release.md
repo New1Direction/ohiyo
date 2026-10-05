@@ -6,7 +6,7 @@
 
 **Architecture:** The Tauri shell (Rust, `client/src-tauri`) gains a tray, a close-to-tray rule read from a small prefs file, open-at-login and the updater plugin. The React app talks to the shell through one module (`lib/desktopShell.ts`) that does nothing in a browser, so the web app is unchanged. Everything the shell does for the app goes through our own Rust commands, so the webview gets one new permission only (`updater:default`). Release is the existing tag-triggered workflow, with update signing added.
 
-**Tech Stack:** Tauri 2.11 (`tray-icon`, `image-png`), `tauri-plugin-autostart` 2.7, `tauri-plugin-updater` 2.13, React 19 + TypeScript, `node --test`, `cargo test`, GitHub Actions (`tauri-action`).
+**Tech Stack:** Tauri 2.11 (`tray-icon`, `image-png`), `tauri-plugin-autostart` 2.5, `tauri-plugin-updater` 2.12 (the newest that work with Tauri 2.11), React 19 + TypeScript, `node --test`, `cargo test`, GitHub Actions (`tauri-action`).
 
 **Spec:** `docs/superpowers/specs/2026-10-04-desktop-release-design.md`
 
@@ -2454,7 +2454,7 @@ export TAURI_SIGNING_PRIVATE_KEY="$(cat "$HOME/Desktop/ohiyo-update-key/ohiyo-up
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(cat "$HOME/Desktop/ohiyo-update-key/password.txt")"
 build_gate() {   # $1 = version
   python3 "$GATE/make_config.py" src-tauri/tauri.conf.json "$1" "$GATE/conf-$1.json"
-  VITE_SERVER_URL=http://localhost:3000 npm run tauri build -- --bundles app --config "$GATE/conf-$1.json"
+  VITE_SERVER_URL=http://localhost:3000 VITE_DESKTOP_UPDATES=1 npm run tauri build -- --bundles app --config "$GATE/conf-$1.json"
 }
 build_gate 0.3.0 && cp -R "$CARGO_TARGET_DIR/release/bundle/macos/OhiyoGate.app" "$GATE/Applications/OhiyoGate.app"
 build_gate 0.3.1 && cp "$CARGO_TARGET_DIR/release/bundle/macos/OhiyoGate.app.tar.gz" "$CARGO_TARGET_DIR/release/bundle/macos/OhiyoGate.app.tar.gz.sig" "$GATE/feed/"
@@ -2587,7 +2587,7 @@ mkdir mnt && hdiutil attach Ohiyo_0.3.0_aarch64.dmg -nobrowse -quiet -mountpoint
 codesign -d --entitlements - mnt/Ohiyo.app 2>/dev/null | grep -c "device.audio-input"
 hdiutil detach "$PWD/mnt" -quiet
 ```
-Expected: `draft=true`; two DMGs, an AppImage, a deb, an rpm, update bundles with `.sig` files for both Mac builds and the AppImage, and `latest.json`; the manifest says `0.3.0` with `darwin-aarch64`, `darwin-x86_64` and `linux-x86_64`; the app is `app.ohiyo.desktop`, `0.3.0`, with the microphone sentence and entitlement. **Do not launch this app**: it has the real identifier, and its first launch belongs to the owner.
+Expected: `draft=true`; two DMGs, an AppImage, a deb, an rpm, update bundles with `.sig` files for both Mac builds and the AppImage, and `latest.json`; the manifest says `0.3.0` with `darwin-aarch64`, `darwin-x86_64` and `linux-x86_64` (and, if the bundler signed them, `linux-x86_64-deb` and `linux-x86_64-rpm`: note which, because the download page's Linux sentence depends on it); the `.deb` depends on `libayatana-appindicator3-1`, not `libappindicator3-1` (`ar p Ohiyo_0.3.0_amd64.deb control.tar.gz | tar -xzO ./control | grep Depends`, or `control.tar.xz` with `tar -xJO`); the app is `app.ohiyo.desktop`, `0.3.0`, with the microphone sentence and entitlement. **Do not launch this app**: it has the real identifier, and its first launch belongs to the owner.
 
 If `latest.json` or the `.sig` files are missing, the "Turn on signed update bundles" step did not take effect: read the run's log for that step, fix, delete the tag and draft, and tag again.
 
@@ -2689,7 +2689,7 @@ In `site/index.html`, directly before `<section class="band band--paper" id="own
       </article>
       <article class="card card--sand reveal">
         <h3>Linux</h3>
-        <p>Built automatically and not yet tried by hand. Only the AppImage updates itself. Voice may not work in the Linux app; it does in the browser.</p>
+        <p>Built automatically and not yet tried by hand. The AppImage updates itself; the .deb and .rpm update through your system and ask for your password. Voice may not work in the Linux app; it does in the browser.</p>
         <div class="card__actions">
           <a class="btn btn--go" href="https://github.com/New1Direction/ohiyo/releases/download/v0.3.0/Ohiyo_0.3.0_amd64.AppImage" rel="noopener">AppImage</a>
           <a class="btn" href="https://github.com/New1Direction/ohiyo/releases/download/v0.3.0/Ohiyo_0.3.0_amd64.deb" rel="noopener">.deb</a>
