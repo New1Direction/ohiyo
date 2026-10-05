@@ -30,6 +30,8 @@ function filesContaining(phrase: string): string[] {
 }
 
 const UNTRUE = [
+  // True of push only. A notification shown while Ohiyo runs carries the start of the message.
+  "A notification never includes",
   // A DM opened from a one-time link starts with the lock off.
   "one-to-one encrypted conversation",
   // There are no threads.

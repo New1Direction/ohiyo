@@ -45,6 +45,7 @@ import { type Density, DENSITIES, FONT_SCALES } from "../../lib/density";
 import { pushAppearance } from "../../lib/appearanceSync";
 import { LinkedDevices } from "./LinkedDevices";
 import { PluginsTab } from "./PluginsTab";
+import { DesktopAppCard } from "./DesktopAppCard";
 import type { PrivacyPrefs } from "../../lib/privacyPrefs";
 import { AvatarMark } from "../BirdMark";
 
@@ -1453,8 +1454,10 @@ function NotificationsTab({ token, onToast }: { token: string; onToast: (t: stri
     <div>
       <h2 className="mb-1 text-xl font-bold">Notifications &amp; mobile</h2>
       <p className="mb-6 max-w-3xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-        Get a nudge when something new arrives. A notification never includes message text, file names, channel names or encryption keys.
+        Get a nudge when something new arrives. Notifications while Ohiyo is running show who wrote and the start of the message, except in encrypted chats. Push notifications, which reach you when Ohiyo is closed, never include message text, file names, channel names or encryption keys.
       </p>
+
+      {isDesktop() && <DesktopAppCard onToast={onToast} />}
 
       <div className="mb-6 grid gap-3 md:grid-cols-2">
         <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>
