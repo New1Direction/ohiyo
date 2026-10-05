@@ -133,3 +133,12 @@ test("the space left under a group is the same for short and long groups", () =>
   // A one-message group keeps the height it always had: 44 + 20.
   assert.ok(Math.abs(estimate(onDesktop, 1) - 64) < 0.5, String(estimate(onDesktop, 1)));
 });
+
+test("on a touch screen the ⋯ button takes its room out of every line", () => {
+  // .kc-msg gets 44px of right padding there, so text never runs under the button.
+  const base = { listWidth: 390, fontScale: 1, isPhone: true, lineHeight: 1.45, densityBasePx: 44 };
+  const plain = messageRowMetrics(base);
+  const touch = messageRowMetrics({ ...base, hasTouchActions: true });
+  assert.equal(touch.textWidth, plain.textWidth - 44);
+  assert.ok(touch.charsPerLine < plain.charsPerLine, `${touch.charsPerLine} < ${plain.charsPerLine}`);
+});

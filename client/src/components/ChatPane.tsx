@@ -20,7 +20,7 @@ import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions";
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
-import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, messageGroupTextPx, messageLineCount, messageRowMetrics } from "../lib/messageLayout";
+import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, TOUCH_ACTIONS_QUERY, messageGroupTextPx, messageLineCount, messageRowMetrics } from "../lib/messageLayout";
 import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode, type LinkPreviewMode } from "../lib/linkPreviews";
 import { NO_OPEN_EMBEDS, embedKey, embedRowPx, enteringChat, linkEmbedFor, openHeightsIn, withEmbedHeight, type LinkEmbed, type OpenEmbeds } from "../lib/linkEmbeds";
@@ -568,12 +568,14 @@ export function ChatPane({
   // is sized again.
   useEffect(() => {
     const phoneLayout = window.matchMedia(PHONE_LAYOUT_QUERY);
+    const touchLayout = window.matchMedia(TOUCH_ACTIONS_QUERY);
     const readMetrics = (): boolean => {
       const cs = getComputedStyle(document.documentElement);
       const next = messageRowMetrics({
         listWidth: listBox?.clientWidth ?? 0,
         fontScale: Number.parseFloat(cs.getPropertyValue("--msg-font-scale")) || 1,
         isPhone: phoneLayout.matches,
+        hasTouchActions: touchLayout.matches,
         lineHeight: Number.parseFloat(cs.getPropertyValue("--msg-line-height")) || 1.45,
         densityBasePx: Number.parseFloat(cs.getPropertyValue("--msg-base-px")) || 44,
       });
@@ -601,11 +603,13 @@ export function ChatPane({
     };
     window.addEventListener(APPEARANCE_CHANGED_EVENT, onAppearanceChange);
     phoneLayout.addEventListener("change", onResize);
+    touchLayout.addEventListener("change", onResize);
     const observer = listBox && typeof ResizeObserver !== "undefined" ? new ResizeObserver(onResize) : null;
     if (listBox) observer?.observe(listBox);
     return () => {
       window.removeEventListener(APPEARANCE_CHANGED_EVENT, onAppearanceChange);
       phoneLayout.removeEventListener("change", onResize);
+      touchLayout.removeEventListener("change", onResize);
       observer?.disconnect();
     };
   }, [listBox]);
@@ -1824,7 +1828,11 @@ export function ChatPane({
                               type="button"
                               className="kc-msg-more"
                               aria-label="Message actions"
-                              onClick={(e) => { e.stopPropagation(); setActionSheetMsg(msg); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+                                setActionSheetMsg(msg);
+                              }}
                             >
                               <Icon name="more" size={18} />
                             </button>
@@ -2014,6 +2022,11 @@ export function ChatPane({
         <MessageActionSheet
           msg={actionSheetMsg}
           isMine={actionSheetMsg.author.id === currentUserId}
+          onReact={() => {
+            setPickerPos({ x: Math.max(12, (window.innerWidth - 200) / 2), y: window.innerHeight - 96 });
+            setEmojiPickerFor(actionSheetMsg.id);
+            setActionSheetMsg(null);
+          }}
           onReply={() => { setReplyTarget(actionSheetMsg); setActionSheetMsg(null); }}
           onPin={onPinMessage ? () => { onPinMessage(actionSheetMsg.id, !actionSheetMsg.pinned); setActionSheetMsg(null); } : undefined}
           onForward={onForward ? () => { onForward(actionSheetMsg); setActionSheetMsg(null); } : undefined}
@@ -2030,6 +2043,7 @@ export function ChatPane({
       {emojiPickerFor && pickerPos && createPortal(
         // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- event-containment wrapper (keeps clicks inside the picker), not a control
         <div
+          className="kc-react-picker"
           onClick={(e) => e.stopPropagation()}
           style={{
             position: "fixed",

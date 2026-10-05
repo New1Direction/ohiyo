@@ -860,11 +860,11 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
           </div>
 
           {mode === "solo" && (
-            <div style={{ flex: 1, minHeight: 0, display: "grid", placeItems: "center", padding: "clamp(18px, 5vh, 54px)", overflow: "hidden" }}>
+            <div style={{ flex: 1, minHeight: 0, display: "grid", placeItems: "center", padding: "clamp(18px, 5vh, 54px) clamp(14px, 4vw, 54px)", overflow: "hidden" }}>
               <div
                 className="kc-fade-up"
                 style={{
-                  width: "min(480px, calc(100vw - 48px))",
+                  width: "min(480px, 100%)",
                   display: "grid",
                   justifyItems: "center",
                   gap: 15,

@@ -164,7 +164,7 @@ export function AuthScreen({ home, onAuth }: Props) {
 
   return (
     <main
-      className="relative flex h-screen w-screen items-center justify-center overflow-hidden"
+      className="kc-screen relative flex w-screen overflow-x-hidden overflow-y-auto"
       style={{
         background:
           "radial-gradient(circle at 30% 20%, color-mix(in oklch, var(--accent) 16%, var(--bg-base)) 0%, var(--bg-base) 55%)",
@@ -175,7 +175,7 @@ export function AuthScreen({ home, onAuth }: Props) {
         {Array.from({ length: 18 }, (_, i) => <span key={`twig-${i}`} />)}
         {Array.from({ length: 30 }, (_, i) => <i key={`leaf-${i}`} />)}
       </div>
-      <div className="relative z-10 flex w-full max-w-sm flex-col items-center">
+      <div className="relative z-10 m-auto flex w-full max-w-sm flex-col items-center">
       <div
         className="ohiyo-auth-card w-full"
         style={{
