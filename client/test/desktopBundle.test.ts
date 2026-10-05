@@ -54,3 +54,13 @@ test("a plain local build needs no signing key: only the release workflow makes 
   assert.equal(workflow.split("TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}").length - 1, builds);
   assert.equal(workflow.split("TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}").length - 1, builds);
 });
+
+test("the app, the crate and the bundle agree on the version, and the changelog has that release", () => {
+  const pkg = JSON.parse(readFileSync(join(tauri, "..", "package.json"), "utf8"));
+  const crate = /^version = "([^"]+)"/m.exec(read("Cargo.toml"))?.[1];
+  assert.equal(pkg.version, conf.version);
+  assert.equal(crate, conf.version);
+  const changelog = readFileSync(join(tauri, "..", "..", "CHANGELOG.md"), "utf8");
+  assert.ok(changelog.includes(`## [${conf.version}] — `), `CHANGELOG.md has a section for ${conf.version}`);
+  assert.ok(changelog.includes(`[${conf.version}]: https://github.com/New1Direction/ohiyo/compare/`), "and its compare link");
+});

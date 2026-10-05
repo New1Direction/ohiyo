@@ -54,8 +54,9 @@ Choices made while writing this, not yet discussed. Change any of them:
 - **Closing the window** hides it when "Keep running" is on; the app and its connection
   stay up. The first time, one notification says "Ohiyo is still running in the menu bar"
   (Linux: "in the tray"). Cmd+Q and the tray's Quit really quit.
-- **Coming back:** a click on the tray icon, on the Mac dock icon, on a notification, or a
-  second launch shows and focuses the window.
+- **Coming back:** the tray menu's Open Ohiyo, a click on the Mac dock icon or on a
+  notification, or a second launch shows and focuses the window. A click on the tray icon
+  opens its menu, as menu bar icons do.
 - **Unread:** the total unread count is the number on the Mac dock icon and is in the tray
   tooltip ("Ohiyo, 3 unread"). Zero clears it.
 - **A hidden window is never "looking at" a chat,** so messages in the open channel notify
@@ -73,7 +74,8 @@ operating system through `tauri-plugin-autostart`.
   file granting audio input and camera, referenced from `tauri.conf.json`. Without them
   macOS refuses the microphone.
 - **Any shell that cannot call** (the Linux app's web engine is the likely case): the app
-  checks for `getUserMedia` and `RTCPeerConnection`. If either is missing, voice rooms say
+  checks for `RTCPeerConnection` (a missing microphone is not a blocker: Ohiyo joins
+  listen-only). If it is missing, voice rooms say
   "Voice isn't available in this app yet. Open Ohiyo in your browser to join." instead of
   failing after the click.
 - **Not changed:** the hosted server has no relay (TURN), so calls can fail on strict
@@ -115,7 +117,7 @@ client/src-tauri/
   Entitlements.plist         audio input, camera                      (new)
   Cargo.toml                 tauri "tray-icon"; autostart and updater plugins
   tauri.conf.json            version, entitlements, updater key + endpoint, updater artifacts
-  capabilities/default.json  window show/hide/focus/badge, autostart, updater
+  capabilities/default.json  updater (everything else goes through our own commands)
   src/lib.rs                 registers plugins, tray and window lifecycle
   src/tray.rs                tray icon, menu, events                  (new)
   src/prefs.rs               "keep running" file, read and written    (new)
@@ -144,7 +146,7 @@ Everything desktop-only sits behind `isDesktop()`, so the web app is unchanged.
 6. Then, in its own change: ohiyo.gg gets a Download section. Mac is labelled a beta that
    Apple has not verified, with the steps to open it (System Settings → Privacy & Security
    → Open Anyway). The site test that forbids download links is replaced by one that checks
-   they point at the published version. LAUNCH-STATUS.md, GO-LIVE.md and the README follow.
+   every link names a published version tag. LAUNCH-STATUS.md, GO-LIVE.md and the README follow.
 
 ## 10. Testing
 
@@ -172,6 +174,9 @@ Before the release is published, build A is installed, used to create encryption
 then updated to build B through the updater. If the vault does not open afterwards, the
 updater is switched off for Mac in this release (Mac users update by downloading) and the
 owner is told. Losing someone's keys is not an acceptable price for self-updating.
+
+The gate runs before the tag is pushed, on local builds that use their own identifier and
+keychain entry, because the machine it runs on has the real app installed.
 
 ## 12. Not in this release
 
