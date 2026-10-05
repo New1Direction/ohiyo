@@ -2939,32 +2939,64 @@ button:disabled,
   .kc-theme-editor__head { grid-template-columns: 1fr; }
   .kc-theme-editor__preview { min-height: 108px; }
 }
+/* Phone: the sidebar becomes a bar across the top. The title and "Back to Ohiyo" sit on
+   one line, and the tabs are a row of named pills that scrolls sideways. (It used to
+   shrink to a rail of unnamed dots and hide the only way back.) */
 @media (max-width: 560px) {
+  .kc-settings-dialog { flex-direction: column; }
   .kc-settings-sidebar {
-    width: 82px;
-    padding: 18px 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "brand close" "nav nav";
+    align-items: center;
+    gap: 10px 12px;
+    width: 100%;
+    overflow: visible;
+    padding: max(12px, env(safe-area-inset-top, 0px)) 14px 10px;
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in oklch, var(--text-primary) 8%, transparent);
   }
-  .kc-settings-sidebar__brand {
-    justify-items: center;
-    grid-template-columns: 1fr;
-    padding-inline: 0;
+  .kc-settings-sidebar__brand { grid-area: brand; gap: 10px; padding: 0; }
+  .kc-settings-sidebar__mark { width: 34px; height: 34px; border-radius: 12px; }
+  .kc-settings-sidebar__eyebrow { display: none; }
+  .kc-settings-sidebar__title { margin-top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kc-settings-sidebar__footer { grid-area: close; margin: 0; padding: 0; }
+  .kc-settings-close { width: auto; min-height: 40px; padding: 0 14px; border-radius: 999px; white-space: nowrap; }
+  .kc-settings-nav {
+    grid-area: nav;
+    display: flex;
+    gap: 6px;
+    margin-inline: -14px;
+    padding: 2px 14px 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
   }
-  .kc-settings-sidebar__brand > div:not(.kc-settings-sidebar__mark),
+  .kc-settings-nav::-webkit-scrollbar { display: none; }
   .kc-settings-nav__label,
-  .kc-settings-nav__text,
-  .kc-settings-close { display: none; }
+  .kc-settings-nav__dot { display: none; }
   .kc-settings-nav__item {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    min-height: 46px;
-    padding: 8px;
+    flex: 0 0 auto;
+    grid-template-columns: auto;
+    width: auto;
+    min-height: 40px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border-color: color-mix(in oklch, var(--text-primary) 8%, transparent);
   }
-  .kc-settings-content { padding: 18px !important; }
+  .kc-settings-nav__item:hover { transform: none; }
+  .kc-settings-nav__text span { overflow: visible; }
+  .kc-settings-content { padding: 18px 14px !important; }
   .kc-appearance-hero { border-radius: 22px; }
   .kc-settings-stage,
   .kc-settings-card { border-radius: 20px; }
   .kc-section-head,
   .kc-theme-builder__closed { align-items: flex-start; flex-direction: column; }
+}
+
+/* The narrowest phones: the title needs the room the "OH" mark takes. */
+@media (max-width: 360px) {
+  .kc-settings-sidebar__mark { display: none; }
 }
 
 /* ─── Accent customizer swatches (Appearance settings) ───────────────────────── */
