@@ -2,7 +2,6 @@
 //! Ohiyo and it stays in the tray, so notifications keep arriving.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -18,9 +17,6 @@ const TRAY_ID: &str = "main";
 const EVENT_LEAVE_CALL: &str = "desktop://leave-call";
 const EVENT_CHECK_UPDATES: &str = "desktop://check-updates";
 const EVENT_WINDOW_HIDDEN: &str = "desktop://window-hidden";
-
-/// How long the window may stay hidden waiting for its page before it is shown anyway.
-const REVEAL_FALLBACK: Duration = Duration::from_secs(3);
 
 #[derive(Debug, PartialEq)]
 pub enum CloseAction {
@@ -68,8 +64,6 @@ pub struct TrayState {
     has_tray: AtomicBool,
     in_call: AtomicBool,
     hidden: AtomicBool,
-    /// The window has been shown at least once since launch (see `reveal_main`).
-    revealed: AtomicBool,
 }
 
 pub fn close_action(app: &AppHandle) -> CloseAction {
@@ -84,26 +78,9 @@ pub fn mark_visible(app: &AppHandle) {
     }
 }
 
-/// True for the first caller only.
-fn first_reveal(revealed: &AtomicBool) -> bool {
-    !revealed.swap(true, Ordering::Relaxed)
-}
-
-/// Show the window for the first time after launch. It is created hidden
-/// (tauri.conf.json), because a web view paints white until its page's first frame and
-/// the window would open as a white sheet. Called when the page has loaded, and by a timer
-/// in case it never does. Only the first call shows anything: the page also reports in
-/// when it reloads, and by then the person may have closed the window to the tray.
-pub fn reveal_main(app: &AppHandle) {
-    if first_reveal(&app.state::<TrayState>().revealed) {
-        show_main(app);
-    }
-}
-
 /// Show the window and bring it to the front: the tray's "Open Ohiyo", the Dock icon, a
 /// second launch.
 pub fn show_main(app: &AppHandle) {
-    app.state::<TrayState>().revealed.store(true, Ordering::Relaxed);
     #[cfg(target_os = "macos")]
     let _ = app.show();
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
@@ -219,13 +196,6 @@ pub fn init(app: &AppHandle) {
         // hint and the setting both say that opening Ohiyo again brings the window back.
         Err(e) => eprintln!("[ohiyo] couldn't create the tray icon: {e}"),
     }
-    // The window is shown when its page has loaded (lib.rs). If that never happens, show
-    // it anyway: an empty window can be seen and closed, a missing one cannot.
-    let app = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(REVEAL_FALLBACK);
-        reveal_main(&app);
-    });
 }
 
 #[tauri::command]
@@ -261,17 +231,6 @@ mod tests {
 
     const KEEP: DesktopPrefs = DesktopPrefs { keep_running: true, tray_hint_shown: false };
     const QUIT: DesktopPrefs = DesktopPrefs { keep_running: false, tray_hint_shown: false };
-
-    #[test]
-    fn the_window_is_revealed_once_and_a_later_page_load_cannot_bring_it_back() {
-        // The page reports that it loaded every time it loads. Only the first report may
-        // show the window: after that the person may have closed it to the tray, and a
-        // page that reloads there must not pop it back up.
-        let revealed = AtomicBool::new(false);
-        assert!(first_reveal(&revealed));
-        assert!(!first_reveal(&revealed));
-        assert!(!first_reveal(&revealed));
-    }
 
     #[test]
     fn the_tooltip_counts_unread_and_is_plain_when_there_are_none() {

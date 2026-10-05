@@ -83,19 +83,20 @@ test("release builds, and only they, look for updates", () => {
   assert.equal(workflow.split("VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}").length - 1, builds);
 });
 
-test("the window is never shown empty: it starts hidden and appears once its page is there", () => {
-  // A web view paints white until its page's first frame, and no setting changes that on a
-  // Mac. So the window is created hidden and shown when the page has loaded. A timer shows
-  // it anyway if the page never reports in: a missing window is worse than an empty one.
-  assert.equal(conf.app.windows[0].visible, false);
-  // Not a background colour: measured on a Mac, the first frame was still white with one,
-  // and it turned the window's title bar white for good on top of the dark app.
-  assert.equal(conf.app.windows[0].backgroundColor, undefined);
+test("the window is on screen from the start, with no colour of its own", () => {
+  // Two ways of hiding the web view's white first frame were tried and measured on a Mac.
+  // Both made things worse, so neither may come back without being measured again:
+  // - Hidden until its page has loaded. A password prompt takes the app out of the
+  //   foreground, so the window was then shown behind whatever else was open; WebKit
+  //   counted it as covered, paused the page and dropped its picture after three seconds.
+  //   The screen that explains the prompt was never seen.
+  // - A window background colour. The first frame was still white, and the title bar
+  //   turned white for good on top of the dark app.
+  const [main] = conf.app.windows;
+  assert.notEqual(main.visible, false);
+  assert.equal(main.backgroundColor, undefined);
   const lib = readFileSync(join(tauri, "src", "lib.rs"), "utf8");
-  assert.match(lib, /\.on_page_load\(/);
-  assert.match(lib, /PageLoadEvent::Finished[\s\S]{0,160}tray::reveal_main\(/);
-  const tray = readFileSync(join(tauri, "src", "tray.rs"), "utf8");
-  assert.match(tray, /sleep\(REVEAL_FALLBACK\);\s*reveal_main\(/);
+  assert.doesNotMatch(lib, /on_page_load/);
 });
 
 test("the page carries no inline style element", () => {
