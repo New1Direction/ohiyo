@@ -158,8 +158,14 @@ a:hover { text-decoration-color: currentColor; }
 
 /* ── The app, right under the first screen ───────────────────────────────── */
 /* Tucked up towards the meadow's edge, so the app is the next thing you see. */
-.peek { position: relative; width: min(100%, 62rem); margin: calc(var(--space-section) * -0.4) auto clamp(3rem, 7vw, 6rem); padding-bottom: 4%; }
-.peek .window { transform: rotate(0.6deg); }
+/* The window sits straight (a tilt blurs its text) and the phone stands at its bottom
+   right corner, over the empty side of the chat instead of over the channel list. */
+.peek { position: relative; isolation: isolate; width: min(100%, 66rem); margin: calc(var(--space-section) * -0.4) auto clamp(3rem, 7vw, 6rem); padding: 0 6.5% 7% 0; }
+/* A soft pool of shade under the two devices, so they rest on the page. */
+.peek::before { content: ""; position: absolute; inset: 14% 3% -3% 3%; z-index: -1; border-radius: 50%; background: radial-gradient(closest-side, rgb(31 92 58 / 26%), transparent); filter: blur(26px); }
+.peek .window { border-radius: 18px; border-color: rgb(22 36 29 / 18%); box-shadow: 0 2px 4px rgb(22 36 29 / 8%), 0 42px 80px -32px rgb(22 36 29 / 50%); }
+.peek .window__bar { position: relative; padding: 11px 14px; background: linear-gradient(#f8f4eb, #efeadf); }
+.peek .window__bar span { position: absolute; left: 50%; min-width: 36%; margin: 0; padding: 5px 14px; border-radius: 999px; background: rgb(22 36 29 / 7%); text-align: center; transform: translateX(-50%); }
 .cta { display: flex; flex-wrap: wrap; gap: 0.9rem 0.9rem; padding-bottom: var(--edge); }
 .window { margin: 0; border: 1px solid rgb(22 36 29 / 14%); border-radius: 16px; background: var(--app); box-shadow: var(--shadow-l); overflow: hidden; }
 .window__bar { display: flex; align-items: center; gap: 7px; padding: 10px 14px; background: #f3efe6; border-bottom: 1px solid var(--hair); }
@@ -168,13 +174,19 @@ a:hover { text-decoration-color: currentColor; }
 .window__bar i:nth-child(3) { background: #9cc9a2; }
 .window__bar span { margin-left: 0.6rem; font: 600 0.75rem/1 var(--font-body); color: var(--muted); }
 .window img { display: block; width: 100%; height: auto; }
-.phone { position: absolute; left: -3.5%; bottom: 0; width: 22%; margin: 0; border: 5px solid #1b1a19; border-radius: clamp(16px, 2.2vw, 26px); background: var(--app); box-shadow: var(--shadow-l); overflow: hidden; transform: rotate(-5deg); }
+.phone { position: absolute; right: 0; bottom: 0; width: 20.5%; margin: 0; border: clamp(5px, 0.62vw, 8px) solid #0d0d0c; border-radius: clamp(20px, 2.9vw, 38px); background: #0d0d0c; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%), 0 2px 4px rgb(22 36 29 / 10%), 0 34px 60px -22px rgb(22 36 29 / 64%); overflow: hidden; }
+/* The strip a phone keeps for itself: clock, camera island, battery. */
+.phone__bar { position: relative; display: flex; align-items: center; justify-content: space-between; padding: 7.5% 10% 3.5%; background: #1e1c1d; color: #f3f1ea; font: 700 clamp(7px, 0.8vw, 11px)/1 var(--font-body); }
+.phone__bar i { position: absolute; left: 50%; top: 56%; width: 29%; height: 44%; border-radius: 999px; background: #000; transform: translate(-50%, -50%); }
+.phone__bar b { width: 20%; height: 0.7em; border-radius: 3px; background: linear-gradient(90deg, #f3f1ea 64%, rgb(243 241 234 / 32%) 64%); }
 .phone img { display: block; width: 100%; height: auto; }
 /* On a phone, show the phone. The desktop window is unreadable at that size. */
 @media (max-width: 560px) {
-  .peek { padding-bottom: 0; }
+  .peek { padding: 0; }
+  .peek::before { inset: 8% -4% -3%; }
   .peek .window { display: none; }
-  .phone { position: relative; left: auto; bottom: auto; width: min(66%, 15.5rem); margin-inline: auto; transform: rotate(-2deg); }
+  .phone { position: relative; right: auto; bottom: auto; width: min(74%, 17.5rem); margin-inline: auto; border-width: 7px; border-radius: 36px; }
+  .phone__bar { font-size: 10px; }
 }
 
 .band { position: relative; isolation: isolate; padding-block: var(--space-section); }
