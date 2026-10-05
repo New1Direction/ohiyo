@@ -11,6 +11,16 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
 
+### Fixed
+- **The app on phones:** message text no longer runs underneath each message's ⋯ button,
+  and touching a message no longer pops the desktop toolbar over its neighbours. The ⋯ menu
+  can add a reaction. The app is sized to the part of the screen the browser leaves
+  visible, so the message box is not hidden behind the browser's bar. The channel drawer is
+  wider, lists the channels before the launch checklist, and its small buttons are big
+  enough to hit. Dialogs and the call screen fit the screen, the sign-in and first-space
+  screens scroll on small phones instead of cutting their tops off, notices appear at the
+  top instead of over the newest messages, and fields no longer make an iPhone zoom in.
+
 ## [0.3.0] — 2026-10-04
 
 ### Added

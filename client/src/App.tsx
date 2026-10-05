@@ -2347,7 +2347,7 @@ function MainApp({
 
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
+    <div className="kc-screen flex w-screen overflow-hidden">
       {/* Server + channel rails — a slide-in drawer on phones, fixed panes on desktop */}
       <div className={`kc-nav${mobileNavOpen ? " is-open" : ""}`}>
         <div className="server-sidebar">

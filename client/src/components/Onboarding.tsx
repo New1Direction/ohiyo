@@ -101,7 +101,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
 
   return (
     <div
-      className="ohiyo-onboarding-screen relative flex h-screen w-screen items-center justify-center overflow-y-auto"
+      className="ohiyo-onboarding-screen kc-screen relative flex w-screen overflow-x-hidden overflow-y-auto"
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
       style={{
@@ -112,7 +112,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
     >
       <div ref={spotlightRef} className="ohiyo-cursor-spotlight" aria-hidden="true" />
       <div className="ohiyo-onboarding-glow" aria-hidden="true" />
-      <div className="ohiyo-onboarding-hero relative z-10 flex w-full max-w-xl flex-col items-center text-center">
+      <div className="ohiyo-onboarding-hero relative z-10 m-auto flex w-full max-w-xl flex-col items-center text-center">
         <div className="ohiyo-onboarding-mark mb-1" style={{ color: "var(--accent)" }}>
           <BirdMark size={64} />
         </div>

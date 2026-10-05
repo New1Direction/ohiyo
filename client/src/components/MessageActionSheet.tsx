@@ -9,6 +9,7 @@ import { Icon, type IconName } from "./Icon";
 type Props = {
   msg: Message;
   isMine: boolean;
+  onReact: () => void;
   onReply: () => void;
   onPin?: () => void;
   onForward?: () => void;
@@ -23,6 +24,7 @@ type Props = {
 export function MessageActionSheet({
   msg,
   isMine,
+  onReact,
   onReply,
   onPin,
   onForward,
@@ -38,6 +40,7 @@ export function MessageActionSheet({
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- event-containment wrapper (keeps taps inside the sheet), not a control; rows below are real buttons */}
       <div className="kc-sheet" aria-label="Message actions" onClick={(e) => e.stopPropagation()}>
         <div className="kc-sheet-grip" aria-hidden />
+        <Row icon="react" label="Add reaction" onClick={onReact} />
         <Row icon="reply" label="Reply" onClick={onReply} />
         {onPin && <Row icon="pin" label={msg.pinned ? "Unpin" : "Pin"} onClick={onPin} />}
         {onForward && <Row icon="forward" label="Forward" onClick={onForward} />}

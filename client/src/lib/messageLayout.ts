@@ -27,6 +27,11 @@ const PHONE_LINE_HEIGHT = 1.45;
 const PHONE_ROW_EXTRA_PX = 3.2;
 /** Matches the phone block in index.css. */
 export const PHONE_LAYOUT_QUERY = "(max-width: 640px)";
+// Touch screens: every message has a ⋯ button on its right, and .kc-msg keeps this much
+// padding free for it so text never runs underneath.
+const TOUCH_ACTIONS_PX = 44;
+/** Matches the touch block in index.css. */
+export const TOUCH_ACTIONS_QUERY = "(hover: none) and (pointer: coarse)";
 
 // Every message in a group has its own 1px + 2px of padding (.kc-msg).
 const MESSAGE_PAD_PX = 3;
@@ -37,6 +42,8 @@ export interface MessageListMetrics {
   fontScale: number;
   /** True when the phone stylesheet is active. */
   isPhone: boolean;
+  /** True on touch screens, where each message makes room for its ⋯ button. */
+  hasTouchActions?: boolean;
 }
 
 export interface MessageRowInputs extends MessageListMetrics {
@@ -56,16 +63,17 @@ export interface MessageRowMetrics {
   textWidth: number;
 }
 
-/** Width of the message text column: the list minus padding, avatar and gap. */
-function messageTextWidth({ listWidth, isPhone }: Pick<MessageListMetrics, "listWidth" | "isPhone">): number {
+/** Width of the message text column: the list minus padding, avatar, gap and the ⋯ button. */
+function messageTextWidth({ listWidth, isPhone, hasTouchActions }: Pick<MessageListMetrics, "listWidth" | "isPhone" | "hasTouchActions">): number {
   if (!Number.isFinite(listWidth) || listWidth <= 0) return 0;
-  return Math.max(0, listWidth - (isPhone ? PHONE_GUTTER_PX : DESKTOP_GUTTER_PX));
+  const gutter = (isPhone ? PHONE_GUTTER_PX : DESKTOP_GUTTER_PX) + (hasTouchActions ? TOUCH_ACTIONS_PX : 0);
+  return Math.max(0, listWidth - gutter);
 }
 
 /** How many characters of message text fit on one line of the list. */
-export function messageCharsPerLine({ listWidth, fontScale, isPhone }: MessageListMetrics): number {
+export function messageCharsPerLine({ listWidth, fontScale, isPhone, hasTouchActions }: MessageListMetrics): number {
   const scale = fontScale > 0 ? fontScale : 1;
-  const textWidth = messageTextWidth({ listWidth, isPhone });
+  const textWidth = messageTextWidth({ listWidth, isPhone, hasTouchActions });
   if (textWidth <= 0) {
     return Math.max(MIN_CHARS_PER_LINE, Math.round(DEFAULT_CHARS_PER_LINE / scale));
   }

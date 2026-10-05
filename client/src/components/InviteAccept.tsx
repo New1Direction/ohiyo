@@ -47,7 +47,7 @@ export function InviteAccept({ token, code, onJoin, onDismiss }: Props) {
 
   return (
     <div
-      className="flex h-screen w-screen items-center justify-center"
+      className="kc-screen flex w-screen items-center justify-center"
       style={{
         background:
           "radial-gradient(circle at 30% 20%, color-mix(in oklch, var(--accent) 16%, var(--bg-base)) 0%, var(--bg-base) 55%)",

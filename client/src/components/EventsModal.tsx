@@ -100,7 +100,7 @@ export function EventsModal({ token, serverId, currentUserId, refreshKey, onClos
         <span className="text-xs" style={{ color: "var(--text-secondary)", marginBottom: "calc(-1 * var(--space-1))" }}>
           When?
         </span>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <input
             type="datetime-local"
             value={when}

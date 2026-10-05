@@ -3948,3 +3948,63 @@ button:disabled,
 @media (prefers-reduced-motion: reduce) {
   .kc-watch:fullscreen .kc-watch-header { transition: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Phones and touch screens
+   ═══════════════════════════════════════════════════════════ */
+/* Full-height screens follow the part of the screen the browser leaves visible. 100vh is
+   the whole screen on a phone, which puts the message box behind the browser's own bar. */
+.kc-screen { height: 100vh; height: 100dvh; }
+.kc-screen-min { min-height: 100vh; min-height: 100dvh; }
+
+/* A dialog may shrink to the screen; without this its widest row decides its width. */
+.kc-modal { min-width: 0; }
+
+@media (hover: none) and (pointer: coarse) {
+  /* The ⋯ sheet replaces the desktop hover toolbar. A touch counts as a hover, which used
+     to pop the toolbar over the neighbouring messages. The delete confirmation lives in
+     the same box, so that one stays and no longer depends on a hover to be seen. */
+  .kc-msg-actions:not([data-confirm="1"]) { display: none; }
+  .kc-msg-actions[data-confirm="1"] { opacity: 1; transform: none; pointer-events: auto; }
+  /* Room for the ⋯ so text never runs underneath it (messageLayout.ts counts these 44px). */
+  .kc-msg { padding-right: 44px; }
+  .kc-msg-more { top: 0; right: 2px; background: transparent; box-shadow: none; }
+  /* Under 16px an iPhone zooms the whole page when a field takes focus. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select { font-size: 16px !important; }
+  /* Fingertip-sized targets for the header menu and the small sidebar buttons. */
+  .kc-nav-toggle { min-width: 44px; min-height: 44px; }
+  .kc-react-picker button { min-width: 40px; min-height: 40px; }
+  .kc-nav button[aria-label="Change server logo"],
+  .kc-nav button[aria-label="Events"],
+  .kc-nav button[aria-label="Report server"],
+  .kc-nav button[aria-label="Moderation queue"],
+  .kc-nav button[aria-label="Manage categories"],
+  .kc-nav button[aria-label="Create channel"],
+  .kc-nav button[aria-label="Find people"],
+  .kc-nav button[aria-label^="Create one-time"],
+  .kc-nav button[aria-label="Hide owner launch checklist"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    min-height: 36px;
+  }
+}
+
+@media (max-width: 768px) {
+  /* The drawer: as wide as the phone allows while leaving a strip to tap outside it (it
+     used to be a fixed 13rem, which wrapped every label on anything wider than 320px). */
+  .kc-nav .channel-sidebar > div { width: max(12rem, min(19rem, calc(100vw - 8rem))); }
+  /* The server rail runs the full height instead of stopping under its last icon. */
+  .kc-nav .server-sidebar { display: flex; background: var(--bg-base); }
+  /* The Invite button gets its own line under the icons instead of being squeezed to
+     a sliver beside them. */
+  .kc-nav :has(> .kc-sidebar-invite) { flex-wrap: wrap; row-gap: 8px; }
+  .kc-nav .kc-sidebar-invite { flex: 1 1 6.5rem; min-height: 36px; }
+  /* Channels first: the launch checklist used to fill the drawer's first screen. */
+  .kc-nav .channel-sidebar .kc-touch-scroll { display: flex; flex-direction: column; }
+  .kc-nav .channel-sidebar .kc-touch-scroll > * { flex-shrink: 0; }
+  .kc-nav .kc-activation-card { order: 9; margin-top: 0.9rem; }
+}

@@ -26,7 +26,7 @@ export function BootSplash({ connStatus, onLogout }: Props) {
 
   return (
     <div
-      className="ohiyo-boot-splash flex h-screen w-screen flex-col items-center justify-center text-center"
+      className="ohiyo-boot-splash kc-screen flex w-screen flex-col items-center justify-center text-center"
       style={{
         background:
           "radial-gradient(circle at 50% 35%, color-mix(in oklch, var(--accent) 14%, var(--bg-base)) 0%, var(--bg-base) 60%)",

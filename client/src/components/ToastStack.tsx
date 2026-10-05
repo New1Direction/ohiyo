@@ -80,8 +80,9 @@ export function ToastStack({ toasts }: Props) {
           from { opacity: 0; transform: translateY(8px) scale(.98); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
+        /* Phones: at the top, clear of the message box and the newest messages. */
         @media (max-width: 640px) {
-          .ohiyo-toast-stack { left: 16px; right: 16px; bottom: 84px; }
+          .ohiyo-toast-stack { left: 16px; right: 16px; top: calc(env(safe-area-inset-top, 0px) + 60px); bottom: auto; }
           .ohiyo-toast { width: 100%; }
         }
         @media (prefers-reduced-motion: reduce) {
