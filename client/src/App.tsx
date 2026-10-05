@@ -87,6 +87,9 @@ import {
 import { useToast } from "./hooks/useToast";
 import { onLocalClock } from "./lib/watchSync";
 import { VOICE_UNAVAILABLE, callEnvironment, canCall } from "./lib/voiceSupport";
+import { arrivalInOpenChat, isLookingAt, lastRealMessageId } from "./lib/attention";
+import { unreadTotal, withoutUnread } from "./lib/unreadTotal";
+import { useDesktopShell } from "./hooks/useDesktopShell";
 import {
   loadActiveHomeId,
   loadHomes,
@@ -683,6 +686,32 @@ function MainApp({
   const mesh = useWebRTC(webrtcCallbacks);
   const sfu = useWebRTCLiveKit(webrtcCallbacks, token);
   const webrtc = liveKitEnabled ? sfu : mesh;
+
+  // ── Desktop shell: the tray, the dock badge, and a window that can sit hidden ──
+  const totalUnread = unreadTotal(unread);
+  // A window hidden in the tray is never "looking at" a chat: messages there notify and
+  // count as unread, and are marked read when the window comes back.
+  const windowHiddenRef = useRef(false);
+  const lastMessageIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    lastMessageIdRef.current = lastRealMessageId(messages);
+  }, [messages]);
+  useDesktopShell({
+    unread: totalUnread,
+    inCall: webrtc.channelId !== null,
+    onLeaveCall: () => {
+      if (webrtc.channelId !== null) webrtc.hangUp();
+    },
+    onCheckUpdates: () => {},
+    onWindowHidden: (hidden) => {
+      windowHiddenRef.current = hidden;
+      const open = selectedChannelRef.current;
+      if (hidden || !open) return;
+      // Back on screen: what arrived in the open chat while hidden is now read.
+      sendAck(open.id, lastMessageIdRef.current);
+      setUnread((prev) => withoutUnread(prev, open.id));
+    },
+  });
   // Keep refs in sync after commit (concurrent-safe — no ref writes during render).
   useLayoutEffect(() => {
     webrtcRef.current = webrtc;
@@ -772,9 +801,8 @@ function MainApp({
 
   // Reflect total unread in the tab title so it's visible when backgrounded.
   useEffect(() => {
-    const total = Object.values(unread).reduce((sum, n) => sum + n, 0);
-    document.title = total > 0 ? `(${total}) Ohiyo` : "Ohiyo";
-  }, [unread]);
+    document.title = totalUnread > 0 ? `(${totalUnread}) Ohiyo` : "Ohiyo";
+  }, [totalUnread]);
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -944,8 +972,12 @@ function MainApp({
               if (dm) setMessages((prev) => prev.map((m) => (m.id === dm.id ? dm : m)));
             });
           }
+          const isFromMe = !currentUserRef.current || msg.author.id === currentUserRef.current.id;
+          const arrival = arrivalInOpenChat(windowHiddenRef.current, isFromMe);
           // You're looking at this channel → it's read. Advance the cursor.
-          sendAck(msg.channel_id, msg.id);
+          if (arrival === "read") sendAck(msg.channel_id, msg.id);
+          // The window is hidden in the tray: it arrived, but nobody has seen it yet.
+          if (arrival === "unread") setUnread((prev) => ({ ...prev, [msg.channel_id]: (prev[msg.channel_id] ?? 0) + 1 }));
         } else if (currentUserRef.current && msg.author.id !== currentUserRef.current.id) {
           // New message in a channel you're not looking at → bump its unread count.
           // Guarded on currentUser so a pre-Ready event can't mis-count our own.
@@ -1338,14 +1370,6 @@ function MainApp({
     if (lastAckRef.current[channelId] === messageId) return;
     const ok = gatewayRef.current?.send({ t: "Ack", d: { channel_id: channelId, message_id: messageId } });
     if (ok) lastAckRef.current[channelId] = messageId;
-  }
-
-  /** Newest non-optimistic message id in a list — the read watermark. */
-  function lastRealMessageId(msgs: Message[]): string | undefined {
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (!msgs[i].id.startsWith("temp-")) return msgs[i].id;
-    }
-    return undefined;
   }
 
   async function handleSelectChannel(channel: Channel) {
@@ -1892,8 +1916,12 @@ function MainApp({
   function maybeNotify(msg: Message) {
     if (msg.author.id === currentUserRef.current?.id) return;
     if (blockedUserIdsRef.current.has(msg.author.id)) return;
-    const lookingAtIt =
-      selectedChannelRef.current?.id === msg.channel_id && !document.hidden;
+    const lookingAtIt = isLookingAt({
+      openChannelId: selectedChannelRef.current?.id,
+      messageChannelId: msg.channel_id,
+      pageHidden: document.hidden,
+      windowHidden: windowHiddenRef.current,
+    });
     if (lookingAtIt) return;
     const body = msg.content?.slice(0, 140) || "Sent an attachment";
     // Native OS notification under Tauri, Web Notification in a browser — but only from
