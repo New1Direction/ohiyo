@@ -393,15 +393,6 @@ export function ChannelSidebar({
 
       {/* Channel / DM list */}
       <div className="kc-touch-scroll flex-1 overflow-y-auto py-2">
-        {server && showActivationChecklist && activationState && onDismissActivationChecklist && (
-          <ActivationChecklist
-            state={activationState}
-            serverName={server.name}
-            onInvite={onInvite}
-            onJoinVoice={firstVoiceChannel ? () => onJoinVoice(firstVoiceChannel, { muted: true }) : undefined}
-            onDismiss={onDismissActivationChecklist}
-          />
-        )}
         {server ? (
           <>
             {/* Text channels (uncategorized) */}
@@ -600,6 +591,15 @@ export function ChannelSidebar({
               </>
             )}
           </div>
+        )}
+        {server && showActivationChecklist && activationState && onDismissActivationChecklist && (
+          <ActivationChecklist
+            state={activationState}
+            serverName={server.name}
+            onInvite={onInvite}
+            onJoinVoice={firstVoiceChannel ? () => onJoinVoice(firstVoiceChannel, { muted: true }) : undefined}
+            onDismiss={onDismissActivationChecklist}
+          />
         )}
       </div>
 

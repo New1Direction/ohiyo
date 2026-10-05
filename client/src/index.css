@@ -1424,6 +1424,32 @@ button:disabled,
   font-weight: 800;
   line-height: 1.2;
 }
+/* The checklist's row: a name, a count and a thin bar. It opens to the full card. */
+.kc-activation { margin: 0.9rem 0.75rem 0.5rem; }
+.kc-activation > summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid color-mix(in oklch, var(--accent) 16%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--accent) 6%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+.kc-activation > summary::-webkit-details-marker { display: none; }
+.kc-activation__count { color: var(--text-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+.kc-activation > summary .kc-activation-progress { grid-column: 1 / -1; margin: 0; }
+@media (hover: hover) and (pointer: fine) {
+  .kc-activation > summary:hover { background: color-mix(in oklch, var(--accent) 11%, transparent); }
+}
+.kc-activation[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.kc-activation[open] .kc-activation-card { margin: 0; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .kc-activation-card {
   margin: 0.25rem 0.75rem 0.9rem;
   padding: 0.85rem;
@@ -3899,10 +3925,6 @@ button:disabled,
   .kc-nav .channel-sidebar > div { width: max(12rem, min(19rem, calc(100vw - 8rem))); }
   /* The server rail runs the full height instead of stopping under its last icon. */
   .kc-nav .server-sidebar { display: flex; background: var(--bg-base); }
-  /* Channels first: the launch checklist used to fill the drawer's first screen. */
-  .kc-nav .channel-sidebar .kc-touch-scroll { display: flex; flex-direction: column; }
-  .kc-nav .channel-sidebar .kc-touch-scroll > * { flex-shrink: 0; }
-  .kc-nav .kc-activation-card { order: 9; margin-top: 0.9rem; }
 }
 
 /* ═══════════════════════════════════════════════════════════

@@ -23,6 +23,16 @@ export function ActivationChecklist({ state, serverName, onInvite, onJoinVoice, 
   const allDone = done === total;
 
   return (
+    // One quiet row under the channels until it is opened. Open by default it filled the
+    // sidebar and pushed the channels, the thing the sidebar is for, out of sight.
+    <details className="kc-activation">
+      <summary>
+        <span className="kc-activation__title">{allDone ? "All set" : "Getting started"}</span>
+        <span className="kc-activation__count">{done} of {total}</span>
+        <span className="kc-activation-progress" aria-hidden="true">
+          <span style={{ width: `${pct}%` }} />
+        </span>
+      </summary>
     <section className="kc-activation-card" aria-label="Owner launch checklist">
       <div className="kc-activation-card__head">
         <div>
@@ -32,9 +42,6 @@ export function ActivationChecklist({ state, serverName, onInvite, onJoinVoice, 
         <button type="button" className="kc-activation-dismiss kc-interactive" onClick={onDismiss} aria-label="Hide owner launch checklist">×</button>
       </div>
       <p>{allDone ? "Nice. Your space is ready for people." : "Five tiny steps to turn an empty room into a real community."}</p>
-      <div className="kc-activation-progress" aria-label={`${done} of ${total} setup steps complete`}>
-        <span style={{ width: `${pct}%` }} />
-      </div>
       <ol className="kc-activation-list">
         {ITEMS.map((item) => {
           const complete = Boolean(state[item.key]);
@@ -59,5 +66,6 @@ export function ActivationChecklist({ state, serverName, onInvite, onJoinVoice, 
       </div>
       <div className="kc-activation-privacy">Stored locally on this device — not analytics.</div>
     </section>
+    </details>
   );
 }
