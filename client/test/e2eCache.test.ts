@@ -23,6 +23,10 @@ before(async () => {
     getItem: (k: string) => stored.get(k) ?? null,
     setItem: (k: string, v: string) => void stored.set(k, v),
     removeItem: (k: string) => void stored.delete(k),
+    get length() {
+      return stored.size;
+    },
+    key: (i: number) => [...stored.keys()][i] ?? null,
   };
   bundle = await bundleEntry<E2eCache>(join(fixtures, "vaultCache.ts"), [
     { find: /^\.\/signal$/, replacement: join(fixtures, "signalStub.ts") },
@@ -71,6 +75,62 @@ test("entries without an expiry, and bare entries from before expiries were stor
   assert.equal(getCachedPlaintext("m3"), '{"pt":"looks like json","expires_at":1}');
   assert.equal(getCachedPlaintext("legacy"), "older plaintext");
   assert.deepEqual(index(), ["m3", "legacy"]);
+});
+
+// A restore from an older recovery backup writes plaintext entries straight to the store
+// (tauriVault importKeyMaterial), so they are missing from the index. Without the sign-in
+// sweep, a restored disappearing message nobody opens stays on disk past its expiry.
+const restored = (id: string, pt: string, expiresAt: number | null) =>
+  stored.set("kc:e2e-pt:" + id, JSON.stringify({ pt, expires_at: expiresAt }));
+
+test("the sign-in sweep drops restored entries that have already expired, unread", () => {
+  const { cachePlaintext, sweepPlaintextCache } = bundle.mod;
+  cachePlaintext("live", "kept", null);
+  restored("gone", "already disappeared", T0 - 1);
+  sweepPlaintextCache();
+  assert.equal(stored.has("kc:e2e-pt:gone"), false);
+  assert.equal(stored.get("kc:e2e-pt:live"), JSON.stringify({ pt: "kept", expires_at: null }));
+});
+
+test("restored entries that are still live join the index, so they expire on time", () => {
+  const { cachePlaintext, getCachedPlaintext, sweepPlaintextCache } = bundle.mod;
+  cachePlaintext("live", "kept", null);
+  restored("soon", "disappears later", T0 + 60);
+  stored.set("kc:e2e-pt:bare", "plaintext from before expiries were stored");
+  sweepPlaintextCache();
+  // Restored entries go to the old end of the index: first out when the cache is full.
+  assert.deepEqual(index(), ["soon", "bare", "live"]);
+  assert.equal(getCachedPlaintext("soon"), "disappears later");
+  mock.timers.setTime((T0 + 61) * 1000);
+  assert.equal(getCachedPlaintext("live"), "kept"); // reading anything sweeps
+  assert.equal(stored.has("kc:e2e-pt:soon"), false);
+  assert.equal(getCachedPlaintext("bare"), "plaintext from before expiries were stored");
+  assert.deepEqual(index(), ["bare", "live"]);
+});
+
+test("folding restored entries in keeps the cache within its bound", () => {
+  const { sweepPlaintextCache } = bundle.mod;
+  const ids = Array.from({ length: 4999 }, (_, i) => `m${i}`);
+  for (const id of ids) stored.set("kc:e2e-pt:" + id, JSON.stringify({ pt: id, expires_at: null }));
+  stored.set(INDEX, JSON.stringify(ids));
+  restored("r1", "one", null);
+  restored("r2", "two", null);
+  restored("r3", "three", null);
+  sweepPlaintextCache();
+  const idx = index();
+  assert.equal(idx.length, 5000);
+  assert.deepEqual(idx.slice(0, 2), ["r3", "m0"]);
+  assert.equal(stored.has("kc:e2e-pt:r1"), false);
+  assert.equal(stored.has("kc:e2e-pt:r2"), false);
+});
+
+test("the sign-in sweep also drops indexed entries that expired while nothing read the cache", () => {
+  const { cachePlaintext, sweepPlaintextCache } = bundle.mod;
+  cachePlaintext("m1", "disappears", T0 + 10);
+  mock.timers.setTime((T0 + 11) * 1000);
+  sweepPlaintextCache();
+  assert.equal(stored.has("kc:e2e-pt:m1"), false);
+  assert.deepEqual(index(), []);
 });
 
 // Runs last: once the vault backend is on, the cache stays on it for the rest of the file.

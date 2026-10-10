@@ -23,6 +23,13 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   Contributors need [Bun](https://bun.sh) 1.4+ alongside Node 22.
 
 ### Fixed
+- **Restored disappearing messages now disappear on time.** Restoring a recovery backup made
+  before backups became keys-only also restores the readable copies of old encrypted
+  messages it held. Those copies were stored where the expiry cleanup never looked, so a
+  disappearing message among them that you never opened stayed on the device after its
+  time ran out. The cleanup now finds them when you sign in: copies already past their
+  time are deleted, and the rest disappear on schedule. Expired copies also no longer wait
+  for you to open an encrypted chat before they are cleaned up.
 - **Your own encrypted messages stay readable.** Right after you sent a message in an
   encrypted chat, it could turn into "This message needs keys this device doesn't have" on
   your own screen until you reloaded. The message was never lost and the other person could
