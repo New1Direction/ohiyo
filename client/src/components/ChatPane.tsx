@@ -20,7 +20,7 @@ import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions";
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
-import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, TOUCH_ACTIONS_QUERY, messageGroupTextPx, messageLineCount, messageRowMetrics } from "../lib/messageLayout";
+import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, TOUCH_ACTIONS_QUERY, lockedCardPx, messageGroupTextPx, messageLineCount, messageRowMetrics, type LockedCardCopy } from "../lib/messageLayout";
 import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode, type LinkPreviewMode } from "../lib/linkPreviews";
 import { NO_OPEN_EMBEDS, embedKey, embedRowPx, enteringChat, linkEmbedFor, openHeightsIn, withEmbedHeight, type LinkEmbed, type OpenEmbeds } from "../lib/linkEmbeds";
@@ -839,6 +839,8 @@ export function ChatPane({
     [groups, activityNotices]
   );
 
+  // A boolean, not the callback: App passes a fresh function every render.
+  const canOpenRecovery = onSaveRecovery !== undefined;
   // Stable identity so VariableSizeList keeps the same itemSize callback (it caches
   // measured heights against it). Reads metricsRef.current (a ref, not a dep).
   const estimateHeight = useCallback(
@@ -873,9 +875,19 @@ export function ChatPane({
       const failed = g.msgs.filter((m) => m._state === "failed").length;
       const pollH = g.msgs.reduce((sum, m) => sum + (m.poll ? 70 + m.poll.options.length * 38 : 0), 0);
       const embedsH = g.msgs.reduce((sum, m) => sum + (hiddenMessageIds.has(m.id) ? 0 : messageEmbedHeight(m, e2eEnabled, embedSizing)), 0);
-      return Math.ceil(basePx + textH + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH);
+      // A message this device can't decrypt has empty text (one line, counted above) and
+      // shows a card in its place.
+      const lockedH = g.msgs.reduce(
+        (sum, m) =>
+          sum +
+          (m._decryptState && !m.poll && !hiddenMessageIds.has(m.id)
+            ? lockedCardPx(lockedCardCopy(m._decryptState, canOpenRecovery), textWidth) - linePx
+            : 0),
+        0
+      );
+      return Math.ceil(basePx + textH + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH + lockedH);
     },
-    [rows, hiddenMessageIds, e2eEnabled, openEmbeds]
+    [rows, hiddenMessageIds, e2eEnabled, openEmbeds, canOpenRecovery]
   );
 
   // Opening, closing or resizing a link card changes its row's height. Before paint, so a
@@ -2273,22 +2285,37 @@ function CustomEmoji({ emoji }: { emoji: ServerEmoji }) {
   );
 }
 
-function UndecryptableMessage({ state, onOpenRecovery }: { state: "unknown" | "not_covered" | "restore_failed"; onOpenRecovery?: () => void }) {
-  const restoredButFailed = state === "restore_failed";
-  const notCovered = state === "not_covered";
+type DecryptState = NonNullable<Message["_decryptState"]>;
+
+const LOCKED_COPY: Record<DecryptState, { title: string; body: string }> = {
+  unknown: {
+    title: "This message needs keys this device doesn’t have",
+    body: "If you made a recovery backup, open Personal recovery to check it. If this key was never backed up, Ohiyo can’t make it again.",
+  },
+  not_covered: {
+    title: "This old message was not in your recovery backup",
+    body: "This message’s key wasn’t in your backup, so it can’t be read on this device. Keys for old messages are deleted over time on purpose, and Ohiyo can’t make this one again.",
+  },
+  restore_failed: {
+    title: "This message still can’t be decrypted",
+    body: "A backup was restored, but this message still can’t be read. Its key may be missing from the backup, belong to another device, or have been deleted before the backup was made.",
+  },
+};
+
+/** What the locked card says. The list sizes its row from this same copy (lockedCardPx). */
+function lockedCardCopy(state: DecryptState, canOpenRecovery: boolean): LockedCardCopy {
+  return { ...LOCKED_COPY[state], hasButton: state === "unknown" && canOpenRecovery };
+}
+
+function UndecryptableMessage({ state, onOpenRecovery }: { state: DecryptState; onOpenRecovery?: () => void }) {
+  const copy = lockedCardCopy(state, onOpenRecovery !== undefined);
   return (
     <div className="mt-1 max-w-md rounded-2xl border p-3 text-xs" style={{ background: "color-mix(in oklch, var(--accent) 7%, var(--bg-elevated))", borderColor: "color-mix(in oklch, var(--accent) 22%, var(--bg-hover))", color: "var(--text-muted)" }}>
       <div className="font-bold" style={{ color: "var(--text-primary)" }}>
-        {notCovered ? "This old message was not in your recovery backup" : restoredButFailed ? "This message still can’t be decrypted" : "This message needs keys this device doesn’t have"}
+        {copy.title}
       </div>
-      <p className="mt-1 leading-5">
-        {notCovered
-          ? "This message’s key wasn’t in your backup, so it can’t be read on this device. Keys for old messages are deleted over time on purpose, and Ohiyo can’t make this one again."
-          : restoredButFailed
-            ? "A backup was restored, but this message still can’t be read. Its key may be missing from the backup, belong to another device, or have been deleted before the backup was made."
-            : "If you made a recovery backup, open Personal recovery to check it. If this key was never backed up, Ohiyo can’t make it again."}
-      </p>
-      {!restoredButFailed && !notCovered && onOpenRecovery && (
+      <p className="mt-1 leading-5">{copy.body}</p>
+      {copy.hasButton && (
         <button type="button" onClick={onOpenRecovery} className="kc-interactive mt-2 rounded-full px-3 py-1.5 text-xs font-bold" style={{ background: "var(--accent)", color: "#fff", border: "none" }}>
           Open recovery
         </button>

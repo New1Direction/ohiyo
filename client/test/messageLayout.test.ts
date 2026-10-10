@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_CHARS_PER_LINE,
   DEFAULT_ROW_METRICS,
+  lockedCardPx,
   messageCharsPerLine,
   messageGroupTextPx,
   messageLineCount,
@@ -141,4 +142,41 @@ test("on a touch screen the ⋯ button takes its room out of every line", () => 
   const touch = messageRowMetrics({ ...base, hasTouchActions: true });
   assert.equal(touch.textWidth, plain.textWidth - 44);
   assert.ok(touch.charsPerLine < plain.charsPerLine, `${touch.charsPerLine} < ${plain.charsPerLine}`);
+});
+
+// The card shown in place of a message this device can't decrypt. Its row was sized as one
+// line of empty text, so on a new device the next row covered the card and its "Open
+// recovery" button. Heights below were measured in Chromium (1200px and 390px windows).
+const needsKeys = {
+  title: "This message needs keys this device doesn’t have",
+  body: "If you made a recovery backup, open Personal recovery to check it. If this key was never backed up, Ohiyo can’t make it again.",
+  hasButton: true,
+};
+const restoreFailed = {
+  title: "This message still can’t be decrypted",
+  body: "A backup was restored, but this message still can’t be read. Its key may be missing from the backup, belong to another device, or have been deleted before the backup was made.",
+  hasButton: false,
+};
+
+test("a locked message's card is never estimated shorter than it renders", () => {
+  const desktopText = messageRowMetrics({ listWidth: 888, fontScale: 1, isPhone: false, ...cozy }).textWidth;
+  const phoneText = messageRowMetrics({ ...phone, ...cozy }).textWidth;
+  const cases: [string, typeof needsKeys, number, number][] = [
+    ["desktop, with button", needsKeys, desktopText, 122],
+    ["desktop, after a restore", restoreFailed, desktopText, 106],
+    ["phone, with button", needsKeys, phoneText, 158],
+    ["phone, after a restore", restoreFailed, phoneText, 142],
+  ];
+  for (const [label, copy, width, rendered] of cases) {
+    const px = lockedCardPx(copy, width);
+    assert.ok(px >= rendered && px <= rendered + 12, `${label}: estimated ${px}, rendered ${rendered}`);
+  }
+});
+
+test("a locked card grows as the column narrows, and is far taller than a line of text", () => {
+  const wide = lockedCardPx(needsKeys, 800);
+  assert.ok(lockedCardPx(needsKeys, 240) > wide);
+  assert.ok(wide > 100, String(wide));
+  assert.equal(lockedCardPx(needsKeys, 0), lockedCardPx(needsKeys, 448), "unmeasured list: the card's full width");
+  assert.equal(wide - lockedCardPx({ ...needsKeys, hasButton: false }, 800), 36, "the Open recovery button");
 });
