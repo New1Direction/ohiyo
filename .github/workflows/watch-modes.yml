@@ -30,7 +30,7 @@ jobs:
           export KIKKA_CHROMIUM="$(node -e "console.log(require('playwright-core').chromium.executablePath())")"
           export KIKKA_SHOTS="$RUNNER_TEMP/watch-mode-shots"
           bun run test:watch-dream
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: watch-mode-screenshots
