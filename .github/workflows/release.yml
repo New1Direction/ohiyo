@@ -94,7 +94,7 @@ jobs:
 
       - name: Build desktop installers (macOS signed + notarized)
         if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING == 'true'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
@@ -147,7 +147,7 @@ jobs:
 
       - name: Build desktop installers (macOS ad-hoc beta fallback)
         if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
@@ -165,7 +165,7 @@ jobs:
 
       - name: Build desktop installers (Linux)
         if: matrix.platform == 'ubuntu-22.04'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
