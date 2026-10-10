@@ -42,7 +42,7 @@ box; server channels are stored like any chat server's.
   reducing avoidable leaks. See
   [Known limits of the encryption](#known-limits-of-the-encryption) below. *(e2e
   suites `19-e2e-dm`, `20-disappearing`, `21-multidevice`, `22-group-e2e`,
-  `26-privacy-mode`, `27-private-dm-links`.)*
+  `26-privacy-mode`, `27-private-dm-links`, `35-recovery-restore`.)*
 - **Instant Servers** — launch your own community server in **one tap**. We host it
   (Minecraft-Realms-style): encrypted DMs and group chats are ciphertext on the box,
   while server channels are stored in the clear like any chat server's. Export anytime,

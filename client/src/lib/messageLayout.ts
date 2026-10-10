@@ -135,6 +135,43 @@ export const DEFAULT_ROW_METRICS: MessageRowMetrics = messageRowMetrics({
   densityBasePx: 44,
 });
 
+// The card shown in place of a message this device can't decrypt (UndecryptableMessage in
+// ChatPane): at most 28rem wide and inset 8px each side within the message, 1px border,
+// 0.75rem padding and 0.25rem above it. A bold 0.75rem title on 1rem lines, 0.25rem gap,
+// 0.75rem text on 1.25rem lines, and an optional button 0.5rem below (28px tall). Measured
+// in Chromium; change the two together.
+const LOCKED_CARD_MAX_PX = 448;
+const LOCKED_CARD_SIDE_PX = 16; // the message's own padding, both sides
+const LOCKED_CARD_INSET_PX = 26; // the card's padding and border, both sides
+const LOCKED_CARD_FRAME_PX = 4 + 2 + 24 + 4; // margin, border, padding, title-to-text gap
+const LOCKED_FONT_PX = 12;
+// Bold titles run wide: "This message still can’t be decrypted" (37 characters) takes two
+// lines in a 286px card, about 0.65em a character.
+const LOCKED_TITLE_CHAR_EM = 0.66;
+const LOCKED_TITLE_LINE_PX = 16;
+const LOCKED_BODY_LINE_PX = 20;
+const LOCKED_BUTTON_PX = 8 + 28;
+
+export interface LockedCardCopy {
+  title: string;
+  body: string;
+  hasButton: boolean;
+}
+
+/** Height of the card that stands in for a message this device can't decrypt. */
+export function lockedCardPx({ title, body, hasButton }: LockedCardCopy, textWidth: number): number {
+  const width = textWidth > 0 ? Math.min(LOCKED_CARD_MAX_PX, textWidth - LOCKED_CARD_SIDE_PX) : LOCKED_CARD_MAX_PX;
+  const inner = Math.max(0, width - LOCKED_CARD_INSET_PX);
+  const titleChars = Math.max(MIN_CHARS_PER_LINE, Math.floor(inner / (LOCKED_FONT_PX * LOCKED_TITLE_CHAR_EM)));
+  const bodyChars = Math.max(MIN_CHARS_PER_LINE, Math.floor(inner / (LOCKED_FONT_PX * AVG_CHAR_EM)));
+  return (
+    LOCKED_CARD_FRAME_PX +
+    messageLineCount(title, titleChars) * LOCKED_TITLE_LINE_PX +
+    messageLineCount(body, bodyChars) * LOCKED_BODY_LINE_PX +
+    (hasButton ? LOCKED_BUTTON_PX : 0)
+  );
+}
+
 /** Height of a group's messages: each is its lines of text plus its own padding. */
 export function messageGroupTextPx(lineCounts: readonly number[], linePx: number): number {
   return lineCounts.reduce((sum, lines) => sum + Math.max(1, lines) * linePx + MESSAGE_PAD_PX, 0);
