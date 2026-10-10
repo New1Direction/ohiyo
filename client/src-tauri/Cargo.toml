@@ -34,7 +34,7 @@ rand = "0.9"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 # "Open Ohiyo when I log in". Desktop only. Held at 2.5: 2.6 and later need Tauri 2.12,
 # and moving Tauri is its own change (the npm @tauri-apps packages must move with it).
-tauri-plugin-autostart = "~2.5"
+tauri-plugin-autostart = "~2.7"
 # The app offers its own updates. Desktop only. Held at 2.12 for the same reason; the
 # npm @tauri-apps/plugin-updater is held at the same minor, as the Tauri CLI requires.
 tauri-plugin-updater = "~2.12"
