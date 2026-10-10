@@ -20,15 +20,16 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
-      - run: npm ci
-      - run: npx playwright-core install --with-deps chromium
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright-core install --with-deps chromium
       - name: Exercise real component and capture screenshots
         run: |
           export KIKKA_CHROMIUM="$(node -e "console.log(require('playwright-core').chromium.executablePath())")"
           export KIKKA_SHOTS="$RUNNER_TEMP/watch-mode-shots"
-          npm run test:watch-dream
+          bun run test:watch-dream
       - uses: actions/upload-artifact@v4
         if: always()
         with:

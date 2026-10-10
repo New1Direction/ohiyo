@@ -52,7 +52,7 @@ Cloudflare Pages project + DNS.
 2. Build settings:
    - **Root directory** = `client`
    - **Framework preset** = `Vite` (or None)
-   - **Build command** = `npm ci && npm run build`
+   - **Build command** = `bun install --frozen-lockfile && bun run build`
    - **Build output directory** = `dist` (i.e. `client/dist`)
 3. **Environment variables** → `VITE_SERVER_URL = https://ohiyo.fly.dev` (baked into the bundle at build).
 4. Deploy → confirm the `*.pages.dev` URL loads the auth screen.

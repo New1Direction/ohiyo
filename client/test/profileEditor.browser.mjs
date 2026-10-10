@@ -1,5 +1,5 @@
 // Real settings page, with a fixture profile and no account/backend needed.
-// KIKKA_CHROMIUM=/path/to/chromium npm run test:profile-editor
+// KIKKA_CHROMIUM=/path/to/chromium bun run test:profile-editor
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "vite";

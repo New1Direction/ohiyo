@@ -26,7 +26,7 @@ function resolveChromium() {
       if (existsSync(p)) return p;
     }
   }
-  throw new Error("No cached Chromium found — set KIKKA_CHROMIUM or run `npx playwright install chromium`.");
+  throw new Error("No cached Chromium found — set KIKKA_CHROMIUM or run `bunx playwright-core install chromium`.");
 }
 
 export async function launchBrowser(options = {}) {

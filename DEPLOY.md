@@ -257,8 +257,8 @@ cd client
 # Edit client/.env.production:
 #   VITE_SERVER_URL=https://<your-backend-host>
 
-npm install
-npm run tauri build
+bun install
+bun run tauri build
 ```
 
 Installers land in `client/src-tauri/target/release/bundle/`:
@@ -349,7 +349,7 @@ copy of the private key and its password outside GitHub: without them, installed
 can no longer be updated.
 
 Update bundles are made only by the release workflow, which switches
-`bundle.createUpdaterArtifacts` on when the key is present. A plain `npm run tauri build`
+`bundle.createUpdaterArtifacts` on when the key is present. A plain `bun run tauri build`
 needs no key and makes no update bundle.
 
 **A copy you build yourself never looks for updates.** Only the release workflow switches
@@ -359,7 +359,7 @@ that looked for updates would be offered the official build, install it over you
 end up talking to the official server.
 
 Want your own fork to update itself? Make your own pair with
-`npm run tauri signer generate -- -w <file>`, put its public key and your release address
+`bun run tauri signer generate -- -w <file>`, put its public key and your release address
 in `plugins.updater`, and set the two secrets; your release workflow then turns updates
 on for your builds. Do not set `VITE_DESKTOP_UPDATES` while the config still names this
 repository's key and address.

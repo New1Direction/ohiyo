@@ -17,6 +17,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   It greets you to match ("Good morning.", "Good evening.", "Still up?"). The fields sit
   straight on the scene with no card around them, the long note about forgotten passwords is
   tucked behind one line, and the whole form fits the desktop app's window without scrolling.
+- **The client installs with Bun.** `client/bun.lock` replaces `package-lock.json`, and CI,
+  the release build, the web app's Docker image and the Tauri dev/build hooks use Bun to
+  install packages and run scripts. Node still runs `tsc`, ESLint, Vite and the unit tests.
+  Contributors need [Bun](https://bun.sh) 1.4+ alongside Node 22.
 
 ### Fixed
 - **Your own encrypted messages stay readable.** Right after you sent a message in an

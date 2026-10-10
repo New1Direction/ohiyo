@@ -27,16 +27,18 @@ brand/    Mascot + brand assets
 
 ## Dev setup
 
-**Prerequisites:** Rust (stable) and Node 22+ (22.6+ is required for the client
+**Prerequisites:** Rust (stable), Node 22+ (22.6+ is required for the client
 unit tests, which use the built-in test runner with native TypeScript
-type-stripping).
+type-stripping), and [Bun](https://bun.sh) 1.4+. Bun installs the client's
+packages from `client/bun.lock` and runs its scripts; Node still runs the tools
+those scripts call (`tsc`, ESLint, Vite, `node --test`).
 
 Follow the **Quickstart (local dev)** section of the [README](README.md):
 
 1. Start the server (`cd server`, copy `.env.example` to `.env`, set a
    `JWT_SECRET`, then `cargo run` — migrations apply on startup). It listens on
    `http://localhost:3000`.
-2. Start the client (`cd client`, `npm install`, `npm run dev`). Vite serves on
+2. Start the client (`cd client`, `bun install`, `bun run dev`). Vite serves on
    `http://localhost:1420` and talks to the server on `:3000`.
 
 Both have to be running for the end-to-end suite.
@@ -49,10 +51,10 @@ surprised.
 ### Client (`client/`)
 
 ```bash
-npm run lint        # ESLint — react-hooks and a11y rules are errors, not warnings
-npm run typecheck   # tsc --noEmit
-npm run test:unit   # node --test (needs Node 22.6+)
-npm run build       # tsc && vite build — the production build must succeed
+bun run lint        # ESLint — react-hooks and a11y rules are errors, not warnings
+bun run typecheck   # tsc --noEmit
+bun run test:unit   # node --test (needs Node 22.6+)
+bun run build       # tsc && vite build — the production build must succeed
 ```
 
 ### End-to-end (`client/` or repo root)
@@ -62,8 +64,8 @@ Vite client). Start both, then:
 
 ```bash
 cd client
-KIKKA_ORIGIN=http://localhost:1420 npm run test:e2e          # all 25 suites
-KIKKA_ORIGIN=http://localhost:1420 npm run test:e2e receipts # filter by substring
+KIKKA_ORIGIN=http://localhost:1420 bun run test:e2e          # all 25 suites
+KIKKA_ORIGIN=http://localhost:1420 bun run test:e2e receipts # filter by substring
 ```
 
 The 25 suites cover signup, invites, moderation, roles, polls, mentions, events,

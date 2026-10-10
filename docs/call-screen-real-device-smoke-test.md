@@ -25,7 +25,7 @@ Terminal 2:
 
 ```bash
 cd client
-npm run dev -- --host 0.0.0.0
+bun run dev -- --host 0.0.0.0
 ```
 
 Open Device A and Device B to the LAN URL printed by Vite, usually:

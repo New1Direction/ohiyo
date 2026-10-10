@@ -1,7 +1,7 @@
 // Unit tests for the identity-change / verification trust layer.
 //
 // Run with the repo's zero-dependency runner (Node 22 strips the types natively):
-//   npm run test:unit            (from client/)
+//   bun run test:unit            (from client/)
 //   node --experimental-strip-types --test test/identityTrust.test.ts
 //
 // This module is deliberately pure (no libsignal/api/crypto imports) so the

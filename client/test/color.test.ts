@@ -1,5 +1,5 @@
 // Unit tests for the pure color utilities behind the accent customizer.
-//   npm run test:unit   (from client/)
+//   bun run test:unit   (from client/)
 //   node --experimental-strip-types --test test/color.test.ts
 
 import { test } from "node:test";

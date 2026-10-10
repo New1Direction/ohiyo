@@ -1,5 +1,5 @@
 // Isolated real-component browser tests; no account, server or live YouTube required.
-// KIKKA_CHROMIUM=/path/to/chromium npm run test:watch-dream
+// KIKKA_CHROMIUM=/path/to/chromium bun run test:watch-dream
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "vite";
