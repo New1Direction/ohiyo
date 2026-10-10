@@ -100,7 +100,8 @@ UX-GATES.md    UX acceptance gates
 
 ## Quickstart (local dev)
 
-**Prerequisites:** Rust (stable) + Node 22+ (22.6+ for unit tests).
+**Prerequisites:** Rust (stable), Node 22+ (22.6+ for unit tests), and [Bun](https://bun.sh) 1.4+
+(installs the client's packages and runs its scripts).
 
 **1. Server** (`http://localhost:3000`)
 
@@ -114,8 +115,8 @@ cargo run                     # migrations apply on startup
 
 ```bash
 cd client
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 Open http://localhost:1420, register an account, create a space, and start talking.
@@ -124,7 +125,7 @@ Open http://localhost:1420, register an account, create a space, and start talki
 
 ```bash
 cd client
-npm run tauri build           # produces the platform bundle (.dmg on macOS)
+bun run tauri build           # produces the platform bundle (.dmg on macOS)
 ```
 
 The packaged app connects to the backend in `client/.env.production`
@@ -136,11 +137,11 @@ self-hosted server, or custom home. See [`DEPLOY.md`](DEPLOY.md) to stand one up
 
 ```bash
 cd client
-npm run test:unit     # unit tests (Node 22.6+)
-KIKKA_ORIGIN=http://localhost:1420 npm run test:e2e   # full suite (27)
-KIKKA_ORIGIN=http://localhost:1420 npm run test:e2e receipts   # filter by substring
-npm run lint          # ESLint — react-hooks rules are errors
-npm run typecheck     # tsc --noEmit
+bun run test:unit     # unit tests (Node 22.6+)
+KIKKA_ORIGIN=http://localhost:1420 bun run test:e2e   # full suite (27)
+KIKKA_ORIGIN=http://localhost:1420 bun run test:e2e receipts   # filter by substring
+bun run lint          # ESLint — react-hooks rules are errors
+bun run typecheck     # tsc --noEmit
 ```
 
 The server and Vite dev client (port 1420) must both be running for e2e. On every

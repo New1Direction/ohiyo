@@ -1,7 +1,7 @@
 // Unit tests for the plugin CSS sanitizer — the one channel a networkless plugin
 // (or a fully user-controlled "trusted" custom-CSS plugin) could still abuse via
 // the host applying its CSS.
-//   npm run test:unit
+//   bun run test:unit
 //   node --experimental-strip-types --test test/sanitizePluginCss.test.ts
 
 import { test } from "node:test";

@@ -32,8 +32,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -43,8 +45,8 @@ jobs:
       - name: Install client deps + Chromium
         working-directory: client
         run: |
-          npm ci
-          npx playwright-core install --with-deps chromium
+          bun install --frozen-lockfile
+          bunx playwright-core install --with-deps chromium
 
       - name: UI browser regressions
         if: matrix.client_mode == 'dev'
@@ -53,9 +55,9 @@ jobs:
           export KIKKA_CHROMIUM="$(node -e "console.log(require('playwright-core').chromium.executablePath())")"
           export KIKKA_SHOTS=/tmp/ohiyo-ui-shots
           mkdir -p "$KIKKA_SHOTS"
-          npm run test:watch-dream
-          npm run test:server-sidebar
-          npm run test:profile-editor
+          bun run test:watch-dream
+          bun run test:server-sidebar
+          bun run test:profile-editor
 
       - name: Upload UI screenshots
         if: always() && matrix.client_mode == 'dev'
@@ -109,10 +111,10 @@ jobs:
           curl -sf http://localhost:3000/healthz >/dev/null
 
           if [ "$CLIENT_MODE" = "production-preview" ]; then
-            (cd client && npm run build)
-            (cd client && npm run preview -- --host 127.0.0.1 --port 1420) >"/tmp/ohiyo-client-${CLIENT_MODE}.log" 2>&1 &
+            (cd client && bun run build)
+            (cd client && bun run preview -- --host 127.0.0.1 --port 1420) >"/tmp/ohiyo-client-${CLIENT_MODE}.log" 2>&1 &
           else
-            (cd client && npm run dev -- --host 127.0.0.1 --port 1420) >"/tmp/ohiyo-client-${CLIENT_MODE}.log" 2>&1 &
+            (cd client && bun run dev -- --host 127.0.0.1 --port 1420) >"/tmp/ohiyo-client-${CLIENT_MODE}.log" 2>&1 &
           fi
           client_pid=$!
 

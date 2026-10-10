@@ -14,8 +14,8 @@ for all 28.
 1. **Server** running on `:3000` — `cd server && cargo run`, with
    `OHIYO_REGISTER_LIMIT_PER_HOUR=0` in `server/.env` (the suites register about 40
    accounts from one address, and the default limit is 10 per hour)
-2. **Client** running on `:1420` — either `cd client && npm run dev` or `npm run build && npm run preview -- --port 1420`
-3. **Chromium** available — `cd client && npx playwright install chromium`
+2. **Client** running on `:1420` — either `cd client && bun run dev` or `bun run build && bun run preview -- --port 1420`
+3. **Chromium** available — `cd client && bunx playwright-core install chromium`
    (the harness auto-locates the cached "Chrome for Testing" binary)
 
 ## Hosted coverage
@@ -36,7 +36,7 @@ On failure the job uploads `KIKKA_SHOTS` plus server/client logs as artifacts.
 # all suites
 node e2e/run.mjs
 # or via the client package script
-cd client && npm run test:e2e
+cd client && bun run test:e2e
 
 # a single suite (substring filter)
 node e2e/run.mjs invite

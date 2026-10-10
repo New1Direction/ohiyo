@@ -40,8 +40,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
+
+      # Keep this version in step with ci.yml and client/Dockerfile.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -59,10 +62,10 @@ jobs:
 
       - name: Install client dependencies
         working-directory: client
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       # Update bundles are made here and nowhere else, so a plain local
-      # `npm run tauri build` needs no signing key. The same condition sets
+      # `bun run tauri build` needs no signing key. The same condition sets
       # VITE_DESKTOP_UPDATES on the build steps: only these builds look for updates,
       # so a copy someone builds by hand is never replaced by ours. See DEPLOY.md §5.
       - name: Turn on signed update bundles
@@ -107,6 +110,7 @@ jobs:
           APPLE_PROVIDER_SHORT_NAME: ${{ secrets.APPLE_PROVIDER_SHORT_NAME }}
         with:
           projectPath: client
+          tauriScript: bun run tauri
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "Ohiyo v__VERSION__"
           releaseDraft: true
@@ -152,6 +156,7 @@ jobs:
           VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}
         with:
           projectPath: client
+          tauriScript: bun run tauri
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "Ohiyo v__VERSION__"
           releaseDraft: true
@@ -169,6 +174,7 @@ jobs:
           VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}
         with:
           projectPath: client
+          tauriScript: bun run tauri
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "Ohiyo v__VERSION__"
           releaseDraft: true

@@ -1,5 +1,5 @@
 // Isolated real-component UI coverage; no backend/account required.
-// KIKKA_CHROMIUM=/path/to/chromium npm run test:server-sidebar
+// KIKKA_CHROMIUM=/path/to/chromium bun run test:server-sidebar
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "vite";

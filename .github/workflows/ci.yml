@@ -21,17 +21,20 @@ jobs:
           # Node 22: the unit tests run via the built-in runner with native TS
           # type-stripping (--experimental-strip-types), available from 22.6+.
           node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
-      - run: npm ci
+      # Bun installs packages and runs the scripts; Node still runs tsc, ESLint, Vite and
+      # the unit tests. Keep this version in step with client/Dockerfile.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
       - name: ESLint (hooks correctness + a11y)
-        run: npm run lint
+        run: bun run lint
       - name: Type-check
-        run: npm run typecheck
+        run: bun run typecheck
       - name: Unit tests
-        run: npm run test:unit
+        run: bun run test:unit
       - name: Production build
-        run: npm run build
+        run: bun run build
 
   server:
     name: Server (build · test)
@@ -91,12 +94,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-      - name: npm audit (runtime dependencies)
+          bun-version: 1.4.3
+      - name: bun audit (client dependencies)
         working-directory: client
-        run: npm audit --omit=dev --audit-level=high
+        # Reads client/bun.lock. Unlike the old `npm audit --omit=dev`, this also covers
+        # dev dependencies (Vite, tsc, ESLint), which run on every build machine.
+        run: bun audit --audit-level=high
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
