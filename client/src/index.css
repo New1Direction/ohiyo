@@ -3338,6 +3338,36 @@ button:disabled,
 .kc-update-bar__later { background: var(--bg-input); color: var(--text-secondary); }
 .kc-update-bar__later:hover { color: var(--text-primary); background: var(--bg-hover); }
 
+/* ─── New device on your account (NewDeviceAlert) ───────────────────────────────
+   Fixed at the top like the update bar, and below it when both show. */
+.kc-device-alert {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 61;
+  width: min(520px, calc(100vw - 24px));
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--danger);
+  box-shadow: 0 14px 34px -18px rgb(0 0 0 / 60%);
+  color: var(--text-primary);
+  font-size: 13px;
+  transform: translateX(-50%);
+}
+.kc-device-alert--lowered { top: 64px; }
+.kc-device-alert__title { font-weight: 700; }
+.kc-device-alert__when { font-weight: 500; color: var(--text-muted); }
+.kc-device-alert__text { margin-top: 4px; line-height: 1.45; color: var(--text-secondary); }
+.kc-device-alert__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.kc-device-alert__plain,
+.kc-device-alert__danger { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.kc-device-alert__plain { background: var(--bg-input); color: var(--text-primary); }
+.kc-device-alert__plain:hover { background: var(--bg-hover); }
+.kc-device-alert__danger { background: var(--danger); color: #fff; }
+.kc-device-alert__plain:disabled,
+.kc-device-alert__danger:disabled { opacity: 0.6; cursor: default; }
+
 /* ─── On/off switch (Plugins settings) ──────────────────────────────────────────
    State comes from aria-checked, so what a screen reader hears and what is drawn can't
    drift apart. The border keeps the off track visible on every theme. */

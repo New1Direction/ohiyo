@@ -76,12 +76,14 @@ type Props = {
   privacyPrefs: PrivacyPrefs;
   onPrivacyPrefsChange: (prefs: PrivacyPrefs) => void | Promise<void>;
   onCurrentUserUpdate?: (user: PublicUser) => void;
+  /** End every session of this account and sign this device out. */
+  onSignOutEverywhere?: () => Promise<void>;
 };
 
 const SETTINGS_FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), textarea, select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
-export function SettingsModal({ currentUser, pluginManager, token, servers, dms, initialTab, onClose, onToast, privacyPrefs, onPrivacyPrefsChange, onCurrentUserUpdate }: Props) {
+export function SettingsModal({ currentUser, pluginManager, token, servers, dms, initialTab, onClose, onToast, privacyPrefs, onPrivacyPrefsChange, onCurrentUserUpdate, onSignOutEverywhere }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "appearance");
   const dialogRef = useRef<HTMLDivElement>(null);
   // On a phone the tabs are a row that scrolls sideways: keep the open one in view.
@@ -206,7 +208,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
           {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} onCurrentUserUpdate={onCurrentUserUpdate} />}
           {tab === "profile" && <ProfileTab token={token} onToast={onToast} />}
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
-          {tab === "security" && <SecurityTab token={token} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} />}
+          {tab === "security" && <SecurityTab token={token} userId={currentUser?.id} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} onSignOutEverywhere={onSignOutEverywhere} />}
           {tab === "notifications" && <NotificationsTab token={token} onToast={onToast} />}
           {tab === "emoji" && <EmojiTab token={token} servers={servers} onToast={onToast} />}
         </div>
@@ -1553,16 +1555,20 @@ type RestorePreview = {
 
 function SecurityTab({
   token,
+  userId,
   dms,
   onToast,
   privacyPrefs,
   onPrivacyPrefsChange,
+  onSignOutEverywhere,
 }: {
   token: string;
+  userId?: string;
   dms: Channel[];
   onToast: (t: string, type?: "info" | "success" | "error") => void;
   privacyPrefs: PrivacyPrefs;
   onPrivacyPrefsChange: (prefs: PrivacyPrefs) => void | Promise<void>;
+  onSignOutEverywhere?: () => Promise<void>;
 }) {
   const [seconds, setSeconds] = useState<number | null>(null);
   const [scope, setScope] = useState<"history" | "keys">("history");
@@ -1804,7 +1810,7 @@ function SecurityTab({
       </p>
 
       {/* Linked devices — see + revoke your registered Signal devices */}
-      <LinkedDevices token={token} onToast={onToast} />
+      <LinkedDevices token={token} userId={userId} onToast={onToast} onSignOutEverywhere={onSignOutEverywhere} />
 
       {/* Privacy Mode — immediate metadata reduction without changing how chat works. */}
       <div className="mb-6 rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>

@@ -40,6 +40,7 @@ import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
 import { myKeyPair, deriveSharedKey, decryptMessage, isEncrypted } from "./lib/e2e";
 import { initSignal, encryptFor, decryptFrom, deviceId, isSignalCiphertext, parseSignalCiphertextHeader, safetyNumber } from "./lib/signal";
 import { retryRetiredDevice } from "./lib/retiredDevice";
+import { acknowledgeNewDevices, forgetDevices, newDevices, onNewDevicesChange, reconcileOwnDevices, type NewDevice } from "./lib/deviceWatch";
 import {
   onIdentityChange,
   trustState,
@@ -95,6 +96,7 @@ import { unreadTotal, withoutUnread } from "./lib/unreadTotal";
 import { useDesktopShell } from "./hooks/useDesktopShell";
 import { useAppUpdate } from "./hooks/useAppUpdate";
 import { UpdateBar } from "./components/UpdateBar";
+import { NewDeviceAlert } from "./components/NewDeviceAlert";
 import {
   loadActiveHomeId,
   loadHomes,
@@ -377,6 +379,18 @@ function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClos
   );
 }
 
+const NO_NEW_DEVICES: NewDevice[] = [];
+
+/** Read this account's devices and note any this device hasn't seen (deviceWatch). */
+async function checkOwnDevices(token: string, userId: string): Promise<void> {
+  try {
+    const list = await api.listDevices(token);
+    reconcileOwnDevices(userId, deviceId(), list.map((d) => d.device_id));
+  } catch {
+    /* offline: the next sign-in or DeviceAdded checks again */
+  }
+}
+
 function MainApp({
   token,
   homes,
@@ -643,6 +657,8 @@ function MainApp({
       sweepPlaintextCache();
       // Finish removing a device id a key restore replaced, if that failed at the time.
       void retryRetiredDevice((id) => api.removeDevice(token, id), currentUser.id, deviceId);
+      // A device added to this account while this one was closed is announced now.
+      void checkOwnDevices(token, currentUser.id);
       myKeyPair()
         .then((kp) => {
           if (alive) void api.publishKey(token, JSON.stringify(kp.publicJwk));
@@ -1238,6 +1254,14 @@ function MainApp({
         break;
       }
 
+      case "DeviceAdded": {
+        // Another device registered on this account. Our own first registration comes
+        // back here too; that one is not news.
+        const me = currentUserRef.current?.id;
+        if (me && event.d.device_id !== deviceId()) void checkOwnDevices(token, me);
+        break;
+      }
+
       case "WatchUpdate": {
         if (event.d.channel_id === selectedChannelRef.current?.id) {
           const s = event.d.session;
@@ -1476,6 +1500,36 @@ function MainApp({
     },
     [dmPeerId, token]
   );
+
+  // Devices added to this account since this device last looked (deviceWatch).
+  const ownNewDevices = useSyncExternalStore<NewDevice[]>(onNewDevicesChange, () =>
+    currentUser ? newDevices(currentUser.id) : NO_NEW_DEVICES
+  );
+  const [removingNewDevices, setRemovingNewDevices] = useState(false);
+
+  // End every session of this account (this one too), then show the sign-in screen
+  // without removing anything stored on this device.
+  async function signOutEverywhere(): Promise<void> {
+    await api.logoutEverywhere(token);
+    onBackToSignIn();
+  }
+
+  // "Not me": take the new devices off the account, then end every session, so a stolen
+  // session that added them is cut off too.
+  async function removeNewDevices(): Promise<void> {
+    const me = currentUser?.id;
+    if (!me) return;
+    const ids = ownNewDevices.map((d) => d.device_id);
+    setRemovingNewDevices(true);
+    try {
+      for (const id of ids) await api.removeDevice(token, id);
+      forgetDevices(me, ids);
+      await signOutEverywhere();
+    } catch {
+      toast("Couldn't remove it. Check your connection and try again.", "error");
+      setRemovingNewDevices(false);
+    }
+  }
 
   // Verification state for the open DM's peer — drives the "safety number changed"
   // warning + the Verified badge. identityTrust is an external store; subscribing
@@ -2525,6 +2579,13 @@ function MainApp({
 
       {/* Toast notifications */}
       <ToastStack toasts={toasts} />
+      <NewDeviceAlert
+        devices={ownNewDevices}
+        busy={removingNewDevices}
+        onKeep={() => currentUser && acknowledgeNewDevices(currentUser.id)}
+        onRemove={() => void removeNewDevices()}
+        lowered={Boolean(appUpdate.update)}
+      />
       {appUpdate.update && (
         <UpdateBar
           version={appUpdate.update.version}
@@ -2718,6 +2779,7 @@ function MainApp({
           onClose={() => { setShowSettings(false); setSettingsTab("appearance"); }}
           onToast={toast}
           onCurrentUserUpdate={handleCurrentUserUpdate}
+          onSignOutEverywhere={signOutEverywhere}
         />
       )}
     </div>

@@ -11,6 +11,17 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
 
+### Added
+- **You're told when a new device signs in to your account.** Every device has its own
+  encryption keys, and people encrypt a copy of each message for each one. So someone
+  with a stolen session could add a device and quietly read everything sent to you after
+  that. Your other devices now say so the moment it happens, or the next time you open
+  them. "It was me" keeps it; "Not me" takes it off your account and signs out every
+  session, that one included.
+- **Sign out everywhere**, under Privacy & security → Linked devices. Ends every session
+  of your account, on this device too. The server could already do this; nothing in the
+  app asked it to.
+
 ### Changed
 - **A new sign-in screen.** A painting fills the screen and follows your local time:
   sunrise, morning, the meadow in the afternoon, sunset, and a starry night with fireflies.

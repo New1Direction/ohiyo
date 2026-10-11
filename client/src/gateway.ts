@@ -51,6 +51,8 @@ export type GatewayEvent =
   | { t: "VoiceRoster"; d: { channel_id: string; peers: VoicePeer[] } }
   | { t: "VoiceSignal"; d: { from: string; to: string; channel_id: string; kind: string; payload: string } }
   | { t: "WatchUpdate"; d: { channel_id: string; session: WatchSession | null } }
+  // A device registered its keys on this account for the first time (see deviceWatch).
+  | { t: "DeviceAdded"; d: { device_id: number } }
   // The server's answer to each Heartbeat. Needs no handler: any inbound frame counts as
   // alive (lastFrameAt).
   | { t: "HeartbeatAck" };
@@ -83,14 +85,18 @@ const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
 
 /** Every server→client event tag (the `t` discriminant). A frame whose `t` isn't one
- *  of these is well-formed JSON but the wrong shape, so we drop it before fan-out. */
-const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set([
-  "Ready", "MessageCreate", "MessageUpdate", "MessageDelete", "DisappearingUpdate",
-  "SenderKeyDistribution", "GroupMembersUpdate", "VoiceKeyDistribution", "ServerCreate",
-  "ServerDelete", "ChannelCreate", "MemberJoin", "MemberLeave", "PermissionsUpdate",
-  "EventsChanged", "ReactionUpdate", "ReadReceipt", "PresenceUpdate", "TypingStart",
-  "VoiceState", "VoiceRoster", "VoiceSignal", "WatchUpdate", "HeartbeatAck",
-]);
+ *  of these is well-formed JSON but the wrong shape, so we drop it before fan-out.
+ *  A Record over GatewayEvent["t"], so adding an event to the union without listing it
+ *  here is a type error, not an event silently dropped at runtime. */
+const EVENT_TAGS: Record<GatewayEvent["t"], true> = {
+  Ready: true, MessageCreate: true, MessageUpdate: true, MessageDelete: true, DisappearingUpdate: true,
+  SenderKeyDistribution: true, GroupMembersUpdate: true, VoiceKeyDistribution: true, ServerCreate: true,
+  ServerDelete: true, ChannelCreate: true, MemberJoin: true, MemberLeave: true, PermissionsUpdate: true,
+  EventsChanged: true, ReactionUpdate: true, ReadReceipt: true, PresenceUpdate: true, TypingStart: true,
+  VoiceState: true, VoiceRoster: true, VoiceSignal: true, WatchUpdate: true, HeartbeatAck: true,
+  DeviceAdded: true,
+};
+const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set(Object.keys(EVENT_TAGS));
 
 export class Gateway {
   private ws: WebSocket | null = null;

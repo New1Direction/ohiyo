@@ -11,7 +11,12 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{auth::AuthUser, types::now_unix, AppState};
+use crate::{
+    auth::AuthUser,
+    gateway::broadcast_to_user,
+    types::{now_unix, GatewayEvent},
+    AppState,
+};
 
 fn ise<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
     crate::api::error::internal(e)
@@ -155,6 +160,17 @@ pub async fn publish_keys(
         .map_err(ise)?;
     }
     tx.commit().await.map_err(ise)?;
+    if existing_device.is_none() {
+        // A first publish is a new device on the account. Tell its other sessions now,
+        // not when they next happen to read the device list.
+        broadcast_to_user(
+            &state.sessions,
+            &auth.0,
+            &GatewayEvent::DeviceAdded {
+                device_id: b.device_id,
+            },
+        );
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
