@@ -38,7 +38,7 @@ import { isActivationDismissed, loadActivation, markActivation, setActivationDis
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
 import { myKeyPair, deriveSharedKey, decryptMessage, isEncrypted } from "./lib/e2e";
-import { initSignal, encryptFor, decryptFrom, deviceId, isSignalCiphertext, parseSignalCiphertextHeader, safetyNumber } from "./lib/signal";
+import { initSignal, encryptFor, decryptFrom, deviceId, isSignalCiphertext, parseSignalCiphertextHeader, refreshContactDevices, safetyNumber, safetyNumberKeySet } from "./lib/signal";
 import { retryRetiredDevice } from "./lib/retiredDevice";
 import { acknowledgeNewDevices, forgetDevices, newDevices, onNewDevicesChange, reconcileOwnDevices, type NewDevice } from "./lib/deviceWatch";
 import {
@@ -1544,6 +1544,14 @@ function MainApp({
     return peer ? trustState(peer) : "unverified";
   });
 
+  // Opening an encrypted DM checks the contact's devices, so a new one is announced even
+  // before you send anything (sending checks again).
+  const openDmPeer =
+    selectedChannel?.channel_type === "dm" && e2eChannels.has(selectedChannel.id) ? dmPeerId(selectedChannel.id) : undefined;
+  useEffect(() => {
+    if (openDmPeer) void refreshContactDevices(token, openDmPeer);
+  }, [openDmPeer, token]);
+
   // E2E: derive (and cache) the shared AES key for a DM from my private key + the
   // peer's published public key (LEGACY static-key scheme; new sessions use Signal).
   const getDmKey = useCallback(
@@ -2573,7 +2581,7 @@ function MainApp({
           selectedChannel?.channel_type === "dm"
             ? () => {
                 const peer = dmPeerId(selectedChannel.id);
-                if (peer) markVerified(peer);
+                if (peer) markVerified(peer, safetyNumberKeySet(peer));
               }
             : undefined
         }
