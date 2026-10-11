@@ -62,7 +62,7 @@ Your own encrypted server, in one tap — and you actually own it. Like Minecraf
 - [x] **Device-change notices** — announce a new device for a contact or your own account, and bind "verified" to the actual key set. *Your own account: announced live on your other devices (and at the next sign-in if they were closed), with "Not me" to remove it and sign out everywhere. Contacts: announced in the chat; "verified" covers only the devices you compared, so a new one makes it loud again.*
 - [ ] **Encryption on by default** for DMs and group chats
 - [ ] **Group encryption rework** — per-device sender keys, skipped-key caching and delivery to offline members (today's scheme is experimental)
-- [ ] **Account basics** — password change, password reset, account deletion, and a logout that revokes the session. *Password change done (needs the current password, ends every other session); "Sign out everywhere" done. Reset and deletion: not yet.*
+- [ ] **Account basics** — password change, password reset, account deletion, and a logout that revokes the session. *Password change done (needs the current password, ends every other session); "Sign out everywhere" done; account deletion done (at once, with the password and the typed username). Password reset: not yet — accounts have no email, so it needs a design.*
 - [ ] Sealed sender (metadata hiding — needs sender certs + server trust-model change)
 - [ ] Federation
 

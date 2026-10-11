@@ -12,6 +12,12 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ## [Unreleased]
 
 ### Added
+- **Delete your account**, under Settings → Account. It needs your password and your
+  username typed out, and it happens at once. Every message you sent is deleted, for
+  everyone. A space you own goes to its longest-standing member, or is deleted if nobody
+  else is in it; a group you own goes to the next member. Instant Servers you run are shut
+  down. Your encryption keys and recovery backup are deleted on the server and on that
+  device. Emoji you added to someone else's space, and pictures others still use, stay.
 - **You're told when a new device signs in to your account.** Every device has its own
   encryption keys, and people encrypt a copy of each message for each one. So someone
   with a stolen session could add a device and quietly read everything sent to you after
