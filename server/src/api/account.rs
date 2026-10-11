@@ -91,10 +91,8 @@ pub async fn delete_account(
         crate::provision::delete_instance(&state.db, state.provisioner.as_ref(), &me, id).await?;
     }
 
-    let plan = plan(&state, &me).await.map_err(internal)?;
-    let (attachment_ids, orphaned_blobs) = remove_everything(&state, &me, &plan)
-        .await
-        .map_err(internal)?;
+    let (plan, attachment_ids, orphaned_blobs) =
+        remove_everything(&state, &me).await.map_err(internal)?;
     remove_blobs(orphaned_blobs).await;
     // Files attached to their messages that someone else uploaded: free them if unused.
     release_files_in_batches(&state.db, &attachment_ids).await;
@@ -129,8 +127,9 @@ pub async fn delete_account(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// What happens to the spaces and groups the user is in, worked out before anything is
-/// deleted (the cascade removes the memberships these come from).
+/// What happens to the spaces and groups the user is in, worked out in the deleting
+/// transaction before anything goes (the cascade removes the memberships these come
+/// from), so nobody can join or leave in between.
 struct Plan {
     /// Owned spaces with another member: (space, new owner).
     handed_over: Vec<(String, String)>,
@@ -142,10 +141,10 @@ struct Plan {
     groups: Vec<String>,
 }
 
-async fn plan(state: &AppState, me: &str) -> Result<Plan, sqlx::Error> {
+async fn plan(conn: &mut sqlx::SqliteConnection, me: &str) -> Result<Plan, sqlx::Error> {
     let owned: Vec<String> = sqlx::query_scalar("SELECT id FROM servers WHERE owner_id = ?")
         .bind(me)
-        .fetch_all(&state.db)
+        .fetch_all(&mut *conn)
         .await?;
     let mut handed_over = Vec::new();
     let mut deleted = Vec::new();
@@ -157,7 +156,7 @@ async fn plan(state: &AppState, me: &str) -> Result<Plan, sqlx::Error> {
         )
         .bind(&server_id)
         .bind(me)
-        .fetch_optional(&state.db)
+        .fetch_optional(&mut *conn)
         .await?;
         match next {
             Some(owner) => handed_over.push((server_id, owner)),
@@ -170,14 +169,14 @@ async fn plan(state: &AppState, me: &str) -> Result<Plan, sqlx::Error> {
     )
     .bind(me)
     .bind(me)
-    .fetch_all(&state.db)
+    .fetch_all(&mut *conn)
     .await?;
     let groups: Vec<String> = sqlx::query_scalar(
         "SELECT c.id FROM channels c JOIN dm_participants p ON p.channel_id = c.id
          WHERE p.user_id = ? AND c.channel_type = 'group_dm'",
     )
     .bind(me)
-    .fetch_all(&state.db)
+    .fetch_all(&mut *conn)
     .await?;
     Ok(Plan {
         handed_over,
@@ -188,13 +187,16 @@ async fn plan(state: &AppState, me: &str) -> Result<Plan, sqlx::Error> {
 }
 
 /// Everything in one transaction, so a failure leaves the account as it was. Returns the
-/// file ids attached to their deleted messages, and the blobs no file row points at now.
+/// plan, the file ids attached to their deleted messages, and the blobs no file row points
+/// at now.
 async fn remove_everything(
     state: &AppState,
     me: &str,
-    plan: &Plan,
-) -> Result<(Vec<String>, Vec<String>), sqlx::Error> {
-    let mut tx = state.db.begin().await?;
+) -> Result<(Plan, Vec<String>, Vec<String>), sqlx::Error> {
+    // Take the write lock up front: this reads before it writes, and a read transaction
+    // that later upgrades fails at once whenever another write lands in between.
+    let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
+    let plan = plan(&mut tx, me).await?;
 
     // Their messages, everywhere.
     let attachments: Vec<String> = sqlx::query_scalar(
@@ -297,5 +299,5 @@ async fn remove_everything(
         .iter()
         .flat_map(|raw| attachment_file_ids(Some(raw)))
         .collect();
-    Ok((attachment_ids, orphaned_blobs))
+    Ok((plan, attachment_ids, orphaned_blobs))
 }
