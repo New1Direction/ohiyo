@@ -1948,6 +1948,17 @@ function SecurityTab({
           <div className="mb-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
             Restore on this device
           </div>
+          {/* A restore makes this device take over the backed-up one (its id, keys and
+              sessions). Two working devices sharing one set of sessions break each other. */}
+          <p
+            className="mb-2 border-l-2 pl-2 text-xs leading-5"
+            role="note"
+            style={{ borderColor: "var(--danger)", color: "var(--text-secondary)" }}
+          >
+            Only restore if you no longer have the device that made this backup. This device takes its place, so if
+            both are in use, encrypted messages can stop decrypting on both. If the old device still works, open{" "}
+            <strong>Linked devices</strong> on it and choose <strong>Link a device</strong> instead.
+          </p>
           <div className="flex flex-wrap gap-2">
             <input
               value={restoreInput}

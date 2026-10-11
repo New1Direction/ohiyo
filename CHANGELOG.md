@@ -21,6 +21,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   the release build, the web app's Docker image and the Tauri dev/build hooks use Bun to
   install packages and run scripts. Node still runs `tsc`, ESLint, Vite and the unit tests.
   Contributors need [Bun](https://bun.sh) 1.4+ alongside Node 22.
+- **Restoring keys warns you first.** A restore makes this device take the place of the
+  device that made the backup. If both keep being used, encrypted messages can stop
+  decrypting on both. The restore box now says so, and points to Link a device when the
+  old device still works.
 
 ### Fixed
 - **Restoring your keys on a new device no longer leaves a dead device behind.** A restore

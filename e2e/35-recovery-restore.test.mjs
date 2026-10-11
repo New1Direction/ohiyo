@@ -164,6 +164,8 @@ try {
   // ── Restore from the locked message's own "Open recovery" button ──
   await pageA2.locator('button:has-text("Open recovery")').first().click();
   await pageA2.waitForSelector('input[aria-label="Recovery code"]', { timeout: 8000 });
+  // Restoring while the old device still works makes two devices share one set of keys.
+  await pageA2.waitForSelector("text=/Only restore if you no longer have the device that made this backup/", { timeout: 4000 });
   await pageA2.fill('input[aria-label="Recovery code"]', code);
   await pageA2.click('button:has-text("Check backup")');
   await pageA2.waitForSelector("text=Recovery preview", { timeout: 15000 });
