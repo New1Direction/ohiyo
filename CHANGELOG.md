@@ -45,6 +45,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   device that made the backup. If both keep being used, encrypted messages can stop
   decrypting on both. The restore box now says so, and points to Link a device when the
   old device still works.
+- **The desktop app is on Tauri 2.12.** The Rust crates and the `@tauri-apps` npm packages
+  moved together (autostart 2.7, updater 2.13, deep-link 2.6, notification 2.6, opener
+  2.7), because the Tauri CLI refuses a build where a plugin's crate and npm package are on
+  different minors. Nothing the app does changes.
 
 ### Fixed
 - **Warning notes show in a warning colour.** The note asking you to back up again (for an
