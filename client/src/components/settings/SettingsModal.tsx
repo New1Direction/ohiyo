@@ -24,6 +24,7 @@ import type { PluginManager } from "../../plugins/registry";
 import { ensureNotificationPermission, isDesktop } from "../../lib/desktop";
 import { canUseWebPush, enableContentFreeWebPush } from "../../lib/push";
 import { burnVault, exportKeyMaterial, importKeyMaterial } from "../../lib/tauriVault";
+import { retireDevice } from "../../lib/retiredDevice";
 import { generateRecoveryCode, encryptBackup, decryptBackup, backupSummary, backupCoversSenderKey, recoveryMaterialReport, type BackupBlob, type BackupSummary, type CoverageCheck } from "../../lib/recovery";
 import { missingSenderKeys, recordGroupSenderKeyMessage, recordSignalMessage, saveCoverageResults, signalMessagesForRecovery } from "../../lib/recoveryCoverage";
 import { isSignalCiphertext, parseSignalCiphertextHeader, previewSignalRestoreFromMaterial } from "../../lib/signal";
@@ -1746,7 +1747,12 @@ function SecurityTab({
       const blob = (await api.getKeyBackup(token)) as unknown as BackupBlob;
       const material = await decryptBackup(code, blob);
       const materialReport = recoveryMaterialReport(material);
-      await importKeyMaterial(material);
+      const { replacedDevice } = await importKeyMaterial(material);
+      // This device is now the backed-up device. The id it signed in with has keys nobody
+      // holds: take it out of the account so nobody encrypts to it.
+      if (replacedDevice !== null) {
+        await retireDevice((id) => api.removeDevice(token, id), material["kc:sig:ownUserId"] ?? null, replacedDevice);
+      }
       sessionStorage.setItem("ohiyo:recovery-restored-at", String(Date.now()));
       sessionStorage.setItem("ohiyo:recovery-restore-report", JSON.stringify(materialReport));
       onToast(materialReport.ignored > 0 ? "Importable keys restored; unsupported backup entries were skipped." : "Keys restored — reloading…", "success");

@@ -154,20 +154,66 @@ export function exportKeyMaterial(): Record<string, string> {
   return out;
 }
 
+// The Signal keys that belong to one device: its id, its own identity and prekeys, and
+// its sessions with other people's devices. What it knows about other people (their
+// identity keys, who you verified) is kept by a restore.
+const DEVICE_SIGNAL_KEY = /^kc:sig:(?:(?:deviceId|identityKey|registrationId|nextPreKeyId)$|prekey|signedprekey|session)/;
+const DEVICE_ID_KEY = "kc:sig:deviceId";
+
+const parseDeviceId = (raw: string | null | undefined): number | null => {
+  const n = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+function storedKeys(): string[] {
+  if (isDesktop() && mirror) return [...mirror.keys()];
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k !== null) keys.push(k);
+  }
+  return keys;
+}
+
+export type ImportResult = {
+  /** This device's own Signal id before the restore, when the backup came from another
+   *  device and replaced it. Nobody holds its keys any more: retire it on the server. */
+  replacedDevice: number | null;
+};
+
 /**
  * Restore key material from a decrypted recovery backup into this device's store
  * (the vault on desktop, else localStorage). Only known key-namespaces are written.
+ *
+ * A backup from another device carries that whole Signal device: its id, identity and
+ * sessions. This device's own Signal state is cleared first, so it becomes that device
+ * rather than a mix of two (a session this device opened would otherwise be used under
+ * the backup's identity, and the other side could not decrypt it).
  */
-export async function importKeyMaterial(material: Record<string, string>): Promise<void> {
+export async function importKeyMaterial(material: Record<string, string>): Promise<ImportResult> {
+  const desktop = isDesktop() && mirror !== null;
+  const current = parseDeviceId(desktop ? (mirror!.get(DEVICE_ID_KEY) ?? null) : localStorage.getItem(DEVICE_ID_KEY));
+  const incoming = parseDeviceId(material[DEVICE_ID_KEY]);
+  const replacing = incoming !== null && material["kc:sig:identityKey"] !== undefined && incoming !== current;
+  if (replacing) {
+    const stale = storedKeys().filter((k) => DEVICE_SIGNAL_KEY.test(k));
+    if (desktop) {
+      for (const k of stale) mirror!.delete(k);
+      if (stale.length > 0) await invoke("vault_remove_many", { keys: stale });
+    } else {
+      for (const k of stale) localStorage.removeItem(k);
+    }
+  }
   for (const [k, v] of Object.entries(material)) {
     if (!IMPORT_PREFIXES.some((p) => k.startsWith(p))) continue;
-    if (isDesktop() && mirror) {
-      mirror.set(k, v);
+    if (desktop) {
+      mirror!.set(k, v);
       await invoke("vault_set", { key: k, value: v });
     } else {
       localStorage.setItem(k, v);
     }
   }
+  return { replacedDevice: replacing ? current : null };
 }
 
 /** Restart the desktop app: "Try again" on the locked vault screen, and after a reset or burn. */

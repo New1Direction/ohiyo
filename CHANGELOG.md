@@ -23,6 +23,16 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   Contributors need [Bun](https://bun.sh) 1.4+ alongside Node 22.
 
 ### Fixed
+- **Restoring your keys on a new device no longer leaves a dead device behind.** A restore
+  makes the new device take over the backed-up device. Before, the new device's own
+  sign-in stayed listed on your account with keys nothing could use. People kept sending
+  it a copy of every encrypted message that no one could read, and it counted toward your
+  10-device limit. It is now removed during the restore, or at your next sign-in if that
+  fails.
+- **Encrypted chats keep working after a restore.** If you sent an encrypted message from
+  the new device before restoring, the people you sent it to could not read anything you
+  sent after the restore, on the devices that got that message. The restore now replaces
+  the new device's own encryption state instead of mixing it with the backup's.
 - **Restored disappearing messages now disappear on time.** Restoring a recovery backup made
   before backups became keys-only also restores the readable copies of old encrypted
   messages it held. Those copies were stored where the expiry cleanup never looked, so a

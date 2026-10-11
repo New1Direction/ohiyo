@@ -1,4 +1,4 @@
-import { launchBrowser, register, log, uniq, PASS, ORIGIN } from "./harness.mjs";
+import { currentToken, launchBrowser, register, log, uniq, PASS, ORIGIN } from "./harness.mjs";
 
 // Recovery restore: A backs up keys on device 1, then loses it. B keeps writing. A signs in
 // on a fresh device 2, which can't read B's new message, restores the backup with the
@@ -8,6 +8,12 @@ import { launchBrowser, register, log, uniq, PASS, ORIGIN } from "./harness.mjs"
 //   • A message sent to A's old device AFTER the backup: readable after restore.
 //   • A message A had already read BEFORE the backup: its key was deleted when it was
 //     read, so it stays unreadable. New backups hold keys, not copies of messages.
+//
+// Device 2 becomes device 1: it takes device 1's id, identity and sessions. So the id
+// device 2 signed in with must leave the account (nobody holds its keys), and a session
+// device 2 opened before the restore must not be reused under device 1's identity. B adds
+// a second device after the backup, and device 2 messages it before restoring, to check.
+const API = process.env.E2E_API || "http://localhost:3000/api/v1";
 const u = uniq();
 const A = `ra_${u}`,
   B = `rb_${u}`;
@@ -51,6 +57,15 @@ async function send(page, text) {
 }
 
 const bodyText = (page) => page.evaluate(() => document.body.innerText).catch(() => "");
+const signalDevice = (page) => page.evaluate(() => Number(localStorage.getItem("kc:sig:deviceId")));
+
+async function apiGet(page, path) {
+  const token = await currentToken(page);
+  const res = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`GET ${path}: ${res.status}`);
+  return res.json();
+}
+const accountDevices = async (page) => (await apiGet(page, "/users/@me/devices")).map((d) => d.device_id).sort();
 
 try {
   // ── A (device 1) and B, an encrypted DM, one message each way ──
@@ -94,12 +109,29 @@ try {
   const code = ((await copyCode.locator("xpath=../..").locator("code").textContent()) ?? "").trim();
   if (code.length < 8) throw new Error(`no recovery code shown (got "${code}")`);
   log("A backed up keys on device 1 ✓");
+  const aId = await pageA1.evaluate(() => window.__kikkacordUser?.id);
+  const bId = await pageB.evaluate(() => window.__kikkacordUser?.id);
+  const device1 = await signalDevice(pageA1);
 
   // ── Device 1 is lost. B writes while A is away ──
   await ctxA1.close();
   const afterBackup = `after-backup-${u}`;
   await send(pageB, afterBackup);
   log("A's device 1 is gone; B sent a new message");
+
+  // ── B adds a second device after the backup: device 1 never had a session with it ──
+  const ctxB2 = await browser.newContext({ viewport: { width: 1000, height: 760 } });
+  const pageB2 = await ctxB2.newPage();
+  pageB2.on("pageerror", (e) => console.error("  B2 ERR:", e.message));
+  await login(pageB2, B);
+  let bDevices = 0;
+  for (let i = 0; i < 16 && bDevices < 2; i++) {
+    bDevices = (await apiGet(pageB, `/users/${bId}/identity-keys`)).length;
+    if (bDevices < 2) await new Promise((r) => setTimeout(r, 600));
+  }
+  if (bDevices < 2) throw new Error(`B's second device never published keys (devices=${bDevices})`);
+  await openDm(pageB2);
+  log("B signed in on a second device");
 
   // ── A signs in on device 2: a new device can't read it yet ──
   const ctxA2 = await browser.newContext({ viewport: { width: 1200, height: 820 } });
@@ -109,6 +141,7 @@ try {
   await openDm(pageA2);
   await pageA2.waitForSelector(LOCKED, { timeout: 10000 });
   if ((await bodyText(pageA2)).includes(afterBackup)) throw new Error("device 2 read the message before any restore");
+  const device2 = await signalDevice(pageA2);
   log("device 2 shows the message as locked before restore ✓");
 
   // The locked card is several lines tall. Its row was once sized as one line of text, so
@@ -122,6 +155,12 @@ try {
   });
   if (covered) throw new Error("a locked message's card runs under the next message");
 
+  // Device 2 writes before restoring: this opens its own sessions with both of B's devices.
+  const beforeRestore = `before-restore-${u}`;
+  await send(pageA2, beforeRestore);
+  await pageB2.waitForSelector(`text=${beforeRestore}`, { timeout: 12000 });
+  log("device 2 messaged B before restoring (B's second device read it) ✓");
+
   // ── Restore from the locked message's own "Open recovery" button ──
   await pageA2.locator('button:has-text("Open recovery")').first().click();
   await pageA2.waitForSelector('input[aria-label="Recovery code"]', { timeout: 8000 });
@@ -134,6 +173,21 @@ try {
   ]);
   await pageA2.waitForSelector('button[aria-label="Direct Messages"]', { timeout: 12000 });
   log("restored the backup on device 2");
+
+  // ── Device 2 is now device 1, and its own earlier id has left the account ──
+  if ((await signalDevice(pageA2)) !== device1) throw new Error("after restore, device 2 does not carry device 1's id");
+  let devicesNow = [];
+  for (let i = 0; i < 10; i++) {
+    devicesNow = await accountDevices(pageA2);
+    if (!devicesNow.includes(device2)) break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  if (devicesNow.includes(device2)) {
+    throw new Error(`device 2's own id ${device2} is still in the account after restore: ${JSON.stringify(devicesNow)}`);
+  }
+  const bSees = (await apiGet(pageB, `/users/${aId}/identity-keys`)).map((k) => k.device_id);
+  if (bSees.includes(device2)) throw new Error("B still encrypts to device 2's old id");
+  log(`the account lists device 1's id only; device 2's old id is gone ✓`);
 
   // ── The message sent after the backup is readable now ──
   await openDm(pageA2);
@@ -160,6 +214,14 @@ try {
   await send(pageA2, fromRestored);
   await pageB.waitForSelector(`text=${fromRestored}`, { timeout: 12000 });
   log("after restore, B → A and A → B both decrypt ✓");
+  // B's second device only ever had a session with device 2's old keys. Reusing that
+  // session under device 1's identity would make this unreadable there.
+  try {
+    await pageB2.waitForSelector(`text=${fromRestored}`, { timeout: 12000 });
+  } catch {
+    throw new Error("B's second device can't read what the restored device sent");
+  }
+  log("B's second device reads the restored device too ✓");
 
   console.log("\n✅ RECOVERY RESTORE E2E PASSED (a new device restores keys and reads what was sent after the backup)");
 } catch (err) {
