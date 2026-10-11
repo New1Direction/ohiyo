@@ -42,6 +42,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   old device still works.
 
 ### Fixed
+- **Warning notes show in a warning colour.** The note asking you to back up again (for an
+  older recovery backup) and a sleeping or waking Instant Server asked for a warning colour
+  no theme defined, so they showed as plain text. Every theme has one now, readable on its
+  own backgrounds; custom themes can set it in the theme editor.
 - **A device whose session ended now goes to sign-in.** When every session was ended from
   another device (or by a password change), the others sat on "Reconnecting you now…"
   forever. They now notice, go to the sign-in screen, and say why.
