@@ -600,7 +600,10 @@ async fn channel_meta(
 /// Bump a group's rekey epoch and return the new value. Atomic increment-and-read
 /// (RETURNING, SQLite ≥3.35) so concurrent membership changes can't observe a torn
 /// epoch — the value always moves strictly forward.
-async fn bump_epoch(state: &AppState, channel_id: &str) -> Result<i64, (StatusCode, String)> {
+pub(crate) async fn bump_epoch(
+    state: &AppState,
+    channel_id: &str,
+) -> Result<i64, (StatusCode, String)> {
     sqlx::query_scalar("UPDATE channels SET epoch = epoch + 1 WHERE id = ? RETURNING epoch")
         .bind(channel_id)
         .fetch_one(&state.db)
@@ -632,7 +635,7 @@ fn members_event(
 }
 
 /// Tell the current participants their group's membership/epoch changed (so they rotate).
-async fn broadcast_members(state: &AppState, channel_id: &str, epoch: i64) {
+pub(crate) async fn broadcast_members(state: &AppState, channel_id: &str, epoch: i64) {
     let participants = participant_users(state, channel_id).await;
     crate::gateway::broadcast_to_channel(
         state,

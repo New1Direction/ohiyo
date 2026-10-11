@@ -458,7 +458,7 @@ pub async fn delete_server(
 
 // ── Internal helper ───────────────────────────────────────────────────────────
 
-async fn broadcast_full_server_to_members(state: &AppState, server_id: &str) {
+pub(crate) async fn broadcast_full_server_to_members(state: &AppState, server_id: &str) {
     let members: Vec<String> =
         sqlx::query_scalar("SELECT user_id FROM server_members WHERE server_id = ?")
             .bind(server_id)

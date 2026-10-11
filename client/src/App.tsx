@@ -72,7 +72,7 @@ import { VaultLockedScreen } from "./components/VaultLockedScreen";
 import { VaultUnlocking } from "./components/VaultUnlocking";
 import { SignOutDialog } from "./components/SignOutDialog";
 import { signInRemovesLocalDataNow, signOutRemovesLocalDataNow } from "./lib/signOut";
-import { clearLocalMessageData } from "./lib/logoutCleanup";
+import { clearDeletedAccountData, clearLocalMessageData } from "./lib/logoutCleanup";
 import { onPlaintextCacheEvicted, saveEncryptedChannels } from "./lib/storageQuota";
 import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
 import { apiStatus, badRequestMessage, deviceLimitMessage } from "./lib/apiErrors";
@@ -254,6 +254,29 @@ export default function App() {
     else signOut(false);
   }
 
+  // The account was deleted on the server. Sign this device out. When no other signed-in
+  // home shares this device's keys, its messages and encryption keys go too: they belong
+  // to an account that no longer exists.
+  function handleAccountDeleted(userId: string) {
+    if (!activeHome) return;
+    const lastHome = signOutRemovesLocalDataNow(activeHome.id);
+    if (lastHome) {
+      try {
+        const browser = {
+          keys: () => Object.keys(localStorage),
+          removeMany: (keys: string[]) => keys.forEach((k) => localStorage.removeItem(k)),
+        };
+        const vault = getVaultStore();
+        clearDeletedAccountData(vault ? [browser, vault] : [browser], userId);
+      } catch {
+        /* storage disabled — nothing was persisted to clear */
+      }
+    }
+    setSignInNotice("Your account was deleted.");
+    // signOut clears messages again once the chat has unmounted (it saves a draft then).
+    signOut(lastHome);
+  }
+
   // BootSplash's "Back to sign in": the session isn't working (expired after 30 days, or
   // revoked). Removes nothing; a different user signing in is handled in handleAuth.
   function handleBackToSignIn() {
@@ -307,6 +330,7 @@ export default function App() {
         onBackToSignIn={handleBackToSignIn}
         onSessionUser={rememberHomeUser}
         onTokenChange={(next) => persistHomes(setHomeToken(homes, activeHome.id, next))}
+        onAccountDeleted={handleAccountDeleted}
       />
       {addHomeModal}
       {confirmSignOut && (
@@ -404,6 +428,7 @@ function MainApp({
   onBackToSignIn,
   onSessionUser,
   onTokenChange,
+  onAccountDeleted,
 }: {
   token: string;
   homes: OhiyoHome[];
@@ -418,6 +443,8 @@ function MainApp({
   onSessionUser: (userId: string) => void;
   /** The server issued a new token for this home (after a password change). */
   onTokenChange: (token: string) => void;
+  /** The account was deleted on the server. */
+  onAccountDeleted: (userId: string) => void;
 }) {
   const { toasts, push: toast } = useToast();
   // A full localStorage removed the oldest decrypted messages to make room: say so once.
@@ -2821,6 +2848,7 @@ function MainApp({
           onCurrentUserUpdate={handleCurrentUserUpdate}
           onSignOutEverywhere={signOutEverywhere}
           onTokenChange={onTokenChange}
+          onAccountDeleted={currentUser ? () => onAccountDeleted(currentUser.id) : undefined}
         />
       )}
     </div>
