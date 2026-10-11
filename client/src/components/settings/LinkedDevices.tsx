@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { api } from "../../api";
 import { deviceId } from "../../lib/signal";
+import { forgetDevices } from "../../lib/deviceWatch";
 
 type Device = { device_id: number; updated_at: number };
 
@@ -20,13 +21,20 @@ function lastActive(ts: number): string {
  *  of their devices, so seeing (and pruning) your own device set matters. */
 export function LinkedDevices({
   token,
+  userId,
   onToast,
+  onSignOutEverywhere,
 }: {
   token: string;
+  /** This account, so a removed device that comes back is announced again. */
+  userId?: string;
   onToast: (t: string, type?: "info" | "success" | "error") => void;
+  onSignOutEverywhere?: () => Promise<void>;
 }) {
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+  const [confirmEverywhere, setConfirmEverywhere] = useState(false);
+  const [everywhereBusy, setEverywhereBusy] = useState(false);
   const thisDevice = deviceId();
 
   // Device-link code (this device acts as the primary that authorizes a new one).
@@ -74,6 +82,7 @@ export function LinkedDevices({
     setBusy(id);
     try {
       await api.removeDevice(token, id);
+      if (userId) forgetDevices(userId, [id]);
       setDevices((d) => (d ?? []).filter((x) => x.device_id !== id));
       onToast("Device removed", "success");
     } catch {
@@ -189,6 +198,57 @@ export function LinkedDevices({
             );
           })}
         </ul>
+      )}
+
+      {onSignOutEverywhere && (
+        <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--bg-hover)" }}>
+          {confirmEverywhere ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                Every session ends, this one too. You&apos;ll sign in again here.
+              </span>
+              <button
+                type="button"
+                disabled={everywhereBusy}
+                onClick={async () => {
+                  setEverywhereBusy(true);
+                  try {
+                    await onSignOutEverywhere();
+                  } catch {
+                    onToast("Couldn't sign out everywhere — try again", "error");
+                    setEverywhereBusy(false);
+                  }
+                }}
+                className="rounded px-2.5 py-1 text-xs font-semibold"
+                style={{ background: "var(--danger)", color: "#fff", opacity: everywhereBusy ? 0.6 : 1 }}
+              >
+                {everywhereBusy ? "Signing out…" : "Sign out everywhere"}
+              </button>
+              <button
+                type="button"
+                disabled={everywhereBusy}
+                onClick={() => setConfirmEverywhere(false)}
+                className="rounded px-2.5 py-1 text-xs"
+                style={{ color: "var(--text-secondary)", background: "var(--bg-hover)" }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmEverywhere(true)}
+              className="rounded px-2.5 py-1 text-xs font-semibold"
+              style={{
+                color: "var(--danger)",
+                background: "transparent",
+                border: "1px solid color-mix(in oklch, var(--danger) 30%, transparent)",
+              }}
+            >
+              Sign out everywhere…
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

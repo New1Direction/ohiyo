@@ -370,6 +370,12 @@ pub enum GatewayEvent {
     /// Reply to a client `Heartbeat`, sent on that connection only, so a quiet but
     /// healthy socket still receives a frame and the client does not treat it as dead.
     HeartbeatAck,
+    /// A device registered its encryption keys on this account for the first time. Sent
+    /// to all of the account's sessions, so its other devices can say so at once: a
+    /// stolen session could otherwise add a device and read later messages unnoticed.
+    DeviceAdded {
+        device_id: i64,
+    },
 }
 
 /// A participant already present in a voice channel.

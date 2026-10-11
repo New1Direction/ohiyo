@@ -1041,6 +1041,9 @@ export const api = {
   // Revoke a device from the directory (drop its identity + prekeys).
   removeDevice: (token: string, deviceId: number) =>
     request<void>(`/users/@me/devices/${deviceId}`, { method: "DELETE" }, token),
+  // Ends every session of this account, this one included: every token minted before now
+  // stops working. The caller signs this device out after.
+  logoutEverywhere: (token: string) => request<void>("/auth/logout-everywhere", { method: "POST" }, token),
 
   // ── Invites & people ──────────────────────────────────────────────────────
   createInvite: (
