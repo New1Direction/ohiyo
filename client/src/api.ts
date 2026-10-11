@@ -1044,6 +1044,13 @@ export const api = {
   // Ends every session of this account, this one included: every token minted before now
   // stops working. The caller signs this device out after.
   logoutEverywhere: (token: string) => request<void>("/auth/logout-everywhere", { method: "POST" }, token),
+  // Needs the current password. Ends every session and returns a token for this one.
+  changePassword: (token: string, currentPassword: string, newPassword: string) =>
+    request<AuthResponse>(
+      "/auth/password",
+      { method: "POST", body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) },
+      token
+    ),
 
   // ── Invites & people ──────────────────────────────────────────────────────
   createInvite: (

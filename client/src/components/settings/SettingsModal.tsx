@@ -45,6 +45,7 @@ import {
 import { type Density, DENSITIES, FONT_SCALES } from "../../lib/density";
 import { pushAppearance } from "../../lib/appearanceSync";
 import { LinkedDevices } from "./LinkedDevices";
+import { ChangePassword } from "./ChangePassword";
 import { PluginsTab } from "./PluginsTab";
 import { DesktopAppCard } from "./DesktopAppCard";
 import type { PrivacyPrefs } from "../../lib/privacyPrefs";
@@ -78,12 +79,14 @@ type Props = {
   onCurrentUserUpdate?: (user: PublicUser) => void;
   /** End every session of this account and sign this device out. */
   onSignOutEverywhere?: () => Promise<void>;
+  /** The server issued this device a new token (after a password change). */
+  onTokenChange?: (token: string) => void;
 };
 
 const SETTINGS_FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), textarea, select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
-export function SettingsModal({ currentUser, pluginManager, token, servers, dms, initialTab, onClose, onToast, privacyPrefs, onPrivacyPrefsChange, onCurrentUserUpdate, onSignOutEverywhere }: Props) {
+export function SettingsModal({ currentUser, pluginManager, token, servers, dms, initialTab, onClose, onToast, privacyPrefs, onPrivacyPrefsChange, onCurrentUserUpdate, onSignOutEverywhere, onTokenChange }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "appearance");
   const dialogRef = useRef<HTMLDivElement>(null);
   // On a phone the tabs are a row that scrolls sideways: keep the open one in view.
@@ -205,7 +208,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
         <div className="kc-settings-content flex-1 overflow-y-auto px-10 py-14">
           {tab === "appearance" && <AppearanceTab onToast={onToast} token={token} />}
           {tab === "plugins" && <PluginsTab pluginManager={pluginManager} onToast={onToast} />}
-          {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} onCurrentUserUpdate={onCurrentUserUpdate} />}
+          {tab === "account" && <AccountTab currentUser={currentUser} token={token} onToast={onToast} onCurrentUserUpdate={onCurrentUserUpdate} onTokenChange={onTokenChange} />}
           {tab === "profile" && <ProfileTab token={token} onToast={onToast} />}
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
           {tab === "security" && <SecurityTab token={token} userId={currentUser?.id} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} onSignOutEverywhere={onSignOutEverywhere} />}
@@ -750,7 +753,7 @@ function AppearanceTab({
 
 // ── Account tab ───────────────────────────────────────────────────────────────
 
-function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate }: { currentUser: PublicUser | null; token: string; onToast: (t: string, type?: "info" | "success" | "error") => void; onCurrentUserUpdate?: (user: PublicUser) => void }) {
+function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate, onTokenChange }: { currentUser: PublicUser | null; token: string; onToast: (t: string, type?: "info" | "success" | "error") => void; onCurrentUserUpdate?: (user: PublicUser) => void; onTokenChange?: (token: string) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentUser?.avatar_url ?? null);
 
@@ -821,6 +824,9 @@ function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate }: { curr
           PNG, JPG, WebP and animated GIF all work. Animated pictures are free too.
         </p>
       </div>
+      {onTokenChange && (
+        <ChangePassword token={token} username={currentUser.username} onToast={onToast} onChanged={onTokenChange} />
+      )}
     </div>
   );
 }

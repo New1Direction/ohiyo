@@ -75,7 +75,7 @@ import { signInRemovesLocalDataNow, signOutRemovesLocalDataNow } from "./lib/sig
 import { clearLocalMessageData } from "./lib/logoutCleanup";
 import { onPlaintextCacheEvicted, saveEncryptedChannels } from "./lib/storageQuota";
 import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
-import { badRequestMessage, deviceLimitMessage } from "./lib/apiErrors";
+import { apiStatus, badRequestMessage, deviceLimitMessage } from "./lib/apiErrors";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -97,6 +97,7 @@ import { useDesktopShell } from "./hooks/useDesktopShell";
 import { useAppUpdate } from "./hooks/useAppUpdate";
 import { UpdateBar } from "./components/UpdateBar";
 import { NewDeviceAlert } from "./components/NewDeviceAlert";
+import { setSignInNotice } from "./lib/sessionNotice";
 import {
   loadActiveHomeId,
   loadHomes,
@@ -305,6 +306,7 @@ export default function App() {
         onLogout={handleLogout}
         onBackToSignIn={handleBackToSignIn}
         onSessionUser={rememberHomeUser}
+        onTokenChange={(next) => persistHomes(setHomeToken(homes, activeHome.id, next))}
       />
       {addHomeModal}
       {confirmSignOut && (
@@ -401,6 +403,7 @@ function MainApp({
   onLogout,
   onBackToSignIn,
   onSessionUser,
+  onTokenChange,
 }: {
   token: string;
   homes: OhiyoHome[];
@@ -413,6 +416,8 @@ function MainApp({
   onBackToSignIn: () => void;
   /** Ready confirmed the session's user: the home remembers it. */
   onSessionUser: (userId: string) => void;
+  /** The server issued a new token for this home (after a password change). */
+  onTokenChange: (token: string) => void;
 }) {
   const { toasts, push: toast } = useToast();
   // A full localStorage removed the oldest decrypted messages to make room: say so once.
@@ -1894,6 +1899,33 @@ function MainApp({
     if (connStatus === "connected") flushOutbox();
   }, [connStatus, flushOutbox]);
 
+  // The server refused this session (it expired, or every session was ended from another
+  // device or by a password change). Go to sign-in, keeping what's stored on this device.
+  // A gateway still holding a token this device has just replaced (its own password
+  // change) can land here first, so check the current token before signing out.
+  const latestTokenRef = useRef(token);
+  latestTokenRef.current = token;
+  useEffect(() => {
+    if (connStatus !== "signed_out") return;
+    let alive = true;
+    const checked = latestTokenRef.current;
+    api.me(checked).then(
+      () => {
+        // Still signed in. If the token didn't change either, try the socket again.
+        if (alive && latestTokenRef.current === checked) void gatewayRef.current?.connect();
+      },
+      (err: unknown) => {
+        if (!alive || apiStatus(err) !== 401) return;
+        setSignInNotice("You were signed out on this device. Sign in again to carry on.");
+        onBackToSignIn();
+      }
+    );
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- react to the status only; onBackToSignIn is a fresh closure each render
+  }, [connStatus]);
+
   // ── Message actions (edit / delete / pin) — UI updates arrive via gateway echo.
   async function handleEditMessage(messageId: string, content: string) {
     const ch = selectedChannelRef.current;
@@ -2780,6 +2812,7 @@ function MainApp({
           onToast={toast}
           onCurrentUserUpdate={handleCurrentUserUpdate}
           onSignOutEverywhere={signOutEverywhere}
+          onTokenChange={onTokenChange}
         />
       )}
     </div>

@@ -91,6 +91,7 @@ const STATUS_META: Record<ConnectionStatus, { label: string; color: string }> = 
   connected: { label: "Connected", color: "var(--green)" },
   connecting: { label: "Connecting…", color: "#E8A23D" },
   disconnected: { label: "Reconnecting you now…", color: "var(--danger)" },
+  signed_out: { label: "Signed out", color: "var(--danger)" },
 };
 
 export function ChannelSidebar({

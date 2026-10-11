@@ -460,6 +460,78 @@ pub async fn logout_everywhere(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Attempts per minute per account. Each costs an Argon2 verify, and someone holding a
+/// stolen session could otherwise use this to guess the current password quickly.
+const PASSWORD_CHANGE_MAX_PER_MIN: usize = 5;
+
+#[derive(Deserialize)]
+pub struct ChangePasswordBody {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+/// POST /auth/password — set a new password. The current one is required, so a stolen
+/// session alone can't take the account over. Every session ends (token_version goes up
+/// and live sockets close, as in logout-everywhere): whoever had the old password, or a
+/// copied token, is out. The caller gets a fresh token so this device stays signed in.
+pub async fn change_password(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<ChangePasswordBody>,
+) -> Result<Json<AuthResponse>, (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("password-change:{}", auth.0),
+        PASSWORD_CHANGE_MAX_PER_MIN,
+        Duration::from_secs(60),
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many attempts — give it a moment and try again".into(),
+        ));
+    }
+    if body.new_password.len() < 8 {
+        return Err((StatusCode::BAD_REQUEST, "password must be ≥8 chars".into()));
+    }
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        .bind(&auth.0)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?
+        .ok_or((StatusCode::UNAUTHORIZED, "invalid session".into()))?;
+
+    let (current, hash) = (body.current_password, user.password_hash.clone());
+    if !run_argon2(move || verify_password(&current, &hash)).await? {
+        // 403, not 401: the session is fine, the password isn't. A 401 reads as "signed out".
+        return Err((StatusCode::FORBIDDEN, "current password is wrong".into()));
+    }
+    let new_password = body.new_password;
+    let new_hash = run_argon2(move || hash_password(&new_password))
+        .await?
+        .map_err(crate::api::error::internal)?;
+
+    let token_version: i64 = sqlx::query_scalar(
+        "UPDATE users SET password_hash = ?, token_version = token_version + 1
+         WHERE id = ? RETURNING token_version",
+    )
+    .bind(&new_hash)
+    .bind(&auth.0)
+    .fetch_one(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+    state
+        .sessions
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&auth.0);
+
+    let token = create_token(&user.id, token_version, &jwt_secret())
+        .map_err(crate::api::error::internal)?;
+    Ok(Json(AuthResponse {
+        token,
+        user: user.into(),
+    }))
+}
+
 // ── Device linking (QR / one-time code) ─────────────────────────────────────────
 const LINK_TTL_SECS: i64 = 120;
 const LINK_MAX_PER_MIN: usize = 20;

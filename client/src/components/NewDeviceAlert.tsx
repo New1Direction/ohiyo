@@ -37,7 +37,7 @@ export function NewDeviceAlert({ devices, busy, onKeep, onRemove, lowered }: Pro
         <>
           <p className="kc-device-alert__text">
             Ohiyo will take {one ? "it" : "them"} off your account and sign you out everywhere, on this device too. Sign
-            back in after.
+            back in after. If someone may know your password, change it in Settings → Account.
           </p>
           <div className="kc-device-alert__actions">
             <button type="button" className="kc-device-alert__danger" disabled={busy} onClick={onRemove}>
