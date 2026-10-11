@@ -42,6 +42,21 @@ export function setIdentityTrustBackend(b: TrustBackend): void {
 // them with the identities they guard is correct and simplest).
 const CHANGED_NS = "kc:sig:keychanged:";
 const VERIFIED_NS = "kc:sig:verified:";
+// A contact's devices as the directory last listed them: "deviceId:identityKey" entries,
+// sorted, joined with "|" (base64 keys contain neither ":" nor "|").
+const DEVSET_NS = "kc:sig:devset:";
+// CHANGED_NS values: a device's identity key changed, or a device was added.
+const CHANGED_KEY = "1";
+const CHANGED_DEVICE = "device";
+// What "verified" held before it was tied to a device set. Treated as verified, and tied
+// to the set seen next (recordDeviceSet).
+const LEGACY_VERIFIED = "1";
+
+export type DeviceKey = { device_id: number; identity_key: string };
+
+const canonical = (rows: readonly DeviceKey[]): string =>
+  rows.map((r) => `${r.device_id}:${r.identity_key}`).sort().join("|");
+const entries = (s: string | null): Set<string> => new Set(s ? s.split("|").filter(Boolean) : []);
 
 // ── Live change notifications (so the banner appears mid-session, not only on
 //    reload). Persistence is the source of truth; listeners are just a nudge. ───
@@ -81,7 +96,39 @@ export function recordKeySeen(
 }
 
 export function identityChanged(userId: string): boolean {
-  return backend.getItem(CHANGED_NS + userId) === "1";
+  return backend.getItem(CHANGED_NS + userId) !== null;
+}
+
+/**
+ * Record a contact's devices as the directory lists them now. Every device can read what
+ * you send them, so a device that wasn't there before is news: it raises the change
+ * event (reason "device"), the same way a changed key does. The first list for a contact
+ * is just recorded (trust on first use). A device that left is not news.
+ * Never call this with your own account: deviceWatch covers that.
+ */
+export function recordDeviceSet(userId: string, rows: readonly DeviceKey[]): boolean {
+  if (rows.length === 0) return false; // offline, or no keys yet: nothing to compare
+  const next = canonical(rows);
+  const prev = backend.getItem(DEVSET_NS + userId);
+  if (prev === next) return false;
+  backend.setItem(DEVSET_NS + userId, next);
+  // A verification from before device sets were kept covers what was known then.
+  if (backend.getItem(VERIFIED_NS + userId) === LEGACY_VERIFIED) backend.setItem(VERIFIED_NS + userId, prev ?? next);
+  if (prev === null) return false;
+  const before = entries(prev);
+  if (rows.every((r) => before.has(`${r.device_id}:${r.identity_key}`))) return false; // only removals
+  const knownIds = new Set([...before].map((e) => e.slice(0, e.indexOf(":"))));
+  const reason = rows.some((r) => !knownIds.has(String(r.device_id))) ? CHANGED_DEVICE : CHANGED_KEY;
+  // A changed key is the more serious news: a new device doesn't replace it.
+  if (backend.getItem(CHANGED_NS + userId) !== CHANGED_KEY) backend.setItem(CHANGED_NS + userId, reason);
+  notify(userId);
+  return true;
+}
+
+/** Why the contact's safety number changed, if it did and you haven't dealt with it. */
+export function changeReason(userId: string): "key" | "device" | null {
+  const v = backend.getItem(CHANGED_NS + userId);
+  return v === null ? null : v === CHANGED_DEVICE ? "device" : "key";
 }
 
 /** Dismiss a pending change. A change invalidates any prior verification, so
@@ -93,14 +140,28 @@ export function acknowledgeIdentityChange(userId: string): void {
   notify(userId);
 }
 
+/** Verified, and every device the contact has now was among the ones you verified. A
+ *  device added later is not covered: verifying is about the keys you compared. */
 export function isVerified(userId: string): boolean {
-  return backend.getItem(VERIFIED_NS + userId) === "1";
+  const v = backend.getItem(VERIFIED_NS + userId);
+  if (v === null) return false;
+  if (v === LEGACY_VERIFIED) return true;
+  const current = backend.getItem(DEVSET_NS + userId);
+  if (current === null) return true;
+  const covered = entries(v);
+  return [...entries(current)].every((e) => covered.has(e));
 }
 
-/** Mark a contact verified (user compared the safety number out-of-band). This
- *  also clears any pending change — verifying IS the resolution of a key change. */
-export function markVerified(userId: string): void {
-  backend.setItem(VERIFIED_NS + userId, "1");
+function wasVerified(userId: string): boolean {
+  return backend.getItem(VERIFIED_NS + userId) !== null;
+}
+
+/** Mark a contact verified (user compared the safety number out-of-band), for the
+ *  devices that number was made from (`keySet`; else the devices known now). This also
+ *  clears any pending change — verifying IS the resolution of a key change. */
+export function markVerified(userId: string, keySet?: readonly DeviceKey[]): void {
+  const bound = keySet && keySet.length > 0 ? canonical(keySet) : (backend.getItem(DEVSET_NS + userId) ?? LEGACY_VERIFIED);
+  backend.setItem(VERIFIED_NS + userId, bound);
   backend.removeItem(CHANGED_NS + userId);
   notify(userId);
 }
@@ -111,15 +172,28 @@ export function clearVerified(userId: string): void {
 }
 
 // ── Derived state for the UI ────────────────────────────────────────────────
-// changed_verified   → LOUD: a contact you verified now has a different key.
-// changed_unverified → CALM: an unverified contact's key changed (likely benign).
-// verified           → a reassuring "Verified" badge.
-// unverified         → the default encrypted-but-unverified state.
-export type TrustState = "unverified" | "verified" | "changed_unverified" | "changed_verified";
+// changed_verified        → LOUD: a contact you verified now has a different key.
+// changed_unverified      → CALM: an unverified contact's key changed (likely benign).
+// device_added_verified   → LOUD: a contact you verified has a device you didn't verify.
+// device_added_unverified → CALM: an unverified contact added a device (usually them).
+// verified                → a reassuring "Verified" badge.
+// unverified              → the default encrypted-but-unverified state.
+export type TrustState =
+  | "unverified"
+  | "verified"
+  | "changed_unverified"
+  | "changed_verified"
+  | "device_added_unverified"
+  | "device_added_verified";
 
 export function trustState(userId: string): TrustState {
-  const changed = identityChanged(userId);
-  const verified = isVerified(userId);
-  if (changed) return verified ? "changed_verified" : "changed_unverified";
-  return verified ? "verified" : "unverified";
+  const was = wasVerified(userId);
+  switch (changeReason(userId)) {
+    case "key":
+      return was ? "changed_verified" : "changed_unverified";
+    case "device":
+      return was ? "device_added_verified" : "device_added_unverified";
+  }
+  if (was && !isVerified(userId)) return "device_added_verified";
+  return was ? "verified" : "unverified";
 }

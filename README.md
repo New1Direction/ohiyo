@@ -43,7 +43,7 @@ box; server channels are stored like any chat server's.
   [Known limits of the encryption](#known-limits-of-the-encryption) below. *(e2e
   suites `19-e2e-dm`, `20-disappearing`, `21-multidevice`, `22-group-e2e`,
   `26-privacy-mode`, `27-private-dm-links`, `35-recovery-restore`, `36-new-device-alert`,
-  `37-change-password`.)*
+  `37-change-password`, `38-contact-new-device`.)*
 - **Instant Servers** — launch your own community server in **one tap**. We host it
   (Minecraft-Realms-style): encrypted DMs and group chats are ciphertext on the box,
   while server channels are stored in the clear like any chat server's. Export anytime,
@@ -172,10 +172,12 @@ We would rather you know these than find them:
 
 - **Opt-in.** A conversation is encrypted only after someone turns on the lock. New
   DMs start unencrypted.
-- **A contact's new devices are trusted on first use.** When a contact adds a device,
-  your client starts encrypting to it without a prompt. A malicious server, or someone
-  holding the contact's stolen session, could add a device and read messages sent after
-  that. Compare safety numbers out of band for conversations that matter. A device
+- **A contact's new device gets your message before you're told.** When a contact adds
+  a device, your client encrypts to it at once and then says so in the chat ("They added
+  a new device"). If you had verified that contact, the warning is loud and the verified
+  mark drops until you compare safety numbers again. So a malicious server, or someone
+  holding the contact's stolen session, could read the message that reveals the new
+  device. Compare safety numbers out of band for conversations that matter. A device
   added to **your own** account is announced on your other devices at once, with a
   one-tap "Not me" that removes it and signs out every session.
 - **Group encryption is experimental.** It is Ohiyo's own sender-key design, not

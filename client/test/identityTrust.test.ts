@@ -21,6 +21,8 @@ import {
   clearVerified,
   trustState,
   onIdentityChange,
+  recordDeviceSet,
+  changeReason,
   type TrustBackend,
 } from "../src/lib/identityTrust.ts";
 
@@ -125,4 +127,95 @@ test("clearVerified resets to unverified", () => {
   clearVerified("grace");
   assert.equal(isVerified("grace"), false);
   assert.equal(trustState("grace"), "unverified");
+});
+
+// ── A contact's devices (recordDeviceSet) ───────────────────────────────────
+// Every device a contact has can read what you send them. A new one used to be trusted
+// silently, and a "verified" mark kept covering it. Now it's news, and "verified" covers
+// the devices you actually compared.
+
+const dev = (device_id: number, identity_key: string) => ({ device_id, identity_key });
+
+test("a contact's first device list is just recorded", () => {
+  freshBackend();
+  assert.equal(recordDeviceSet("hal", [dev(1, "A")]), false);
+  assert.equal(trustState("hal"), "unverified");
+});
+
+test("a new device on an unverified contact is calm news", () => {
+  freshBackend();
+  let heard = 0;
+  const off = onIdentityChange(() => heard++);
+  recordDeviceSet("ivy", [dev(1, "A")]);
+  assert.equal(recordDeviceSet("ivy", [dev(1, "A"), dev(2, "B")]), true);
+  assert.equal(changeReason("ivy"), "device");
+  assert.equal(trustState("ivy"), "device_added_unverified");
+  assert.equal(heard, 1);
+  off();
+});
+
+test("a new device on a verified contact is loud, and verified no longer covers them", () => {
+  freshBackend();
+  recordDeviceSet("jo", [dev(1, "A")]);
+  markVerified("jo", [dev(1, "A")]);
+  assert.equal(trustState("jo"), "verified");
+  recordDeviceSet("jo", [dev(1, "A"), dev(2, "B")]);
+  assert.equal(trustState("jo"), "device_added_verified");
+  assert.equal(isVerified("jo"), false);
+  // Verifying again, against the new set, settles it.
+  markVerified("jo", [dev(1, "A"), dev(2, "B")]);
+  assert.equal(trustState("jo"), "verified");
+});
+
+test("a device leaving is not news, and verified still covers the rest", () => {
+  freshBackend();
+  recordDeviceSet("kai", [dev(1, "A"), dev(2, "B")]);
+  markVerified("kai");
+  assert.equal(recordDeviceSet("kai", [dev(1, "A")]), false);
+  assert.equal(trustState("kai"), "verified");
+});
+
+test("a known device with a different key is a key change, not a new device", () => {
+  freshBackend();
+  recordDeviceSet("lee", [dev(1, "A")]);
+  markVerified("lee");
+  recordDeviceSet("lee", [dev(1, "A2")]);
+  assert.equal(changeReason("lee"), "key");
+  assert.equal(trustState("lee"), "changed_verified");
+});
+
+test("a key change is not downgraded to 'new device' by a later addition", () => {
+  freshBackend();
+  recordKeySeen("max", "K1", "K2"); // the Signal store saw a key change
+  recordDeviceSet("max", [dev(1, "A")]);
+  recordDeviceSet("max", [dev(1, "A"), dev(2, "B")]);
+  assert.equal(changeReason("max"), "key");
+});
+
+test("verifying binds to the devices the safety number was made from", () => {
+  freshBackend();
+  recordDeviceSet("ned", [dev(1, "A")]);
+  // The number was computed from device 1 only; device 2 showed up before the click.
+  recordDeviceSet("ned", [dev(1, "A"), dev(2, "B")]);
+  markVerified("ned", [dev(1, "A")]);
+  assert.equal(isVerified("ned"), false);
+  assert.equal(trustState("ned"), "device_added_verified");
+});
+
+test("a verification from before device sets is kept, and covers what was known then", () => {
+  const backend = freshBackend();
+  backend.setItem("kc:sig:verified:ola", "1"); // stored by an older build
+  assert.equal(trustState("ola"), "verified");
+  recordDeviceSet("ola", [dev(1, "A")]); // first list since: that's what it covered
+  assert.equal(trustState("ola"), "verified");
+  recordDeviceSet("ola", [dev(1, "A"), dev(2, "B")]);
+  assert.equal(trustState("ola"), "device_added_verified");
+});
+
+test("an empty list (offline) changes nothing", () => {
+  freshBackend();
+  recordDeviceSet("pat", [dev(1, "A")]);
+  assert.equal(recordDeviceSet("pat", []), false);
+  assert.equal(trustState("pat"), "unverified");
+  assert.equal(recordDeviceSet("pat", [dev(1, "A")]), false);
 });
