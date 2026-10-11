@@ -885,7 +885,8 @@ pub async fn set_deadman(
 /// reference scans. A crash between the two steps leaves unreferenced files behind,
 /// which only costs disk space.
 async fn wipe_authored_messages(state: &AppState, user_id: &str) -> Result<(), sqlx::Error> {
-    let mut tx = state.db.begin().await?;
+    // Write lock up front: this reads before it writes (see `publish_keys`).
+    let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
     let attachments: Vec<String> = sqlx::query_scalar(
         "SELECT attachments FROM messages WHERE author_id = ? AND attachments IS NOT NULL",
     )

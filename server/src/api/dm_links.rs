@@ -216,9 +216,11 @@ pub async fn redeem_private_dm_link(
 
     let hash = token_hash(&token);
     let now = now_unix();
+    // Write lock up front: this reads the link before marking it used, so two redeems of
+    // one link take turns, and the second sees it used instead of failing with a 500.
     let mut tx = state
         .db
-        .begin()
+        .begin_with("BEGIN IMMEDIATE")
         .await
         .map_err(crate::api::error::internal)?;
 
