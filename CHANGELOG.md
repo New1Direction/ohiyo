@@ -41,6 +41,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   the release build, the web app's Docker image and the Tauri dev/build hooks use Bun to
   install packages and run scripts. Node still runs `tsc`, ESLint, Vite and the unit tests.
   Contributors need [Bun](https://bun.sh) 1.4+ alongside Node 22.
+- **Dependency updates.** The server moves to tokio 1.53, serde_json 1.0.151, futures
+  0.3.34, flate2 1.1.10 and uuid 1.27. The release build uses tauri-action v1 (same
+  inputs, now on Node 24; it still uploads the updater's `latest.json` and leaves the
+  release a draft), and the watch-modes check uses setup-node v7 and upload-artifact v7.
 - **Restoring keys warns you first.** A restore makes this device take the place of the
   device that made the backup. If both keep being used, encrypted messages can stop
   decrypting on both. The restore box now says so, and points to Link a device when the
