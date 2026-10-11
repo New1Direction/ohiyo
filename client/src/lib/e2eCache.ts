@@ -29,7 +29,21 @@ type SyncStore = {
   removeItem: (key: string) => void;
   /** The desktop vault's batch removal: one write instead of one per key. */
   removeMany?: (keys: string[]) => void;
+  /** Every key in the store. The desktop vault lists its own; localStorage has length/key(). */
+  keys?: () => string[];
+  length?: number;
+  key?: (index: number) => string | null;
 };
+
+function storeKeys(s: SyncStore): string[] {
+  if (s.keys) return s.keys();
+  const out: string[] = [];
+  for (let i = 0; i < (s.length ?? 0); i++) {
+    const k = s.key?.(i);
+    if (k != null) out.push(k);
+  }
+  return out;
+}
 
 // Prefer the encrypted vault on desktop; fall back to localStorage on web.
 function store(): SyncStore {
@@ -92,6 +106,57 @@ function dropExpired(s: SyncStore, now: number): void {
   nextExpiry = { store: s, at };
 }
 
+// An entry written straight to the store, not through cachePlaintext, is missing from the
+// index: the sweep above never sees it and the size bound never counts it. A restore from
+// an older recovery backup writes entries that way (tauriVault importKeyMaterial), so a
+// restored disappearing message nobody opens would stay on disk past its expiry. Fold such
+// entries in: drop the ones already expired, and put the rest at the old end of the index,
+// first to go when the cache is full.
+function adoptUnindexed(s: SyncStore, now: number): void {
+  let idx: string[] = [];
+  try {
+    idx = JSON.parse(s.getItem(INDEX) || "[]");
+  } catch {
+    idx = [];
+  }
+  const known = new Set(idx);
+  const remove: string[] = [];
+  const found: string[] = [];
+  for (const key of storeKeys(s)) {
+    if (!key.startsWith(PREFIX)) continue;
+    const id = key.slice(PREFIX.length);
+    if (known.has(id)) continue;
+    const raw = s.getItem(key);
+    if (raw === null) continue;
+    if (isExpired(decodeEntry(raw), now)) remove.push(key);
+    else found.push(id);
+  }
+  if (found.length > 0) {
+    const next = [...found, ...idx];
+    while (next.length > MAX) remove.push(PREFIX + next.shift());
+    s.setItem(INDEX, JSON.stringify(next));
+  }
+  if (remove.length > 0) {
+    if (s.removeMany) s.removeMany(remove);
+    else for (const key of remove) s.removeItem(key);
+  }
+}
+
+/** Fold in entries missing from the index, then drop every expired entry. The app runs
+ *  this once at sign-in, after the vault is up, so cleanup doesn't wait for the first
+ *  encrypted message to be read. */
+export function sweepPlaintextCache(): void {
+  try {
+    const s = store();
+    const now = nowSeconds();
+    adoptUnindexed(s, now);
+    nextExpiry = null; // a full sweep, so newly indexed expiries are tracked
+    dropExpired(s, now);
+  } catch {
+    /* storage disabled — non-fatal */
+  }
+}
+
 export function cachePlaintext(msgId: string, text: string, expiresAt: number | null = null): void {
   try {
     const s = store();
@@ -126,7 +191,7 @@ export function getCachedPlaintext(msgId: string): string | null {
     if (raw === null) return null;
     const entry = decodeEntry(raw);
     if (!isExpired(entry, now)) return entry.pt;
-    removeCachedPlaintext(msgId); // not in the index (e.g. restored from a backup)
+    removeCachedPlaintext(msgId); // not in the index (see adoptUnindexed)
     return null;
   } catch {
     return null;

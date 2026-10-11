@@ -70,7 +70,7 @@ KIKKA_ORIGIN=http://localhost:1420 bun run test:e2e receipts # filter by substri
 
 The 25 suites cover signup, invites, moderation, roles, polls, mentions, events,
 drafts, image uploads, receipts, the plugin sandbox, and the encrypted-DM /
-group / multi-device / disappearing-message flows. A few of the crypto suites
+group / multi-device / disappearing-message / backup-restore flows. A few of the crypto suites
 are timing-sensitive, so e2e is run on demand and on a weekly schedule rather
 than as a required pull-request check (yet) — but new behavior should still come
 with coverage.

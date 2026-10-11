@@ -46,7 +46,7 @@ import {
   acknowledgeIdentityChange,
   type TrustState,
 } from "./lib/identityTrust";
-import { cachePlaintext, getCachedPlaintext, removeCachedPlaintext } from "./lib/e2eCache";
+import { cachePlaintext, getCachedPlaintext, removeCachedPlaintext, sweepPlaintextCache } from "./lib/e2eCache";
 import { afterDecryptAttempt, withOwnPlaintext } from "./lib/ownEcho";
 import { configureRecoveryCoverageScope, coverageForMessage, recordGroupSenderKeyMessage, recordSignalMessage } from "./lib/recoveryCoverage";
 import {
@@ -637,6 +637,9 @@ function MainApp({
       // access (no-op + localStorage in a browser). Keys never sit plaintext on disk.
       await initVaultBackend();
       if (!alive) return;
+      // Drop decrypted plaintext that has passed its expiry, including entries a restore
+      // wrote without indexing, before anything reads the cache.
+      sweepPlaintextCache();
       myKeyPair()
         .then((kp) => {
           if (alive) void api.publishKey(token, JSON.stringify(kp.publicJwk));
