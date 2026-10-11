@@ -45,6 +45,8 @@ pub fn router() -> Router<AppState> {
         .route("/auth/login", post(auth::login))
         // Revoke every token minted before now (bumps users.token_version).
         .route("/auth/logout-everywhere", post(auth::logout_everywhere))
+        // Change the password; ends every other session and returns a token for this one.
+        .route("/auth/password", post(auth::change_password))
         // Device linking (QR / one-time code) — add a device without re-entering the password
         .route("/devices/link/start", post(auth::link_start))
         .route("/devices/link/complete", post(auth::link_complete))

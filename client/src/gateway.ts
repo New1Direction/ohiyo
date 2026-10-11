@@ -1,5 +1,6 @@
 import type { PublicUser, ServerWithChannels, Channel, Message } from "./api";
 import { gatewayUrl, api } from "./api";
+import { apiStatus } from "./lib/apiErrors";
 
 /** A peer already present in a voice channel when you join. */
 export type VoicePeer = {
@@ -73,7 +74,9 @@ export type ClientEvent =
 
 export type GatewayHandler = (event: GatewayEvent) => void;
 
-export type ConnectionStatus = "connecting" | "connected" | "disconnected";
+/** "signed_out": the server refused this session's token (it expired, or every session
+ *  was ended from another device or by a password change). Retrying can't help. */
+export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "signed_out";
 export type StatusHandler = (status: ConnectionStatus) => void;
 
 const HEARTBEAT_MS = 20_000;
@@ -135,7 +138,12 @@ export class Gateway {
     let ticket: string;
     try {
       ticket = await api.getWsTicket(this.token);
-    } catch {
+    } catch (err) {
+      if (apiStatus(err) === 401) {
+        // The token is dead, not the network: stop instead of retrying forever.
+        this.setStatus("signed_out");
+        return;
+      }
       this.setStatus("disconnected");
       if (!this.closedByUser) this.scheduleReconnect();
       return;

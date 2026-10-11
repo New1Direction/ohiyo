@@ -9,6 +9,7 @@ import type { OhiyoHome } from "../lib/homes";
 import { BirdMark } from "./BirdMark";
 import { markActivation } from "../lib/activation";
 import { rateLimitMessage } from "../lib/apiErrors";
+import { takeSignInNotice } from "../lib/sessionNotice";
 
 type Props = {
   home: OhiyoHome;
@@ -89,7 +90,8 @@ export function AuthScreen({ home, onAuth }: Props) {
   const [displayName, setDisplayName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
-  const [error, setError] = useState("");
+  // A reason left by the app when it signed this device out by itself (sessionNotice).
+  const [error, setError] = useState(() => takeSignInNotice() ?? "");
   const [loading, setLoading] = useState(false);
   const [linkCode, setLinkCode] = useState("");
   const [factIndex, setFactIndex] = useState(0);
@@ -430,7 +432,7 @@ export function AuthScreen({ home, onAuth }: Props) {
                     <button type="button" onClick={() => switchMode("link")} className="ohiyo-door__link">
                       link this device
                     </button>{" "}
-                    from there. If not, you can{" "}
+                    from there, then set a new one in Settings → Account. If not, you can{" "}
                     <button type="button" onClick={() => switchMode("register")} className="ohiyo-door__link">
                       start a new account
                     </button>

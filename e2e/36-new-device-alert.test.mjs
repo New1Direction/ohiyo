@@ -79,6 +79,8 @@ try {
   if ((await status(token2, "/users/@me")) !== 401) throw new Error("device 2's token still works after Not me");
   if ((await status(token1, "/users/@me")) !== 401) throw new Error("device 1's old token still works after Not me");
   log("every old session is ended, device 2's included ✓");
+  await d2.page.waitForSelector("text=/You were signed out on this device/", { timeout: 20000 });
+  log("device 2 noticed and went to sign-in by itself ✓");
 
   await login(d1.page, A);
   const token1b = await currentToken(d1.page);

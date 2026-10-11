@@ -31,3 +31,23 @@ export function deviceLimitMessage(err: unknown): string | null {
 export function badRequestMessage(err: unknown): string | null {
   return apiStatus(err) === 400 && err instanceof Error && err.message.trim() ? err.message : null;
 }
+
+/** The server's minimum (server/src/api/auth.rs: "password must be ≥8 chars"). */
+export const PASSWORD_MIN_LENGTH = 8;
+
+/** What to show when changing the password failed. A 403 is a wrong current password
+ *  (the session itself is fine), not a sign-out. */
+export function passwordChangeMessage(err: unknown): string {
+  switch (apiStatus(err)) {
+    case 403:
+      return "That isn't your current password.";
+    case 429:
+      return "Too many tries. Wait a minute, then try again.";
+    case 400:
+      return `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
+    case 401:
+      return "Your session has ended. Sign in again, then change your password.";
+    default:
+      return "Couldn't change your password. Check your connection and try again.";
+  }
+}

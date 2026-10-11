@@ -21,6 +21,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 - **Sign out everywhere**, under Privacy & security → Linked devices. Ends every session
   of your account, on this device too. The server could already do this; nothing in the
   app asked it to.
+- **Change your password**, under Settings → Account. It needs your current password, and
+  it signs you out everywhere else, so someone who knew the old one, or copied a session,
+  is out. The device you change it on stays signed in. Your encryption keys and recovery
+  backup don't use the password, so nothing else needs redoing.
 
 ### Changed
 - **A new sign-in screen.** A painting fills the screen and follows your local time:
@@ -38,6 +42,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   old device still works.
 
 ### Fixed
+- **A device whose session ended now goes to sign-in.** When every session was ended from
+  another device (or by a password change), the others sat on "Reconnecting you now…"
+  forever. They now notice, go to the sign-in screen, and say why.
 - **Restoring your keys on a new device no longer leaves a dead device behind.** A restore
   makes the new device take over the backed-up device. Before, the new device's own
   sign-in stayed listed on your account with keys nothing could use. People kept sending
