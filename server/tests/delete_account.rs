@@ -438,7 +438,9 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-use server::provision::{MachineProvisioner, MachineState, ProvisionError, ProvisionRequest, ProvisionedMachine};
+use server::provision::{
+    MachineProvisioner, MachineState, ProvisionError, ProvisionRequest, ProvisionedMachine,
+};
 
 /// Stands in for the cloud: hands out machines, records what is destroyed, and can
 /// refuse to destroy anything.
@@ -488,10 +490,17 @@ async fn with_instance(cloud: Arc<Cloud>, username: &str) -> (TestServer, AuthOk
     let srv = TestServer::start_with(|state| state.provisioner = cloud).await;
     let me = srv.register(username, PASS).await;
     let res = srv
-        .post_json_auth("/api/v1/instances", &me.token, json!({ "name": "My Roost" }))
+        .post_json_auth(
+            "/api/v1/instances",
+            &me.token,
+            json!({ "name": "My Roost" }),
+        )
         .await;
     assert_eq!(res.status(), 200, "create instance");
-    let id = res.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_owned();
+    let id = res.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     (srv, me, id)
 }
 
@@ -501,12 +510,26 @@ async fn their_instant_servers_are_shut_down_and_deleted() {
     let (srv, me, id) = with_instance(cloud.clone(), "annhosts").await;
     let db = sqlx::SqlitePool::connect(srv.db_url()).await.unwrap();
 
-    assert_eq!(delete_me(&srv, &me.token, PASS, "annhosts").await.status(), 204);
+    assert_eq!(
+        delete_me(&srv, &me.token, PASS, "annhosts").await.status(),
+        204
+    );
 
     let destroyed = cloud.destroyed.lock().unwrap().clone();
-    assert!(destroyed.contains(&format!("machine-{id}")), "{destroyed:?}");
+    assert!(
+        destroyed.contains(&format!("machine-{id}")),
+        "{destroyed:?}"
+    );
     assert!(destroyed.contains(&format!("volume-{id}")), "{destroyed:?}");
-    assert_eq!(count(&db, "SELECT COUNT(*) FROM hosted_instances WHERE id = ?", &id).await, 0);
+    assert_eq!(
+        count(
+            &db,
+            "SELECT COUNT(*) FROM hosted_instances WHERE id = ?",
+            &id
+        )
+        .await,
+        0
+    );
 }
 
 #[tokio::test]
@@ -519,12 +542,37 @@ async fn if_the_cloud_refuses_nothing_is_deleted() {
     cloud.refuse.store(true, Ordering::SeqCst);
 
     // 502: the instance couldn't be destroyed, so the account is left exactly as it was.
-    assert_eq!(delete_me(&srv, &me.token, PASS, "annstuck").await.status(), 502);
-    assert_eq!(srv.get_auth("/api/v1/users/@me", &me.token).await.status(), 200);
-    assert_eq!(count(&db, "SELECT COUNT(*) FROM hosted_instances WHERE id = ?", &id).await, 1);
-    assert_eq!(count(&db, "SELECT COUNT(*) FROM messages WHERE author_id = ?", &me.id).await, 1);
+    assert_eq!(
+        delete_me(&srv, &me.token, PASS, "annstuck").await.status(),
+        502
+    );
+    assert_eq!(
+        srv.get_auth("/api/v1/users/@me", &me.token).await.status(),
+        200
+    );
+    assert_eq!(
+        count(
+            &db,
+            "SELECT COUNT(*) FROM hosted_instances WHERE id = ?",
+            &id
+        )
+        .await,
+        1
+    );
+    assert_eq!(
+        count(
+            &db,
+            "SELECT COUNT(*) FROM messages WHERE author_id = ?",
+            &me.id
+        )
+        .await,
+        1
+    );
 
     // Once the cloud is back, deleting works.
     cloud.refuse.store(false, Ordering::SeqCst);
-    assert_eq!(delete_me(&srv, &me.token, PASS, "annstuck").await.status(), 204);
+    assert_eq!(
+        delete_me(&srv, &me.token, PASS, "annstuck").await.status(),
+        204
+    );
 }
