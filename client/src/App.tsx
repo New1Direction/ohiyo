@@ -38,7 +38,8 @@ import { isActivationDismissed, loadActivation, markActivation, setActivationDis
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
 import { myKeyPair, deriveSharedKey, decryptMessage, isEncrypted } from "./lib/e2e";
-import { initSignal, encryptFor, decryptFrom, isSignalCiphertext, parseSignalCiphertextHeader, safetyNumber } from "./lib/signal";
+import { initSignal, encryptFor, decryptFrom, deviceId, isSignalCiphertext, parseSignalCiphertextHeader, safetyNumber } from "./lib/signal";
+import { retryRetiredDevice } from "./lib/retiredDevice";
 import {
   onIdentityChange,
   trustState,
@@ -640,6 +641,8 @@ function MainApp({
       // Drop decrypted plaintext that has passed its expiry, including entries a restore
       // wrote without indexing, before anything reads the cache.
       sweepPlaintextCache();
+      // Finish removing a device id a key restore replaced, if that failed at the time.
+      void retryRetiredDevice((id) => api.removeDevice(token, id), currentUser.id, deviceId);
       myKeyPair()
         .then((kp) => {
           if (alive) void api.publishKey(token, JSON.stringify(kp.publicJwk));
