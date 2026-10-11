@@ -10,7 +10,7 @@ import {
   SessionCipher,
 } from "@privacyresearch/libsignal-protocol-typescript";
 import { api } from "../api";
-import { recordKeySeen, setIdentityTrustBackend } from "./identityTrust";
+import { recordDeviceSet, recordKeySeen, setIdentityTrustBackend, type DeviceKey } from "./identityTrust";
 import { computeSafetyNumber } from "./safetyNumber";
 import { fanOut } from "./signalFanout";
 import { setItemEvictingPlaintextCache } from "./storageQuota";
@@ -405,7 +405,12 @@ export async function encryptFor(token: string, peerId: string, plaintext: strin
   const uids = myId && myId !== peerId ? [peerId, myId] : [peerId];
   const buf = new TextEncoder().encode(plaintext).buffer;
   const r = await fanOut<Bundle>(uids, { userId: myId, deviceId: myDevice }, {
-    listDevices: async (uid) => (await api.getIdentityKeys(token, uid)).map((k) => k.device_id),
+    listDevices: async (uid) => {
+      const keys = await api.getIdentityKeys(token, uid);
+      // A contact's new device is news (identityTrust); our own are deviceWatch's.
+      if (uid !== myId) recordDeviceSet(uid, keys);
+      return keys.map((k) => k.device_id);
+    },
     fetchBundles: (uid) => api.getPrekeyBundles(token, uid),
     hasSession: async (uid, d) => Boolean(await store.loadSession(new SignalProtocolAddress(uid, d).toString())),
     startSession: (uid, b) => ensureSession(new SignalProtocolAddress(uid, b.device_id), b),
@@ -486,12 +491,32 @@ function loadAllIdentities(userId: string): ArrayBuffer[] {
 // directory is untrusted — but the safety number is compared OUT OF BAND, so a server
 // that lies about a user's devices produces a mismatch the two parties will notice.
 async function fetchIdentityKeys(token: string, userId: string): Promise<ArrayBuffer[]> {
+  const rows = await fetchIdentityRows(token, userId);
+  return rows.map((r) => b642ab(r.identity_key));
+}
+
+async function fetchIdentityRows(token: string, userId: string): Promise<DeviceKey[]> {
   try {
-    const rows = await api.getIdentityKeys(token, userId);
-    return rows.map((r) => b642ab(r.identity_key));
+    return await api.getIdentityKeys(token, userId);
   } catch {
     return [];
   }
+}
+
+// The contact devices each shown safety number was made from, so "verified" covers
+// exactly those (identityTrust.markVerified), not a device that showed up since.
+const safetyNumberSets = new Map<string, DeviceKey[]>();
+
+/** The contact's devices behind the last safety number shown for them. */
+export function safetyNumberKeySet(peerId: string): DeviceKey[] | undefined {
+  return safetyNumberSets.get(peerId);
+}
+
+/** Read a contact's devices from the directory and note any new one (identityTrust), so
+ *  an open encrypted chat says so even before you send anything. */
+export async function refreshContactDevices(token: string, peerId: string): Promise<void> {
+  if (!isValidUserId(peerId) || peerId === ownUserId()) return;
+  recordDeviceSet(peerId, await fetchIdentityRows(token, peerId));
 }
 
 /** Safety number (identity fingerprint) for verifying a peer out-of-band. Aggregates
@@ -504,7 +529,14 @@ export async function safetyNumber(token: string, myId: string, peerId: string):
   const mine = await store.getIdentityKeyPair();
   if (!mine) return null;
   // Prefer the server's full directory; fall back to locally-seen keys when offline.
-  const peerServer = await fetchIdentityKeys(token, peerId);
+  const peerRows = await fetchIdentityRows(token, peerId);
+  if (peerRows.length) {
+    recordDeviceSet(peerId, peerRows);
+    safetyNumberSets.set(peerId, peerRows);
+  } else {
+    safetyNumberSets.delete(peerId);
+  }
+  const peerServer = peerRows.map((r) => b642ab(r.identity_key));
   const theirKeys = peerServer.length ? peerServer : loadAllIdentities(peerId);
   const myServer = await fetchIdentityKeys(token, myId);
   // combinedIdentity dedupes, so including our current device's key alongside the

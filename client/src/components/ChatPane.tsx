@@ -451,6 +451,8 @@ export function ChatPane({
   });
   // Open + compute the safety number (shared by the banner's Verify button and the
   // key-change warning's "Verify now").
+  // A contact you verified now has a key or a device you didn't verify.
+  const loudTrust = e2eTrust === "changed_verified" || e2eTrust === "device_added_verified";
   const openSafetyNumber = useCallback(async () => {
     if (!onRequestSafetyNumber) return;
     setSafety({ open: true, value: null, loading: true });
@@ -1437,20 +1439,31 @@ export function ChatPane({
 
       {e2eEnabled && (
         <>
-          {(e2eTrust === "changed_verified" || e2eTrust === "changed_unverified") && (
+          {e2eTrust !== "verified" && e2eTrust !== "unverified" && (
             <div
               role="alert"
               className="mx-3 mt-2 rounded-md px-3 py-2 text-xs"
               style={{
-                background: e2eTrust === "changed_verified" ? "rgba(220,38,38,0.12)" : "rgba(217,119,6,0.12)",
-                border: `1px solid ${e2eTrust === "changed_verified" ? "#dc2626" : "#d97706"}`,
+                background: loudTrust ? "rgba(220,38,38,0.12)" : "rgba(217,119,6,0.12)",
+                border: `1px solid ${loudTrust ? "#dc2626" : "#d97706"}`,
                 color: "var(--text-primary)",
               }}
             >
               <div className="flex items-start gap-2">
-                <span aria-hidden="true">{e2eTrust === "changed_verified" ? "⚠️" : "🔁"}</span>
+                <span aria-hidden="true">{loudTrust ? "⚠️" : e2eTrust === "changed_unverified" ? "🔁" : "📱"}</span>
                 <span>
-                  {e2eTrust === "changed_verified" ? (
+                  {e2eTrust === "device_added_verified" ? (
+                    <>
+                      <strong>They have a device you didn&apos;t verify.</strong> It can read what you send. You verified
+                      this contact before, so unless they told you about a new phone or computer, compare safety
+                      numbers again before you trust it.
+                    </>
+                  ) : e2eTrust === "device_added_unverified" ? (
+                    <>
+                      <strong>They added a new device.</strong> It can read what you send from now on. Usually
+                      that&apos;s them on a new phone or computer — verify to be sure.
+                    </>
+                  ) : e2eTrust === "changed_verified" ? (
                     <>
                       <strong>Their safety number changed.</strong> You verified this contact before, so unless they
                       reinstalled or added a device, someone may be intercepting. Compare the new number before you

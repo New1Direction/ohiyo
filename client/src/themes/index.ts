@@ -10,6 +10,8 @@ export type ThemeVar = {
   "--accent": string;
   "--accent-hover": string;
   "--danger": string;
+  /** Needs attention but isn't an error (an older backup, a server waking up). */
+  "--warning": string;
   "--green": string;
 };
 
@@ -37,6 +39,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#62b0dc",
       "--accent-hover": "#3d82ad",
       "--danger": "#d86647",
+      "--warning": "#e3a63f",
       "--green": "#76a783",
     },
   },
@@ -56,6 +59,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#76a783",
       "--accent-hover": "#4e7b5d",
       "--danger": "#d86647",
+      "--warning": "#d9a845",
       "--green": "#76a783",
     },
   },
@@ -75,6 +79,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#e1732c",
       "--accent-hover": "#bf5d22",
       "--danger": "#e0483f",
+      "--warning": "#e6a94a",
       "--green": "#76a783",
     },
   },
@@ -94,6 +99,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#f2683c",
       "--accent-hover": "#db5429",
       "--danger": "#e0483f",
+      "--warning": "#8a5600",
       "--green": "#1f9e6b",
     },
   },
@@ -113,6 +119,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#ff7a4d",
       "--accent-hover": "#ff9166",
       "--danger": "#f2685f",
+      "--warning": "#e6ad55",
       "--green": "#3fc489",
     },
   },
@@ -132,6 +139,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#5865f2",
       "--accent-hover": "#4752c4",
       "--danger": "#ed4245",
+      "--warning": "#f0b232",
       "--green": "#23a55a",
     },
   },
@@ -151,6 +159,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#7c6dfa",
       "--accent-hover": "#6557e0",
       "--danger": "#e05c67",
+      "--warning": "#e8b04b",
       "--green": "#1fa54b",
     },
   },
@@ -170,6 +179,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#7aa2f7",
       "--accent-hover": "#5b7fe0",
       "--danger": "#f7768e",
+      "--warning": "#e0af68",
       "--green": "#9ece6a",
     },
   },
@@ -189,6 +199,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#c4a7e7",
       "--accent-hover": "#b08fd4",
       "--danger": "#eb6f92",
+      "--warning": "#f6c177",
       "--green": "#9ccfd8",
     },
   },
@@ -208,6 +219,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#5865f2",
       "--accent-hover": "#4752c4",
       "--danger": "#ed4245",
+      "--warning": "#875300",
       "--green": "#2d7d46",
     },
   },
@@ -227,6 +239,7 @@ export const BUILTIN_THEMES: Theme[] = [
       "--accent": "#00d4ff",
       "--accent-hover": "#00b8e0",
       "--danger": "#ff4444",
+      "--warning": "#f0b232",
       "--green": "#00cc66",
     },
   },
@@ -311,7 +324,7 @@ export function importTheme(json: string): Theme {
 }
 
 // ── Visual theme editor support ─────────────────────────────────────────────
-/** The 12 theme colors grouped + labeled for the editor's color pickers. */
+/** The 13 theme colors grouped + labeled for the editor's color pickers. */
 export const THEME_VAR_GROUPS: { group: string; vars: { key: keyof ThemeVar; label: string }[] }[] = [
   {
     group: "Backgrounds",
@@ -337,6 +350,7 @@ export const THEME_VAR_GROUPS: { group: string; vars: { key: keyof ThemeVar; lab
       { key: "--accent", label: "Accent" },
       { key: "--accent-hover", label: "Accent hover" },
       { key: "--green", label: "Success" },
+      { key: "--warning", label: "Warning" },
       { key: "--danger", label: "Danger" },
     ],
   },
