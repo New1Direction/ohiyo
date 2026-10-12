@@ -31,6 +31,7 @@ export type IconName =
   | "clock"
   | "tv"
   | "flag"
+  | "leave"
   | "more";
 
 const PATHS: Record<IconName, ReactNode> = {
@@ -183,6 +184,13 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M5 21V4" />
       <path d="M5 4h11l-1 5 1 5H5" />
+    </>
+  ),
+  leave: (
+    <>
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="m16 17 5-5-5-5" />
+      <path d="M21 12H9" />
     </>
   ),
   more: (

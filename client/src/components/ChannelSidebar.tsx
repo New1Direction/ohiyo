@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { ActivationChecklist } from "./ActivationChecklist";
 import { SpaceOptions } from "./SpaceOptions";
+import { SpaceMenu, type SpaceMenuItem } from "./SpaceMenu";
 import type { Channel, ServerWithChannels, PublicUser } from "../api";
 import type { ActivationState } from "../lib/activation";
 import type { ConnectionStatus, Activity } from "../gateway";
@@ -152,6 +153,28 @@ export function ChannelSidebar({
     setOptionsFor(null);
     optionsButtonRef.current?.focus();
   };
+  const canSetLogo = Boolean(server && canManageServer && onSetServerIcon);
+  // The space menu, opened from the space's name: each action only for who may use it.
+  const spaceMenuItems: SpaceMenuItem[] = [];
+  if (server) {
+    if (onInvite) spaceMenuItems.push({ label: "Invite people", icon: "userPlus", onSelect: onInvite });
+    if (canSetLogo) {
+      spaceMenuItems.push({ label: "Change space logo", icon: "edit", onSelect: () => serverIconInputRef.current?.click() });
+    }
+    if (canManageChannels) spaceMenuItems.push({ label: "Create channel", icon: "plus", onSelect: () => setShowNewChannel(true) });
+    if (onOpenEvents) spaceMenuItems.push({ label: "Events", icon: "calendar", onSelect: onOpenEvents });
+    if (onOpenModQueue) spaceMenuItems.push({ label: "Moderation queue", icon: "history", onSelect: onOpenModQueue });
+    // Not for the people who run the space: reporting your own space to yourself helps nobody.
+    if (onReportServer && !canManageServer) spaceMenuItems.push({ label: "Report space", icon: "flag", onSelect: onReportServer });
+    if (isOwner ? onDeleteServer : onLeaveServer) {
+      spaceMenuItems.push({
+        label: isOwner ? "Delete space" : "Leave space",
+        icon: isOwner ? "trash" : "leave",
+        danger: true,
+        onSelect: () => setOptionsFor(server.id),
+      });
+    }
+  }
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try {
       return new Set(JSON.parse(localStorage.getItem("kc:collapsed-cats") ?? "[]"));
@@ -314,85 +337,29 @@ export function ChannelSidebar({
         <div className="kc-space-title-row">
           {server?.icon_url && <img src={server.icon_url} alt="" className="h-8 w-8 flex-shrink-0 rounded-xl object-cover" />}
           <div className="min-w-0 flex-1">
-            <div className="truncate" style={{ fontFamily: "var(--font-display)", fontWeight: 750, fontSize: "var(--text-lg)", color: "var(--text-primary)" }}>{server ? server.name : "Direct Messages"}</div>
+            {server ? (
+              <SpaceMenu name={server.name} items={spaceMenuItems} buttonRef={optionsButtonRef} />
+            ) : (
+              <div className="truncate" style={{ fontFamily: "var(--font-display)", fontWeight: 750, fontSize: "var(--text-lg)", color: "var(--text-primary)" }}>Direct Messages</div>
+            )}
             <div className="truncate text-[11px] font-semibold" style={{ color: "var(--text-muted)", letterSpacing: "0.02em" }}>{server ? "Invite-only space" : "Your conversations"}</div>
           </div>
         </div>
-        <div className="mt-2 flex min-w-0 items-center gap-1.5">
-          {server && canManageServer && onSetServerIcon && (
-            <>
-              <button
-                type="button"
-                onClick={() => serverIconInputRef.current?.click()}
-                title="Change server logo"
-                aria-label="Change server logo"
-                className="kc-sidebar-action kc-interactive flex h-7 w-7 items-center justify-center rounded-full text-sm"
-                style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "pointer" }}
-              >
-                <Icon name="edit" size={14} />
-              </button>
-              <input
-                ref={serverIconInputRef}
-                type="file"
-                accept="image/*,.gif"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (file) void onSetServerIcon(server.id, file);
-                }}
-              />
-            </>
-          )}
-          {server && onOpenEvents && (
-            <button
-              onClick={onOpenEvents}
-              title="Events"
-              aria-label="Events"
-              className="kc-sidebar-action kc-interactive flex h-7 w-7 items-center justify-center rounded-full text-base"
-              style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "pointer" }}
-            >
-              <Icon name="calendar" size={16} />
-            </button>
-          )}
-          {/* Not for the people who run the space: reporting your own space to yourself helps nobody. */}
-          {server && onReportServer && !canManageServer && (
-            <button
-              onClick={onReportServer}
-              title="Report server"
-              aria-label="Report server"
-              className="kc-sidebar-action kc-interactive flex h-7 w-7 items-center justify-center rounded-full text-base"
-              style={{ background: "var(--bg-input)", color: "var(--danger)", border: "none", cursor: "pointer" }}
-            >
-              <Icon name="flag" size={15} />
-            </button>
-          )}
-          {server && onOpenModQueue && (
-            <button
-              onClick={onOpenModQueue}
-              title="Moderation queue"
-              aria-label="Moderation queue"
-              className="kc-sidebar-action kc-interactive flex h-7 w-7 items-center justify-center rounded-full text-base"
-              style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "pointer" }}
-            >
-              <Icon name="history" size={15} />
-            </button>
-          )}
-          {server && (isOwner ? onDeleteServer : onLeaveServer) && (
-            <button
-              ref={optionsButtonRef}
-              type="button"
-              onClick={() => (optionsOpen ? closeOptions() : setOptionsFor(server.id))}
-              title="Space options"
-              aria-label="Space options"
-              aria-expanded={optionsOpen}
-              className="kc-sidebar-action kc-interactive flex h-7 w-7 items-center justify-center rounded-full text-base"
-              style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "pointer" }}
-            >
-              <Icon name="more" size={15} />
-            </button>
-          )}
-          {server && onInvite && (
+        {server && canSetLogo && onSetServerIcon && (
+          <input
+            ref={serverIconInputRef}
+            type="file"
+            accept="image/*,.gif"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void onSetServerIcon(server.id, file);
+            }}
+          />
+        )}
+        {server && onInvite && (
+          <div className="mt-2 flex min-w-0 items-center">
             <button
               onClick={onInvite}
               title="Invite people"
@@ -403,8 +370,8 @@ export function ChannelSidebar({
               <InvitePersonIcon />
               <span className="truncate">Invite</span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
         {server && optionsOpen && (
           <SpaceOptions
             name={server.name}
