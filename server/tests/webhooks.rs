@@ -188,8 +188,14 @@ async fn only_text_channels_in_spaces_take_webhooks() {
         400,
         "a name is needed"
     );
-    let long = "x".repeat(81);
-    assert_eq!(create(&srv, &owner, &sp.general, &long).await.status(), 400);
+    let long = "x".repeat(65);
+    assert_eq!(
+        create(&srv, &owner, &sp.general, &long).await.status(),
+        400,
+        "names keep to 64 characters, like display names"
+    );
+    let fits = "x".repeat(64);
+    assert_eq!(create(&srv, &owner, &sp.general, &fits).await.status(), 200);
 }
 
 #[tokio::test]
@@ -645,4 +651,468 @@ async fn a_moderator_can_delete_a_webhook_message() {
         .status(),
         204
     );
+}
+
+const MANAGE_CHANNELS: i64 = 1 << 0;
+const VIEW_CHANNEL: i64 = 1 << 6;
+const ENDPOINT: &str = "https://fcm.googleapis.com/fcm/send/webhook-test";
+
+/// `who` gets a role with Manage Channels in `space`.
+async fn make_moderator(srv: &TestServer, owner: &AuthOk, space: &Space, who: &AuthOk) {
+    let role: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{}/roles", space.id),
+            &owner.token,
+            json!({ "name": "Mods", "permissions": MANAGE_CHANNELS | VIEW_CHANNEL | (1 << 7) }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let role_id = role["id"].as_str().unwrap();
+    let res = srv
+        .put_json_auth(
+            &format!(
+                "/api/v1/servers/{}/members/{}/roles/{role_id}",
+                space.id, who.id
+            ),
+            &owner.token,
+            json!({}),
+        )
+        .await;
+    assert!(res.status().is_success(), "assign role: {}", res.status());
+}
+
+/// Deny `who` the right to see `channel`.
+async fn hide_from(srv: &TestServer, space: &Space, channel: &str, who: &AuthOk) {
+    let db = SqlitePool::connect(srv.db_url()).await.unwrap();
+    sqlx::query(
+        "INSERT INTO permission_overwrites
+         (id, server_id, scope_type, scope_id, target_type, target_id, allow_permissions, deny_permissions, source, created_at)
+         VALUES (?, ?, 'channel', ?, 'member', ?, 0, ?, 'test', 1)",
+    )
+    .bind(format!("ow-{}", who.id))
+    .bind(&space.id)
+    .bind(channel)
+    .bind(&who.id)
+    .bind(VIEW_CHANNEL)
+    .execute(&db)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn a_manager_who_cannot_see_a_channel_cannot_touch_its_webhooks() {
+    let srv = start().await;
+    let owner = srv.register("hookseeowner", "password123").await;
+    let modr = srv.register("hookseemod", "password123").await;
+    let sp = space(&srv, &owner, "Hooks").await;
+    join(&srv, &owner, &sp, &modr).await;
+    make_moderator(&srv, &owner, &sp, &modr).await;
+    // Manage Channels works where they can see the channel …
+    assert_eq!(
+        create(&srv, &modr, &sp.general, "Visible").await.status(),
+        200
+    );
+    // … but not in one hidden from them.
+    let (id, _token) = made(&srv, &owner, &sp.general, "Leadership").await;
+    hide_from(&srv, &sp, &sp.general, &modr).await;
+
+    assert_eq!(
+        create(&srv, &modr, &sp.general, "Sneaky").await.status(),
+        404
+    );
+    let list = srv
+        .get_auth(
+            &format!("/api/v1/channels/{}/webhooks", sp.general),
+            &modr.token,
+        )
+        .await;
+    assert_eq!(list.status(), 404);
+    let renew = srv
+        .post_json_auth(
+            &format!("/api/v1/webhooks/{id}/token"),
+            &modr.token,
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        renew.status(),
+        404,
+        "no new URL for a channel they can't see"
+    );
+    let rename = srv
+        .patch_json_auth(
+            &format!("/api/v1/webhooks/{id}"),
+            &modr.token,
+            json!({ "name": "x" }),
+        )
+        .await;
+    assert_eq!(rename.status(), 404);
+    assert_eq!(
+        srv.delete_auth(&format!("/api/v1/webhooks/{id}"), &modr.token)
+            .await
+            .status(),
+        404
+    );
+}
+
+#[tokio::test]
+async fn a_chat_you_are_not_in_answers_like_one_that_does_not_exist() {
+    let srv = start().await;
+    let owner = srv.register("hooknotin", "password123").await;
+    let friend = srv.register("hooknotinfriend", "password123").await;
+    let outsider = srv.register("hooknotinout", "password123").await;
+    let sp = space(&srv, &owner, "Hooks").await;
+    let dm: Value = srv
+        .post_json_auth(
+            "/api/v1/users/@me/dms",
+            &owner.token,
+            json!({ "recipient_id": friend.id }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let dm_id = dm["id"].as_str().unwrap();
+
+    let in_dm = create(&srv, &outsider, dm_id, "Spy").await;
+    let in_space = create(&srv, &outsider, &sp.general, "Spy").await;
+    let nowhere = create(&srv, &outsider, "no-such-channel", "Spy").await;
+    assert_eq!(in_dm.status(), 404);
+    assert_eq!(in_space.status(), 404);
+    assert_eq!(nowhere.status(), 404);
+    let texts = [
+        in_dm.text().await.unwrap(),
+        in_space.text().await.unwrap(),
+        nowhere.text().await.unwrap(),
+    ];
+    assert!(
+        texts.iter().all(|t| t == &texts[0]),
+        "one answer for all three: {texts:?}"
+    );
+}
+
+#[tokio::test]
+async fn deleting_a_webhook_that_never_posted_removes_its_account_and_picture() {
+    let srv = start().await;
+    let owner = srv.register("hookclean", "password123").await;
+    let sp = space(&srv, &owner, "Hooks").await;
+    let (id, _token) = made(&srv, &owner, &sp.general, "Quiet").await;
+    let (content_type, body) = multipart_file("file", "bot.png", "image/png", b"quiet-bot-png");
+    let up: Value = srv
+        .post_raw_auth("/api/v1/upload", &owner.token, &content_type, body)
+        .await
+        .json()
+        .await
+        .unwrap();
+    let file_id = up[0]["id"].as_str().unwrap().to_owned();
+    let res = srv
+        .patch_json_auth(
+            &format!("/api/v1/webhooks/{id}"),
+            &owner.token,
+            json!({ "avatar_file_id": file_id }),
+        )
+        .await;
+    assert_eq!(res.status(), 200);
+    let db = SqlitePool::connect(srv.db_url()).await.unwrap();
+    let bot_id: String = sqlx::query_scalar("SELECT bot_user_id FROM webhooks WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        srv.delete_auth(&format!("/api/v1/webhooks/{id}"), &owner.token)
+            .await
+            .status(),
+        204
+    );
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE id = ?")
+        .bind(&bot_id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(left, 0, "nothing it posted, so its account goes too");
+    let file: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM files WHERE id = ?")
+        .bind(&file_id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(file, 0, "and its picture, which nothing else uses");
+}
+
+#[tokio::test]
+async fn the_sweep_removes_webhook_accounts_with_nothing_left() {
+    let srv = start().await;
+    let owner = srv.register("hooksweep", "password123").await;
+    let sp = space(&srv, &owner, "Hooks").await;
+    let (id, token) = made(&srv, &owner, &sp.general, "Once").await;
+    let res = srv
+        .client
+        .post(srv.url(&format!("/api/v1/webhooks/{id}/{token}?wait=true")))
+        .json(&json!({ "content": "only message" }))
+        .send()
+        .await
+        .unwrap();
+    let msg: Value = res.json().await.unwrap();
+    let bot_id = msg["author"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        srv.delete_auth(&format!("/api/v1/webhooks/{id}"), &owner.token)
+            .await
+            .status(),
+        204
+    );
+    let db = SqlitePool::connect(srv.db_url()).await.unwrap();
+    let count = |db: SqlitePool, bot: String| async move {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE id = ?")
+            .bind(bot)
+            .fetch_one(&db)
+            .await
+            .unwrap()
+    };
+    assert_eq!(
+        count(db.clone(), bot_id.clone()).await,
+        1,
+        "its message keeps it for now"
+    );
+    let mid = msg["id"].as_str().unwrap();
+    assert_eq!(
+        srv.delete_auth(
+            &format!("/api/v1/channels/{}/messages/{mid}", sp.general),
+            &owner.token
+        )
+        .await
+        .status(),
+        204
+    );
+    server::api::webhooks::sweep_orphan_accounts(&srv.state).await;
+    assert_eq!(
+        count(db, bot_id).await,
+        0,
+        "with no webhook and no messages, the sweep removes it"
+    );
+}
+
+#[tokio::test]
+async fn a_space_can_have_at_most_fifty_webhooks() {
+    let srv = start().await;
+    let owner = srv.register("hookcap", "password123").await;
+    let sp = space(&srv, &owner, "Hooks").await;
+    let db = SqlitePool::connect(srv.db_url()).await.unwrap();
+    for n in 0..50 {
+        sqlx::query(
+            "INSERT INTO webhooks (id, channel_id, server_id, bot_user_id, name, token_hash, created_by, created_at)
+             VALUES (?, ?, ?, ?, ?, 'x', ?, 1)",
+        )
+        .bind(format!("seeded-{n}"))
+        .bind(&sp.general)
+        .bind(&sp.id)
+        .bind(&owner.id)
+        .bind(format!("Seeded {n}"))
+        .bind(&owner.id)
+        .execute(&db)
+        .await
+        .unwrap();
+    }
+    let res = create(&srv, &owner, &sp.general, "One too many").await;
+    assert_eq!(res.status(), 400);
+    assert!(
+        res.text().await.unwrap().contains("50"),
+        "says the space's limit"
+    );
+}
+
+#[tokio::test]
+async fn a_webhook_picture_outlives_the_manager_who_set_it() {
+    let srv = start().await;
+    let owner = srv.register("hookpicowner", "password123").await;
+    let modr = srv.register("hookpicmod", "password123").await;
+    let sp = space(&srv, &owner, "Hooks").await;
+    join(&srv, &owner, &sp, &modr).await;
+    make_moderator(&srv, &owner, &sp, &modr).await;
+    let (id, token) = made(&srv, &modr, &sp.general, "Status").await;
+    let (content_type, body) = multipart_file("file", "bot.png", "image/png", b"mod-bot-png");
+    let up: Value = srv
+        .post_raw_auth("/api/v1/upload", &modr.token, &content_type, body)
+        .await
+        .json()
+        .await
+        .unwrap();
+    let file_id = up[0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        srv.patch_json_auth(
+            &format!("/api/v1/webhooks/{id}"),
+            &modr.token,
+            json!({ "avatar_file_id": file_id }),
+        )
+        .await
+        .status(),
+        200
+    );
+    let gone = srv
+        .delete_json_auth(
+            "/api/v1/users/@me",
+            &modr.token,
+            json!({ "password": "password123", "username": "hookpicmod" }),
+        )
+        .await;
+    assert_eq!(gone.status(), 204);
+
+    let db = SqlitePool::connect(srv.db_url()).await.unwrap();
+    let uploader: Option<String> = sqlx::query_scalar("SELECT uploader_id FROM files WHERE id = ?")
+        .bind(&file_id)
+        .fetch_optional(&db)
+        .await
+        .unwrap()
+        .flatten();
+    assert_eq!(
+        uploader.as_deref(),
+        Some(owner.id.as_str()),
+        "the space's owner keeps it"
+    );
+    assert_eq!(
+        execute(&srv, &id, &token, json!({ "content": "still here" }))
+            .await
+            .status(),
+        204
+    );
+}
+
+#[tokio::test]
+async fn webhook_changes_show_in_the_moderation_log_and_who_made_it() {
+    let srv = start().await;
+    let owner = srv.register("hooklog", "password123").await;
+    let sp = space(&srv, &owner, "Hooks").await;
+    let (id, _token) = made(&srv, &owner, &sp.general, "Logged").await;
+    let list: Value = srv
+        .get_auth(
+            &format!("/api/v1/channels/{}/webhooks", sp.general),
+            &owner.token,
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(list[0]["created_by"], owner.id);
+    assert_eq!(list[0]["created_by_name"], "hooklog");
+    srv.post_json_auth(
+        &format!("/api/v1/webhooks/{id}/token"),
+        &owner.token,
+        json!({}),
+    )
+    .await;
+    srv.delete_auth(&format!("/api/v1/webhooks/{id}"), &owner.token)
+        .await;
+    let log: Value = srv
+        .get_auth(
+            &format!("/api/v1/servers/{}/moderation-actions", sp.id),
+            &owner.token,
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let actions: Vec<&str> = log
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|a| a["target_type"] == "webhook" && a["target_id"] == id)
+        .map(|a| a["action"].as_str().unwrap())
+        .collect();
+    for wanted in ["webhook_create", "webhook_renew", "webhook_delete"] {
+        assert!(actions.contains(&wanted), "{wanted} is logged: {actions:?}");
+    }
+}
+
+#[tokio::test]
+async fn defused_mentions_count_toward_the_length_limit() {
+    let srv = start().await;
+    let owner = srv.register("hooklength", "password123").await;
+    let sp = space(&srv, &owner, "Hooks").await;
+    let (id, token) = made(&srv, &owner, &sp.general, "CI").await;
+    let content = "@here ".repeat(666); // 3996 bytes before, 5994 once each is defused
+    assert_eq!(
+        execute(&srv, &id, &token, json!({ "content": content }))
+            .await
+            .status(),
+        400
+    );
+}
+
+#[tokio::test]
+async fn a_reply_to_a_webhook_says_it_was_an_app() {
+    let srv = start().await;
+    let owner = srv.register("hookreply", "password123").await;
+    let sp = space(&srv, &owner, "Hooks").await;
+    let (id, token) = made(&srv, &owner, &sp.general, "Deploy bot").await;
+    let posted: Value = srv
+        .client
+        .post(srv.url(&format!("/api/v1/webhooks/{id}/{token}?wait=true")))
+        .json(&json!({ "content": "deployed" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let reply: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/channels/{}/messages", sp.general),
+            &owner.token,
+            json!({ "content": "nice", "reply_to": posted["id"] }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(reply["reply_to"]["author"], "Deploy bot");
+    assert_eq!(reply["reply_to"]["bot"], true);
+}
+
+#[tokio::test]
+async fn a_webhook_cannot_wake_someone_through_a_mute_by_naming_them() {
+    let srv = start().await;
+    let owner = srv.register("hookpushowner", "password123").await;
+    let member = srv.register("hookpushmember", "password123").await;
+    let sp = space(&srv, &owner, "Hooks").await;
+    join(&srv, &owner, &sp, &member).await;
+    let res = srv
+        .put_json_auth(
+            "/api/v1/push/devices",
+            &member.token,
+            json!({ "platform": "web", "endpoint": ENDPOINT, "p256dh": "p256dh-key", "auth": "auth-key", "device_name": "Phone" }),
+        )
+        .await;
+    assert_eq!(res.status(), 200);
+    let res = srv
+        .put_json_auth(
+            &format!(
+                "/api/v1/users/@me/notification-settings/channel/{}",
+                sp.general
+            ),
+            &member.token,
+            json!({ "muted": true }),
+        )
+        .await;
+    assert_eq!(res.status(), 200);
+    let (id, token) = made(&srv, &owner, &sp.general, "Pager").await;
+    assert_eq!(
+        execute(
+            &srv,
+            &id,
+            &token,
+            json!({ "content": "@hookpushmember wake up" })
+        )
+        .await
+        .status(),
+        204
+    );
+    let db = SqlitePool::connect(srv.db_url()).await.unwrap();
+    let nudges: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM push_deliveries WHERE user_id = ?")
+        .bind(&member.id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(nudges, 0, "a webhook's @name doesn't get through a mute");
 }

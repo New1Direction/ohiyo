@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { Window } from "happy-dom";
 import { bundleEntry, fixtures, type Bundle } from "./fixtures/bundle.ts";
 
-type Hook = { id: string; channel_id: string; name: string; avatar_url: string | null; created_at: number };
+type Hook = { id: string; channel_id: string; name: string; avatar_url: string | null; created_at: number; created_by_name?: string | null };
 type Mod = {
   act: (callback: () => void) => void;
   mountWebhooksDialog: (
@@ -99,13 +99,16 @@ function open(initial: Hook[] = []) {
   };
 }
 
-const existing: Hook[] = [{ id: "w1", channel_id: "c1", name: "Deploy bot", avatar_url: null, created_at: 1_800_000_000 }];
+const existing: Hook[] = [
+  { id: "w1", channel_id: "c1", name: "Deploy bot", avatar_url: null, created_at: 1_800_000_000, created_by_name: "Kikka" },
+];
 
 test("it lists the channel's webhooks by name and shows no URL until one is made", async () => {
   const f = open(existing);
   try {
     await tick();
     assert.match(f.text(), /Deploy bot/);
+    assert.match(f.text(), /Made by Kikka/, "who made it shows");
     assert.equal(f.field("Webhook URL"), null, "no URL is shown for an existing webhook");
     assert.doesNotMatch(f.text(), /secret-/);
     assert.ok(f.calls.includes("list c1"), "the first channel's list loads");

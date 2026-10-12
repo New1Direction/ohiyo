@@ -590,3 +590,12 @@ test("a person's message has no APP badge", () => {
   const html = spaceChat({});
   assert.doesNotMatch(html, /kc-app-badge/);
 });
+
+test("a reply to a webhook's message marks the webhook as an app", () => {
+  const html = spaceChat({
+    messages: [
+      { ...threadBase, id: "m8", channel_id: "c9", content: "nice", reply_to: { id: "m7", author: "Deploy bot", content: "Deploy finished", bot: true } },
+    ],
+  });
+  assert.match(html, /Deploy bot<\/span><span[^>]*class="[^"]*kc-app-badge[^"]*"[^>]*>APP<\/span>/);
+});

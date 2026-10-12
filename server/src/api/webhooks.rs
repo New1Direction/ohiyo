@@ -534,6 +534,9 @@ pub async fn post_message(
     }
 }
 
+/// Not built yet.
+pub async fn sweep_orphan_accounts(_state: &AppState) {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -552,6 +555,19 @@ mod tests {
             crate::api::notifications::mentions(&out, "bob"),
             "a person can still be mentioned"
         );
+    }
+
+    #[test]
+    fn invisible_characters_before_the_at_sign_change_nothing() {
+        for raw in [
+            "\u{FEFF}@everyone",
+            "\u{200B}@here",
+            "\u{2060}@everyone",
+            "x@here",
+        ] {
+            let out = defuse_mass_mentions(raw);
+            assert!(out.contains("@\u{200B}"), "{raw:?} is defused: {out:?}");
+        }
     }
 
     #[test]
