@@ -1,4 +1,5 @@
 import { DEFAULT_HOME_URL, normalizeHomeUrl } from "./lib/homes";
+import type { NotificationLevel, NotificationSetting, NotificationTarget } from "./lib/notificationSettings";
 import type { ThreadSummary } from "./lib/threads";
 
 // ── Runtime endpoint config ──────────────────────────────────────────────────
@@ -698,6 +699,22 @@ export const api = {
   getPrefs: (token: string) => request<Record<string, unknown>>("/users/@me/prefs", {}, token),
   setPrefs: (token: string, prefs: Record<string, unknown>) =>
     request<void>("/users/@me/prefs", { method: "POST", body: JSON.stringify(prefs) }, token),
+
+  // Notification settings (per space, channel or DM): synced across devices, and the push
+  // relay follows them. PUT replaces one setting; the server works out when a mute ends.
+  getNotificationSettings: (token: string) =>
+    request<NotificationSetting[]>("/users/@me/notification-settings", {}, token),
+  setNotificationSetting: (
+    token: string,
+    target: NotificationTarget,
+    targetId: string,
+    body: { level?: NotificationLevel | null; muted: boolean; mute_seconds?: number | null },
+  ) =>
+    request<NotificationSetting>(
+      `/users/@me/notification-settings/${target}/${encodeURIComponent(targetId)}`,
+      { method: "PUT", body: JSON.stringify(body) },
+      token,
+    ),
 
   // Encrypted E2E key backup (recovery-code model). Server stores ciphertext only;
   // getKeyBackup rejects with a 404 when none exists.

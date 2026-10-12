@@ -1490,6 +1490,79 @@ button:disabled,
   color: var(--text-primary);
   font-weight: 700;
 }
+/* Muted (or in a muted space): quieter, with a crossed-out bell, and no unread number. */
+.kc-channel-row.is-muted:not(.is-selected) { color: color-mix(in oklch, var(--text-muted) 70%, transparent); }
+.kc-muted-mark { display: inline-flex; color: var(--text-muted); opacity: 0.85; }
+.kc-icon-btn.is-muted { color: var(--text-muted); }
+
+/* Notification settings dialog */
+.kc-notif-settings__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-xl, 1.25rem);
+  color: var(--text-primary);
+}
+.kc-notif-settings__legend {
+  margin-bottom: 2px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.kc-notif-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 2px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--dur-fast, 120ms) var(--ease-out, ease-out), border-color var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+.kc-notif-option input { grid-row: span 2; margin-top: 3px; accent-color: var(--accent); }
+.kc-notif-option__name { color: var(--text-primary); font-size: 0.875rem; font-weight: 600; }
+.kc-notif-option__hint { grid-column: 2; color: var(--text-secondary); font-size: 0.75rem; }
+.kc-notif-option.is-selected {
+  border-color: color-mix(in oklch, var(--accent) 55%, transparent);
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+}
+.kc-notif-option:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (hover: hover) and (pointer: fine) {
+  .kc-notif-option:not(.is-selected):hover { background: var(--bg-hover); }
+}
+.kc-notif-select { min-height: 44px; color: var(--text-primary); }
+.kc-notif-muted {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-input);
+}
+.kc-notif-unmute,
+.kc-notif-cancel {
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.kc-notif-unmute { background: color-mix(in oklch, var(--accent) 16%, var(--bg-input)); color: var(--text-primary); }
+.kc-notif-error {
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
 .kc-channel-row__icon {
   display: grid;
   width: 1.28rem;
