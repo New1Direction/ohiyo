@@ -42,6 +42,7 @@ export type GatewayEvent =
   | { t: "ChannelCreate"; d: Channel }
   | { t: "MemberJoin"; d: { server_id: string; user: PublicUser } }
   | { t: "MemberLeave"; d: { server_id: string; user_id: string } }
+  | { t: "UserDeleted"; d: { user_id: string } }
   | { t: "PermissionsUpdate"; d: { server_id: string } }
   | { t: "EventsChanged"; d: { server_id: string } }
   | { t: "ReactionUpdate"; d: { message_id: string; channel_id: string; emoji: string; user_id: string; added: boolean } }

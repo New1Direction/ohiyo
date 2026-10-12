@@ -61,6 +61,10 @@ try {
   if (!hadKeys) throw new Error("A had no encryption keys to begin with");
   log("A owns a space B is in; both have talked");
 
+  // B is looking at A's space when A goes.
+  await pageB.click('button[aria-label="Da HQ"]', { timeout: 10000 });
+  await pageB.waitForSelector(`text=from-a-${u}`, { timeout: 10000 });
+
   // ── A wrong password deletes nothing ──
   await pageA.click('button[aria-label="Settings"]');
   await pageA.locator('button:has-text("Account")').first().click();
@@ -75,6 +79,8 @@ try {
   await fillDelete(pageA, PASS, A);
   await pageA.waitForSelector("text=/Your account was deleted/", { timeout: 12000 });
   log("A lands on sign-in: \"Your account was deleted.\" ✓");
+  await pageB.waitForSelector(`text=from-a-${u}`, { state: "detached", timeout: 10000 });
+  log("A's message left B's screen at once, without a reload ✓");
 
   if ((await api(tokenA, "/users/@me")).status !== 401) throw new Error("A's token still works");
   const login = await fetch(`${API}/auth/login`, {

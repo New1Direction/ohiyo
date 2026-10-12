@@ -123,6 +123,20 @@ pub async fn delete_account(
             broadcast_members(&state, channel_id, epoch).await;
         }
     }
+    // Everyone who talked with them: take their messages off the screen, close the chat.
+    let gone = GatewayEvent::UserDeleted {
+        user_id: me.clone(),
+    };
+    let spaces = plan
+        .member_of
+        .iter()
+        .chain(plan.handed_over.iter().map(|(id, _)| id));
+    for server_id in spaces {
+        broadcast_to_server(&state, server_id, &gone).await;
+    }
+    for channel_id in plan.groups.iter().chain(plan.dms.iter()) {
+        crate::gateway::broadcast_to_channel(&state, channel_id, &gone).await;
+    }
     tracing::info!(user_id = %me, "account deleted");
     Ok(StatusCode::NO_CONTENT)
 }
@@ -139,6 +153,8 @@ struct Plan {
     member_of: Vec<String>,
     /// Group DMs they were in.
     groups: Vec<String>,
+    /// 1:1 chats they were in.
+    dms: Vec<String>,
 }
 
 async fn plan(conn: &mut sqlx::SqliteConnection, me: &str) -> Result<Plan, sqlx::Error> {
@@ -178,11 +194,19 @@ async fn plan(conn: &mut sqlx::SqliteConnection, me: &str) -> Result<Plan, sqlx:
     .bind(me)
     .fetch_all(&mut *conn)
     .await?;
+    let dms: Vec<String> = sqlx::query_scalar(
+        "SELECT c.id FROM channels c JOIN dm_participants p ON p.channel_id = c.id
+         WHERE p.user_id = ? AND c.channel_type = 'dm'",
+    )
+    .bind(me)
+    .fetch_all(&mut *conn)
+    .await?;
     Ok(Plan {
         handed_over,
         deleted,
         member_of,
         groups,
+        dms,
     })
 }
 

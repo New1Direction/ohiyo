@@ -298,6 +298,11 @@ pub enum GatewayEvent {
         server_id: String,
         user_id: String,
     },
+    /// An account was deleted. Sent to everyone who shared a space, a group or a 1:1 chat
+    /// with it, so their apps take its messages off the screen and close the chat.
+    UserDeleted {
+        user_id: String,
+    },
     /// The recipient's effective permissions in a server changed (role add/remove/delete).
     PermissionsUpdate {
         server_id: String,
