@@ -9,7 +9,7 @@ from "runs on my localhost" to "my friends download an app and it just works."
 │  Ohiyo.app / .msi   │  HTTPS  │  Railway or Fly.io               │
 │  (Tauri desktop client) │ ──────▶ │  • axum server  (Docker)         │
 │  React bundle inside     │   WSS   │  • SQLite + uploads (volume)     │
-│  a native window         │ ◀─────▶ │  • coturn (voice TURN, optional) │
+│  a native window         │ ◀─────▶ │  • call relay (TURN, optional)   │
 └─────────────────────────┘         └──────────────────────────────────┘
 ```
 
@@ -193,7 +193,8 @@ blobs. Losing it is unrecoverable, so back it up.
   ```
 - **Continuous backup (recommended — already wired in).** The runtime image bundles
   [Litestream](https://litestream.io). Set `LITESTREAM_REPLICA_URL` (+ store
-  credentials) and the SQLite WAL streams to object storage (S3/R2) for point-in-time
+  credentials, and `LITESTREAM_ENDPOINT` for any store other than AWS S3, such as
+  Cloudflare R2) and the SQLite WAL streams to object storage for point-in-time
   recovery, and the DB is auto-restored on a fresh volume. Setup:
   [`infra/litestream/README.md`](infra/litestream/README.md). Unset = off (no-op).
 
@@ -230,7 +231,37 @@ serving is byte-for-byte unchanged.
 ## 2. Voice (TURN) — for calls across the internet
 
 STUN alone works on a LAN. Real calls between people behind home routers need a
-**TURN relay**. The coturn config already lives in `infra/coturn/`.
+**TURN relay** for the calls that can't connect directly. The server supports two;
+set up either (or both).
+
+The server hands out relay credentials at `GET /api/v1/ice-servers`; the client
+fetches them before each call. The STUN servers come first, so a call still connects
+directly whenever it can and only uses the relay when that fails.
+
+### Cloudflare Realtime TURN (what ohiyo.gg uses)
+
+1. In the Cloudflare dashboard, open **Realtime → TURN Server** and create a TURN key.
+   Copy its **Turn Token ID** and **API Token**.
+2. Set both on the server:
+
+```bash
+railway variables --service ohiyo-server \
+  --set CLOUDFLARE_TURN_KEY_ID="<Turn Token ID>" \
+  --set CLOUDFLARE_TURN_API_TOKEN="<API Token>"
+```
+
+On each call the server asks Cloudflare for credentials that last `TURN_TTL` seconds
+(a day by default); the API token never leaves the server. If Cloudflare fails or
+takes more than 3 seconds, the call gets a direct-only answer instead of waiting. One
+account can make the server ask at most 20 times a minute.
+
+Pricing (October 2026): TURN traffic is $0.05 per GB sent from Cloudflare to callers,
+with the first 1,000 GB a month free, shared with Cloudflare's SFU. Only the calls that
+can't connect directly use it.
+
+### Self-hosted coturn
+
+The coturn config already lives in `infra/coturn/`.
 
 1. Run coturn on a public host (a small VPS, or a second Fly app) using
    `infra/coturn/docker-compose.yml`. Set its `static-auth-secret`.
@@ -245,8 +276,7 @@ fly secrets set \
   TURN_TTL=86400
 ```
 
-The server mints short-lived TURN credentials at `GET /api/v1/ice-servers`; the
-client fetches them before each call.
+The server mints short-lived coturn credentials from that secret on each call.
 
 ---
 
