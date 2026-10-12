@@ -65,8 +65,10 @@ try {
   // B's open page about the space, so it loads again first.
   await pageB.reload();
   await pageB.click('button[aria-label="Da HQ"]', { timeout: 15000 });
+  // Picking a space selects no channel yet.
+  await pageB.click('button:has-text("general")', { timeout: 10000 });
   await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
-  // A says something in the app (the API messages above aren't shown there), and B sees it.
+  // A says something in the app, and B sees it arrive.
   const composerA = pageA.locator('input[placeholder*="Say something"]');
   await composerA.fill(`seen-by-b-${u}`);
   await composerA.press("Enter");
