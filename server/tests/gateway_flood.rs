@@ -14,6 +14,11 @@ use serde_json::{json, Value};
 async fn a_client_flooding_activity_changes_is_slowed_down() {
     let srv = TestServer::start().await;
     let alice = srv.register("floodalice", "supersecret123").await;
+    // Presence goes to the people who share a space with you, alice included.
+    let res = srv
+        .post_json_auth("/api/v1/servers", &alice.token, json!({ "name": "Flood" }))
+        .await;
+    assert_eq!(res.status(), 200);
     let mut gw = Gateway::connect(&srv, &alice.token).await;
     gw.wait_for(|ev| ev["t"] == "Ready").await;
 
