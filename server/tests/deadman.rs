@@ -135,3 +135,106 @@ async fn heartbeat_refreshes_last_active_at_at_most_once_a_minute() {
         "a second heartbeat within a minute does not write again"
     );
 }
+
+async fn arm(srv: &TestServer, user: &AuthOk) {
+    let res = srv
+        .post_json_auth(
+            "/api/v1/users/@me/deadman",
+            &user.token,
+            json!({ "seconds": DEADMAN_SECS, "password": "supersecret123" }),
+        )
+        .await;
+    assert_eq!(res.status(), 204);
+}
+
+async fn say(srv: &TestServer, user: &AuthOk, channel: &str) {
+    let res = srv
+        .post_json_auth(
+            &format!("/api/v1/channels/{channel}/messages"),
+            &user.token,
+            json!({ "content": "still here" }),
+        )
+        .await;
+    assert_eq!(res.status(), 200);
+}
+
+async fn server_was_up_at(db: &sqlx::SqlitePool, at: i64) {
+    sqlx::query(
+        "INSERT INTO server_heartbeat (id, at) VALUES (1, ?)
+         ON CONFLICT(id) DO UPDATE SET at = excluded.at",
+    )
+    .bind(at)
+    .execute(db)
+    .await
+    .unwrap();
+}
+
+/// While Ohiyo itself was down nobody could open it, so an outage must not count towards
+/// anyone's window. The wipe can't be undone, so on start-up the server credits the time
+/// it was down (and a little more, for clients to reconnect) to everyone armed.
+#[tokio::test]
+async fn an_outage_does_not_count_towards_the_switch() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("outagealice", "supersecret123").await;
+    let channel = create_server(&srv, &alice).await;
+    say(&srv, &alice, &channel).await;
+    arm(&srv, &alice).await;
+
+    let db = sqlx::SqlitePool::connect(srv.db_url()).await.unwrap();
+    let now = common::now_unix();
+    // Last seen 70 minutes ago, with a one-hour window, but the server went down
+    // 30 minutes ago and is only now starting again.
+    set_last_active(&db, &alice, now - 70 * 60).await;
+    server_was_up_at(&db, now - 30 * 60).await;
+
+    server::api::users::credit_downtime(&srv.state).await;
+    server::api::users::sweep_deadman(&srv.state).await;
+    assert_eq!(
+        authored_messages(&db, &alice).await,
+        1,
+        "the outage is not her absence"
+    );
+    assert!(last_active(&db, &alice).await >= now - 40 * 60);
+}
+
+/// A restart for a deploy takes seconds: nothing to credit.
+#[tokio::test]
+async fn a_quick_restart_credits_nothing() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("restartalice", "supersecret123").await;
+    arm(&srv, &alice).await;
+    let db = sqlx::SqlitePool::connect(srv.db_url()).await.unwrap();
+    let now = common::now_unix();
+    set_last_active(&db, &alice, now - 50 * 60).await;
+    server_was_up_at(&db, now - 20).await;
+
+    server::api::users::credit_downtime(&srv.state).await;
+    let seen = last_active(&db, &alice).await;
+    assert!(
+        (now - 50 * 60..=now - 50 * 60 + 5).contains(&seen),
+        "unchanged: {seen}"
+    );
+}
+
+/// The switch fires once. Afterwards it is off, so the sweep doesn't wipe and log again
+/// every 20 seconds, and keys published on coming back aren't deleted.
+#[tokio::test]
+async fn a_switch_that_fired_turns_itself_off() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("firedalice", "supersecret123").await;
+    let channel = create_server(&srv, &alice).await;
+    say(&srv, &alice, &channel).await;
+    arm(&srv, &alice).await;
+    let db = sqlx::SqlitePool::connect(srv.db_url()).await.unwrap();
+    set_last_active(&db, &alice, common::now_unix() - 2 * DEADMAN_SECS).await;
+
+    server::api::users::sweep_deadman(&srv.state).await;
+    assert_eq!(authored_messages(&db, &alice).await, 0, "it fired");
+    let switch: Value = srv
+        .get_auth("/api/v1/users/@me/deadman", &alice.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert!(switch["seconds"].is_null(), "and is off now: {switch}");
+}
