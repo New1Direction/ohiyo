@@ -176,7 +176,7 @@ export function MembersModal({
                       type="button"
                       onClick={() => { onBan(m.id); setConfirmId(null); }}
                       className="px-2 py-1 text-xs font-semibold"
-                      style={{ borderRadius: "var(--radius-md)", background: "var(--danger)", color: "#fff", border: "none", cursor: "pointer" }}
+                      style={{ borderRadius: "var(--radius-md)", background: "var(--danger-fill)", color: "#fff", border: "none", cursor: "pointer" }}
                       title="Ban — removed and blocked from rejoining"
                     >
                       Ban
