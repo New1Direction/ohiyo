@@ -297,9 +297,16 @@ pub async fn redeem_invite(
         .await;
     }
 
-    Ok(Json(
-        fetch_full_for_user(&inv.server_id, &state, &auth.0).await?,
-    ))
+    let full = fetch_full_for_user(&inv.server_id, &state, &auth.0).await?;
+    if result.rows_affected() > 0 {
+        // The joiner's other devices list the space too, not only the one that joined.
+        crate::gateway::broadcast_to_user(
+            &state.sessions,
+            &auth.0,
+            &GatewayEvent::ServerCreate(full.clone()),
+        );
+    }
+    Ok(Json(full))
 }
 
 /// DELETE /invites/{code} — the creator or server owner can revoke a code.

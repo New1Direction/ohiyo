@@ -46,13 +46,15 @@ export function passwordChangeMessage(err: unknown): string {
     case 400:
       return `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
     case 401:
-      return "Your session has ended. Sign in again, then change your password.";
+      return "You've been signed out on this device. Sign in again, then change your password.";
     default:
       return "Couldn't change your password. Check your connection and try again.";
   }
 }
 
-/** What to show when deleting the account failed. Nothing was deleted in any of these. */
+/** What to show when deleting the account didn't go through. A refusal deleted nothing and
+ *  says so; when the answer was lost (a dropped connection, a timeout, a proxy failing) the
+ *  account may already be gone, so it can't say that. */
 export function deleteAccountMessage(err: unknown): string {
   switch (apiStatus(err)) {
     case 403:
@@ -61,12 +63,27 @@ export function deleteAccountMessage(err: unknown): string {
       return "Type your username exactly as shown. Nothing was deleted.";
     case 429:
       return "Too many tries. Wait a minute, then try again.";
-    case 502:
-      return "Your Instant Server couldn't be shut down, so nothing was deleted. Try again in a minute.";
     case 401:
-      return "Your session has ended. Sign in again, then delete your account.";
+      return "You've been signed out on this device. If you just deleted your account, it's gone. If not, sign in again and try once more.";
+    case 502:
+      // The server's own answer names the Instant Server; a proxy's 502 doesn't.
+      if (err instanceof Error && err.message.includes("Instant Server")) {
+        return "Your Instant Server couldn't be shut down, so nothing was deleted. Try again in a minute.";
+      }
+      break;
+  }
+  return "We couldn't tell whether it went through. If your account is gone, this device will be signed out; if not, try again.";
+}
+
+/** What to show when deleting a space didn't go through. */
+export function deleteSpaceMessage(err: unknown): string {
+  switch (apiStatus(err)) {
+    case 403:
+      return "That isn't your password. Nothing was deleted.";
+    case 429:
+      return "Too many tries. Wait a minute, then try again.";
     default:
-      return "Couldn't delete your account. Check your connection and try again. Nothing was deleted.";
+      return "Couldn't delete the space. Check your connection and try again.";
   }
 }
 

@@ -103,3 +103,28 @@ test("a different name does not confirm", () => {
     f.cleanup();
   }
 });
+
+// Opening the form removes the button that opened it: focus goes to the first field, so
+// a keyboard or screen reader user lands in the form rather than nowhere.
+test("opening the form puts the cursor in the password field", () => {
+  const f = openForm("kikka");
+  try {
+    // Compared by label: a failed comparison of two DOM nodes prints their whole object graphs.
+    assert.equal(document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName, "Password");
+  } finally {
+    f.cleanup();
+  }
+});
+
+// The list of what deleting does left out three things people would want to know first.
+test("the form says what happens to group chats, one-to-one chats and the username", () => {
+  const f = openForm("kikka");
+  try {
+    const said = f.container.textContent ?? "";
+    assert.match(said, /Group chats you started go to the next person in them/);
+    assert.match(said, /one-to-one chats, the other person sees .Deleted account. and can.t reply/);
+    assert.match(said, /Your username becomes free, and someone else can take it/);
+  } finally {
+    f.cleanup();
+  }
+});

@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { api } from "../../api";
 import { deviceId } from "../../lib/signal";
 import { forgetDevices } from "../../lib/deviceWatch";
+import { useConfirmFocus } from "../../hooks/useConfirmFocus";
 
 type Device = { device_id: number; updated_at: number };
 
@@ -32,9 +33,12 @@ export function LinkedDevices({
   onSignOutEverywhere?: () => Promise<void>;
 }) {
   const [devices, setDevices] = useState<Device[] | null>(null);
+  // A list that failed to load is said so, not shown as "no devices".
+  const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [confirmEverywhere, setConfirmEverywhere] = useState(false);
   const [everywhereBusy, setEverywhereBusy] = useState(false);
+  const everywhereFocus = useConfirmFocus<HTMLSpanElement, HTMLButtonElement>(confirmEverywhere);
   const thisDevice = deviceId();
 
   // Device-link code (this device acts as the primary that authorizes a new one).
@@ -46,9 +50,17 @@ export function LinkedDevices({
   const load = useCallback(() => {
     api
       .listDevices(token)
-      .then(setDevices)
-      .catch(() => setDevices([]));
+      .then((list) => {
+        setDevices(list);
+        setLoadFailed(false);
+      })
+      .catch(() => setLoadFailed(true));
   }, [token]);
+  const retry = () => {
+    setLoadFailed(false);
+    setDevices(null);
+    load();
+  };
   useEffect(() => load(), [load]);
 
   // Live countdown; clear the code when it expires.
@@ -146,7 +158,19 @@ export function LinkedDevices({
         </button>
       )}
 
-      {devices === null ? (
+      {loadFailed ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+          Couldn&apos;t load your devices.
+          <button
+            type="button"
+            onClick={retry}
+            className="rounded px-2.5 py-1 text-xs font-semibold"
+            style={{ color: "var(--text-primary)", background: "var(--bg-hover)" }}
+          >
+            Try again
+          </button>
+        </div>
+      ) : devices === null ? (
         <div className="text-xs" style={{ color: "var(--text-muted)" }}>
           Loading…
         </div>
@@ -183,6 +207,7 @@ export function LinkedDevices({
                 {!isThis && (
                   <button
                     type="button"
+                    aria-label={`Remove device #${d.device_id}`}
                     disabled={busy === d.device_id}
                     onClick={() => revoke(d.device_id)}
                     className="rounded px-2.5 py-1 text-xs font-semibold"
@@ -205,8 +230,13 @@ export function LinkedDevices({
         <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--bg-hover)" }}>
           {confirmEverywhere ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                Every session ends, this one too. You&apos;ll sign in again here.
+              <span
+                ref={everywhereFocus.question}
+                tabIndex={-1}
+                className="text-xs"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                Every device signed in to your account is signed out, this one too. You&apos;ll sign in again here.
               </span>
               <button
                 type="button"
@@ -221,7 +251,7 @@ export function LinkedDevices({
                   }
                 }}
                 className="rounded px-2.5 py-1 text-xs font-semibold"
-                style={{ background: "var(--danger)", color: "#fff", opacity: everywhereBusy ? 0.6 : 1 }}
+                style={{ background: "var(--danger-fill)", color: "#fff", opacity: everywhereBusy ? 0.6 : 1 }}
               >
                 {everywhereBusy ? "Signing out…" : "Sign out everywhere"}
               </button>
@@ -237,6 +267,7 @@ export function LinkedDevices({
             </div>
           ) : (
             <button
+              ref={everywhereFocus.opener}
               type="button"
               onClick={() => setConfirmEverywhere(true)}
               className="rounded px-2.5 py-1 text-xs font-semibold"

@@ -417,17 +417,23 @@ pub async fn send_message(
             .await
             .map_err(crate::api::error::internal)?;
 
-            if let Some((filename, content_type, size_bytes, width, height)) = row {
-                metas.push(AttachmentMeta {
-                    url: crate::signed_file_path(file_id),
-                    id: file_id.clone(),
-                    filename,
-                    content_type,
-                    size_bytes,
-                    width,
-                    height,
-                });
-            }
+            // Gone since it was uploaded (an identical earlier upload shares its id, and that
+            // one's message was deleted): refuse, rather than send without it unannounced.
+            let Some((filename, content_type, size_bytes, width, height)) = row else {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "A file in this message is no longer stored. Attach it again.".into(),
+                ));
+            };
+            metas.push(AttachmentMeta {
+                url: crate::signed_file_path(file_id),
+                id: file_id.clone(),
+                filename,
+                content_type,
+                size_bytes,
+                width,
+                height,
+            });
         }
         Some(serde_json::to_string(&metas).unwrap_or_default())
     };

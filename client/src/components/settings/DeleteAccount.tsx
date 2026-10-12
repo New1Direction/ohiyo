@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import { deleteAccountMessage } from "../../lib/apiErrors";
 
@@ -20,6 +20,11 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
   // Typing the name is a deliberate step, not a password: a phone's capital first letter
   // or trailing space shouldn't block it. The server is sent the account's own username.
   const ready = password.length > 0 && typed.trim().toLowerCase() === username.toLowerCase();
+  // Opening the form removes the button that opened it: the cursor goes to the first field.
+  const passwordField = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    if (open) passwordField.current?.focus();
+  }, [open]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,12 +75,16 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
           Spaces you own go to their longest-standing member. A space with nobody else in it is deleted with
           everything in it.
         </li>
+        <li>Group chats you started go to the next person in them.</li>
+        <li>In your one-to-one chats, the other person sees &ldquo;Deleted account&rdquo; and can&apos;t reply.</li>
         <li>Instant Servers you run are shut down and deleted.</li>
         <li>Your encryption keys and recovery backup are deleted, here and on the server.</li>
+        <li>Your username becomes free, and someone else can take it.</li>
         <li>It happens at once. It can&apos;t be undone, and Ohiyo can&apos;t bring anything back.</li>
       </ul>
       <div className="grid gap-2" style={{ maxWidth: 360 }}>
         <input
+          ref={passwordField}
           type="password"
           autoComplete="current-password"
           aria-label="Password"
@@ -111,7 +120,7 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
           type="submit"
           disabled={!ready || busy}
           className="rounded px-3 py-1.5 text-sm font-semibold"
-          style={{ background: "var(--danger)", color: "#fff", opacity: !ready || busy ? 0.6 : 1 }}
+          style={{ background: "var(--danger-fill)", color: "#fff", opacity: !ready || busy ? 0.6 : 1 }}
         >
           {busy ? "Deleting…" : "Delete my account"}
         </button>

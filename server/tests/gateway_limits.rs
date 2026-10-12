@@ -1,7 +1,8 @@
 //! S-M11: gateway sockets are bounded. The transport refuses any inbound message or frame
 //! over 256 KiB, one user holds at most 20 live sockets (the 21st is closed at once with
-//! 1008 and gets no Ready), and logging out everywhere closes the user's live sockets
-//! and voids gateway tickets issued before it.
+//! 1008 and gets no Ready), logging out everywhere closes the user's live sockets and
+//! voids gateway tickets issued before it, and one account gets at most 60 gateway
+//! tickets a minute.
 
 mod common;
 
@@ -109,4 +110,25 @@ async fn a_ticket_carries_the_version_of_the_jwt_that_asked_for_it() {
         .err()
         .expect("a ticket asked for with a revoked JWT must not open a socket");
     assert!(head.starts_with("HTTP/1.1 401"), "{head}");
+}
+
+/// Gateway tickets one account may ask for in a minute: room for every socket it may hold
+/// (20) to open and reconnect, and no more. Each ticket is kept for 30 s under one lock
+/// shared by every account, and asking for them was unthrottled.
+const TICKETS_PER_MIN: usize = 60;
+
+#[tokio::test]
+async fn gateway_tickets_are_rate_limited_per_account() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("ticketloop", "password123").await;
+    let bob = srv.register("ticketbob", "password123").await;
+    for i in 0..TICKETS_PER_MIN {
+        let res = srv.post_empty_auth("/api/v1/ws/ticket", &alice.token).await;
+        assert_eq!(res.status(), 200, "ticket {i}");
+    }
+
+    let res = srv.post_empty_auth("/api/v1/ws/ticket", &alice.token).await;
+    assert_eq!(res.status(), 429, "one more in the same minute is refused");
+    let res = srv.post_empty_auth("/api/v1/ws/ticket", &bob.token).await;
+    assert_eq!(res.status(), 200, "another account is unaffected");
 }

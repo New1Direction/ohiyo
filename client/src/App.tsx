@@ -67,6 +67,7 @@ import { createDistributionTracker, editBlockReason, encryptOutgoing, EncryptedS
 import { isWellFormedEnvelope, resolveDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { renewWebPush } from "./lib/push";
 import { catchUpMessages } from "./lib/catchUp";
+import { GONE_PEER, dmsWith, dmsWithNoPeer, withoutAuthor } from "./lib/deletedAccounts";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { decryptEach } from "./lib/decryptEach";
 import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
@@ -245,7 +246,7 @@ export default function App() {
   function signOut(removeLocalData: boolean) {
     if (!activeHome) return;
     logoutCleanupPendingRef.current = removeLocalData;
-    persistHomes(setHomeToken(homes, activeHome.id, null));
+    persistHomes(setHomeToken(loadHomes(), activeHome.id, null));
   }
 
   // The sidebar's sign-out (the user chose to leave). Signing out of the last signed-in
@@ -332,7 +333,7 @@ export default function App() {
         onLogout={handleLogout}
         onBackToSignIn={handleBackToSignIn}
         onSessionUser={rememberHomeUser}
-        onTokenChange={(next) => persistHomes(setHomeToken(homes, activeHome.id, next))}
+        onTokenChange={(next) => persistHomes(setHomeToken(loadHomes(), activeHome.id, next))}
         onAccountDeleted={handleAccountDeleted}
       />
       {addHomeModal}
@@ -409,6 +410,10 @@ function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClos
 }
 
 const NO_NEW_DEVICES: NewDevice[] = [];
+
+/** Longest wait between asks when a refused session's "who am I?" check can't reach the
+ *  server (the waits start at 2 s and double). */
+const SIGNED_OUT_RECHECK_MAX_MS = 30_000;
 
 /** Read this account's devices and note any this device hasn't seen (deviceWatch). */
 async function checkOwnDevices(token: string, userId: string): Promise<void> {
@@ -559,6 +564,8 @@ function MainApp({
   }, [currentUser?.id]);
 
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  // 1:1 chats whose other person deleted their account: no one to reply to.
+  const [goneDms, setGoneDms] = useState<ReadonlySet<string>>(new Set());
   const [idleUsers, setIdleUsers] = useState<Set<string>>(new Set());
   const [activities, setActivities] = useState<Map<string, Activity>>(new Map());
   const [watchSession, setWatchSession] = useState<WatchSession | null>(null);
@@ -1012,6 +1019,9 @@ function MainApp({
           const peers = event.d.dm_peers;
           for (const [channelId, peer] of Object.entries(peers)) dmPeerRef.current.set(channelId, peer.id);
           setDmUsers((prev) => ({ ...prev, ...peers }));
+          const gone = dmsWithNoPeer(event.d.dms, peers);
+          setGoneDms(new Set(gone));
+          if (gone.length > 0) setDmUsers((prev) => ({ ...prev, ...Object.fromEntries(gone.map((id) => [id, GONE_PEER])) }));
         }
         // Earlier builds could mark a server channel as encrypted (C-H6). Drop stored
         // entries Ready lists as server channels; keep DMs and ids it doesn't mention.
@@ -1237,6 +1247,25 @@ function MainApp({
             user,
           });
         }
+        break;
+      }
+
+      case "UserDeleted": {
+        // An account was deleted: its messages leave the screen, and a 1:1 chat with it is
+        // named "Deleted account" with no way to reply.
+        const { user_id } = event.d;
+        const chats = dmsWith(dmUsersRef.current, user_id);
+        if (chats.length > 0) {
+          setGoneDms((prev) => new Set([...prev, ...chats]));
+          setDmUsers((prev) => ({ ...prev, ...Object.fromEntries(chats.map((id) => [id, GONE_PEER])) }));
+        }
+        setMessages((prev) => withoutAuthor(prev, user_id));
+        setOnlineUsers((prev) => {
+          if (!prev.has(user_id)) return prev;
+          const next = new Set(prev);
+          next.delete(user_id);
+          return next;
+        });
         break;
       }
 
@@ -1997,20 +2026,39 @@ function MainApp({
   useEffect(() => {
     if (connStatus !== "signed_out") return;
     let alive = true;
-    const checked = latestTokenRef.current;
-    api.me(checked).then(
-      () => {
-        // Still signed in. If the token didn't change either, try the socket again.
-        if (alive && latestTokenRef.current === checked) void gatewayRef.current?.connect();
-      },
-      (err: unknown) => {
-        if (!alive || apiStatus(err) !== 401) return;
-        setSignInNotice("You were signed out on this device. Sign in again to carry on.");
-        onBackToSignIn();
-      }
-    );
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const check = (attempt: number) => {
+      const checked = latestTokenRef.current;
+      api.me(checked).then(
+        () => {
+          // Still signed in. If the token didn't change either, try the socket again.
+          if (alive && latestTokenRef.current === checked) void gatewayRef.current?.connect();
+        },
+        (err: unknown) => {
+          if (!alive) return;
+          if (apiStatus(err) !== 401) {
+            // The question itself failed (offline, server busy): ask again in a while,
+            // rather than leave this device on "Signed out" with no way forward.
+            retry = setTimeout(() => check(attempt + 1), Math.min(SIGNED_OUT_RECHECK_MAX_MS, 2_000 * 2 ** attempt));
+            return;
+          }
+          // Another tab of this browser may hold a newer session for this home (its own
+          // password change ends this one and stores a new one for both): carry on with it,
+          // rather than clear it and sign that tab out too.
+          const stored = loadHomes().find((h) => h.id === activeHomeId)?.token ?? null;
+          if (stored && stored !== checked) {
+            onTokenChange(stored);
+            return;
+          }
+          setSignInNotice("You were signed out on this device. Sign in again to carry on.");
+          onBackToSignIn();
+        }
+      );
+    };
+    check(0);
     return () => {
       alive = false;
+      clearTimeout(retry);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- react to the status only; onBackToSignIn is a fresh closure each render
   }, [connStatus]);
@@ -2177,6 +2225,16 @@ function MainApp({
 
   // Add a server to state and drop the user straight into a live channel —
   // shared by create, invite-redeem, and onboarding so there's never an empty room.
+  // A space left or deleted from here: off the list, and off the screen if it was shown.
+  function dropServer(id: string) {
+    setServers((prev) => prev.filter((s) => s.id !== id));
+    if (selectedServerId === id) {
+      setSelectedServerId(null);
+      setSelectedChannel(null);
+      setMessages([]);
+    }
+  }
+
   function enterServer(server: ServerWithChannels) {
     setServers((prev) => [...prev.filter((s) => s.id !== server.id), server]);
     setSelectedServerId(server.id);
@@ -2581,6 +2639,18 @@ function MainApp({
             onOpenEvents={() => { setMobileNavOpen(false); setShowEvents(true); }}
             onReportServer={selectedServer ? () => void reportTarget("server", selectedServer.id, "server") : undefined}
             onOpenModQueue={canModerateSelectedServer ? () => setShowModQueue(true) : undefined}
+            onLeaveServer={async (id) => {
+              const name = servers.find((s) => s.id === id)?.name ?? "the space";
+              await api.leaveServer(token, id);
+              dropServer(id);
+              toast(`You left ${name}.`, "success");
+            }}
+            onDeleteServer={async (id, password) => {
+              const name = servers.find((s) => s.id === id)?.name ?? "The space";
+              await api.deleteServer(token, id, password);
+              dropServer(id);
+              toast(`${name} was deleted.`, "success");
+            }}
             activationState={activation}
             showActivationChecklist={Boolean(selectedServer && currentUser && selectedServer.owner_id === currentUser.id && !activationDismissed)}
             onDismissActivationChecklist={dismissActivationChecklist}
@@ -2603,6 +2673,7 @@ function MainApp({
         />
       ) : (
       <ChatPane
+        peerGone={selectedChannel?.channel_type === "dm" && goneDms.has(selectedChannel.id)}
         channel={selectedChannel}
         messages={visibleMessages}
         dmTabs={dms}

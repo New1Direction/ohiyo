@@ -34,6 +34,11 @@ pub struct WsQuery {
 pub type WsTickets = Arc<Mutex<HashMap<String, WsTicket>>>;
 const TICKET_TTL: Duration = Duration::from_secs(30);
 
+/// Tickets one account may ask for in a minute: room for every socket it may hold
+/// ([`MAX_CONNECTIONS_PER_USER`]) to open and then reconnect. Each ticket sits in one map,
+/// behind one lock that every account shares, for [`TICKET_TTL`].
+const TICKETS_PER_MIN: usize = 60;
+
 /// Who a ticket opens a socket for, and the user's token version when it was issued:
 /// "log out everywhere" bumps the version, which voids tickets issued before it.
 pub struct WsTicket {
@@ -65,6 +70,13 @@ pub async fn create_ws_ticket(
     auth::AuthUser(user_id, token_version): auth::AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<WsTicketResponse>, (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("ws-ticket:{user_id}"),
+        TICKETS_PER_MIN,
+        Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
     // Stamped with the version of the JWT that asked, not the account's current one:
     // if "log out everywhere" lands after that JWT passed the auth check, the ticket is
     // already stale and is refused on redeem.
@@ -482,6 +494,24 @@ async fn handle_socket(
         }
     }
 
+    // Read before anything announces this connection. If it can't all be read, close as
+    // a server error and let the client connect again: a Ready missing a space or the
+    // chat list reads as those being gone.
+    let ready = match build_ready(&user_id, &state).await {
+        Ok(ready) => ready,
+        Err(e) => {
+            tracing::error!("gateway: couldn't build Ready for {user_id}: {e:#}");
+            unregister_connection(&state, &user_id, conn_id);
+            let _ = socket
+                .send(Message::Close(Some(CloseFrame {
+                    code: close_code::ERROR,
+                    reason: "try again".into(),
+                })))
+                .await;
+            return;
+        }
+    };
+
     // Connecting counts as activity → refresh the dead-man's-switch liveness clock.
     crate::api::users::touch_active(&state.db, &user_id).await;
 
@@ -503,16 +533,14 @@ async fn handle_socket(
     let (mut ws_tx, mut ws_rx) = socket.split();
 
     // Send READY payload.
-    if let Ok(ready) = build_ready(&user_id, &state).await {
-        match serde_json::to_string(&ready) {
-            Ok(json) => {
-                let _ = ws_tx.send(Message::Text(json.into())).await;
-            }
-            Err(e) => {
-                // A failed Ready serialize must NOT send an empty frame (the client would
-                // treat it as a malformed/empty snapshot); log and skip the send instead.
-                tracing::warn!("gateway: failed to serialize Ready for {user_id}: {e}");
-            }
+    match serde_json::to_string(&ready) {
+        Ok(json) => {
+            let _ = ws_tx.send(Message::Text(json.into())).await;
+        }
+        Err(e) => {
+            // A failed Ready serialize must NOT send an empty frame (the client would
+            // treat it as a malformed/empty snapshot); log and skip the send instead.
+            tracing::warn!("gateway: failed to serialize Ready for {user_id}: {e}");
         }
     }
 
@@ -543,8 +571,16 @@ async fn handle_socket(
                         continue;
                     }
                     last_resync = Some(Instant::now());
+                    // Events are already lost: a resync that can't be read closes the
+                    // socket, and the client connects again for a fresh Ready.
                     let Ok(ready) = build_ready(&resync_user, &resync_state).await else {
-                        continue;
+                        let _ = ws_tx
+                            .send(Message::Close(Some(CloseFrame {
+                                code: close_code::ERROR,
+                                reason: "try again".into(),
+                            })))
+                            .await;
+                        break;
                     };
                     let Ok(json) = serde_json::to_string(&ready) else {
                         continue;
@@ -1448,19 +1484,23 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
 
     // Build each server through the same View Channel filter REST uses, so a channel
     // this user can't see never reaches them. All servers run concurrently (WAL +
-    // 16-conn pool) to keep the connect critical path short.
-    let server_list: Vec<ServerWithChannels> = futures_util::future::join_all(
+    // 16-conn pool) to keep the connect critical path short. A space deleted since the
+    // list was read is left out; any other failure fails the whole Ready, which the
+    // client would otherwise take as the space being gone.
+    let mut server_list: Vec<ServerWithChannels> = Vec::with_capacity(servers.len());
+    for full in futures_util::future::join_all(
         servers
             .iter()
             .map(|server| crate::api::servers::fetch_full_for_user(&server.id, state, user_id)),
     )
     .await
-    .into_iter()
-    .filter_map(|full| {
-        full.map_err(|(_, e)| tracing::warn!("gateway: Ready skipped a server for {user_id}: {e}"))
-            .ok()
-    })
-    .collect();
+    {
+        match full {
+            Ok(full) => server_list.push(full),
+            Err((StatusCode::NOT_FOUND, _)) => {}
+            Err((code, e)) => anyhow::bail!("a space couldn't be read ({code}): {e}"),
+        }
+    }
 
     let dms = sqlx::query_as::<_, crate::types::Channel>(
         "SELECT c.* FROM channels c
@@ -1469,8 +1509,7 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
     )
     .bind(user_id)
     .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    .await?;
 
     // The other person in each 1:1 DM, in one query, so the client can name every chat
     // in the list (the channel row is just "dm").
@@ -1486,8 +1525,7 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
         )
         .bind(user_id)
         .fetch_all(&state.db)
-        .await
-        .unwrap_or_default()
+        .await?
         .into_iter()
         .map(|(channel_id, id, username, display_name, avatar_url)| {
             let peer = PublicUser {
@@ -1525,8 +1563,7 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
     .bind(user_id)
     .bind(user_id)
     .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    .await?;
     // Only channels listed above (i.e. ones this user can view) may carry an unread count.
     let visible: HashSet<&str> = server_list
         .iter()

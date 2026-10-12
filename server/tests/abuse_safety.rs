@@ -195,3 +195,73 @@ async fn reports_feed_mod_queue_and_audit_log() {
         .iter()
         .any(|r| r["target_type"] == "user"));
 }
+
+/// S-L6: starting a group chat with someone who blocked you (or whom you blocked) was
+/// refused, but adding them to a group you're already in went through.
+#[tokio::test]
+async fn a_block_also_stops_adding_someone_to_a_group() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("groupalice", "supersecret123").await;
+    let bob = srv.register("groupbob", "supersecret123").await;
+    let carol = srv.register("groupcarol", "supersecret123").await;
+    let blocked = srv
+        .post_empty_auth(&format!("/api/v1/users/{}/block", bob.id), &alice.token)
+        .await;
+    assert_eq!(blocked.status(), 204);
+
+    let group = |token: String| {
+        let srv = &srv;
+        let carol = carol.id.clone();
+        async move {
+            let res = srv
+                .post_json_auth(
+                    "/api/v1/users/@me/group-dms",
+                    &token,
+                    json!({ "recipient_ids": [carol], "name": "with carol" }),
+                )
+                .await;
+            assert_eq!(res.status(), 200);
+            res.json::<Value>().await.unwrap()["id"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        }
+    };
+    let add = |token: String, channel: String, who: String| {
+        let srv = &srv;
+        async move {
+            srv.post_json_auth(
+                &format!("/api/v1/channels/{channel}/recipients"),
+                &token,
+                json!({ "user_id": who }),
+            )
+            .await
+            .status()
+        }
+    };
+
+    // Bob, whom Alice blocked, can't put her in his group.
+    let bobs = group(bob.token.clone()).await;
+    assert_eq!(
+        add(bob.token.clone(), bobs.clone(), alice.id.clone()).await,
+        403
+    );
+    let alices_chats: Value = srv
+        .get_auth("/api/v1/users/@me/dms", &alice.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        !alices_chats
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["id"] == bobs.as_str()),
+        "Alice wasn't added"
+    );
+
+    // And Alice can't put Bob in hers.
+    let alices = group(alice.token.clone()).await;
+    assert_eq!(add(alice.token.clone(), alices, bob.id.clone()).await, 403);
+}

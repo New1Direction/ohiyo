@@ -542,10 +542,10 @@ async fn if_the_cloud_refuses_nothing_is_deleted() {
     cloud.refuse.store(true, Ordering::SeqCst);
 
     // 502: the instance couldn't be destroyed, so the account is left exactly as it was.
-    assert_eq!(
-        delete_me(&srv, &me.token, PASS, "annstuck").await.status(),
-        502
-    );
+    // The app tells this apart from a proxy's 502 by the words.
+    let res = delete_me(&srv, &me.token, PASS, "annstuck").await;
+    assert_eq!(res.status(), 502);
+    assert!(res.text().await.unwrap().contains("Instant Server"));
     assert_eq!(
         srv.get_auth("/api/v1/users/@me", &me.token).await.status(),
         200
@@ -575,4 +575,39 @@ async fn if_the_cloud_refuses_nothing_is_deleted() {
         delete_me(&srv, &me.token, PASS, "annstuck").await.status(),
         204
     );
+}
+
+/// Everyone who was talking with them hears at once that the account is gone, so their app
+/// can take its messages off the screen and close the conversation, instead of showing
+/// them until a reload.
+#[tokio::test]
+async fn people_who_shared_a_chat_with_them_hear_at_once() {
+    let srv = TestServer::start().await;
+    let ann = srv.register("goneann", PASS).await;
+    let bea = srv.register("dmbea", PASS).await;
+    let cal = srv.register("spacecal", PASS).await;
+    let (server_id, _) = space(&srv, &cal, "Cal's").await;
+    join(&srv, &cal, &server_id, &ann).await;
+    let res = srv
+        .post_json_auth(
+            "/api/v1/users/@me/dms",
+            &ann.token,
+            json!({ "recipient_id": bea.id }),
+        )
+        .await;
+    assert_eq!(res.status(), 200);
+
+    let mut bea_gw = Gateway::connect(&srv, &bea.token).await;
+    bea_gw.wait_for(|ev| ev["t"] == "Ready").await;
+    let mut cal_gw = Gateway::connect(&srv, &cal.token).await;
+    cal_gw.wait_for(|ev| ev["t"] == "Ready").await;
+
+    assert_eq!(
+        delete_me(&srv, &ann.token, PASS, "goneann").await.status(),
+        204
+    );
+    for gw in [&mut bea_gw, &mut cal_gw] {
+        let ev = gw.wait_for(|ev| ev["t"] == "UserDeleted").await;
+        assert_eq!(ev["d"]["user_id"], json!(ann.id));
+    }
 }

@@ -91,7 +91,10 @@ export function AuthScreen({ home, onAuth }: Props) {
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
   // A reason left by the app when it signed this device out by itself (sessionNotice).
-  const [error, setError] = useState(() => takeSignInNotice() ?? "");
+  const [error, setError] = useState("");
+  // A reason left by the app when it signed this device out by itself (sessionNotice, e.g.
+  // the account was deleted): news, said calmly, not an error.
+  const [notice, setNotice] = useState(() => takeSignInNotice() ?? "");
   const [loading, setLoading] = useState(false);
   const [linkCode, setLinkCode] = useState("");
   const [factIndex, setFactIndex] = useState(0);
@@ -122,6 +125,7 @@ export function AuthScreen({ home, onAuth }: Props) {
     e.preventDefault();
     if (!canSubmit) return;
     setError("");
+    setNotice("");
     setLoading(true);
     try {
       const res =
@@ -142,6 +146,7 @@ export function AuthScreen({ home, onAuth }: Props) {
     const code = linkCode.replace(/[^a-zA-Z0-9]/g, "");
     if (!code || loading) return;
     setError("");
+    setNotice("");
     setLoading(true);
     try {
       const res = await api.completeDeviceLink(code);
@@ -176,6 +181,7 @@ export function AuthScreen({ home, onAuth }: Props) {
   function switchMode(next: Mode) {
     setMode(next);
     setError("");
+    setNotice("");
   }
 
   function onPasswordKey(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -318,6 +324,19 @@ export function AuthScreen({ home, onAuth }: Props) {
             )}
           </div>
 
+          {notice && !error && (
+            <p
+              className="px-3 py-2 text-xs"
+              style={{
+                background: "color-mix(in oklch, var(--text-primary) 8%, transparent)",
+                color: "var(--text-primary)",
+                borderRadius: "var(--radius-md)",
+              }}
+              role="status"
+            >
+              {notice}
+            </p>
+          )}
           {error && (
             <div
               className="kc-shake px-3 py-2 text-xs"

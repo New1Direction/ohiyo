@@ -9,6 +9,7 @@ import {
   makeThemeId,
   THEME_VAR_GROUPS,
   BUILTIN_THEMES,
+  themeVars,
   type ThemeVar,
 } from "../src/themes/index.ts";
 
@@ -69,4 +70,55 @@ test("every built-in theme sets a warning colour readable on its backgrounds", (
       assert.ok(ratio >= 4.5, `${theme.id}: --warning on ${bg} is ${ratio.toFixed(2)}:1`);
     }
   }
+});
+
+// Destructive buttons (Delete account, Remove and sign out, Sign out everywhere) were
+// white text on --danger: 2.65-4.06:1, under the 4.5:1 that small text needs, in every
+// built-in theme. They fill with --danger-fill now, a deeper red. And red text itself
+// (errors, "Delete account" headings) fell short on five themes' backgrounds.
+test("white on a danger fill is readable in every built-in theme", () => {
+  for (const theme of BUILTIN_THEMES) {
+    const fill = theme.vars["--danger-fill"];
+    assert.match(fill ?? "", /^#[0-9a-f]{6}$/i, `${theme.id} has no --danger-fill`);
+    const ratio = contrast("#ffffff", fill);
+    assert.ok(ratio >= 4.5, `${theme.id}: white on --danger-fill is ${ratio.toFixed(2)}:1`);
+  }
+});
+
+test("red text is readable on every built-in theme's backgrounds", () => {
+  for (const theme of BUILTIN_THEMES) {
+    for (const bg of ["--bg-base", "--bg-sidebar", "--bg-channel"] as const) {
+      const ratio = contrast(theme.vars["--danger"], theme.vars[bg]);
+      assert.ok(ratio >= 4.5, `${theme.id}: --danger on ${bg} is ${ratio.toFixed(2)}:1`);
+    }
+  }
+});
+
+// A custom theme saved before a colour existed (--warning, --danger-fill) took the dark
+// default theme's value for it, even when the theme itself is light: the default's light
+// amber warning on a white background can hardly be read.
+const withoutNewerColours = (id: string) => {
+  const { "--warning": _warning, "--danger-fill": _fill, ...older } = BUILTIN_THEMES.find((t) => t.id === id)!.vars;
+  return createCustomTheme(`Old ${id}`, older as ThemeVar, `old-${id}`);
+};
+
+test("a light custom theme missing newer colours gets ones readable on it", () => {
+  const vars = themeVars(withoutNewerColours("light"));
+  for (const bg of ["--bg-base", "--bg-sidebar", "--bg-channel"] as const) {
+    const ratio = contrast(vars["--warning"], vars[bg]);
+    assert.ok(ratio >= 4.5, `--warning on ${bg} is ${ratio.toFixed(2)}:1`);
+  }
+  const fill = contrast("#ffffff", vars["--danger-fill"]);
+  assert.ok(fill >= 4.5, `white on --danger-fill is ${fill.toFixed(2)}:1`);
+});
+
+test("a dark custom theme missing newer colours still gets the dark default's", () => {
+  const vars = themeVars(withoutNewerColours("midnight"));
+  assert.equal(vars["--warning"], BUILTIN_THEMES[0].vars["--warning"]);
+  assert.equal(vars["--danger-fill"], BUILTIN_THEMES[0].vars["--danger-fill"]);
+});
+
+test("a theme's own colours always win over the fallback", () => {
+  const light = BUILTIN_THEMES.find((t) => t.id === "light")!;
+  assert.deepEqual(themeVars(light), { ...BUILTIN_THEMES[0].vars, ...light.vars });
 });

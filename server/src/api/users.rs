@@ -115,8 +115,8 @@ fn relation_status(auth_id: &str, row: Option<FriendshipPairRow>) -> String {
     }
 }
 
-async fn fetch_friendship_pair(
-    state: &AppState,
+async fn fetch_friendship_pair<'e>(
+    db: impl sqlx::SqliteExecutor<'e>,
     a: &str,
     b: &str,
 ) -> Result<Option<FriendshipPairRow>, (StatusCode, String)> {
@@ -129,7 +129,7 @@ async fn fetch_friendship_pair(
     .bind(b)
     .bind(b)
     .bind(a)
-    .fetch_optional(&state.db)
+    .fetch_optional(db)
     .await
     .map_err(crate::api::error::internal)
 }
@@ -200,7 +200,7 @@ pub async fn get_friendship(
             status: "self".to_owned(),
         }));
     }
-    let row = fetch_friendship_pair(&state, &auth.0, &user_id).await?;
+    let row = fetch_friendship_pair(&state.db, &auth.0, &user_id).await?;
     Ok(Json(FriendRelation {
         status: relation_status(&auth.0, row),
     }))
@@ -233,7 +233,16 @@ pub async fn send_friend_request(
     }
 
     let now = now_unix();
-    if let Some(row) = fetch_friendship_pair(&state, &auth.0, &user_id).await? {
+    // Look and write in one write transaction. Two people asking each other at the same
+    // moment would otherwise both find no request, and the second insert would break the
+    // one-request-per-pair rule. BEGIN IMMEDIATE takes the write lock before the look, so
+    // the second finds the first's request and accepts it.
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
+    if let Some(row) = fetch_friendship_pair(&mut *tx, &auth.0, &user_id).await? {
         if row.status == "accepted" {
             return Ok(Json(FriendRelation {
                 status: "friends".to_owned(),
@@ -244,9 +253,10 @@ pub async fn send_friend_request(
                 .bind(now)
                 .bind(&user_id)
                 .bind(&auth.0)
-                .execute(&state.db)
+                .execute(&mut *tx)
                 .await
                 .map_err(crate::api::error::internal)?;
+            tx.commit().await.map_err(crate::api::error::internal)?;
             return Ok(Json(FriendRelation {
                 status: "friends".to_owned(),
             }));
@@ -265,9 +275,10 @@ pub async fn send_friend_request(
     .bind(&user_id)
     .bind(now)
     .bind(now)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
 
     Ok(Json(FriendRelation {
         status: "pending_outgoing".to_owned(),
@@ -293,7 +304,7 @@ pub async fn accept_friend_request(
     .map_err(crate::api::error::internal)?;
 
     if res.rows_affected() == 0 {
-        let row = fetch_friendship_pair(&state, &auth.0, &user_id).await?;
+        let row = fetch_friendship_pair(&state.db, &auth.0, &user_id).await?;
         if matches!(row.as_ref().map(|r| r.status.as_str()), Some("accepted")) {
             return Ok(Json(FriendRelation {
                 status: "friends".to_owned(),
@@ -378,7 +389,14 @@ pub async fn open_dm(
         return Err((StatusCode::FORBIDDEN, "you can't message this user".into()));
     }
 
-    // Check if a DM already exists between these two users.
+    // Look for the pair's DM and make one in a single write transaction. Two opens at once
+    // (a double tap, or both people starting the chat together) would otherwise both find
+    // none and make two. BEGIN IMMEDIATE takes the write lock before the look.
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
     let existing: Option<Channel> = sqlx::query_as(
         "SELECT c.* FROM channels c
          JOIN dm_participants dp1 ON dp1.channel_id = c.id AND dp1.user_id = ?
@@ -388,7 +406,7 @@ pub async fn open_dm(
     )
     .bind(&auth.0)
     .bind(&body.recipient_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
 
@@ -407,7 +425,7 @@ pub async fn open_dm(
     .bind("dm")
     .bind(0i64)
     .bind(now)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
 
@@ -415,10 +433,11 @@ pub async fn open_dm(
         sqlx::query("INSERT INTO dm_participants (channel_id, user_id) VALUES (?,?)")
             .bind(&id)
             .bind(uid)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await
             .map_err(crate::api::error::internal)?;
     }
+    tx.commit().await.map_err(crate::api::error::internal)?;
 
     let channel = Channel {
         id,
@@ -688,11 +707,25 @@ pub async fn add_recipient(
     if exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "no such user".into()));
     }
+    // The same check as starting a group with them.
+    if crate::api::abuse::is_blocked_pair(&state, &auth.0, &new_user).await {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't add a blocked user to a group DM".into(),
+        ));
+    }
+    // Look, count and add in one write transaction: two adds at once would otherwise both
+    // find them missing (the second insert failing), or both fit under the size limit.
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(internal)?;
     let already: Option<i64> =
         sqlx::query_scalar("SELECT 1 FROM dm_participants WHERE channel_id = ? AND user_id = ?")
             .bind(&channel_id)
             .bind(&new_user)
-            .fetch_optional(&state.db)
+            .fetch_optional(&mut *tx)
             .await
             .map_err(internal)?;
     if already.is_some() {
@@ -701,7 +734,7 @@ pub async fn add_recipient(
     let count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM dm_participants WHERE channel_id = ?")
             .bind(&channel_id)
-            .fetch_one(&state.db)
+            .fetch_one(&mut *tx)
             .await
             .map_err(internal)?;
     if count >= 21 {
@@ -710,9 +743,10 @@ pub async fn add_recipient(
     sqlx::query("INSERT INTO dm_participants (channel_id, user_id) VALUES (?,?)")
         .bind(&channel_id)
         .bind(&new_user)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(internal)?;
+    tx.commit().await.map_err(internal)?;
     let epoch = bump_epoch(&state, &channel_id).await?;
     // The newcomer has no row for this channel yet — send them the channel first.
     if let Some(ch) = sqlx::query_as::<_, Channel>("SELECT * FROM channels WHERE id = ?")

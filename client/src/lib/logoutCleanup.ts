@@ -28,7 +28,8 @@ const ACCOUNT_KEY_PREFIXES = ["kc:sig:", "kc:sk:"];
 const ACCOUNT_KEYS = ["kc:e2e-keypair"];
 
 export function clearDeletedAccountData(stores: readonly ListableStore[], userId: string): void {
-  const own = [`ohiyo:known-devices:${userId}`, `ohiyo:new-devices:${userId}`];
+  // The sign-in screen fills in the last username: not one that no longer exists.
+  const own = [`ohiyo:known-devices:${userId}`, `ohiyo:new-devices:${userId}`, "kc:last-username"];
   for (const store of stores) {
     const cleared = store
       .keys()

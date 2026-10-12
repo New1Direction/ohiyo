@@ -505,18 +505,21 @@ async fn fetch_full_inner(
     state: &AppState,
     viewer_id: Option<&str>,
 ) -> Result<ServerWithChannels, (StatusCode, String)> {
+    // A read that fails is an error, not an empty list: a space sent without its channels
+    // or members looks emptied to the person who gets it.
     let server: Server = sqlx::query_as("SELECT * FROM servers WHERE id = ?")
         .bind(server_id)
-        .fetch_one(&state.db)
+        .fetch_optional(&state.db)
         .await
-        .map_err(|_| (StatusCode::NOT_FOUND, "server not found".into()))?;
+        .map_err(crate::api::error::internal)?
+        .ok_or((StatusCode::NOT_FOUND, "server not found".into()))?;
 
     let mut channels: Vec<crate::types::Channel> =
         sqlx::query_as("SELECT * FROM channels WHERE server_id = ? ORDER BY position")
             .bind(server_id)
             .fetch_all(&state.db)
             .await
-            .unwrap_or_default();
+            .map_err(crate::api::error::internal)?;
     if let Some(user_id) = viewer_id {
         channels = crate::api::roles::viewable_channels(state, server_id, user_id, channels)
             .await
@@ -531,14 +534,14 @@ async fn fetch_full_inner(
     .bind(server_id)
     .fetch_all(&state.db)
     .await
-    .unwrap_or_default();
+    .map_err(crate::api::error::internal)?;
 
     let categories: Vec<Category> =
         sqlx::query_as("SELECT * FROM categories WHERE server_id = ? ORDER BY position")
             .bind(server_id)
             .fetch_all(&state.db)
             .await
-            .unwrap_or_default();
+            .map_err(crate::api::error::internal)?;
 
     Ok(ServerWithChannels {
         server,

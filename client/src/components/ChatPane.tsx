@@ -178,6 +178,8 @@ function messageEmbedHeight(message: Message, channelEncrypted: boolean, sizing:
 type Props = {
   channel: Channel | null;
   messages: Message[];
+  /** A 1:1 chat whose other person deleted their account: nobody to reply to. */
+  peerGone?: boolean;
   dmTabs?: Channel[];
   dmUsers?: Record<string, PublicUser>;
   onSelectDmTab?: (channel: Channel) => void;
@@ -347,6 +349,7 @@ async function decryptAttachmentBytes(att: EncryptedAttachmentMeta, encryptedByt
 export function ChatPane({
   channel,
   messages,
+  peerGone = false,
   dmTabs = [],
   dmUsers = {},
   onSelectDmTab,
@@ -1999,11 +2002,21 @@ export function ChatPane({
         />
       )}
 
+      {peerGone && (
+        <p
+          className="mx-4 mb-4 rounded-lg px-4 py-3 text-sm"
+          style={{ background: "var(--bg-input)", color: "var(--text-secondary)", marginBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+          role="status"
+        >
+          This account was deleted. What you sent stays here, but there&apos;s no one to reply to.
+        </p>
+      )}
+
       {/* Input */}
       <form
         onSubmit={handleSend}
         className="kc-composer-shell mx-4 mb-4"
-        style={{ marginBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+        style={{ marginBottom: "max(1rem, env(safe-area-inset-bottom))", display: peerGone ? "none" : undefined }}
       >
         <div className="kc-composer-tools" aria-label="Message tools">
           {/* One "+" for everything you can add. Polls are stored unencrypted, so an encrypted
