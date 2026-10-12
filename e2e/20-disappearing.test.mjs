@@ -16,7 +16,7 @@ try {
   await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Ax HQ");
   await pageA.click('button:has-text("Let\'s go")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   const ctxB = await browser.newContext({ viewport: { width: 1100, height: 800 } });
   const pageB = await ctxB.newPage();
@@ -25,7 +25,7 @@ try {
   await pageB.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageB.fill("#kc-space-name", "Bx HQ");
   await pageB.click('button:has-text("Let\'s go")');
-  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("A + B registered");
 
   // A opens a DM with B
@@ -34,9 +34,9 @@ try {
   await pageA.fill('input[aria-label="Search people"]', B);
   await pageA.waitForSelector(`button[aria-label="Message @${B}"]`, { timeout: 6000 });
   await pageA.click(`button[aria-label="Message @${B}"]`);
-  await pageA.waitForSelector('input[placeholder="Say something…"]', { timeout: 8000 });
+  await pageA.waitForSelector('textarea[placeholder="Say something…"]', { timeout: 8000 });
   // A sends a hello so B's DM list shows the conversation
-  const hello = pageA.locator('input[placeholder="Say something…"]');
+  const hello = pageA.locator('textarea[placeholder="Say something…"]');
   await hello.fill(`hi-${u}`);
   await hello.press("Enter");
   await pageA.waitForSelector(`text=hi-${u}`, { timeout: 8000 });
@@ -68,7 +68,7 @@ try {
   });
 
   const poof = `poof-${u}`;
-  const composer = pageA.locator('input[placeholder="Say something…"]');
+  const composer = pageA.locator('textarea[placeholder="Say something…"]');
   await composer.fill(poof);
   await composer.press("Enter");
   await pageA.waitForSelector(`text=${poof}`, { timeout: 8000 });

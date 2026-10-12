@@ -24,14 +24,14 @@ async function onboard(page, username, display, space) {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", space);
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 }
 
 const row = (page, name) => page.locator(".channel-sidebar .kc-channel-row", { hasText: name }).first();
 
 async function openChannel(page, name) {
   await row(page, name).click();
-  await page.waitForSelector(`input[placeholder*="Say something to #${name}"]`, { timeout: 10000 });
+  await page.waitForSelector(`textarea[placeholder*="Say something to #${name}"]`, { timeout: 10000 });
 }
 
 // A muted chat's dialog says until when and offers Unmute; an unmuted one offers the Mute list.

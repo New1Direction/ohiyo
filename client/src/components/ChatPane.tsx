@@ -17,14 +17,15 @@ import { AvatarMark, BirdMark } from "./BirdMark";
 import { ChannelWelcome } from "./ChannelWelcome";
 import { PollWidget } from "./PollWidget";
 import { PollComposer } from "./PollComposer";
-import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions";
+import { activeMentionQuery, applyMention } from "../lib/mentions";
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
-import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, TOUCH_ACTIONS_QUERY, lockedCardPx, messageGroupTextPx, messageLineCount, messageRowMetrics, reactionsPx, type LockedCardCopy } from "../lib/messageLayout";
+import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, TOUCH_ACTIONS_QUERY, lockedCardPx, messageContentPx, messageGroupTextPx, messageRowMetrics, reactionsPx, type LockedCardCopy } from "../lib/messageLayout";
 import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode, type LinkPreviewMode } from "../lib/linkPreviews";
 import { NO_OPEN_EMBEDS, embedKey, embedRowPx, enteringChat, fetchedPreviewPx, linkEmbedFor, openHeightsIn, withEmbedHeight, type LinkEmbed, type OpenEmbeds } from "../lib/linkEmbeds";
-import { linkCardUrls, trimUrlTail } from "../lib/messageLinks";
+import { linkCardUrls } from "../lib/messageLinks";
+import { MessageContent } from "./MessageMarkdown";
 import { EmbedOpenContext, PlayableEmbed, type EmbedOpenState } from "./LinkEmbeds";
 import { loadDraft, persistDraft } from "../lib/drafts";
 import { editBlockReason, pendingAttachmentsToKeep, REATTACH_MESSAGE } from "../lib/encryptedSend";
@@ -511,7 +512,16 @@ export function ChatPane({
     }),
     [openEmbeds, chatId]
   );
-  const composerRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  // The message box grows with its lines (Shift+Enter) up to 40% of the window, then scrolls.
+  useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const max = Math.round(window.innerHeight * 0.4);
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+  }, [input]);
   // Row-height metrics: the density/font-scale CSS vars plus how many characters fit on a
   // line at the list's width. Cached in a ref and refreshed only when the appearance or the
   // width changes (not per render) so estimateHeight stays cheap.
@@ -868,10 +878,14 @@ export function ChatPane({
       if (!row) return 60;
       if (row.kind === "activity") return 48;
       const g = row.group;
-      const { linePx, basePx, charsPerLine, textWidth } = metricsRef.current;
+      const metrics = metricsRef.current;
+      const { linePx, basePx, textWidth } = metrics;
       const embedSizing = { openHeights: openEmbeds, textWidth };
+      // Each message's text as drawn (formatting included), in lines of text.
       const textH = messageGroupTextPx(
-        g.msgs.map((m) => (hiddenMessageIds.has(m.id) ? 1 : messageLineCount(m.content, charsPerLine))),
+        g.msgs.map((m) =>
+          hiddenMessageIds.has(m.id) ? 1 : messageContentPx(m.content, metrics, Boolean(m.edited_at || m.expires_at)) / linePx
+        ),
         linePx
       );
       // Reserve the rendered attachment height so images/videos do not get clipped in the virtualized list.
@@ -2076,8 +2090,9 @@ export function ChatPane({
             </div>
           )}
         </div>
-        <input
+        <textarea
           ref={composerRef}
+          rows={1}
           className="kc-composer-input flex-1 bg-transparent text-sm outline-none"
           style={{ color: "var(--text-primary)" }}
           placeholder={
@@ -2095,7 +2110,9 @@ export function ChatPane({
               pickMention(mentionMatches[0].username);
               return;
             }
-            if (e.key === "Enter" && !e.shiftKey) {
+            // Enter sends; Shift+Enter starts a new line. Enter that picks a word in an input
+            // method (Japanese, Chinese, Korean…) is the input method's, not a send.
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               handleSend(e as unknown as React.FormEvent);
             } else if (e.key === "Escape") {
@@ -2311,44 +2328,6 @@ function AutoSizedList({
 
 // ── Message content renderer ──────────────────────────────────────────────────
 
-function SpoilerSpan({ text }: { text: string }) {
-  const [revealed, setRevealed] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => setRevealed((r) => !r)}
-      data-spoiler=""
-      aria-pressed={revealed}
-      aria-label={revealed ? "Spoiler revealed, activate to hide" : "Spoiler, activate to reveal"}
-      style={{
-        background: revealed ? "var(--bg-hover)" : "var(--text-secondary)",
-        color: revealed ? "var(--text-primary)" : "transparent",
-        borderRadius: 3,
-        border: "none",
-        font: "inherit",
-        cursor: "pointer",
-        userSelect: "none",
-        padding: "0 2px",
-        transition: "all 0.2s",
-      }}
-      title={revealed ? "Click to hide" : "Click to reveal spoiler"}
-    >
-      {text}
-    </button>
-  );
-}
-
-function CustomEmoji({ emoji }: { emoji: ServerEmoji }) {
-  return (
-    <img
-      src={`${getFileBase()}${emoji.url}`}
-      alt={`:${emoji.name}:`}
-      title={`:${emoji.name}:`}
-      style={{ display: "inline", height: "1.4em", verticalAlign: "middle", borderRadius: 2 }}
-    />
-  );
-}
-
 type DecryptState = NonNullable<Message["_decryptState"]>;
 
 const LOCKED_COPY: Record<DecryptState, { title: string; body: string }> = {
@@ -2389,74 +2368,6 @@ function UndecryptableMessage({ state, onOpenRecovery }: { state: DecryptState; 
           mash a button that can only fail, turning a privacy guarantee into a bug. */}
     </div>
   );
-}
-
-function MessageContent({ content, serverEmojis, currentUsername = "" }: { content: string; serverEmojis: ServerEmoji[]; currentUsername?: string }) {
-  // Forwarded message: 【FWD:author】<original content>
-  const fwd = content.match(/^【FWD:([^】]*)】([\s\S]*)$/);
-  if (fwd) {
-    const [, author, rest] = fwd;
-    return (
-      <>
-        <span className="flex items-center gap-1" style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>
-          <span style={{ color: "var(--accent)" }}>↪</span> Forwarded from <strong style={{ color: "var(--text-secondary)" }}>{author}</strong>
-        </span>
-        {rest && <MessageContent content={rest} serverEmojis={serverEmojis} currentUsername={currentUsername} />}
-      </>
-    );
-  }
-  // Big emoji shortcut
-  if (content.startsWith("【BIG_EMOJI:") && content.endsWith("】")) {
-    const emoji = content.slice(12, -1);
-    return <span className="big-emoji-char" style={{ fontSize: "2.5rem", lineHeight: 1.2 }}>{emoji}</span>;
-  }
-
-  const emojiMap = new Map(serverEmojis.map((e) => [e.name, e]));
-
-  const parts: React.ReactNode[] = [];
-  // Parse code blocks, ||spoilers||, and custom emoji :name:
-  const tokenRe = /```([\s\S]*?)```|\|\|(.+?)\|\||:([a-z0-9_]{2,32}):/g;
-  let last = 0;
-
-  for (const match of content.matchAll(tokenRe)) {
-    const before = content.slice(last, match.index);
-    if (before) parts.push(<InlineText key={last} text={before} serverEmojis={serverEmojis} currentUsername={currentUsername} />);
-
-    if (match[0].startsWith("```")) {
-      parts.push(
-        <pre key={match.index} className="code-block" style={{
-          display: "block",
-          background: "#1e1e2e",
-          color: "#cdd6f4",
-          borderRadius: 6,
-          padding: "10px 14px",
-          fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-          fontSize: 13,
-          overflowX: "auto",
-          margin: "6px 0",
-          borderLeft: "3px solid var(--accent)",
-        }}>
-          {match[1]}
-        </pre>
-      );
-    } else if (match[2] !== undefined) {
-      parts.push(<SpoilerSpan key={match.index} text={match[2]} />);
-    } else if (match[3] !== undefined) {
-      const customEmoji = emojiMap.get(match[3]);
-      if (customEmoji) {
-        parts.push(<CustomEmoji key={match.index} emoji={customEmoji} />);
-      } else {
-        parts.push(`:${match[3]}:`);
-      }
-    }
-
-    last = match.index! + match[0].length;
-  }
-
-  const remainder = content.slice(last);
-  if (remainder) parts.push(<InlineText key={last + "r"} text={remainder} serverEmojis={serverEmojis} currentUsername={currentUsername} />);
-
-  return <>{parts}</>;
 }
 
 // Bounded LRU for link-preview lookups (a long-lived session can otherwise visit
@@ -2643,111 +2554,6 @@ function EmbedCard({ embed }: { embed: Embed }) {
   if (playable) return <PlayableEmbed url={embed.url} embed={playable} openKey={embedKey(messageId, embed.url)} showPreview title={embed.title} />;
   if (isDirectVideoUrl(embed.url)) return <DirectVideoLinkPreview url={embed.url} />;
   return <StandardLinkPreviewCard url={embed.url} data={embed} />;
-}
-
-// Inline text with bold, italic, inline code, and URL detection.
-function InlineText({ text, serverEmojis, currentUsername = "" }: { text: string; serverEmojis: ServerEmoji[]; currentUsername?: string }) {
-  const emojiMap = new Map(serverEmojis.map((e) => [e.name, e]));
-  const urlRe = /(https?:\/\/[^\s]+)/g;
-  const segments: React.ReactNode[] = [];
-  let last = 0;
-
-  for (const match of text.matchAll(urlRe)) {
-    const before = text.slice(last, match.index);
-    if (before) segments.push(...renderInlineMarkdown(before, String(last), currentUsername, emojiMap));
-    const url = trimUrlTail(match[0]);
-    // Defense-in-depth: the regex anchors on https?:// but re-validate the scheme
-    // before it reaches href so odd inputs can't open-redirect.
-    const safeUrl = safeHttpUrl(url);
-    segments.push(
-      safeUrl ? (
-        <a
-          key={match.index}
-          href={safeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: "var(--accent)", textDecoration: "underline" }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {url}
-        </a>
-      ) : (
-        <span key={match.index}>{url}</span>
-      )
-    );
-    // Punctuation after the link stays in the sentence, outside the link.
-    last = match.index! + url.length;
-  }
-  const tail = text.slice(last);
-  if (tail) segments.push(...renderInlineMarkdown(tail, String(last + "t"), currentUsername, emojiMap));
-
-  return <>{segments}</>;
-}
-
-function renderMentions(text: string, currentUsername: string, keyPrefix: string): React.ReactNode[] {
-  return splitMentions(text).map((seg, i) => {
-    if (!seg.mention) return seg.text;
-    const m = seg.mention.toLowerCase();
-    // @everyone / @here include you, so give them the stronger "you" highlight too.
-    const isMe =
-      m === "everyone" || m === "here" || (!!currentUsername && m === currentUsername.toLowerCase());
-    return (
-      <span
-        key={`${keyPrefix}-m${i}`}
-        style={{
-          background: isMe
-            ? "color-mix(in oklch, var(--accent) 24%, transparent)"
-            : "color-mix(in oklch, var(--accent) 12%, transparent)",
-          color: "var(--accent)",
-          fontWeight: 600,
-          borderRadius: 4,
-          padding: "0 3px",
-        }}
-      >
-        {seg.text}
-      </span>
-    );
-  });
-}
-
-function renderInlineMarkdown(
-  text: string,
-  keyPrefix: string,
-  currentUsername = "",
-  _emojiMap?: Map<string, ServerEmoji>
-): React.ReactNode[] {
-  // Handle bold (**text**), italic (*text*), inline `code`, and @mentions.
-  const parts: React.ReactNode[] = [];
-  const re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
-  let last = 0;
-  let i = 0;
-
-  for (const match of text.matchAll(re)) {
-    if (match.index! > last) parts.push(...renderMentions(text.slice(last, match.index), currentUsername, `${keyPrefix}-p${i}`));
-    const token = match[0];
-    const key = `${keyPrefix}-${i++}`;
-    if (token.startsWith("**")) {
-      parts.push(<strong key={key} style={{ color: "var(--text-primary)" }}>{token.slice(2, -2)}</strong>);
-    } else if (token.startsWith("*")) {
-      parts.push(<em key={key}>{token.slice(1, -1)}</em>);
-    } else {
-      parts.push(
-        <code key={key} style={{
-          background: "var(--bg-input)",
-          padding: "1px 5px",
-          borderRadius: 3,
-          fontFamily: "monospace",
-          fontSize: "0.9em",
-          color: "var(--text-primary)",
-        }}>
-          {token.slice(1, -1)}
-        </code>
-      );
-    }
-    last = match.index! + token.length;
-  }
-  parts.push(...renderMentions(text.slice(last), currentUsername, `${keyPrefix}-end`));
-  return parts;
 }
 
 // ── Composer emoji/GIF picker ────────────────────────────────────────────────
@@ -3246,23 +3052,26 @@ function EditBox({
 }) {
   return (
     <div className="mt-0.5">
-      <input
+      <textarea
         // eslint-disable-next-line jsx-a11y/no-autofocus -- inline message editor opens on user action; focusing immediately is expected
         autoFocus
         value={value}
         aria-label="Edit message"
+        rows={Math.min(8, value.split("\n").length)}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); onSave(); }
+          // Enter saves; Shift+Enter starts a new line, so a message keeps its line breaks.
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onSave(); }
           else if (e.key === "Escape") onCancel();
         }}
-        className="kc-field w-full px-2.5 py-1.5 text-sm outline-none"
+        className="kc-field kc-edit-input w-full px-2.5 py-1.5 text-sm outline-none"
       />
       <div className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
         escape to{" "}
         <button type="button" onClick={onCancel} className="kc-interactive" style={{ color: "var(--accent)", background: "none", border: "none", cursor: "pointer" }}>cancel</button>
         {" · "}enter to{" "}
         <button type="button" onClick={onSave} className="kc-interactive" style={{ color: "var(--accent)", background: "none", border: "none", cursor: "pointer" }}>save</button>
+        {" · "}shift+enter for a new line
       </div>
     </div>
   );

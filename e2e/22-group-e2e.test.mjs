@@ -19,7 +19,7 @@ async function setup(name, username, display, space) {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", space);
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   return page;
 }
 
@@ -27,7 +27,7 @@ async function openGroup(page) {
   await page.click('button[aria-label="Direct Messages"]');
   await page.waitForSelector('button:has-text("Squad")', { timeout: 8000 });
   await page.click('button:has-text("Squad")');
-  await page.waitForSelector('input[placeholder*="Say something"]', { timeout: 8000 });
+  await page.waitForSelector('textarea[placeholder*="Say something"]', { timeout: 8000 });
 }
 
 try {
@@ -70,7 +70,7 @@ try {
 
   // A sends a group message → BOTH B and C decrypt the same ciphertext.
   const secret = `squad-${u}`;
-  const cA = pageA.locator('input[placeholder*="Say something"]');
+  const cA = pageA.locator('textarea[placeholder*="Say something"]');
   await cA.fill(secret);
   await cA.press("Enter");
   await pageA.waitForSelector(`text=${secret}`, { timeout: 8000 });
@@ -80,7 +80,7 @@ try {
 
   // B replies → A and C decrypt (bidirectional sender keys).
   const reply = `creply-${u}`;
-  const cB = pageB.locator('input[placeholder*="Say something"]');
+  const cB = pageB.locator('textarea[placeholder*="Say something"]');
   await cB.fill(reply);
   await cB.press("Enter");
   await pageA.waitForSelector(`text=${reply}`, { timeout: 10000 });

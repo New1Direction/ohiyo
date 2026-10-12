@@ -12,7 +12,7 @@ const browser = await launchBrowser();
 let failed = false;
 let tab2 = null;
 
-const composer = 'input[placeholder*="Say something to #general"]';
+const composer = 'textarea[placeholder*="Say something to #general"]';
 const offline = /Reconnecting you now|Connecting…|Signed out|You were signed out on this device/;
 
 try {

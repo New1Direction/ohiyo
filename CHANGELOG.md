@@ -19,6 +19,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   header). A muted chat sends no notification or push and adds nothing to your unread
   number; an @mention still gets through unless the space is set to Nothing. Settings follow
   your account to every device, and the push relay obeys them.
+- **Messages format like Discord's.** Headings (`#`, `##`, `###`), `-#` subtext, `>` and `>>>`
+  quotes, `-` and `1.` lists, `__underline__`, `~~strike~~`, `_italic_`, ```` ```language ````
+  code blocks, `[masked](https://…)` links (the real address shows on hover, and beside the
+  link when its words name a different site), `\` escapes and `<t:…>` timestamps shown in
+  your own time and language. Shift+Enter starts a new line, and line breaks show.
 
 ### Changed
 - **Settings speaks in sentence case** like the rest of the app, and the Account card no longer

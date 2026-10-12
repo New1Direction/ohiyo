@@ -4,7 +4,7 @@ import { launchBrowser, register, log, settle, shot, uniq } from "./harness.mjs"
 // box. Each check here was clutter a new owner saw on their first screen.
 const browser = await launchBrowser();
 let failed = false;
-const COMPOSER = 'input[placeholder*="Say something"]';
+const COMPOSER = 'textarea[placeholder*="Say something"]';
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1180, height: 760 } });

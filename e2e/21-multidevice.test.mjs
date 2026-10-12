@@ -29,7 +29,7 @@ try {
   await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Am HQ");
   await pageA.click('button:has-text("Let\'s go")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   // ── B registers (device 1) + a space ──
   const ctxB1 = await browser.newContext({ viewport: { width: 1100, height: 800 } });
@@ -39,7 +39,7 @@ try {
   await pageB1.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageB1.fill("#kc-space-name", "Bm HQ");
   await pageB1.click('button:has-text("Let\'s go")');
-  await pageB1.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB1.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   const bId = await pageB1.evaluate(() => window.__kikkacordUser?.id);
   log(`A + B registered (B on device 1)`);
 
@@ -49,11 +49,11 @@ try {
   await pageA.fill('input[aria-label="Search people"]', B);
   await pageA.waitForSelector(`button[aria-label="Message @${B}"]`, { timeout: 6000 });
   await pageA.click(`button[aria-label="Message @${B}"]`);
-  await pageA.waitForSelector('input[placeholder="Say something…"]', { timeout: 8000 });
+  await pageA.waitForSelector('textarea[placeholder="Say something…"]', { timeout: 8000 });
   await pageA.click('button[aria-label="Turn on end-to-end encryption"]');
   await pageA.waitForSelector("text=/Switched to end-to-end encrypted/", { timeout: 6000 });
   const secret1 = `solo-${u}`;
-  let composer = pageA.locator('input[placeholder="Say something…"]');
+  let composer = pageA.locator('textarea[placeholder="Say something…"]');
   await composer.fill(secret1);
   await composer.press("Enter");
   await pageA.waitForSelector(`text=${secret1}`, { timeout: 8000 });
@@ -93,7 +93,7 @@ try {
 
   // ── A sends a SECOND message; fan-out now reaches BOTH of B's devices ──
   const secret2 = `multi-${u}`;
-  composer = pageA.locator('input[placeholder="Say something…"]');
+  composer = pageA.locator('textarea[placeholder="Say something…"]');
   await composer.fill(secret2);
   await composer.press("Enter");
   await pageA.waitForSelector(`text=${secret2}`, { timeout: 8000 });
