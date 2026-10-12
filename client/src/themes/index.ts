@@ -274,15 +274,17 @@ function isValidTheme(t: unknown): t is Theme {
   );
 }
 
+/** Every colour `theme` paints with: its own, and the default theme's for any it lacks. */
+export function themeVars(theme: Theme): ThemeVar {
+  return { ...DEFAULT_THEME.vars, ...theme.vars };
+}
+
 export function applyTheme(theme: Theme) {
   const root = document.documentElement;
-  // Reset to the default theme's FULL var set first, then overlay this theme. A theme
-  // that omits some keys (custom/imported) would otherwise inherit the previous theme's
-  // values for those keys — cross-theme color bleed.
-  for (const [k, v] of Object.entries(DEFAULT_THEME.vars)) {
-    root.style.setProperty(k, v);
-  }
-  for (const [k, v] of Object.entries(theme.vars)) {
+  // The FULL var set, not just this theme's: a theme that omits some keys (custom or
+  // imported) would otherwise inherit the previous theme's values for them — cross-theme
+  // color bleed.
+  for (const [k, v] of Object.entries(themeVars(theme))) {
     root.style.setProperty(k, v);
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(theme));
