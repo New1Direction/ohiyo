@@ -239,6 +239,42 @@ fn mentions_name(content: &str, name: &str) -> bool {
     })
 }
 
+/// Everyone's settings for a space and for every channel and thread in it. Run in the
+/// transaction that deletes the space, before the delete (its channels go with it). The rows
+/// name their target without a foreign key, so nothing else removes them.
+pub(crate) async fn forget_space(
+    db: impl sqlx::SqliteExecutor<'_>,
+    server_id: &str,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "DELETE FROM notification_settings
+          WHERE (target_type = 'server' AND target_id = ?1)
+             OR (target_type = 'channel'
+                 AND target_id IN (SELECT id FROM channels WHERE server_id = ?1))",
+    )
+    .bind(server_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Everyone's settings for a channel and its threads. Run in the transaction that deletes
+/// the channel, before the delete.
+pub(crate) async fn forget_channel(
+    db: impl sqlx::SqliteExecutor<'_>,
+    channel_id: &str,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "DELETE FROM notification_settings
+          WHERE target_type = 'channel'
+            AND target_id IN (SELECT id FROM channels WHERE id = ?1 OR parent_id = ?1)",
+    )
+    .bind(channel_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
