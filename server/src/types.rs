@@ -143,6 +143,9 @@ pub struct ReplyPreview {
     pub id: String,
     pub author: String,
     pub content: String,
+    /// The reply quotes a webhook (another service), shown with an APP badge.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bot: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

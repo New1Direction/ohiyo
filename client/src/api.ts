@@ -122,6 +122,8 @@ export type ReplyPreview = {
   id: string;
   author: string;
   content: string;
+  /** The quoted message came from a webhook (another service): shown with an APP badge. */
+  bot?: boolean;
 };
 
 export type PollOption = { id: string; text: string; votes: number; me: boolean };

@@ -3202,6 +3202,11 @@ function ReplyQuote({ reply }: { reply: NonNullable<Message["reply_to"]> }) {
     >
       <span style={{ color: "var(--accent)", flexShrink: 0 }}>↩</span>
       <span style={{ fontWeight: 600, color: "var(--text-secondary)", flexShrink: 0 }}>{reply.author}</span>
+      {reply.bot && (
+        <span className="kc-app-badge" style={{ flexShrink: 0 }}>
+          APP
+        </span>
+      )}
       <span className="truncate" style={{ opacity: 0.85 }}>{reply.content}</span>
     </div>
   );

@@ -2,7 +2,15 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ModalShell } from "./ModalShell";
 import { Icon } from "./Icon";
 
-export type WebhookSummary = { id: string; channel_id: string; name: string; avatar_url: string | null; created_at: number };
+export type WebhookSummary = {
+  id: string;
+  channel_id: string;
+  name: string;
+  avatar_url: string | null;
+  created_at: number;
+  /** Who made it, while their account exists. */
+  created_by_name?: string | null;
+};
 /** A webhook with its secret token, as the server returns it once (made, or URL renewed). */
 export type WebhookCreated = WebhookSummary & { token: string; url: string };
 export type WebhookApi = {
@@ -26,10 +34,11 @@ type Props = {
   onClose: () => void;
 };
 
-const NAME_MAX = 80;
+/** The same limit as a display name (server: limits::DISPLAY_NAME). */
+const NAME_MAX = 64;
 
-function summary({ id, channel_id, name, avatar_url, created_at }: WebhookCreated): WebhookSummary {
-  return { id, channel_id, name, avatar_url, created_at };
+function summary({ id, channel_id, name, avatar_url, created_at, created_by_name }: WebhookCreated): WebhookSummary {
+  return { id, channel_id, name, avatar_url, created_at, created_by_name };
 }
 
 function message(err: unknown, fallback: string): string {
@@ -264,7 +273,12 @@ export function WebhooksDialog({ spaceName, channels, webhookApi, urlFor, onCopy
                         </button>
                       </form>
                     ) : (
-                      <span className="kc-webhooks__name">{hook.name}</span>
+                      <span className="flex min-w-0 flex-col">
+                        <span className="kc-webhooks__name">{hook.name}</span>
+                        {hook.created_by_name && (
+                          <span className="kc-webhooks__made-by">Made by {hook.created_by_name}</span>
+                        )}
+                      </span>
                     )}
                   </div>
                   {renaming?.id !== hook.id && deleting !== hook.id && (

@@ -150,6 +150,8 @@ pub fn spawn_sweeper(state: AppState, period: std::time::Duration) -> tokio::tas
             api::auth::sweep_link_tokens(&state).await;
             // Push delivery cleanup is safe even when provider dispatch is disabled.
             api::push::sweep_stale_push_rows(&state).await;
+            // Webhook accounts left with no webhook and no messages.
+            api::webhooks::sweep_orphan_accounts(&state).await;
         }
     })
 }

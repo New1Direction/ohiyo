@@ -21,8 +21,8 @@ const REPLY_SNIPPET_LEN: usize = 120;
 
 /// Resolve a compact preview (author + truncated content) for a replied-to message.
 async fn fetch_reply_preview(db: &sqlx::SqlitePool, reply_id: &str) -> Option<ReplyPreview> {
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT u.display_name, m.content
+    let row: Option<(String, String, bool)> = sqlx::query_as(
+        "SELECT u.display_name, m.content, u.is_bot
          FROM messages m JOIN users u ON u.id = m.author_id
          WHERE m.id = ?",
     )
@@ -34,7 +34,7 @@ async fn fetch_reply_preview(db: &sqlx::SqlitePool, reply_id: &str) -> Option<Re
         None
     });
 
-    row.map(|(author, content)| {
+    row.map(|(author, content, bot)| {
         let snippet: String = content.chars().take(REPLY_SNIPPET_LEN).collect();
         let content = if snippet.chars().count() < content.chars().count() {
             format!("{snippet}…")
@@ -45,6 +45,7 @@ async fn fetch_reply_preview(db: &sqlx::SqlitePool, reply_id: &str) -> Option<Re
             id: reply_id.to_string(),
             author,
             content,
+            bot,
         }
     })
 }
@@ -482,6 +483,9 @@ pub(crate) async fn deliver_message(
     let now = now_unix();
     let expires_at = disappearing_expiry(state, &channel_id, now).await;
     let author_id = author.id.clone();
+    // A webhook (another service) naming people doesn't count as mentioning them, so it
+    // can't wake a phone through a mute; the names still show.
+    let mentions_count = !author.is_bot;
 
     sqlx::query(
         "INSERT INTO messages (id, channel_id, author_id, content, created_at, attachments, reply_to, expires_at) VALUES (?,?,?,?,?,?,?,?)",
@@ -556,8 +560,14 @@ pub(crate) async fn deliver_message(
     // Thread replies don't wake phones yet: a thread doesn't count as unread until there's
     // a way to follow one.
     if !in_thread {
-        crate::api::push::enqueue_message_pushes(state, &msg.channel_id, &author_id, &msg.content)
-            .await;
+        crate::api::push::enqueue_message_pushes(
+            state,
+            &msg.channel_id,
+            &author_id,
+            &msg.content,
+            mentions_count,
+        )
+        .await;
     }
     Ok(msg)
 }

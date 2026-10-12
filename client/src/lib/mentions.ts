@@ -3,6 +3,12 @@
 /** Valid username characters for a mention token. */
 const NAME = "[a-zA-Z0-9_]{2,32}";
 
+/** What may come right before a mention's "@": the start, or whitespace as the server
+ *  counts it (Rust's char::is_whitespace). Not JavaScript's \s, which also counts U+FEFF:
+ *  with it, an invisible character before @everyone pinged the app while the server and
+ *  the push relay saw no mention. */
+const BOUNDARY = "(?:^|[\\t\\n\\v\\f\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000])";
+
 /**
  * If the caret sits inside an open `@query` (start-of-line or after whitespace,
  * no spaces yet), return the query and the index of the `@`. Otherwise null.
@@ -33,13 +39,13 @@ export function applyMention(
 /** True if `content` mentions `username` as a whole `@token` (case-insensitive). */
 export function mentionsUser(content: string, username: string): boolean {
   if (!username) return false;
-  const re = new RegExp(`(?:^|\\s)@${escapeRe(username)}(?![a-zA-Z0-9_])`, "i");
+  const re = new RegExp(`${BOUNDARY}@${escapeRe(username)}(?![a-zA-Z0-9_])`, "i");
   return re.test(content);
 }
 
 /** True if `content` contains a channel-wide `@everyone` / `@here` mention. */
 export function mentionsEveryone(content: string): boolean {
-  return /(?:^|\s)@(everyone|here)(?![a-zA-Z0-9_])/i.test(content);
+  return new RegExp(`${BOUNDARY}@(everyone|here)(?![a-zA-Z0-9_])`, "i").test(content);
 }
 
 /** True if `content` mentions you — directly or via `@everyone`/`@here`. */

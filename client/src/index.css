@@ -1635,6 +1635,7 @@ button:disabled,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.kc-webhooks__made-by { color: var(--text-secondary); font-size: 0.75rem; }
 .kc-webhooks__actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .kc-webhooks__button {
   min-height: 36px;

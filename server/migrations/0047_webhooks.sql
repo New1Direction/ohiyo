@@ -18,3 +18,5 @@ CREATE TABLE webhooks (
 );
 
 CREATE INDEX idx_webhooks_channel ON webhooks(channel_id);
+CREATE INDEX idx_webhooks_server ON webhooks(server_id);
+CREATE INDEX idx_webhooks_bot_user ON webhooks(bot_user_id);

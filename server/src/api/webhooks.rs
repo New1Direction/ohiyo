@@ -39,10 +39,13 @@ use crate::{
 
 /// The largest request body a post may have; the message itself keeps the usual limit.
 pub const MAX_BODY_BYTES: usize = 16 * 1024;
-/// A webhook's name, in characters (Discord's limit).
-const NAME_MAX_CHARS: usize = 80;
-/// Webhooks per channel.
+/// A webhook's name, in characters: the same limit as a person's display name.
+const NAME_MAX_CHARS: usize = crate::api::limits::DISPLAY_NAME;
+/// Webhooks per channel, and per space.
 const PER_CHANNEL: i64 = 10;
+const PER_SPACE: i64 = 50;
+/// Webhook accounts the sweep looks at per run.
+const SWEEP_BATCH: i64 = 100;
 /// Secret token length in bytes (256 bits).
 const TOKEN_BYTES: usize = 32;
 /// Posts per webhook: a short burst, and a steady rate.
@@ -82,6 +85,8 @@ pub struct Webhook {
     pub name: String,
     pub avatar_url: Option<String>,
     pub created_by: Option<String>,
+    /// The display name of whoever made it, while their account exists.
+    pub created_by_name: Option<String>,
     pub created_at: i64,
 }
 
@@ -132,20 +137,20 @@ fn valid_name(raw: &str) -> Result<String, ApiError> {
         return Err(bad("a webhook needs a name"));
     }
     if name.chars().count() > NAME_MAX_CHARS {
-        return Err(bad("a webhook's name can be up to 80 characters"));
+        return Err(bad("a webhook's name can be up to 64 characters"));
     }
     Ok(name.to_owned())
 }
 
 /// "@everyone" and "@here" from a webhook keep their words but ping nobody: a zero-width
-/// space after the "@" stops them reading as mentions, here and in the app. Like a mention,
-/// it only counts where the "@" starts a word, so an address like me@here.com is left alone.
+/// space after the "@" stops them reading as mentions, here and in the app. It goes in
+/// whatever comes before the "@", so no invisible character (U+FEFF and the like, which
+/// the app and the server once disagreed about) can bring one back to life.
 pub fn defuse_mass_mentions(content: &str) -> String {
     let mut out = String::with_capacity(content.len() + 8);
-    let mut previous: Option<char> = None;
     for (i, ch) in content.char_indices() {
         out.push(ch);
-        if ch == '@' && previous.is_none_or(char::is_whitespace) {
+        if ch == '@' {
             let rest = &content[i + 1..];
             let names_everyone = rest
                 .get(..8)
@@ -157,15 +162,25 @@ pub fn defuse_mass_mentions(content: &str) -> String {
                 out.push('\u{200B}');
             }
         }
-        previous = Some(ch);
     }
     out
 }
 
-async fn can_manage(state: &AppState, server_id: &str, user_id: &str) -> bool {
-    crate::api::roles::has_perm(
+fn no_such_channel() -> ApiError {
+    (StatusCode::NOT_FOUND, "no such channel".into())
+}
+
+fn no_such_webhook() -> ApiError {
+    (StatusCode::NOT_FOUND, "no such webhook".into())
+}
+
+/// Whether `user_id` may manage webhooks in `channel_id`: Manage Channels there, after the
+/// channel's own permission overwrites, so a channel hidden from a moderator stays out of
+/// their reach.
+async fn may_manage_in(state: &AppState, channel_id: &str, user_id: &str) -> bool {
+    crate::api::roles::has_channel_perm(
         state,
-        server_id,
+        channel_id,
         user_id,
         crate::api::roles::perm::MANAGE_CHANNELS,
     )
@@ -173,6 +188,8 @@ async fn can_manage(state: &AppState, server_id: &str, user_id: &str) -> bool {
 }
 
 /// The space of a channel that can take webhooks, once the caller may manage them there.
+/// A channel they can't see answers exactly like one that doesn't exist, before anything
+/// about what kind of channel it is.
 async fn manageable_channel(
     state: &AppState,
     channel_id: &str,
@@ -185,14 +202,17 @@ async fn manageable_channel(
             .await
             .map_err(crate::api::error::internal)?;
     let Some((server_id, channel_type, parent_id)) = row else {
-        return Err((StatusCode::NOT_FOUND, "no such channel".into()));
+        return Err(no_such_channel());
     };
+    if !crate::api::messages::user_can_access(state, channel_id, user_id).await {
+        return Err(no_such_channel());
+    }
     let Some(server_id) = server_id else {
         return Err(bad(
             "webhooks are for text channels in spaces; DMs and group chats are end-to-end encrypted",
         ));
     };
-    if !can_manage(state, &server_id, user_id).await {
+    if !may_manage_in(state, channel_id, user_id).await {
         return Err(forbidden());
     }
     if channel_type != "text" || parent_id.is_some() {
@@ -209,15 +229,101 @@ async fn load(state: &AppState, id: &str) -> Result<Option<Webhook>, ApiError> {
         .map_err(crate::api::error::internal)
 }
 
-/// A webhook the caller may change; 404 when there is none, 403 when they may not.
+/// A webhook the caller may change: 404 when there is none or its channel is hidden from
+/// them, 403 when they can see it but may not manage it.
 async fn managed(state: &AppState, id: &str, user_id: &str) -> Result<Webhook, ApiError> {
-    let hook = load(state, id)
-        .await?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "no such webhook".into()))?;
-    if !can_manage(state, &hook.server_id, user_id).await {
+    let hook = load(state, id).await?.ok_or_else(no_such_webhook)?;
+    if !crate::api::messages::user_can_access(state, &hook.channel_id, user_id).await {
+        return Err(no_such_webhook());
+    }
+    if !may_manage_in(state, &hook.channel_id, user_id).await {
         return Err(forbidden());
     }
     Ok(hook)
+}
+
+/// Note a change in the space's moderation log.
+async fn log_change(state: &AppState, actor_id: &str, hook: &Webhook, action: &str) {
+    let metadata =
+        serde_json::json!({ "name": hook.name, "channel_id": hook.channel_id }).to_string();
+    if let Err((_, e)) = crate::api::abuse::log_action(
+        state,
+        crate::api::abuse::ActionLog {
+            server_id: Some(&hook.server_id),
+            actor_id,
+            action,
+            target_type: "webhook",
+            target_id: &hook.id,
+            report_id: None,
+            metadata: Some(&metadata),
+        },
+    )
+    .await
+    {
+        tracing::warn!(webhook = %hook.id, "couldn't log {action}: {e}");
+    }
+}
+
+/// The file id in a stored `…/files/<id>?s=…` URL.
+fn file_id_in_url(url: &str) -> Option<String> {
+    let after = url.split("/files/").nth(1)?;
+    let id = after.split(['?', '#', '/']).next()?;
+    (!id.is_empty()).then(|| id.to_owned())
+}
+
+/// Delete a webhook's account once nothing needs it (no webhook, no messages, no files
+/// credited to it), and let its picture go if nothing else uses it.
+async fn remove_if_unused(state: &AppState, bot_id: &str) {
+    let row: Option<(Option<String>,)> = match sqlx::query_as(
+        "SELECT u.avatar_url FROM users u
+         WHERE u.id = ? AND u.is_bot = 1
+           AND NOT EXISTS (SELECT 1 FROM webhooks w WHERE w.bot_user_id = u.id)
+           AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.author_id = u.id)
+           AND NOT EXISTS (SELECT 1 FROM files f WHERE f.uploader_id = u.id)",
+    )
+    .bind(bot_id)
+    .fetch_optional(&state.db)
+    .await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            tracing::warn!("webhook account check failed: {e}");
+            return;
+        }
+    };
+    let Some((avatar_url,)) = row else {
+        return;
+    };
+    if let Err(e) = sqlx::query("DELETE FROM users WHERE id = ? AND is_bot = 1")
+        .bind(bot_id)
+        .execute(&state.db)
+        .await
+    {
+        tracing::warn!("couldn't remove a webhook account: {e}");
+        return;
+    }
+    if let Some(file_id) = avatar_url.as_deref().and_then(file_id_in_url) {
+        crate::api::files::release_files_in_batches(&state.db, &[file_id]).await;
+    }
+}
+
+/// Webhook accounts left with nothing (their webhook deleted, their messages gone): the
+/// background sweep removes them a batch at a time.
+pub async fn sweep_orphan_accounts(state: &AppState) {
+    let ids: Vec<String> = sqlx::query_scalar(
+        "SELECT u.id FROM users u
+         WHERE u.is_bot = 1
+           AND NOT EXISTS (SELECT 1 FROM webhooks w WHERE w.bot_user_id = u.id)
+           AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.author_id = u.id)
+         LIMIT ?",
+    )
+    .bind(SWEEP_BATCH)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+    for id in ids {
+        remove_if_unused(state, &id).await;
+    }
 }
 
 fn changes_allowed(state: &AppState, user_id: &str) -> Result<(), ApiError> {
@@ -275,6 +381,14 @@ pub async fn create_webhook(
         .begin_with("BEGIN IMMEDIATE")
         .await
         .map_err(crate::api::error::internal)?;
+    let in_space: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM webhooks WHERE server_id = ?")
+        .bind(&server_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    if in_space >= PER_SPACE {
+        return Err(bad("a space can have up to 50 webhooks"));
+    }
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM webhooks WHERE channel_id = ?")
         .bind(&channel_id)
         .fetch_one(&mut *tx)
@@ -317,6 +431,7 @@ pub async fn create_webhook(
     let webhook = load(&state, &id)
         .await?
         .ok_or_else(|| crate::api::error::internal("webhook vanished"))?;
+    log_change(&state, &auth.0, &webhook, "webhook_create").await;
     let url = post_url(&id, &token);
     Ok(Json(WebhookWithToken {
         webhook,
@@ -416,6 +531,7 @@ pub async fn renew_token(
         .await
         .map_err(crate::api::error::internal)?;
     tracing::info!(webhook = %id, "webhook URL renewed");
+    log_change(&state, &auth.0, &webhook, "webhook_renew").await;
     let url = post_url(&id, &token);
     Ok(Json(WebhookWithToken {
         webhook,
@@ -430,14 +546,25 @@ pub async fn delete_webhook(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    managed(&state, &id, &auth.0).await?;
+    let webhook = managed(&state, &id, &auth.0).await?;
     changes_allowed(&state, &auth.0)?;
+    let bot_id: Option<String> =
+        sqlx::query_scalar("SELECT bot_user_id FROM webhooks WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
     sqlx::query("DELETE FROM webhooks WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
         .await
         .map_err(crate::api::error::internal)?;
     tracing::info!(webhook = %id, "webhook deleted");
+    log_change(&state, &auth.0, &webhook, "webhook_delete").await;
+    // Nothing it posted keeps its account: it goes now, with its picture if unused.
+    if let Some(bot_id) = bot_id {
+        remove_if_unused(&state, &bot_id).await;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -514,10 +641,11 @@ pub async fn post_message(
     if content.is_empty() {
         return Err(bad("content is required"));
     }
+    // Defused first, so the limit applies to what's stored.
+    let content = defuse_mass_mentions(content);
     if content.len() > crate::api::messages::MAX_MESSAGE_BYTES {
         return Err(bad("message too long (max 4000 chars)"));
     }
-    let content = defuse_mass_mentions(content);
 
     let author: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
         .bind(&bot_id)
@@ -534,9 +662,6 @@ pub async fn post_message(
     }
 }
 
-/// Not built yet.
-pub async fn sweep_orphan_accounts(_state: &AppState) {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -546,10 +671,7 @@ mod tests {
         let out = defuse_mass_mentions("@everyone and @Here, mail me@here.com, @hero, @bob");
         assert!(out.contains("everyone") && out.contains("Here"));
         assert!(!crate::api::notifications::mentions(&out, "nobody"));
-        assert!(
-            out.contains("me@here.com"),
-            "an email address is left alone"
-        );
+        assert!(out.contains("here.com"), "an address keeps its words");
         assert!(out.contains("@hero"), "other names are left alone");
         assert!(
             crate::api::notifications::mentions(&out, "bob"),

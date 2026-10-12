@@ -31,9 +31,9 @@ import { SavedModal } from "./components/SavedModal";
 import { CategoriesModal } from "./components/CategoriesModal";
 import { ForwardModal } from "./components/ForwardModal";
 import { PERM, can } from "./permissions";
-import { mentionsYou } from "./lib/mentions";
 import { NotificationSettingsDialog, type NotificationSettingsTarget } from "./components/NotificationSettingsDialog";
 import { WebhooksDialog, type WebhookApi } from "./components/WebhooksDialog";
+import { mentionsMe, notificationTitle } from "./lib/messageNotify";
 import {
   isMuted,
   messageAlert,
@@ -1282,7 +1282,7 @@ function MainApp({
           // A reply in a thread: an open thread shows it itself. Threads don't count as
           // unread yet; a reply that mentions you still notifies.
           const me = currentUserRef.current;
-          if (me && msg.author.id !== me.id && mentionsYou(msg.content, me.username)) maybeNotify(msg);
+          if (me && msg.author.id !== me.id && mentionsMe(msg.content, msg.author, me.username)) maybeNotify(msg);
           break;
         }
         if (selectedChannelRef.current?.id === msg.channel_id) {
@@ -1311,7 +1311,7 @@ function MainApp({
           currentUserRef.current &&
           msg.author.id !== currentUserRef.current.id &&
           selectedChannelRef.current?.id !== msg.channel_id &&
-          mentionsYou(msg.content, currentUserRef.current.username)
+          mentionsMe(msg.content, msg.author, currentUserRef.current.username)
         ) {
           setMentions((prev) => {
             const next = new Set(prev);
@@ -2365,7 +2365,8 @@ function MainApp({
     const channelId = threadParentRef.current.get(msg.channel_id) ?? msg.channel_id;
     const serverId = serversRef.current.find((s) => s.channels.some((c) => c.id === channelId))?.id ?? null;
     const me = currentUserRef.current;
-    const mentioned = serverId !== null && me !== null && mentionsYou(msg.content ?? "", me.username);
+    // A webhook naming you doesn't count as a mention (lib/messageNotify.ts).
+    const mentioned = serverId !== null && me !== null && mentionsMe(msg.content ?? "", msg.author, me.username);
     const nowSecs = Math.floor(Date.now() / 1000);
     if (!messageAlert(notifSettingsRef.current, { channelId, serverId }, mentioned, nowSecs).notify) return;
     const lookingAtIt = isLookingAt({
@@ -2379,7 +2380,7 @@ function MainApp({
     // Native OS notification under Tauri, Web Notification in a browser — but only from
     // ONE tab/window when several are open (claimNotification), so no double-ping.
     void claimNotification(msg.id).then((mine) => {
-      if (mine) void notify({ title: msg.author.display_name, body });
+      if (mine) void notify({ title: notificationTitle(msg.author), body });
     });
   }
 

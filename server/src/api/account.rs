@@ -311,8 +311,11 @@ async fn remove_everything(
              (SELECT s.owner_id FROM servers s WHERE instr(s.icon_url, '/files/' || files.id) > 0 LIMIT 1),
              (SELECT s.owner_id FROM server_emojis e JOIN servers s ON s.id = e.server_id
                 WHERE e.file_id = files.id LIMIT 1),
+             (SELECT s.owner_id FROM webhooks w JOIN users b ON b.id = w.bot_user_id
+                JOIN servers s ON s.id = w.server_id
+                WHERE instr(b.avatar_url, '/files/' || files.id) > 0 LIMIT 1),
              (SELECT u.id FROM users u WHERE u.id != ?1 AND (instr(u.avatar_url, '/files/' || files.id) > 0
-                OR instr(u.banner_url, '/files/' || files.id) > 0) LIMIT 1))
+                OR instr(u.banner_url, '/files/' || files.id) > 0) ORDER BY u.is_bot LIMIT 1))
          WHERE uploader_id = ?1",
     )
     .bind(me)
