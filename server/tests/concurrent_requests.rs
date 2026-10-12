@@ -67,3 +67,106 @@ async fn a_reaction_tapped_several_times_at_once_never_errors() {
         "every tap is answered: {statuses:?}"
     );
 }
+
+#[tokio::test]
+async fn friend_requests_that_cross_make_them_friends() {
+    let srv = TestServer::start().await;
+    // Several pairs, each asking the other at the same moment.
+    let mut pairs = Vec::new();
+    for i in 0..4 {
+        let a = srv.register(&format!("crossa{i}"), "supersecret123").await;
+        let b = srv.register(&format!("crossb{i}"), "supersecret123").await;
+        pairs.push((a, b));
+    }
+    let asks: Vec<(String, &str)> = pairs
+        .iter()
+        .flat_map(|(a, b)| {
+            [
+                (
+                    format!("/api/v1/users/{}/friend-request", b.id),
+                    a.token.as_str(),
+                ),
+                (
+                    format!("/api/v1/users/{}/friend-request", a.id),
+                    b.token.as_str(),
+                ),
+            ]
+        })
+        .collect();
+    let asks = asks
+        .iter()
+        .map(|(path, token)| srv.post_empty_auth(path, token));
+    let statuses: Vec<u16> = join_all(asks)
+        .await
+        .iter()
+        .map(|res| res.status().as_u16())
+        .collect();
+    assert!(
+        statuses.iter().all(|s| *s == 200),
+        "every request is answered: {statuses:?}"
+    );
+
+    for (a, b) in &pairs {
+        let relation: Value = srv
+            .get_auth(&format!("/api/v1/users/{}/friendship", b.id), &a.token)
+            .await
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(
+            relation["status"], "friends",
+            "both asked, so they're friends"
+        );
+    }
+}
+
+#[tokio::test]
+async fn adding_someone_to_a_group_twice_at_once_adds_them_once() {
+    let srv = TestServer::start().await;
+    let owner = srv.register("groupowner2", "supersecret123").await;
+    let first = srv.register("groupfirst2", "supersecret123").await;
+    let added = srv.register("groupadded2", "supersecret123").await;
+    let group: Value = srv
+        .post_json_auth(
+            "/api/v1/users/@me/group-dms",
+            &owner.token,
+            json!({ "recipient_ids": [first.id], "name": "twice" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let group_id = group["id"].as_str().unwrap().to_owned();
+    let path = format!("/api/v1/channels/{group_id}/recipients");
+
+    let adds =
+        (0..4).map(|_| srv.post_json_auth(&path, &owner.token, json!({ "user_id": added.id })));
+    let statuses: Vec<u16> = join_all(adds)
+        .await
+        .iter()
+        .map(|res| res.status().as_u16())
+        .collect();
+    assert!(
+        statuses.iter().all(|s| *s == 204),
+        "every add is answered: {statuses:?}"
+    );
+
+    let chats: Value = srv
+        .get_auth("/api/v1/users/@me/dms", &owner.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    let epoch = chats
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == group_id.as_str())
+        .unwrap()["epoch"]
+        .as_i64();
+    assert_eq!(
+        epoch,
+        Some(1),
+        "one member joined, so the keys moved on once"
+    );
+}
