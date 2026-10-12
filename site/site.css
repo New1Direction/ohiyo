@@ -318,6 +318,7 @@ a:hover { text-decoration-color: currentColor; }
 @media (max-width: 720px) { .nos { grid-template-columns: minmax(0, 1fr); } }
 
 .duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1rem, 2.4vw, 2rem); margin-top: clamp(3rem, 6vw, 5rem); }
+.duo--flush { margin-top: 0; }
 .card { display: grid; align-content: start; gap: 1.1rem; padding: clamp(1.4rem, 3vw, 2.5rem); border: 1px solid var(--hair); border-radius: var(--radius-l); background: var(--card); box-shadow: var(--shadow); }
 .card--sand { background: linear-gradient(160deg, #fdf1da, #fbe5c3); }
 .card--night { background: linear-gradient(160deg, #162b3e, #0e1b29); border-color: transparent; color: #f3f6ee; }
