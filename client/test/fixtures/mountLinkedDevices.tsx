@@ -4,16 +4,25 @@ import { api } from "../../src/api";
 import { LinkedDevices } from "../../src/components/settings/LinkedDevices";
 export { act };
 
-/** Settings → Linked devices, with "Sign out everywhere" recorded, not sent. The device
- *  list never arrives: these tests are about the sign-out confirm, which doesn't wait for it. */
-export function mountLinkedDevices(element: HTMLElement) {
+export type ListedDevice = { device_id: number; updated_at: number };
+
+/** Settings → Linked devices, with "Sign out everywhere" recorded, not sent. `list` answers
+ *  the device list; by default it never arrives (the sign-out confirm doesn't wait for it). */
+export function mountLinkedDevices(
+  element: HTMLElement,
+  list: () => Promise<ListedDevice[]> = () => new Promise(() => {}),
+) {
   const signedOut: string[] = [];
-  (api as { listDevices: unknown }).listDevices = () => new Promise(() => {});
+  const listCalls: number[] = [];
+  (api as { listDevices: unknown }).listDevices = () => {
+    listCalls.push(Date.now());
+    return list();
+  };
   const root = createRoot(element);
   act(() =>
     root.render(
       <LinkedDevices token="t" onToast={() => {}} onSignOutEverywhere={async () => void signedOut.push("everywhere")} />,
     ),
   );
-  return { signedOut, unmount: () => act(() => root.unmount()) };
+  return { signedOut, listCalls, unmount: () => act(() => root.unmount()) };
 }
