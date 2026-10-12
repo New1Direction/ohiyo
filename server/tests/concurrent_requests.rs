@@ -126,21 +126,28 @@ async fn adding_someone_to_a_group_twice_at_once_adds_them_once() {
     let owner = srv.register("groupowner2", "supersecret123").await;
     let first = srv.register("groupfirst2", "supersecret123").await;
     let added = srv.register("groupadded2", "supersecret123").await;
-    let group: Value = srv
-        .post_json_auth(
-            "/api/v1/users/@me/group-dms",
-            &owner.token,
-            json!({ "recipient_ids": [first.id], "name": "twice" }),
-        )
-        .await
-        .json()
-        .await
-        .unwrap();
-    let group_id = group["id"].as_str().unwrap().to_owned();
-    let path = format!("/api/v1/channels/{group_id}/recipients");
-
-    let adds =
-        (0..4).map(|_| srv.post_json_auth(&path, &owner.token, json!({ "user_id": added.id })));
+    // Several groups, each getting the same person added three times at once.
+    let mut groups = Vec::new();
+    for i in 0..6 {
+        let group: Value = srv
+            .post_json_auth(
+                "/api/v1/users/@me/group-dms",
+                &owner.token,
+                json!({ "recipient_ids": [first.id], "name": format!("twice {i}") }),
+            )
+            .await
+            .json()
+            .await
+            .unwrap();
+        groups.push(group["id"].as_str().unwrap().to_owned());
+    }
+    let paths: Vec<String> = groups
+        .iter()
+        .flat_map(|id| std::iter::repeat_n(format!("/api/v1/channels/{id}/recipients"), 3))
+        .collect();
+    let adds = paths
+        .iter()
+        .map(|path| srv.post_json_auth(path, &owner.token, json!({ "user_id": added.id })));
     let statuses: Vec<u16> = join_all(adds)
         .await
         .iter()
@@ -157,16 +164,18 @@ async fn adding_someone_to_a_group_twice_at_once_adds_them_once() {
         .json()
         .await
         .unwrap();
-    let epoch = chats
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|c| c["id"] == group_id.as_str())
-        .unwrap()["epoch"]
-        .as_i64();
-    assert_eq!(
-        epoch,
-        Some(1),
-        "one member joined, so the keys moved on once"
-    );
+    for id in &groups {
+        let epoch = chats
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["id"] == id.as_str())
+            .unwrap()["epoch"]
+            .as_i64();
+        assert_eq!(
+            epoch,
+            Some(1),
+            "one member joined, so the keys moved on once"
+        );
+    }
 }
