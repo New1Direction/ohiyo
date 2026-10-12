@@ -46,8 +46,10 @@ export function settingsFromList(list: readonly NotificationSetting[]): Notifica
 /** A new map with `setting` in place of the old one; back to the defaults removes it. */
 export function withSetting(settings: NotificationSettings, setting: NotificationSetting): NotificationSettings {
   const key = settingKey(setting.target_type, setting.target_id);
-  const { [key]: _old, ...rest } = settings;
-  return isDefault(setting) ? rest : { ...rest, [key]: setting };
+  const next: Record<string, NotificationSetting> = { ...settings };
+  delete next[key];
+  if (!isDefault(setting)) next[key] = setting;
+  return next;
 }
 
 export function isMuted(setting: NotificationSetting | undefined, nowSec: number): boolean {
