@@ -8,10 +8,16 @@ type Options = {
   owner: boolean;
   /** They may manage the space and its channels (logo, channels, moderation queue). */
   manage: boolean;
+  /** Offer "Notification settings" in the space menu. */
+  notificationSettings?: boolean;
+  /** Channels the person has muted. */
+  mutedChannelIds?: string[];
+  /** Unread counts by channel. */
+  unread?: Record<string, number>;
 };
 
 /** The channel sidebar for one space, with every header action recorded by name. */
-export function mountChannelSidebar(element: HTMLElement, { owner, manage }: Options) {
+export function mountChannelSidebar(element: HTMLElement, { owner, manage, notificationSettings, mutedChannelIds, unread }: Options) {
   const calls: string[] = [];
   const me = { id: "me", username: "me", display_name: "Me", avatar_url: null };
   const server = {
@@ -22,6 +28,7 @@ export function mountChannelSidebar(element: HTMLElement, { owner, manage }: Opt
     channels: [
       { id: "c1", server_id: "s1", name: "general", channel_type: "text", position: 0, created_at: 0 },
       { id: "c2", server_id: "s1", name: "General", channel_type: "voice", position: 1, created_at: 0 },
+      { id: "c3", server_id: "s1", name: "random", channel_type: "text", position: 2, created_at: 0 },
     ],
     members: [me],
     categories: [],
@@ -37,6 +44,9 @@ export function mountChannelSidebar(element: HTMLElement, { owner, manage }: Opt
         dms={[]}
         dmUsers={{}}
         selectedChannelId="c1"
+        unread={unread}
+        mutedChannelIds={mutedChannelIds ? new Set(mutedChannelIds) : undefined}
+        onOpenNotificationSettings={notificationSettings ? record("notification settings") : undefined}
         currentUser={me as never}
         connStatus="connected"
         onlineUsers={new Set()}
