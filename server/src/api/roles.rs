@@ -165,10 +165,27 @@ fn apply_overwrites(
     permissions
 }
 
+/// The channel a thread hangs off, or None when `channel_id` isn't a thread.
+pub async fn thread_parent(state: &AppState, channel_id: &str) -> Option<String> {
+    sqlx::query_scalar::<_, Option<String>>("SELECT parent_id FROM channels WHERE id = ?")
+        .bind(channel_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+}
+
 /// Effective Discord-style channel permissions: server/@everyone base, unioned member
 /// roles, administrator override, then category and channel overwrites with Discord's
 /// level ordering: @everyone, combined roles, member-specific; deny then allow per level.
 pub async fn channel_permissions(state: &AppState, channel_id: &str, user_id: &str) -> i64 {
+    // A thread has no permissions of its own: it takes its parent channel's, so hiding a
+    // channel (or a category) hides its threads with it.
+    let scope_channel = thread_parent(state, channel_id)
+        .await
+        .unwrap_or_else(|| channel_id.to_owned());
+    let channel_id = scope_channel.as_str();
     let row: Option<(Option<String>, Option<String>)> =
         sqlx::query_as("SELECT server_id, category_id FROM channels WHERE id = ?")
             .bind(channel_id)
@@ -281,26 +298,41 @@ pub async fn viewable_channels(
             .get(&(scope_type.to_owned(), scope_id.to_owned()))
             .map_or(&[], Vec::as_slice)
     };
-    Ok(channels
-        .into_iter()
-        .filter(|channel| {
-            let mut permissions = base;
-            if let Some(category_id) = &channel.category_id {
-                permissions = apply_overwrites(
-                    permissions,
-                    scope("category", category_id),
-                    user_id,
-                    &role_ids,
-                );
-            }
+    let can_view = |channel: &crate::types::Channel| {
+        let mut permissions = base;
+        if let Some(category_id) = &channel.category_id {
             permissions = apply_overwrites(
                 permissions,
-                scope("channel", &channel.id),
+                scope("category", category_id),
                 user_id,
                 &role_ids,
             );
-            permissions & perm::VIEW_CHANNEL != 0
+        }
+        permissions = apply_overwrites(
+            permissions,
+            scope("channel", &channel.id),
+            user_id,
+            &role_ids,
+        );
+        permissions & perm::VIEW_CHANNEL != 0
+    };
+    // A thread is judged by its parent channel, which must be in the same list.
+    let parents: std::collections::HashMap<&str, &crate::types::Channel> = channels
+        .iter()
+        .filter(|c| c.parent_id.is_none())
+        .map(|c| (c.id.as_str(), c))
+        .collect();
+    let visible: Vec<bool> = channels
+        .iter()
+        .map(|channel| match channel.parent_id.as_deref() {
+            Some(parent) => parents.get(parent).is_some_and(|p| can_view(*p)),
+            None => can_view(channel),
         })
+        .collect();
+    Ok(channels
+        .into_iter()
+        .zip(visible)
+        .filter_map(|(channel, visible)| visible.then_some(channel))
         .collect())
 }
 

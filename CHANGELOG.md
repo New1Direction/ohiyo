@@ -13,6 +13,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ### Added
 - **ohiyo.gg has a Download section** for the desktop app, with the steps to open the Mac beta.
+- **Threads.** Start one from any message in a space's text channel and the replies stay out of
+  the channel. Under the message: the thread's name and "3 replies · last reply 5m ago",
+  updating live. It opens beside the channel on a computer and full screen on a phone, and the
+  channel header lists its threads. A thread follows its channel's permissions and is deleted
+  with it. Not in DMs or group chats, which are end-to-end encrypted.
 
 ### Changed
 - **Settings speaks in sentence case** like the rest of the app, and the Account card no longer

@@ -55,7 +55,7 @@ box; server channels are stored like any chat server's.
   link and it reconstructs categories, channels, roles, best-effort permission bits,
   overwrite snapshots, server icon, and custom emoji assets. See
   [`docs/discord-template-migration.md`](docs/discord-template-migration.md).
-- **Text** — servers, channels, threads-of-thought, DMs, reactions, edits/deletes,
+- **Text** — servers, channels, threads, DMs, reactions, edits/deletes,
   attachments, **read receipts / delivered state** on DMs.
 - **Voice & video** — WebRTC voice, video, and screen-share, with Discord-like live
   voice rows, a pre-join roster, and a “Ready to join?” preview with Join muted, so you
