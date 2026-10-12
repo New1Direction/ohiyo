@@ -363,14 +363,47 @@ pub async fn remove_device(
         .execute(&mut *tx)
         .await
         .map_err(ise)?;
-    sqlx::query("DELETE FROM signal_identity WHERE user_id = ? AND device_id = ?")
+    let removed = sqlx::query("DELETE FROM signal_identity WHERE user_id = ? AND device_id = ?")
         .bind(&auth.0)
         .bind(device_id)
         .execute(&mut *tx)
         .await
-        .map_err(ise)?;
+        .map_err(ise)?
+        .rows_affected();
     tx.commit().await.map_err(ise)?;
+    if removed > 0 {
+        rekey_groups_of(&state, &auth.0).await;
+    }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Each member's sender key reached every device of every member, the one just removed
+/// included. Move every group the account is in to a new epoch and tell the members, so
+/// each rotates its sender key and hands the new one only to the devices that remain.
+async fn rekey_groups_of(state: &AppState, user_id: &str) {
+    let groups: Vec<String> = match sqlx::query_scalar(
+        "SELECT c.id FROM channels c JOIN dm_participants dp ON dp.channel_id = c.id
+         WHERE dp.user_id = ? AND c.channel_type = 'group_dm'",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    {
+        Ok(groups) => groups,
+        Err(e) => {
+            tracing::warn!("couldn't list groups to rekey after a device was removed: {e}");
+            return;
+        }
+    };
+    for channel_id in groups {
+        match crate::api::users::bump_epoch(state, &channel_id).await {
+            Ok(epoch) => crate::api::users::broadcast_members(state, &channel_id, epoch).await,
+            Err((_, e)) => tracing::warn!(
+                channel_id = %channel_id,
+                "couldn't rekey a group after a device was removed: {e}"
+            ),
+        }
+    }
 }
 
 #[derive(Serialize)]

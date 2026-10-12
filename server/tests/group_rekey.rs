@@ -178,3 +178,71 @@ async fn membership_is_the_access_boundary_for_key_distribution() {
         204
     );
 }
+
+/// Each member's sender key is handed to every device of every member. A device that is
+/// later removed (by hand, or with "Not me") could go on opening the group's new messages
+/// with the keys it was given, so removing a device rekeys every group its account is in.
+#[tokio::test]
+async fn removing_a_device_rekeys_the_groups_its_account_is_in() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("rekeyalice", "password123").await;
+    let bob = srv.register("rekeybob", "password123").await;
+    let group: Value = srv
+        .post_json_auth(
+            "/api/v1/users/@me/group-dms",
+            &alice.token,
+            json!({ "recipient_ids": [bob.id], "name": "g" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let gid = group["id"].as_str().unwrap().to_owned();
+    let dm: Value = srv
+        .post_json_auth(DMS, &alice.token, json!({ "recipient_id": bob.id }))
+        .await
+        .json()
+        .await
+        .unwrap();
+    let dm_id = dm["id"].as_str().unwrap().to_owned();
+    let publish = json!({
+        "device_id": 2,
+        "identity_key": "BOB_2",
+        "registration_id": 1002,
+        "signed_prekey": { "key_id": 2, "public_key": "SPK", "signature": "SIG" },
+        "one_time_prekeys": [],
+    });
+    assert_eq!(
+        srv.post_json_auth("/api/v1/signal/keys", &bob.token, publish)
+            .await
+            .status(),
+        204
+    );
+    assert_eq!(channel_epoch(&srv, &alice.token, &gid).await, 0);
+
+    assert_eq!(
+        srv.delete_auth("/api/v1/users/@me/devices/2", &bob.token)
+            .await
+            .status(),
+        204
+    );
+    assert_eq!(
+        channel_epoch(&srv, &alice.token, &gid).await,
+        1,
+        "the group is rekeyed"
+    );
+    assert_eq!(
+        channel_epoch(&srv, &alice.token, &dm_id).await,
+        0,
+        "a 1:1 chat has no group key to rotate"
+    );
+
+    // Removing a device the account doesn't have changes nothing.
+    assert_eq!(
+        srv.delete_auth("/api/v1/users/@me/devices/9", &bob.token)
+            .await
+            .status(),
+        204
+    );
+    assert_eq!(channel_epoch(&srv, &alice.token, &gid).await, 1);
+}
