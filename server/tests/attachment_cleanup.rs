@@ -430,3 +430,35 @@ async fn deleting_a_space_takes_its_files() {
     assert_eq!(file_status(&w, &file_id).await, 404);
     assert!(!blob.exists(), "the blob is removed from disk");
 }
+
+/// R-M2: a second upload of the same bytes gets the first one's file id. If that file was
+/// freed before the second send (its only message deleted), the message went out without
+/// the attachment and nothing said so. It's refused now, so the app can say the file is
+/// gone and it can be attached again.
+#[tokio::test]
+async fn a_file_freed_before_sending_is_refused_not_dropped() {
+    let w = world().await;
+    let bytes = unique_bytes();
+    let file_id = upload(&w, &bytes).await;
+    let message_id = send(&w, &file_id).await;
+    let pending = upload(&w, &bytes).await;
+    assert_eq!(pending, file_id, "identical bytes dedup to one file");
+    delete_message(&w, &message_id).await;
+    assert_eq!(file_status(&w, &file_id).await, 404, "the file was freed");
+
+    let res = w
+        .srv
+        .post_json_auth(
+            &format!("/api/v1/channels/{}/messages", w.channel_id),
+            &w.alice.token,
+            json!({ "content": "see attached", "attachment_ids": [pending] }),
+        )
+        .await;
+    assert_eq!(res.status(), 400, "refused, not sent without its file");
+    let sent: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE channel_id = ?")
+        .bind(&w.channel_id)
+        .fetch_one(&w.db)
+        .await
+        .unwrap();
+    assert_eq!(sent, 0, "no message went out");
+}
