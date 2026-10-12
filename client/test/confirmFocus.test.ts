@@ -91,7 +91,7 @@ test("linked devices: “Sign out everywhere…” moves focus to what it does, 
   const f = inContainer(devicesBundle.mod.mountLinkedDevices);
   try {
     devicesBundle.mod.act(() => f.button("Sign out everywhere…").click());
-    assert.match(f.focused(), /^span: Every session ends/, "focus is on the explanation");
+    assert.match(f.focused(), /^span: Every device signed in to your account is signed out/, "focus is on the explanation");
     devicesBundle.mod.act(() => f.button("Cancel").click());
     assert.equal(f.focused(), "button: Sign out everywhere…", "focus is back on the button");
     assert.deepEqual(f.signedOut, [], "nobody was signed out");
