@@ -11,6 +11,19 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
 
+### Fixed
+- **@mentions work for every username,** including ones with dots and dashes (`@alice.b`,
+  `@bob-c`): they're highlighted, offered in the mention picker, and count as mentioning you.
+  A full stop after a name ("thanks @alice.") isn't part of it, an email address is no longer
+  highlighted as a mention, and `@john.doe` no longer notifies `john`. The app and the push
+  relay read mentions by the same rule.
+- **On a phone, Enter starts a new line** and the Send button sends, like Discord's phone app.
+  With a keyboard nothing changes: Enter sends, Shift+Enter starts a new line.
+- **Notification settings go with what they were for:** deleting a space, a channel or a
+  thread deletes everyone's settings for it.
+
+## [0.3.1] — 2026-10-12
+
 ### Added
 - **ohiyo.gg has a Download section** for the desktop app, with the steps to open the Mac beta.
 - **Notification settings, like Discord's.** A space can notify you about every message, only
@@ -31,6 +44,15 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   with it. Not in DMs or group chats, which are end-to-end encrypted.
 
 ### Changed
+- **The space menu opens from the space name,** like Discord: invite people, change the logo,
+  create a channel, events, the moderation queue, notification settings, and leave or delete,
+  all labelled in one menu instead of a row of unlabelled icons.
+- **A two-line user bar:** your name, then your status. Activity and sign-out are in the menu
+  that opens from it.
+- **Friendlier times:** "Today at 9:23 AM", "Yesterday at 7:12 PM", then the date in your own
+  language; the exact time shows on hover.
+- **Less in the sidebar:** the getting-started checklist goes away once it's finished, and the
+  permanent "Ready when you are" card is gone.
 - **Settings speaks in sentence case** like the rest of the app, and the Account card no longer
   prints your user ID; "Copy user ID" puts it on the clipboard when support or a self-hosted
   setup asks for it.
@@ -42,15 +64,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   opened Ohiyo. The web and desktop content policies no longer allow Google's font hosts.
 
 ### Fixed
-- **@mentions work for every username,** including ones with dots and dashes (`@alice.b`,
-  `@bob-c`): they're highlighted, offered in the mention picker, and count as mentioning you.
-  A full stop after a name ("thanks @alice.") isn't part of it, an email address is no longer
-  highlighted as a mention, and `@john.doe` no longer notifies `john`. The app and the push
-  relay read mentions by the same rule.
-- **On a phone, Enter starts a new line** and the Send button sends, like Discord's phone app.
-  With a keyboard nothing changes: Enter sends, Shift+Enter starts a new line.
-- **Notification settings go with what they were for:** deleting a space, a channel or a
-  thread deletes everyone's settings for it.
+- **Desktop: signing out clears the dock badge, the tray tooltip and "Leave call",** which kept
+  their last values before.
+- **Desktop: "Check for updates" in the tray answers before you sign in** instead of doing
+  nothing.
 
 ## [0.3.0] — 2026-10-12
 
@@ -578,7 +595,8 @@ read receipts; Signal-protocol end-to-end-encrypted DMs and group chats (multi-d
 disappearing messages, safety numbers); WebRTC voice / video / screen-share; a sandboxed
 plugin system; the Daybreak and Dusk themes; and a Tauri desktop app.
 
-[Unreleased]: https://github.com/New1Direction/ohiyo/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/New1Direction/ohiyo/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/New1Direction/ohiyo/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/New1Direction/ohiyo/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/New1Direction/ohiyo/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/New1Direction/ohiyo/compare/v0.1.0...v0.1.1
