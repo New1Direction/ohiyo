@@ -277,13 +277,6 @@ pub async fn register_device(
     State(state): State<AppState>,
     Json(body): Json<RegisterPushDeviceBody>,
 ) -> Result<Json<PushDevice>, (StatusCode, String)> {
-    if !state.rate.check(
-        &format!("push-register:{}", auth.0),
-        PUSH_REGISTER_MAX_PER_MIN,
-        std::time::Duration::from_secs(60),
-    ) {
-        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
-    }
     let platform = body.platform.trim().to_lowercase();
     let endpoint = body.endpoint.trim();
     if !valid_platform(&platform) {
@@ -323,6 +316,14 @@ pub async fn register_device(
         ));
     }
 
+    // Counted once the request is valid: a refused one stores nothing.
+    if !state.rate.check(
+        &format!("push-register:{}", auth.0),
+        PUSH_REGISTER_MAX_PER_MIN,
+        std::time::Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
     let id = new_id();
     let now = now_unix();
     sqlx::query(
