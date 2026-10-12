@@ -204,9 +204,15 @@ pub fn should_push(
     level == "all"
 }
 
-/// True if `content` mentions `username` as a whole `@name`, or says @everyone or @here.
-/// Same rule as the app's (client/src/lib/mentions.ts): the `@` starts the text or follows
-/// whitespace, the name matches in any case, and no letter, digit or `_` follows it.
+/// True if `content` mentions `username`, or says @everyone or @here. Same rule as the app's
+/// (client/src/lib/mentions.ts), checked against the same cases
+/// (client/test/fixtures/mention-cases.json):
+/// - a mention starts with `@` at the start of the text or after whitespace, so an email
+///   address is never one;
+/// - its name is the run of username characters (ASCII letters and digits, `.`, `_`, `-`)
+///   after the `@`, matched in any case;
+/// - a `.` or `-` at the end of that run is punctuation ("thanks @alice."), unless the whole
+///   run is the name in question.
 pub fn mentions(content: &str, username: &str) -> bool {
     ["everyone", "here", username]
         .iter()
@@ -216,24 +222,21 @@ pub fn mentions(content: &str, username: &str) -> bool {
 
 fn mentions_name(content: &str, name: &str) -> bool {
     let name = name.to_lowercase();
-    let content = content.to_lowercase();
-    let mut from = 0;
-    while let Some(found) = content[from..].find('@') {
-        let at = from + found;
+    content.match_indices('@').any(|(at, _)| {
         let starts_word = content[..at]
             .chars()
             .next_back()
             .is_none_or(char::is_whitespace);
-        let rest = &content[at + 1..];
-        if starts_word && rest.starts_with(&name) {
-            let next = rest[name.len()..].chars().next();
-            if !next.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_') {
-                return true;
-            }
+        if !starts_word {
+            return false;
         }
-        from = at + 1;
-    }
-    false
+        let run = content[at + 1..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+            .collect::<String>()
+            .to_ascii_lowercase();
+        run == name || run.trim_end_matches(['.', '-']) == name
+    })
 }
 
 #[cfg(test)]

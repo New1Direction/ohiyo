@@ -19,6 +19,7 @@ import { PollWidget } from "./PollWidget";
 import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention } from "../lib/mentions";
 import { MessageEditBox } from "./MessageEditBox";
+import { enterAction, hasFinePointer } from "../lib/composerKeys";
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { formatClockTime, formatFullTime, formatMessageTime } from "../lib/messageTime";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
@@ -2204,11 +2205,15 @@ export function ChatPane({
               pickMention(mentionMatches[0].username);
               return;
             }
-            // Enter sends; Shift+Enter starts a new line. Enter that picks a word in an input
+            // With a keyboard, Enter sends and Shift+Enter starts a new line. On a touch screen
+            // (Send always showing) Enter starts a new line. Enter that picks a word in an input
             // method (Japanese, Chinese, Korean…) is the input method's, not a send.
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              handleSend(e as unknown as React.FormEvent);
+            if (e.key === "Enter") {
+              const action = enterAction({ shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing }, hasFinePointer());
+              if (action === "send") {
+                e.preventDefault();
+                handleSend(e as unknown as React.FormEvent);
+              }
             } else if (e.key === "Escape") {
               if (mention) setMention(null);
               else if (replyTarget) setReplyTarget(null);
