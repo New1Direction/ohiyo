@@ -20,5 +20,13 @@
   { "content": "ping @HERE", "name": "sam", "mentions": true, "why": "@here in any case" },
   { "content": "@everyone.", "name": "sam", "mentions": true, "why": "@everyone before a full stop" },
   { "content": "@everyone.else", "name": "sam", "mentions": false, "why": "a name that starts with everyone" },
-  { "content": "@here-and-now", "name": "sam", "mentions": false, "why": "a name that starts with here" }
+  { "content": "@here-and-now", "name": "sam", "mentions": false, "why": "a name that starts with here" },
+  { "content": "﻿@everyone", "name": "sam", "mentions": false, "why": "a byte order mark before the @ is no space (the server's whitespace, not JavaScript's \\s)" },
+  { "content": "​@here", "name": "sam", "mentions": false, "why": "a zero-width space before the @ is no space" },
+  { "content": "⁠@everyone", "name": "sam", "mentions": false, "why": "a word joiner before the @ is no space" },
+  { "content": "﻿@sam hi", "name": "sam", "mentions": false, "why": "an invisible character before a name" },
+  { "content": "hi @here", "name": "sam", "mentions": true, "why": "a no-break space is a space on both sides" },
+  { "content": "ok\u0085@sam", "name": "sam", "mentions": true, "why": "a next-line character is a space on both sides" },
+  { "content": "@​everyone deploy finished", "name": "sam", "mentions": false, "why": "@everyone as a webhook posts it, defused" },
+  { "content": "@​here", "name": "sam", "mentions": false, "why": "@here as a webhook posts it, defused" }
 ]
