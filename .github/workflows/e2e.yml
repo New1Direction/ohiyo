@@ -132,8 +132,8 @@ jobs:
           export KIKKA_CHROMIUM="$(node -e "console.log(require('./client/node_modules/playwright-core').chromium.executablePath())")"
           node e2e/run.mjs
 
-      # The message bar test's screenshots (desktop dark and light, phone), kept on every run
-      # so the bar can be looked at, not only when something fails.
+      # The message bar and user bar tests' screenshots (desktop dark and light, phone), kept
+      # on every run so they can be looked at, not only when something fails.
       - name: Upload message bar screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -141,7 +141,9 @@ jobs:
           name: message-bar-${{ matrix.client_mode }}-${{ github.run_attempt }}
           if-no-files-found: ignore
           retention-days: 7
-          path: /tmp/kikka-shots-${{ matrix.client_mode }}/44-message-bar-*.png
+          path: |
+            /tmp/kikka-shots-${{ matrix.client_mode }}/44-message-bar-*.png
+            /tmp/kikka-shots-${{ matrix.client_mode }}/47-user-bar-*.png
 
       - name: Upload E2E artifacts on failure
         if: failure()
