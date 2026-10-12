@@ -10,6 +10,8 @@ type Options = {
   manage: boolean;
   /** Offer "Notification settings" in the space menu. */
   notificationSettings?: boolean;
+  /** Offer "Webhooks" in the space menu (only shown to people who manage channels). */
+  webhooks?: boolean;
   /** Channels the person has muted. */
   mutedChannelIds?: string[];
   /** Unread counts by channel. */
@@ -17,7 +19,7 @@ type Options = {
 };
 
 /** The channel sidebar for one space, with every header action recorded by name. */
-export function mountChannelSidebar(element: HTMLElement, { owner, manage, notificationSettings, mutedChannelIds, unread }: Options) {
+export function mountChannelSidebar(element: HTMLElement, { owner, manage, notificationSettings, webhooks, mutedChannelIds, unread }: Options) {
   const calls: string[] = [];
   const me = { id: "me", username: "me", display_name: "Me", avatar_url: null };
   const server = {
@@ -47,6 +49,7 @@ export function mountChannelSidebar(element: HTMLElement, { owner, manage, notif
         unread={unread}
         mutedChannelIds={mutedChannelIds ? new Set(mutedChannelIds) : undefined}
         onOpenNotificationSettings={notificationSettings ? record("notification settings") : undefined}
+        onOpenWebhooks={webhooks ? record("webhooks") : undefined}
         currentUser={me as never}
         connStatus="connected"
         onlineUsers={new Set()}

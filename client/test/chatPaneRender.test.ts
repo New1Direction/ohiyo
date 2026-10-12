@@ -571,3 +571,22 @@ test("threads: an empty thread says so, and so does one whose first message was 
   assert.match(html, /No replies yet/);
   assert.match(html, /The first message of this thread was deleted\./);
 });
+
+// ── Webhooks ──
+// A message another service posted through a webhook shows the webhook's name with an APP
+// badge (like Discord), and its name and picture open no profile: there's no person to
+// message or add.
+test("a webhook's message shows its name with an APP badge and opens no profile", () => {
+  const hook = { id: "hook1", username: "~webhook-hook1", display_name: "Deploy bot", avatar_url: null, bot: true };
+  const html = spaceChat({
+    messages: [{ author: hook, created_at: 1, edited_at: null, reactions: [], id: "m7", channel_id: "c9", content: "Deploy finished" }],
+  });
+  assert.match(html, /Deploy bot/);
+  assert.match(html, /<span[^>]*class="[^"]*kc-app-badge[^"]*"[^>]*>APP<\/span>/);
+  assert.doesNotMatch(html, /View Deploy bot/, "no profile button for a webhook");
+});
+
+test("a person's message has no APP badge", () => {
+  const html = spaceChat({});
+  assert.doesNotMatch(html, /kc-app-badge/);
+});
