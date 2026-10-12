@@ -65,6 +65,7 @@ import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type En
 import { createDistributionTracker, editBlockReason, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
 import { isWellFormedEnvelope, resolveDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { renewWebPush } from "./lib/push";
+import { catchUpMessages } from "./lib/catchUp";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { decryptEach } from "./lib/decryptEach";
 import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
@@ -574,6 +575,8 @@ function MainApp({
   // Last message id we've acked per channel — dedupes redundant read receipts.
   const lastAckRef = useRef<Record<string, string>>({});
   const didAutoSelectRef = useRef(false);
+  // Set by the first Ready: any later one follows a time this device was cut off.
+  const sawReadyRef = useRef(false);
   const notifyAskedRef = useRef(false);
   const handleSelectChannelRef = useRef<(channel: Channel) => void>(() => {});
   const currentUserRef = useRef<PublicUser | null>(null);
@@ -977,6 +980,24 @@ function MainApp({
     }
   }
 
+  // After a reconnect, or a fresh Ready because this connection fell behind, fetch what
+  // the open chat missed while this device was cut off. Quietly: no spinner, and older
+  // history on screen stays. It's marked read only if the window is in view.
+  async function catchUpOpenChat() {
+    const channel = selectedChannelRef.current;
+    if (!channel) return;
+    try {
+      const latest = await api.listMessages(token, channel.id);
+      if (selectedChannelRef.current?.id !== channel.id) return;
+      const shown = await decryptMessages(channel.id, latest);
+      if (selectedChannelRef.current?.id !== channel.id) return;
+      setMessages((current) => catchUpMessages(current, shown, outboxForChannel(channel.id)));
+      if (!windowHiddenRef.current) sendAck(channel.id, lastRealMessageId(latest));
+    } catch {
+      // Cut off again: the next Ready tries again.
+    }
+  }
+
   function handleGatewayEvent(event: GatewayEvent) {
     switch (event.t) {
       case "Ready":
@@ -1039,6 +1060,9 @@ function MainApp({
             handleSelectChannelRef.current(target);
           }
         }
+        // Every Ready after the first means this device was cut off for a while.
+        if (sawReadyRef.current) void catchUpOpenChat();
+        sawReadyRef.current = true;
         pluginManagerRef.current.emit("ready", event.d);
         break;
 
