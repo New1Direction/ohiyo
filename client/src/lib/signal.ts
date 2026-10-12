@@ -397,7 +397,8 @@ async function ensureSession(addr: SignalProtocolAddress, bundle: Bundle): Promi
  *  own other devices (multi-device). Device lists come from the identity-key directory
  *  on every send; prekey bundles (one one-time prekey per device) are fetched only when
  *  a device has no session yet — see signalFanout.ts. Returns a `sig2.<b64(json)>`
- *  envelope, or null if no Signal-capable recipient device exists yet. */
+ *  envelope, or null if no Signal-capable recipient device exists yet. Throws, sending
+ *  nothing, if a device list can't be read (see signalFanout.ts). */
 export async function encryptFor(token: string, peerId: string, plaintext: string): Promise<string | null> {
   if (!isValidUserId(peerId)) return null;
   const myId = ownUserId();
@@ -409,7 +410,7 @@ export async function encryptFor(token: string, peerId: string, plaintext: strin
       const keys = await api.getIdentityKeys(token, uid);
       // A contact's new device is news (identityTrust); our own are deviceWatch's.
       if (uid !== myId) recordDeviceSet(uid, keys);
-      return keys.map((k) => k.device_id);
+      return keys;
     },
     fetchBundles: (uid) => api.getPrekeyBundles(token, uid),
     hasSession: async (uid, d) => Boolean(await store.loadSession(new SignalProtocolAddress(uid, d).toString())),

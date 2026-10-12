@@ -1,7 +1,9 @@
 // Tests for the Signal multi-device fan-out: every send refreshes each user's device list
 // from the directory (no one-time prekeys consumed) and fetches prekey bundles only when
 // some device has no session yet — so a steady conversation burns no prekeys, and a
-// newly added device still gets its copy on the very next send.
+// newly added device still gets its copy on the very next send. The directory is what
+// device warnings and safety numbers come from, so a bundle can never add a reader it
+// doesn't list, and without the directory nothing is sent.
 //   node --experimental-strip-types --test test/signalFanout.test.ts
 
 import { test } from "node:test";
@@ -13,26 +15,33 @@ const PEER = "peer-uuid";
 const ME = "me-uuid";
 const MY_DEVICE = 7;
 
-type Bundle = { device_id: number; usable?: boolean };
+type Bundle = { device_id: number; identity_key: string };
 
-// A fake directory + session store that records every prekey-bundle request.
+const keyOf = (uid: string, d: number) => `key-${uid}.${d}`;
+
+// A fake directory + session store that records every prekey-bundle request. The bundle
+// endpoint can be made to lie: name extra devices, or give a device another key.
 function world(devices: Record<string, number[]>, sessions: string[] = []) {
   const state = {
     devices,
     sessions: new Set(sessions),
     bundleRequests: [] as string[],
     sessionsStarted: [] as string[],
+    encrypted: [] as string[],
     directoryDown: false,
     unusable: new Set<string>(),
+    extraBundles: {} as Record<string, number[]>,
+    bundleKeys: {} as Record<string, string>,
   };
   const deps = {
     listDevices: async (uid: string) => {
       if (state.directoryDown) throw new Error("directory unavailable");
-      return [...(state.devices[uid] ?? [])];
+      return (state.devices[uid] ?? []).map((d) => ({ device_id: d, identity_key: keyOf(uid, d) }));
     },
     fetchBundles: async (uid: string): Promise<Bundle[]> => {
       state.bundleRequests.push(uid);
-      return (state.devices[uid] ?? []).map((d) => ({ device_id: d }));
+      const ids = [...(state.devices[uid] ?? []), ...(state.extraBundles[uid] ?? [])];
+      return ids.map((d) => ({ device_id: d, identity_key: state.bundleKeys[`${uid}.${d}`] ?? keyOf(uid, d) }));
     },
     hasSession: async (uid: string, d: number) => state.sessions.has(`${uid}.${d}`),
     startSession: async (uid: string, b: Bundle) => {
@@ -42,7 +51,10 @@ function world(devices: Record<string, number[]>, sessions: string[] = []) {
       state.sessions.add(addr);
       return true;
     },
-    encrypt: async (uid: string, d: number) => ({ t: 1, b: `ct-for-${uid}.${d}` }),
+    encrypt: async (uid: string, d: number) => {
+      state.encrypted.push(`${uid}.${d}`);
+      return { t: 1, b: `ct-for-${uid}.${d}` };
+    },
   };
   const send = () => fanOut([PEER, ME], { userId: ME, deviceId: MY_DEVICE }, deps);
   return { state, send };
@@ -77,12 +89,28 @@ test("never encrypts to this device, and this device's missing session never tri
   assert.deepEqual(state.bundleRequests, []);
 });
 
-test("when the directory can't be read, falls back to fetching bundles", async () => {
-  const { state, send } = world({ [PEER]: [1], [ME]: [MY_DEVICE] });
+test("when the directory can't be read, the send fails and nothing is encrypted", async () => {
+  const { state, send } = world({ [PEER]: [1], [ME]: [MY_DEVICE] }, [`${PEER}.1`]);
   state.directoryDown = true;
+  await assert.rejects(send());
+  assert.deepEqual(state.encrypted, []);
+  assert.deepEqual(state.bundleRequests, [], "the bundle list is no stand-in for the directory");
+});
+
+test("a device only the bundle endpoint names gets no copy and no session", async () => {
+  const { state, send } = world({ [PEER]: [1], [ME]: [MY_DEVICE] });
+  state.extraBundles[PEER] = [99]; // a reader the directory doesn't show
   const r = await send();
-  assert.deepEqual(state.bundleRequests, [PEER, ME]);
   assert.deepEqual(Object.keys(r), [`${PEER}.1`]);
+  assert.deepEqual(state.sessionsStarted, [`${PEER}.1`]);
+});
+
+test("a bundle whose identity key isn't the directory's gets no copy and no session", async () => {
+  const { state, send } = world({ [PEER]: [1, 2], [ME]: [MY_DEVICE] }, [`${PEER}.1`]);
+  state.bundleKeys[`${PEER}.2`] = "someone-elses-key";
+  const r = await send();
+  assert.deepEqual(Object.keys(r), [`${PEER}.1`]);
+  assert.deepEqual(state.sessionsStarted, []);
 });
 
 test("a device whose bundle can't start a session gets no copy", async () => {
