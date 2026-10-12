@@ -12,8 +12,8 @@ list under "Web beta ready" has not been re-verified since July._
   from `client/Dockerfile`, deployed with `scripts/deploy-web.sh`) and talks to that
   address. A browser that still has the old `ohiyo.fly.dev` home stored drops it on
   load and shows the sign-in screen.
-- Desktop builds released before this point still talk to `ohiyo.fly.dev` and need a
-  new release.
+- Desktop 0.3.0 talks to the Railway server and updates itself. 0.2.0 and older still talk
+  to `ohiyo.fly.dev` and have to be replaced by hand once.
 - Instant Servers are unavailable on the hosted service (they need Fly Machines); the
   server refuses to create them and the daily provisioning smoke is off.
 - `OHIYO_OPERATOR_USER_IDS` is set on Railway.
@@ -96,7 +96,7 @@ After the deploy, confirm with `curl -sI https://app.ohiyo.gg | grep -i -E
 
 ## Not blocking web launch
 
-- Public macOS desktop downloads are paused until Developer ID signing/notarization is configured.
+- macOS desktop downloads are public as an ad-hoc-signed beta; Developer ID signing/notarization is still to do.
 - Windows desktop builds are still disabled until the key-vault dependency is made Windows-compatible.
 - Litestream continuous backup is documented but not configured; Fly daily snapshots plus backup-restore drills are the current baseline.
 - APNs/FCM native push credentials are not configured; production Web Push is live and content-free.
