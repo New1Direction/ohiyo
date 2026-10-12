@@ -146,6 +146,7 @@ jobs:
           path: |
             /tmp/kikka-shots-${{ matrix.client_mode }}/44-message-bar-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/47-space-menu-*.png
+            /tmp/kikka-shots-${{ matrix.client_mode }}/49-threads-*.png
 
       - name: Upload E2E artifacts on failure
         if: failure()
