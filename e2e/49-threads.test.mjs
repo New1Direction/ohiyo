@@ -138,6 +138,8 @@ try {
   await phone.waitForSelector(`${PANEL} .msg-content:has-text("from my phone")`, { timeout: 8000 });
   const box = await phone.locator(PANEL).boundingBox();
   if (!box || box.width < 380) throw new Error(`the thread doesn't fill the phone screen (${box?.width}px wide)`);
+  // Let the "Welcome to Pip's place" toast go, so the screenshot shows the reply under it.
+  await phone.waitForSelector("text=Welcome to Pip", { state: "detached", timeout: 10000 }).catch(() => {});
   await settle(phone, 250);
   await shot(phone, "49-threads-phone");
   await phone.locator(`${PANEL} button[aria-label="Back to the channel"]`).tap();
