@@ -33,6 +33,8 @@ import { ForwardModal } from "./components/ForwardModal";
 import { PERM, can } from "./permissions";
 import { mentionsYou } from "./lib/mentions";
 import { notify, ensureNotificationPermission, initDeepLinks, claimNotification, isDesktop } from "./lib/desktop";
+import { parseSharedLink, type SharedLink } from "./lib/inviteLinks";
+import { isOhiyoHome, readHomeInput } from "./lib/homeInput";
 import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendingFailedOutbox, reconcileStalePending } from "./lib/outbox";
 import { isActivationDismissed, loadActivation, markActivation, setActivationDismissed, type ActivationState } from "./lib/activation";
 import { useWebRTC } from "./hooks/useWebRTC";
@@ -156,6 +158,10 @@ export default function App() {
   const activeHome = homes.find((h) => h.id === activeHomeId) ?? homes[0];
   const token = activeHome?.token ?? null;
   const [showAddHome, setShowAddHome] = useState(false);
+  // An invite or private DM link pasted into "Add an Ohiyo home": opened on this home, once
+  // someone is signed in to it.
+  const [pendingLink, setPendingLink] = useState<SharedLink | null>(null);
+  const [authScreenKey, setAuthScreenKey] = useState(0);
   // Asking before signing out of the last signed-in home (it removes local message data).
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   // Desktop: the session token lives in the encrypted vault, which hydrates
@@ -304,6 +310,15 @@ export default function App() {
         addHome(url);
         setShowAddHome(false);
       }}
+      onOpenLink={(link) => {
+        setPendingLink(link);
+        setShowAddHome(false);
+        if (!token) {
+          // The sign-in screen reads its notice when it mounts: remount it to show this one.
+          setSignInNotice(link.kind === "invite" ? "Sign in and the invite opens right after." : "Sign in and the private DM link opens right after.");
+          setAuthScreenKey((k) => k + 1);
+        }
+      }}
       onClose={() => setShowAddHome(false)}
     />
   ) : null;
@@ -311,6 +326,7 @@ export default function App() {
     return (
       <>
         <AuthScreen
+          key={authScreenKey}
           home={activeHome}
           homes={homes}
           onAuth={handleAuth}
@@ -336,6 +352,8 @@ export default function App() {
         onSessionUser={rememberHomeUser}
         onTokenChange={(next) => persistHomes(setHomeToken(loadHomes(), activeHome.id, next))}
         onAccountDeleted={handleAccountDeleted}
+        pendingLink={pendingLink}
+        onPendingLinkTaken={() => setPendingLink(null)}
       />
       {addHomeModal}
       {confirmSignOut && (
@@ -351,19 +369,44 @@ export default function App() {
   );
 }
 
-function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClose: () => void }) {
+function AddHomeModal({
+  onAdd,
+  onOpenLink,
+  onClose,
+}: {
+  onAdd: (url: string) => void;
+  /** An invite or private DM link was pasted: open it on the current home instead. */
+  onOpenLink: (link: SharedLink) => void;
+  onClose: () => void;
+}) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   const trimmed = url.trim();
 
-  function submit(e: FormEvent) {
+  // Nothing changes until the address answers as an Ohiyo server: a wrong one used to become
+  // the active home and leave the app on a sign-in screen that could reach nothing.
+  async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!trimmed) return;
-    try {
-      onAdd(trimmed);
-    } catch {
-      setError("That does not look like an Ohiyo home link. Paste https:// for normal homes, http://localhost for local homes, or http://…onion in Tor Browser.");
+    if (!trimmed || checking) return;
+    const input = readHomeInput(trimmed);
+    if (input.kind === "link") {
+      onOpenLink(input.link);
+      return;
     }
+    if (input.kind === "invalid") {
+      setError("That doesn't look like an Ohiyo home address. Use https:// for normal homes, http://localhost for local homes, or http://…onion in Tor Browser.");
+      return;
+    }
+    setError(null);
+    setChecking(true);
+    const reachable = await isOhiyoHome(input.url);
+    setChecking(false);
+    if (!reachable) {
+      setError(`Couldn't reach an Ohiyo home at ${new URL(input.url).host}. Check the address and try again.`);
+      return;
+    }
+    onAdd(input.url);
   }
 
   return (
@@ -375,17 +418,18 @@ function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClos
         Add an Ohiyo home
       </h2>
       <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-        A home is the server an Ohiyo account lives on. Paste the invite or home link you were given to add another one.
-        In Tor Browser you can also add an
+        A home is the server an Ohiyo account lives on. Paste its address to add another one. Got an invite to a
+        space? That goes in Join a space, behind the + in your space list. In Tor Browser you can also add an
         <code className="mx-1 rounded px-1" style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }}>http://…onion</code>
         home. The desktop app does not route through Tor by itself.
       </p>
-      <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
+      <form onSubmit={(e) => void submit(e)} className="mt-4 flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
           Home link
           <input
             value={url}
             onChange={(e) => { setUrl(e.target.value); setError(null); }}
+            aria-invalid={error ? true : undefined}
             placeholder="https://your-ohiyo-home.example or http://yourhome.onion"
             aria-label="Ohiyo home link"
             autoComplete="url"
@@ -401,8 +445,8 @@ function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClos
           <button type="button" onClick={onClose} className="kc-interactive rounded-full px-4 py-2 text-sm font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" }}>
             Cancel
           </button>
-          <button type="submit" disabled={!trimmed} className="kc-cta rounded-full px-4 py-2 text-sm" style={{ opacity: trimmed ? 1 : 0.6 }}>
-            Add home
+          <button type="submit" disabled={!trimmed || checking} className="kc-cta rounded-full px-4 py-2 text-sm" style={{ opacity: trimmed && !checking ? 1 : 0.6 }}>
+            {checking ? "Checking…" : "Add home"}
           </button>
         </div>
       </form>
@@ -439,6 +483,8 @@ function MainApp({
   onSessionUser,
   onTokenChange,
   onAccountDeleted,
+  pendingLink,
+  onPendingLinkTaken,
 }: {
   token: string;
   homes: OhiyoHome[];
@@ -455,6 +501,9 @@ function MainApp({
   onTokenChange: (token: string) => void;
   /** The account was deleted on the server. */
   onAccountDeleted: (userId: string) => void;
+  /** An invite or private DM link pasted into "Add an Ohiyo home", to open here. */
+  pendingLink: SharedLink | null;
+  onPendingLinkTaken: () => void;
 }) {
   const { toasts, push: toast } = useToast();
   // A full localStorage removed the oldest decrypted messages to make room: say so once.
@@ -514,6 +563,12 @@ function MainApp({
   const [privateDmToken, setPrivateDmToken] = useState<string | null>(
     () => new URLSearchParams(window.location.search).get("dm")
   );
+  useEffect(() => {
+    if (!pendingLink) return;
+    if (pendingLink.kind === "invite") setInviteCode(pendingLink.code);
+    else setPrivateDmToken(pendingLink.token);
+    onPendingLinkTaken();
+  }, [pendingLink, onPendingLinkTaken]);
   // Seeded per-account from `kc:welcomed:<userId>` once we know who logged in (in the
   // Ready handler) — so a different account on a shared device isn't treated as welcomed.
   const [welcomed, setWelcomed] = useState(false);
@@ -2272,29 +2327,13 @@ function MainApp({
     setPrivateDmToken(null);
   }
 
+  /** Open a pasted invite code or link, or a one-time private DM link. False if it's neither. */
   function handleOpenSharedLink(raw: string): boolean {
-    const value = raw.trim();
-    if (!value) return false;
-    try {
-      const url = new URL(value, window.location.origin);
-      const invite = url.searchParams.get("invite") || (url.pathname.match(/\/invite\/([^/?#]+)/)?.[1] ?? null);
-      const dm = url.searchParams.get("dm") || (url.pathname.match(/\/dm\/([^/?#]+)/)?.[1] ?? null);
-      if (invite) {
-        setInviteCode(invite);
-        return true;
-      }
-      if (dm) {
-        setPrivateDmToken(dm);
-        return true;
-      }
-    } catch {
-      // Fall through to the lightweight raw-token checks below.
-    }
-    if (/^[a-zA-Z0-9_-]{8,}$/.test(value)) {
-      setInviteCode(value);
-      return true;
-    }
-    return false;
+    const link = parseSharedLink(raw, window.location.origin);
+    if (!link) return false;
+    if (link.kind === "invite") setInviteCode(link.code);
+    else setPrivateDmToken(link.token);
+    return true;
   }
 
   function handleInviteJoin(server: ServerWithChannels) {
@@ -2794,6 +2833,7 @@ function MainApp({
       {showCreateServer && (
         <CreateServerModal
           onCreate={createServerAndEnter}
+          onJoin={handleOpenSharedLink}
           onClose={() => setShowCreateServer(false)}
         />
       )}

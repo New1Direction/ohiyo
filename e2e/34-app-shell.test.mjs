@@ -22,7 +22,7 @@ try {
   const rail = await page.evaluate(() => {
     const top = (label) => document.querySelector(`.server-sidebar button[aria-label="${label}"]`)?.getBoundingClientRect().top ?? null;
     const railBox = document.querySelector(".server-sidebar > div").getBoundingClientRect();
-    return { createSpace: top("Create a space"), addHome: top("Add an Ohiyo home"), saved: top("Saved messages"), railBottom: railBox.bottom, vh: innerHeight };
+    return { createSpace: top("Add a space"), addHome: top("Add an Ohiyo home"), saved: top("Saved messages"), railBottom: railBox.bottom, vh: innerHeight };
   });
   if (rail.createSpace === null || rail.addHome === null) throw new Error(`rail buttons missing: ${JSON.stringify(rail)}`);
   if (!(rail.createSpace < rail.addHome && rail.saved < rail.addHome)) throw new Error(`the home switcher should come after the spaces in the rail: ${JSON.stringify(rail)}`);

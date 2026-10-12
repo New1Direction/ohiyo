@@ -44,7 +44,7 @@ try {
   const tokenB = await currentToken(pageB);
 
   // ── The "+" offers a join box ──
-  await pageB.locator('button[aria-label="Add a space"], button[aria-label="Create a space"]').first().click();
+  await pageB.click('button[aria-label="Add a space"]');
   const field = 'input[aria-label="Invite link or code"]';
   await pageB.waitForSelector(field, { timeout: 6000 });
   log("the + button offers a join box ✓");
