@@ -171,8 +171,8 @@ export function ServerSidebar({
         className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full text-xl font-bold transition-all duration-150 hover:rounded-[30%]"
         style={{ background: "var(--bg-sidebar)", color: "var(--green)", border: "none" }}
         onClick={onCreateServer}
-        title="Create a space"
-        aria-label="Create a space"
+        title="Add a space"
+        aria-label="Add a space"
       >
         +
       </button>

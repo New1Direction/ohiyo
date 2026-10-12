@@ -5,17 +5,22 @@ import { BirdMark } from "./BirdMark";
 type Props = {
   /** Creates the server. Should throw on failure so we can surface the message. */
   onCreate: (name: string) => Promise<void>;
+  /** Opens a pasted invite code or link. False when the value isn't one. */
+  onJoin?: (link: string) => boolean;
   onClose: () => void;
 };
 
 const SUGGESTIONS = ["My Crew", "Game Night", "Study Room", "Project Crew"];
 
-/** Branded "create a space" modal — replaces the old window.prompt. */
-export function CreateServerModal({ onCreate, onClose }: Props) {
+/** The "+" in the space rail: create a space, or join one with an invite someone sent. */
+export function CreateServerModal({ onCreate, onJoin, onClose }: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const [invite, setInvite] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const inviteRef = useRef<HTMLInputElement>(null);
 
   // Focus the name field once, on open.
   useEffect(() => {
@@ -69,6 +74,21 @@ export function CreateServerModal({ onCreate, onClose }: Props) {
     }
   }
 
+  function handleJoin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!onJoin || busy) return;
+    if (!invite.trim()) {
+      inviteRef.current?.focus();
+      return;
+    }
+    if (onJoin(invite)) {
+      onClose();
+      return;
+    }
+    setJoinError("That isn't an invite link or code.");
+    inviteRef.current?.focus();
+  }
+
   return createPortal(
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- dismiss scrim; Escape closes via the dialog key handler
     <div className="kc-backdrop" onMouseDown={() => !busy && onClose()}>
@@ -78,7 +98,8 @@ export function CreateServerModal({ onCreate, onClose }: Props) {
         aria-modal="true"
         aria-labelledby="kc-create-server-title"
         className="kc-modal max-w-md"
-        style={{ padding: "var(--space-8)" }}
+        /* With the join box it's taller than a small phone with its keyboard up: scroll inside. */
+        style={{ padding: "var(--space-8)", maxHeight: "calc(100dvh - 2 * var(--space-4))", overflowY: "auto" }}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={trapTab}
       >
@@ -176,6 +197,58 @@ export function CreateServerModal({ onCreate, onClose }: Props) {
             </button>
           </div>
         </form>
+
+        {onJoin && (
+          <form
+            onSubmit={handleJoin}
+            aria-labelledby="kc-join-space-title"
+            className="mt-6 flex flex-col gap-2 pt-5"
+            style={{ borderTop: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)" }}
+          >
+            <h3 id="kc-join-space-title" className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              Join a space
+            </h3>
+            <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+              Paste the invite link or code someone sent you.
+            </p>
+            <div className="flex gap-2">
+              <input
+                ref={inviteRef}
+                className="kc-field min-w-0 flex-1 px-3.5 py-3 text-sm outline-none"
+                placeholder="Invite link or code"
+                value={invite}
+                onChange={(e) => { setInvite(e.target.value); if (joinError) setJoinError(""); }}
+                aria-label="Invite link or code"
+                aria-invalid={joinError ? true : undefined}
+                aria-describedby={joinError ? "kc-join-space-error" : undefined}
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                className="kc-interactive flex-shrink-0 px-4 py-3 text-sm font-semibold"
+                style={{ borderRadius: "var(--radius-md)", background: "var(--bg-input)", color: "var(--text-primary)" }}
+              >
+                Join space
+              </button>
+            </div>
+            {joinError && (
+              <div
+                id="kc-join-space-error"
+                role="alert"
+                className="kc-shake px-3 py-2 text-xs"
+                style={{
+                  background: "color-mix(in oklch, var(--danger) 12%, transparent)",
+                  color: "var(--danger)", borderRadius: "var(--radius-md)", fontWeight: 500,
+                }}
+              >
+                {joinError}
+              </div>
+            )}
+          </form>
+        )}
       </div>
     </div>,
     document.body

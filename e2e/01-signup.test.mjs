@@ -172,7 +172,7 @@ try {
   await settle(page, 200);
 
   // ── Create-server modal (the + button, replacing window.prompt) ──
-  await page.click('[title="Create a space"]');
+  await page.click('[title="Add a space"]');
   await page.waitForSelector("text=Create your space", { timeout: 5000 });
   log("CreateServerModal opens from + (no window.prompt) ✓");
   await shot(page, "06-create-modal-1440");

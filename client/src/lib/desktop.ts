@@ -7,6 +7,8 @@
  * are actually running inside Tauri — so the browser bundle never touches them.
  */
 
+import { parseSharedLink } from "./inviteLinks";
+
 /** True when running inside the packaged Tauri desktop app. */
 export function isDesktop(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -106,32 +108,10 @@ export async function claimNotification(id: string): Promise<boolean> {
   }
 }
 
-// Invite codes are server-generated tokens; constrain to a conservative,
-// URL-safe shape so a malformed/hostile deep link can't smuggle arbitrary
-// content (path traversal, query injection, oversized payloads) downstream.
-const INVITE_CODE_RE = /^[A-Za-z0-9_-]{1,64}$/;
-
-/** Parse an `ohiyo://invite/<code>` (or legacy `kikkacord://`, or `?invite=<code>`) URL into its code. */
+/** The invite code an `ohiyo://invite/<code>` (or legacy `kikkacord://`) deep link names. */
 export function parseInviteUrl(url: string): string | null {
-  try {
-    const u = new URL(url);
-    let code: string | null = null;
-    if (u.protocol === "ohiyo:" || u.protocol === "kikkacord:") {
-      // ohiyo://invite/CODE → hostname="invite", pathname="/CODE"
-      // ohiyo://CODE        → hostname="CODE"
-      const fromPath = u.pathname.replace(/^\/+/, "").trim();
-      if (u.hostname === "invite") code = fromPath || null;
-      else if (u.hostname) code = u.hostname;
-      else code = fromPath || null;
-    } else {
-      const q = u.searchParams.get("invite");
-      code = q && q.trim() ? q.trim() : null;
-    }
-    // Reject anything that isn't a plausible invite code.
-    return code && INVITE_CODE_RE.test(code) ? code : null;
-  } catch {
-    return null;
-  }
+  const link = parseSharedLink(url);
+  return link?.kind === "invite" ? link.code : null;
 }
 
 /**
