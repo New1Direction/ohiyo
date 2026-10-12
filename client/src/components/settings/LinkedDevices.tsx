@@ -98,8 +98,9 @@ export function LinkedDevices({
         📱 Linked devices
       </div>
       <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-        Every device you&apos;ve signed in on has its own encryption key. Verifying a contact covers all of
-        their devices. Remove a device you no longer use — new messages won&apos;t be encrypted to it.
+        Every device you&apos;ve signed in on has its own encryption key. Verifying a contact covers the
+        devices you compared; if they add one later, your chat with them says so. Remove a device you no
+        longer use — new messages won&apos;t be encrypted to it.
       </p>
 
       {/* Link a new device with a QR / code — no password re-entry on the new device. */}

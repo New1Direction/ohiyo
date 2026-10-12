@@ -1,4 +1,4 @@
-import { currentToken, launchBrowser, register, log, uniq, PASS, ORIGIN } from "./harness.mjs";
+import { currentToken, launchBrowser, register, log, uniq, PASS, ORIGIN, openDm } from "./harness.mjs";
 
 // Multi-device E2E: B signs in on a SECOND device (fresh context = new Signal identity
 // + device id). A message A sends afterwards fans out to BOTH of B's devices, and both
@@ -61,8 +61,7 @@ try {
   // ── B device 1 decrypts it ──
   await pageB1.reload({ waitUntil: "domcontentloaded" });
   await pageB1.click('button[aria-label="Direct Messages"]');
-  await pageB1.waitForSelector('button:has-text("Direct Message")', { timeout: 8000 });
-  await pageB1.click('button:has-text("Direct Message")');
+  await openDm(pageB1, "Am");
   await pageB1.waitForSelector(`text=${secret1}`, { timeout: 10000 });
   log("B device 1 decrypted A's first message ✓");
 
@@ -90,8 +89,7 @@ try {
 
   // B device 2 opens the DM (won't see secret1 — no pre-join history, like Signal).
   await pageB2.click('button[aria-label="Direct Messages"]');
-  await pageB2.waitForSelector('button:has-text("Direct Message")', { timeout: 8000 });
-  await pageB2.click('button:has-text("Direct Message")');
+  await openDm(pageB2, "Am");
 
   // ── A sends a SECOND message; fan-out now reaches BOTH of B's devices ──
   const secret2 = `multi-${u}`;

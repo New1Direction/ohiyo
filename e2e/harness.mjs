@@ -74,3 +74,12 @@ export async function register(page, username, displayName) {
   await page.fill("#kc-password", PASS);
   await page.click('button:has-text("Create my account")');
 }
+
+// Open the 1:1 DM listed under `name` (the other person's display name). Each DM row has
+// a pin button labelled "Pin <name>", which matches the name exactly; the row's own
+// button is the one before it.
+export async function openDm(page, name, timeout = 8000) {
+  const pin = page.locator(`button[aria-label="Pin ${name}"]`);
+  await pin.waitFor({ timeout });
+  await pin.locator("xpath=preceding-sibling::button").click();
+}

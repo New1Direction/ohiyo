@@ -1,4 +1,4 @@
-import { currentToken, launchBrowser, register, log, uniq } from "./harness.mjs";
+import { currentToken, launchBrowser, register, log, uniq, openDm } from "./harness.mjs";
 
 // Privacy Mode: keep chat usable, but stop peer-visible behavioral metadata.
 // A enables Privacy Mode, chats with B, and proves:
@@ -59,8 +59,7 @@ try {
 
   await pageB.reload({ waitUntil: "domcontentloaded" });
   await pageB.click('button[aria-label="Direct Messages"]');
-  await pageB.waitForSelector('button:has-text("Direct Message")', { timeout: 8000 });
-  await pageB.click('button:has-text("Direct Message")');
+  await openDm(pageB, "Privacy A");
   await pageB.waitForSelector(`text=${first}`, { timeout: 10000 });
   log("B received A's message ✓");
 

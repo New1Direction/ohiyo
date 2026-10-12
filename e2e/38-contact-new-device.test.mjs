@@ -1,4 +1,4 @@
-import { currentToken, launchBrowser, register, log, uniq, PASS, ORIGIN } from "./harness.mjs";
+import { currentToken, launchBrowser, register, log, uniq, PASS, ORIGIN, openDm } from "./harness.mjs";
 
 // A contact's new device: every device a contact has can read what you send them. A new
 // one used to be trusted silently, and a "verified" mark kept covering it.
@@ -111,7 +111,7 @@ try {
   // The notice survives a reload until A deals with it, and opening the DM alone is enough.
   await pageA.reload({ waitUntil: "domcontentloaded" });
   await pageA.click('button[aria-label="Direct Messages"]');
-  await pageA.click('button:has-text("Direct Message")');
+  await openDm(pageA, "Cb");
   await pageA.waitForSelector(LOUD, { timeout: 8000 });
   log("the notice is still there after a reload ✓");
 

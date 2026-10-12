@@ -966,6 +966,12 @@ function MainApp({
         setCurrentUser(event.d.user);
         setServers(event.d.servers);
         setDms(event.d.dms);
+        // Who each 1:1 DM is with, so every chat in the list has a name after a reload.
+        if (event.d.dm_peers) {
+          const peers = event.d.dm_peers;
+          for (const [channelId, peer] of Object.entries(peers)) dmPeerRef.current.set(channelId, peer.id);
+          setDmUsers((prev) => ({ ...prev, ...peers }));
+        }
         // Earlier builds could mark a server channel as encrypted (C-H6). Drop stored
         // entries Ready lists as server channels; keep DMs and ids it doesn't mention.
         setE2eChannels((prev) => {
