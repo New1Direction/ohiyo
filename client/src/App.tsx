@@ -78,6 +78,7 @@ import { SignOutDialog } from "./components/SignOutDialog";
 import { signInRemovesLocalDataNow, signOutRemovesLocalDataNow } from "./lib/signOut";
 import { clearDeletedAccountData, clearLocalMessageData } from "./lib/logoutCleanup";
 import { onPlaintextCacheEvicted, saveEncryptedChannels } from "./lib/storageQuota";
+import { uploadOne } from "./lib/uploadOne";
 import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
 import { apiStatus, badRequestMessage, deviceLimitMessage } from "./lib/apiErrors";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
@@ -2395,18 +2396,8 @@ function MainApp({
   }
 
   async function handleSetServerIcon(serverId: string, file: File) {
-    const formData = new FormData();
-    formData.append("file", file);
     try {
-      const res = await fetch(`${getApiBase()}/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const uploaded = (await res.json()) as Array<{ id: string }>;
-      const fileId = uploaded[0]?.id;
-      if (!fileId) throw new Error("Upload failed");
+      const { id: fileId } = await uploadOne(getApiBase(), token, file);
       const updated = await api.setServerIcon(token, serverId, fileId);
       setServers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       toast("Server logo updated", "success");
