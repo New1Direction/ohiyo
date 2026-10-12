@@ -10,6 +10,8 @@
 // url-safe) all matter — getting any wrong makes coturn 401 silently, and the
 // browser surfaces only a generic ICE failure. See the unit test below.
 
+use std::time::Duration;
+
 use axum::{http::StatusCode, Json};
 use hmac::{Hmac, Mac};
 use serde::Serialize;
@@ -21,6 +23,64 @@ type HmacSha1 = Hmac<Sha1>;
 
 const DEFAULT_TURN_TTL_SECS: i64 = 86_400; // 24h
 const DEFAULT_STUN_URLS: &str = "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302";
+
+/// Where Cloudflare Realtime's credentials API lives.
+pub const CLOUDFLARE_TURN_API: &str = "https://rtc.live.cloudflare.com";
+/// Well under the 5 s the client waits for this endpoint, so the direct-only answer
+/// still reaches it in time when Cloudflare is slow.
+const CLOUDFLARE_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Cloudflare Realtime's TURN relay, used when `CLOUDFLARE_TURN_KEY_ID` and
+/// `CLOUDFLARE_TURN_API_TOKEN` are both set. The TURN key is a long-term secret that
+/// stays on the server; each caller gets short-lived credentials minted from it.
+#[derive(Clone)]
+pub struct CloudflareTurn {
+    pub key_id: String,
+    pub api_token: String,
+    /// Tests point this at a local stand-in for Cloudflare.
+    pub base_url: String,
+    pub timeout: Duration,
+    pub client: reqwest::Client,
+}
+
+impl CloudflareTurn {
+    pub fn new(key_id: impl Into<String>, api_token: impl Into<String>) -> Self {
+        CloudflareTurn {
+            key_id: key_id.into(),
+            api_token: api_token.into(),
+            base_url: CLOUDFLARE_TURN_API.to_owned(),
+            timeout: CLOUDFLARE_TIMEOUT,
+            client: reqwest::Client::new(),
+        }
+    }
+
+    /// Read once at startup; `None` unless both values are set.
+    pub fn from_env() -> Option<Self> {
+        let read = |name: &str| {
+            std::env::var(name)
+                .map(|v| v.trim().to_owned())
+                .unwrap_or_default()
+        };
+        let (key_id, api_token) = (
+            read("CLOUDFLARE_TURN_KEY_ID"),
+            read("CLOUDFLARE_TURN_API_TOKEN"),
+        );
+        if key_id.is_empty() || api_token.is_empty() {
+            return None;
+        }
+        Some(Self::new(key_id, api_token))
+    }
+
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+}
 
 #[derive(Debug, Serialize)]
 pub struct IceServer {
