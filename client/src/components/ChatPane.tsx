@@ -36,6 +36,7 @@ import { filesThatFit, holdingSlots, TOO_MANY_ATTACHMENTS } from "../lib/attachm
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 import { threadChipLabel, type ThreadSummary } from "../lib/threads";
+import { avatarStyle } from "../lib/avatarStyle";
 
 const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
 function hiddenMessagesKey(channelId: string, userId: string): string {
@@ -1231,10 +1232,7 @@ export function ChatPane({
               >
                 <span
                   className="kc-dm-tab__avatar"
-                  style={{
-                    background: avatarBg(other?.id ?? dm.id),
-                    backgroundImage: other?.avatar_url ? `url(${assetUrl(other.avatar_url)})` : undefined,
-                  }}
+                  style={avatarStyle(other?.id ?? dm.id, other?.avatar_url ? assetUrl(other.avatar_url) : null)}
                   aria-hidden="true"
                 >
                   {!other?.avatar_url && (other ? <AvatarMark /> : label[0]?.toUpperCase())}
@@ -1338,10 +1336,7 @@ export function ChatPane({
                   key={member.id}
                   className="relative flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ring-2"
                   style={{
-                    background: avatarBg(member.id),
-                    backgroundImage: member.avatar_url ? `url(${assetUrl(member.avatar_url)})` : undefined,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
+                    ...avatarStyle(member.id, member.avatar_url ? assetUrl(member.avatar_url) : null),
                     color: "#fff",
                     boxShadow: onlineUserIds.has(member.id) ? "0 0 0 2px color-mix(in oklch, var(--success, #22c55e) 72%, white)" : undefined,
                     border: "2px solid var(--bg-channel)",
@@ -1797,10 +1792,7 @@ export function ChatPane({
                     <button
                       className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
                       style={{
-                        background: avatarBg(g.author.id),
-                        backgroundImage: g.author.avatar_url ? `url(${assetUrl(g.author.avatar_url)})` : undefined,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
+                        ...avatarStyle(g.author.id, g.author.avatar_url ? assetUrl(g.author.avatar_url) : null),
                         color: "#fff",
                         cursor: "pointer",
                         border: "none",
@@ -2819,13 +2811,6 @@ function fitImg(w: number, h: number, maxW: number, maxH: number): { w: number; 
   return { w: Math.round(w * scale), h: Math.round(h * scale) };
 }
 
-/** A stable, distinguishable avatar background derived from a user id. */
-function avatarBg(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
-  return `linear-gradient(135deg, oklch(70% 0.13 ${h}), oklch(60% 0.15 ${(h + 28) % 360}))`;
-}
-
 function assetUrl(url: string): string {
   // Only http(s) absolute URLs pass through; data:/blob: are rejected so a
   // crafted attachment URL can't smuggle an inline payload into <img>/<video>.
@@ -3194,10 +3179,7 @@ function ActivityNoticeRow({ notice, style }: { notice: ChatActivityNotice; styl
           <span
             className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold"
             style={{
-              background: avatarBg(notice.user.id),
-              backgroundImage: notice.user.avatar_url ? `url(${assetUrl(notice.user.avatar_url)})` : undefined,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
+              ...avatarStyle(notice.user.id, notice.user.avatar_url ? assetUrl(notice.user.avatar_url) : null),
               color: "#fff",
             }}
             aria-hidden="true"

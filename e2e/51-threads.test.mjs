@@ -33,6 +33,23 @@ async function onboard(page, username, display, space) {
   await page.waitForSelector(COMPOSER, { timeout: 12000 });
 }
 
+// Default avatars (no picture) must have a painted background in every theme. The style
+// once put the gradient in `background` next to `backgroundImage: undefined`, which React
+// writes as an empty background-image: the circle was transparent and its white mark
+// vanished on light themes.
+async function defaultAvatarsShow(page, where) {
+  const avatars = await page.evaluate(() =>
+    [...document.querySelectorAll('.msg-avatar, button[aria-label^="See who\'s here"] span[aria-hidden="true"] > span')].map((el) => {
+      const cs = getComputedStyle(el);
+      return { image: cs.backgroundImage, color: cs.backgroundColor };
+    })
+  );
+  if (avatars.length === 0) throw new Error(`${where}: no avatars to check`);
+  const bare = avatars.filter((a) => a.image === "none" && /^rgba\(0, 0, 0, 0\)$|^transparent$/.test(a.color));
+  if (bare.length) throw new Error(`${where}: ${bare.length} of ${avatars.length} default avatars have no background (${JSON.stringify(bare[0])})`);
+  log(`${where}: all ${avatars.length} default avatars have a background ✓`);
+}
+
 async function say(page, text) {
   await page.fill(COMPOSER, text);
   await page.keyboard.press("Enter");
@@ -119,6 +136,7 @@ try {
   log("the Threads button lists it ✓");
   await settle(pageA, 300);
   await shot(pageA, "51-threads-desktop-dark");
+  await defaultAvatarsShow(pageA, "dark theme");
 
   // Light theme, to look at.
   await pageA.locator('button[aria-label="Settings"]').first().click();
@@ -127,6 +145,7 @@ try {
   await pageA.keyboard.press("Escape");
   await settle(pageA, 300);
   await shot(pageA, "51-threads-desktop-light");
+  await defaultAvatarsShow(pageA, "light theme");
 
   // ── Phone: the thread takes the screen, back returns to the channel ──
   const phoneCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
