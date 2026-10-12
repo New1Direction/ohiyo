@@ -723,6 +723,13 @@ export const api = {
   kickMember: (token: string, serverId: string, userId: string) =>
     request<void>(`/servers/${serverId}/members/${userId}`, { method: "DELETE" }, token),
 
+  leaveServer: (token: string, serverId: string) =>
+    request<void>(`/servers/${serverId}/leave`, { method: "POST" }, token),
+
+  // The owner only, with the password: the space goes, with everything in it.
+  deleteServer: (token: string, serverId: string, password: string) =>
+    request<void>(`/servers/${serverId}`, { method: "DELETE", body: JSON.stringify({ password }) }, token),
+
   banMember: (token: string, serverId: string, userId: string) =>
     request<void>(`/servers/${serverId}/bans/${userId}`, { method: "POST" }, token),
 
