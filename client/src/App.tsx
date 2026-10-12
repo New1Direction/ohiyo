@@ -2210,6 +2210,16 @@ function MainApp({
 
   // Add a server to state and drop the user straight into a live channel —
   // shared by create, invite-redeem, and onboarding so there's never an empty room.
+  // A space left or deleted from here: off the list, and off the screen if it was shown.
+  function dropServer(id: string) {
+    setServers((prev) => prev.filter((s) => s.id !== id));
+    if (selectedServerId === id) {
+      setSelectedServerId(null);
+      setSelectedChannel(null);
+      setMessages([]);
+    }
+  }
+
   function enterServer(server: ServerWithChannels) {
     setServers((prev) => [...prev.filter((s) => s.id !== server.id), server]);
     setSelectedServerId(server.id);
@@ -2614,6 +2624,18 @@ function MainApp({
             onOpenEvents={() => { setMobileNavOpen(false); setShowEvents(true); }}
             onReportServer={selectedServer ? () => void reportTarget("server", selectedServer.id, "server") : undefined}
             onOpenModQueue={canModerateSelectedServer ? () => setShowModQueue(true) : undefined}
+            onLeaveServer={async (id) => {
+              const name = servers.find((s) => s.id === id)?.name ?? "the space";
+              await api.leaveServer(token, id);
+              dropServer(id);
+              toast(`You left ${name}.`, "success");
+            }}
+            onDeleteServer={async (id, password) => {
+              const name = servers.find((s) => s.id === id)?.name ?? "The space";
+              await api.deleteServer(token, id, password);
+              dropServer(id);
+              toast(`${name} was deleted.`, "success");
+            }}
             activationState={activation}
             showActivationChecklist={Boolean(selectedServer && currentUser && selectedServer.owner_id === currentUser.id && !activationDismissed)}
             onDismissActivationChecklist={dismissActivationChecklist}
