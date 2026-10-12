@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { Channel, Message, ProfileSong, ProfileTheme, PublicUser, PushDevice, ServerEmoji, ServerWithChannels } from "../../api";
 import { api, getApiBase, getFileBase } from "../../api";
+import { uploadOne } from "../../lib/uploadOne";
 import type { Theme, ThemeVar } from "../../themes";
 import {
   BUILTIN_THEMES,
@@ -767,17 +768,8 @@ function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate, onTokenC
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
     try {
-      const res = await fetch(`${getApiBase()}/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      const data = await res.json() as Array<{ id: string; url: string }>;
-      const fileId = data[0]?.id;
-      if (!fileId) throw new Error("Upload failed");
+      const { id: fileId } = await uploadOne(getApiBase(), token, file);
       const updated = await api.setAvatar(token, fileId);
       setAvatarUrl(updated.avatar_url ?? `${getFileBase()}/files/${fileId}`);
       onCurrentUserUpdate?.(updated);
@@ -857,17 +849,7 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
     if (!file || !newName.trim() || !selectedServerId) return;
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch(`${getApiBase()}/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json() as Array<{ id: string }>;
-      const fileId = data[0]?.id;
-      if (!fileId) throw new Error("Upload failed");
+      const { id: fileId } = await uploadOne(getApiBase(), token, file);
       const emoji = await api.createEmoji(token, selectedServerId, newName.trim(), fileId);
       setEmojis((prev) => [...prev, emoji]);
       setNewName("");
@@ -1073,17 +1055,8 @@ function ProfileTab({ token, onToast }: { token: string; onToast: (t: string, ty
   async function handleBannerUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
     try {
-      const res = await fetch(`${getApiBase()}/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      const data = (await res.json()) as Array<{ id: string; url: string }>;
-      const fileId = data[0]?.id;
-      if (!fileId) throw new Error("Upload failed");
+      const { id: fileId } = await uploadOne(getApiBase(), token, file);
       await api.setBanner(token, fileId);
       setBannerUrl(`${getFileBase()}/files/${fileId}`); // local preview reflects it immediately
       onToast("Banner image updated!", "success");
