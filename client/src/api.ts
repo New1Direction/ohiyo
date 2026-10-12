@@ -676,10 +676,11 @@ export const api = {
   // Dead-man's switch (account-level inactivity wipe).
   getDeadman: (token: string) =>
     request<{ seconds: number | null; scope: string }>("/users/@me/deadman", {}, token),
-  setDeadman: (token: string, seconds: number | null, scope: "history" | "keys") =>
+  // Needs the password, to arm, change or turn off.
+  setDeadman: (token: string, seconds: number | null, scope: "history" | "keys", password: string) =>
     request<void>(
       "/users/@me/deadman",
-      { method: "POST", body: JSON.stringify({ seconds, scope }) },
+      { method: "POST", body: JSON.stringify({ seconds, scope, password }) },
       token
     ),
 
@@ -692,10 +693,12 @@ export const api = {
   // Encrypted E2E key backup (recovery-code model). Server stores ciphertext only;
   // getKeyBackup rejects with a 404 when none exists.
   getKeyBackup: (token: string) => request<Record<string, unknown>>("/users/@me/key-backup", {}, token),
-  putKeyBackup: (token: string, blob: Record<string, unknown>) =>
-    request<void>("/users/@me/key-backup", { method: "PUT", body: JSON.stringify(blob) }, token),
-  deleteKeyBackup: (token: string) =>
-    request<void>("/users/@me/key-backup", { method: "DELETE" }, token),
+  // Replacing or deleting the backup needs the password, so a stolen session can't
+  // swap a good backup for one that opens nothing.
+  putKeyBackup: (token: string, password: string, blob: Record<string, unknown>) =>
+    request<void>("/users/@me/key-backup", { method: "PUT", body: JSON.stringify({ password, backup: blob }) }, token),
+  deleteKeyBackup: (token: string, password: string) =>
+    request<void>("/users/@me/key-backup", { method: "DELETE", body: JSON.stringify({ password }) }, token),
 
   listServers: (token: string) =>
     request<ServerWithChannels[]>("/servers", {}, token),

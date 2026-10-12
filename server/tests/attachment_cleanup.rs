@@ -241,7 +241,7 @@ async fn dead_man_wipe_takes_the_users_files() {
         .post_json_auth(
             "/api/v1/users/@me/deadman",
             &w.alice.token,
-            json!({ "seconds": 3600 }),
+            json!({ "seconds": 3600, "password": "supersecret123" }),
         )
         .await;
     assert_eq!(res.status(), 204);
@@ -333,7 +333,7 @@ async fn dead_man_wipe_deletes_messages_first_then_releases_files_in_small_batch
         .post_json_auth(
             "/api/v1/users/@me/deadman",
             &w.alice.token,
-            json!({ "seconds": 3600 }),
+            json!({ "seconds": 3600, "password": "supersecret123" }),
         )
         .await;
     assert_eq!(res.status(), 204);

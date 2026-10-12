@@ -471,6 +471,53 @@ pub async fn logout_everywhere(
 /// stolen session could otherwise use this to guess the current password quickly.
 const PASSWORD_CHANGE_MAX_PER_MIN: usize = 5;
 
+/// Attempts per minute per account at the actions that ask for the password again
+/// (`require_password`). Each costs an Argon2 verify.
+const STEP_UP_MAX_PER_MIN: usize = 5;
+
+/// A request body that carries only the account's password.
+#[derive(Deserialize)]
+pub struct PasswordBody {
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+/// Check the account's password before an action a stolen session must not take on its
+/// own, because the damage lasts: deleting a space, replacing or deleting the recovery
+/// backup, changing the dead-man's switch. 403 when it's missing or wrong.
+pub(crate) async fn require_password(
+    state: &AppState,
+    user_id: &str,
+    password: Option<String>,
+) -> Result<(), (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("step-up:{user_id}"),
+        STEP_UP_MAX_PER_MIN,
+        Duration::from_secs(60),
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many attempts — give it a moment and try again".into(),
+        ));
+    }
+    let Some(password) = password.filter(|p| !p.is_empty()) else {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "enter your password to do this".into(),
+        ));
+    };
+    let hash: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?
+        .ok_or((StatusCode::UNAUTHORIZED, "invalid session".into()))?;
+    if !run_argon2(move || verify_password(&password, &hash)).await? {
+        return Err((StatusCode::FORBIDDEN, "that isn't your password".into()));
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 pub struct ChangePasswordBody {
     pub current_password: String,

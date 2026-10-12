@@ -502,13 +502,23 @@ pub async fn get_key_backup(
 /// envelope (wrapped keys + metadata).
 const MAX_KEY_BACKUP_BYTES: usize = 512 * 1024; // 512 KiB
 
+/// `PUT /users/@me/key-backup`: the backup and the account's password, so a stolen
+/// session can't replace a good backup with one that opens nothing.
+#[derive(Deserialize)]
+pub struct KeyBackupBody {
+    #[serde(default)]
+    pub password: Option<String>,
+    pub backup: serde_json::Value,
+}
+
 pub async fn put_key_backup(
     auth: AuthUser,
     State(state): State<AppState>,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<KeyBackupBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let blob =
-        serde_json::to_string(&body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    crate::api::auth::require_password(&state, &auth.0, body.password).await?;
+    let blob = serde_json::to_string(&body.backup)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     if blob.len() > MAX_KEY_BACKUP_BYTES {
         return Err((StatusCode::PAYLOAD_TOO_LARGE, "key backup too large".into()));
     }
@@ -529,7 +539,9 @@ pub async fn put_key_backup(
 pub async fn delete_key_backup(
     auth: AuthUser,
     State(state): State<AppState>,
+    Json(body): Json<crate::api::auth::PasswordBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    crate::api::auth::require_password(&state, &auth.0, body.password).await?;
     sqlx::query("DELETE FROM key_backups WHERE user_id = ?")
         .bind(&auth.0)
         .execute(&state.db)

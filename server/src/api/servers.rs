@@ -430,6 +430,7 @@ pub async fn delete_server(
     auth: AuthUser,
     Path(id): Path<String>,
     State(state): State<AppState>,
+    Json(body): Json<crate::api::auth::PasswordBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let server: Option<Server> =
         sqlx::query_as("SELECT * FROM servers WHERE id = ? AND owner_id = ?")
@@ -442,6 +443,7 @@ pub async fn delete_server(
     if server.is_none() {
         return Err((StatusCode::FORBIDDEN, "not the owner".into()));
     }
+    crate::api::auth::require_password(&state, &auth.0, body.password).await?;
 
     // Notify members BEFORE deleting — the cascade removes server_members rows,
     // so we must resolve recipients while they still exist.
