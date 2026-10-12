@@ -825,6 +825,9 @@ pub struct DeadmanBody {
     /// 'history' (wipe my messages) or 'keys' (also wipe my server-side E2E directory).
     #[serde(default)]
     pub scope: Option<String>,
+    /// The account's password: needed to arm, change or turn off the switch.
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -872,6 +875,9 @@ pub async fn set_deadman(
     State(state): State<AppState>,
     Json(body): Json<DeadmanBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    // Arming it, changing it and turning it off all need the password: whoever holds an
+    // unlocked device must not be able to arm a wipe, or quietly disarm one.
+    crate::api::auth::require_password(&state, &auth.0, body.password).await?;
     let scope = match body.scope.as_deref() {
         Some("keys") => "keys",
         _ => "history",

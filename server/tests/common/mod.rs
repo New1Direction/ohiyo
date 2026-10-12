@@ -234,6 +234,21 @@ impl TestServer {
             .expect("request sent")
     }
 
+    pub async fn delete_json_auth(
+        &self,
+        path: &str,
+        token: &str,
+        body: Value,
+    ) -> reqwest::Response {
+        self.client
+            .delete(self.url(path))
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await
+            .expect("request sent")
+    }
+
     /// Register a fresh account, asserting success, and return its id + token.
     pub async fn register(&self, username: &str, password: &str) -> AuthOk {
         let res = self
