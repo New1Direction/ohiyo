@@ -1927,24 +1927,6 @@ button:disabled,
   font-weight: 750;
   padding: 0.35rem 0.6rem;
 }
-.kc-sidebar-hint {
-  border-radius: var(--radius-lg);
-  border: 1px solid color-mix(in oklch, var(--text-primary) 6%, transparent);
-  background: color-mix(in oklch, var(--text-primary) 2.5%, transparent);
-  padding: 0.85rem 0.9rem;
-}
-.kc-sidebar-hint-title {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-weight: 750;
-  line-height: 1.2;
-}
-.kc-sidebar-hint p {
-  margin: 0.25rem 0 0;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: 1.35;
-}
 .kc-user-panel {
   margin-top: auto;
   min-height: 3.6rem;
@@ -4636,7 +4618,6 @@ ol.kc-md-list { list-style: decimal; }
 @media (prefers-reduced-motion: reduce) { .kc-composer-menu { animation: none; } }
 /* While the "Getting started" row is there it already says what to do next; the separate
    hint card above it only repeated it. */
-.channel-sidebar:has(.kc-activation) .kc-sidebar-hint { display: none; }
 
 /* "Copy user ID" on the Account card: a quiet text button, still fingertip-sized on phones. */
 @media (hover: none) and (pointer: coarse) {

@@ -179,3 +179,14 @@ test("a click outside closes the menu", () => {
     f.done();
   }
 });
+
+test("a set-up space's sidebar carries no permanent hint card", () => {
+  // "Ready when you are" sat under the channels of every space for good; it was only hidden
+  // while the getting-started checklist showed, so it surfaced once the checklist was done.
+  const f = mount({ owner: true, manage: true });
+  try {
+    assert.equal((f.container.textContent ?? "").includes("Ready when you are"), false);
+  } finally {
+    f.done();
+  }
+});
