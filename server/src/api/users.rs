@@ -378,7 +378,14 @@ pub async fn open_dm(
         return Err((StatusCode::FORBIDDEN, "you can't message this user".into()));
     }
 
-    // Check if a DM already exists between these two users.
+    // Look for the pair's DM and make one in a single write transaction. Two opens at once
+    // (a double tap, or both people starting the chat together) would otherwise both find
+    // none and make two. BEGIN IMMEDIATE takes the write lock before the look.
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
     let existing: Option<Channel> = sqlx::query_as(
         "SELECT c.* FROM channels c
          JOIN dm_participants dp1 ON dp1.channel_id = c.id AND dp1.user_id = ?
@@ -388,7 +395,7 @@ pub async fn open_dm(
     )
     .bind(&auth.0)
     .bind(&body.recipient_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
 
@@ -407,7 +414,7 @@ pub async fn open_dm(
     .bind("dm")
     .bind(0i64)
     .bind(now)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
 
@@ -415,10 +422,11 @@ pub async fn open_dm(
         sqlx::query("INSERT INTO dm_participants (channel_id, user_id) VALUES (?,?)")
             .bind(&id)
             .bind(uid)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await
             .map_err(crate::api::error::internal)?;
     }
+    tx.commit().await.map_err(crate::api::error::internal)?;
 
     let channel = Channel {
         id,
