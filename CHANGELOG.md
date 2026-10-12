@@ -14,9 +14,24 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ### Added
 - **ohiyo.gg has a Download section** for the desktop app, with the steps to open the Mac beta.
 
+### Changed
+- **Settings speaks in sentence case** like the rest of the app, and the Account card no longer
+  prints your user ID; "Copy user ID" puts it on the clipboard when support or a self-hosted
+  setup asks for it.
+- **The command palette only offers Instant Servers where they can be made.** The hosted
+  service can't make them, so its palette no longer lists them. The server answers
+  `GET /api/v1/instances/available`.
+- **The app's typefaces ship with it.** Inter, Sora and Geist Mono used to load from Google
+  Fonts, which held back the first paint and showed Google the IP address of everyone who
+  opened Ohiyo. The web and desktop content policies no longer allow Google's font hosts.
+
 ## [0.3.0] — 2026-10-12
 
 ### Added
+- **Join a space with an invite from the + button.** "Add a space" now offers both: create
+  one, or paste an invite code or link to join one. Before, the only place to paste an
+  invite was the welcome screen, so someone who already had a space couldn't join another
+  from the desktop app.
 - **Desktop app for Mac and Linux:** it can stay in the tray when you close the window, so
   notifications keep arriving (on by default on Mac, a setting on Linux), with the unread
   count on the Mac dock icon and a tray menu (open, leave call, check for updates, open at
@@ -194,6 +209,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
+- **A flatter message bar.** One bar holds everything: + on the left, emoji and send on the
+  right, with no box inside a box. On a computer, send shows once there's something to send;
+  on a phone it's always there.
 - **A new sign-in screen.** A painting fills the screen and follows your local time:
   sunrise, morning, the meadow in the afternoon, sunset, and a starry night with fireflies.
   It greets you to match ("Good morning.", "Good evening.", "Still up?"). The fields sit
@@ -321,6 +339,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- **Pasting an invite into "Add an Ohiyo home" no longer breaks the app.** It used to save
+  the code as a server address and switch to it, so nothing could connect. An invite or
+  private DM link pasted there now opens on your current home, and a home is only added
+  once it answers as an Ohiyo server.
 - **No more missed messages after a reconnect.** When a phone wakes, Wi-Fi changes or the
   server restarts, the open chat now catches up on what was sent, edited or deleted while
   you were away. A connection that falls too far behind starts over instead of silently

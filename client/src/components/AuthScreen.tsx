@@ -420,7 +420,7 @@ export function AuthScreen({ home, onAuth }: Props) {
               )}
             </button>
             <p className="text-center text-base leading-relaxed" style={{ color: "var(--text-muted)" }}>
-              On your other device: <strong>Settings → Privacy &amp; Security → Link a device</strong>.
+              On your other device: <strong>Settings → Privacy &amp; security → Link a device</strong>.
             </p>
           </form>
         )}

@@ -137,6 +137,8 @@ pub fn router() -> Router<AppState> {
             "/instances",
             get(instances::list_instances).post(instances::create_instance),
         )
+        // Whether this server can make Instant Servers at all (the app hides them if not).
+        .route("/instances/available", get(instances::instances_available))
         .route(
             "/instances/{id}",
             get(instances::get_instance).delete(instances::delete_instance),

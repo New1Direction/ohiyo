@@ -98,3 +98,10 @@ test("the mascot is a chinchilla, not a squirrel", () => {
 test("it says Sign out everywhere, not Log out in one place", () => {
   assert.deepEqual(filesContaining('"Log out"'), []);
 });
+
+// Settings used Title Case in a few places while every other label is in sentence case.
+const TITLE_CASE = ["Upload Avatar", ">My Account<", ">Custom Emoji<", ">Social Links<", "Privacy &amp; Security"];
+
+test("Settings uses sentence case, like the rest of the app", () => {
+  for (const phrase of TITLE_CASE) assert.deepEqual(filesContaining(phrase), [], phrase);
+});

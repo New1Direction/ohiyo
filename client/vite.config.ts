@@ -38,7 +38,7 @@ function wsOriginFrom(httpOrigin: string | undefined): string | null {
 // MUST be delivered as a real HTTP response header by the web server / CDN that
 // serves index.html. Setting response headers is not this file's job.
 function buildCsp(serverUrl: string | undefined): string {
-  const connect = new Set<string>(["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"]);
+  const connect = new Set<string>(["'self'"]);
   const media = new Set<string>(["'self'", "blob:", "data:", "https:"]);
   const img = new Set<string>(["'self'", "data:", "blob:", "https:"]);
   if (serverUrl) {
@@ -58,8 +58,8 @@ function buildCsp(serverUrl: string | undefined): string {
   return [
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com data:",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
     `img-src ${Array.from(img).join(" ")}`,
     `media-src ${Array.from(media).join(" ")}`,
     `connect-src ${Array.from(connect).join(" ")}`,
