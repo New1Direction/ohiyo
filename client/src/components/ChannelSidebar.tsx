@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { ActivationChecklist } from "./ActivationChecklist";
+import { SpaceOptions } from "./SpaceOptions";
 import type { Channel, ServerWithChannels, PublicUser } from "../api";
 import type { ActivationState } from "../lib/activation";
 import type { ConnectionStatus, Activity } from "../gateway";
@@ -52,6 +53,10 @@ type Props = {
   onOpenEvents?: () => void;
   onReportServer?: () => void;
   onOpenModQueue?: () => void;
+  /** Leave the space shown (a member). */
+  onLeaveServer?: (serverId: string) => Promise<void>;
+  /** Delete the space shown, with the password (its owner). */
+  onDeleteServer?: (serverId: string, password: string) => Promise<void>;
   activationState?: ActivationState;
   showActivationChecklist?: boolean;
   onDismissActivationChecklist?: () => void;
@@ -126,6 +131,8 @@ export function ChannelSidebar({
   onOpenEvents,
   onReportServer,
   onOpenModQueue,
+  onLeaveServer,
+  onDeleteServer,
   activationState,
   showActivationChecklist,
   onDismissActivationChecklist,
@@ -136,6 +143,15 @@ export function ChannelSidebar({
   const [newChannelName, setNewChannelName] = useState("");
   const [editingStatus, setEditingStatus] = useState(false);
   const serverIconInputRef = useRef<HTMLInputElement>(null);
+  // Space options is open for this space id; switching spaces closes it.
+  const [optionsFor, setOptionsFor] = useState<string | null>(null);
+  const optionsOpen = server !== null && optionsFor === server.id;
+  const optionsButtonRef = useRef<HTMLButtonElement>(null);
+  const isOwner = Boolean(server && currentUser && server.owner_id === currentUser.id);
+  const closeOptions = () => {
+    setOptionsFor(null);
+    optionsButtonRef.current?.focus();
+  };
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try {
       return new Set(JSON.parse(localStorage.getItem("kc:collapsed-cats") ?? "[]"));
@@ -362,6 +378,20 @@ export function ChannelSidebar({
               <Icon name="history" size={15} />
             </button>
           )}
+          {server && (isOwner ? onDeleteServer : onLeaveServer) && (
+            <button
+              ref={optionsButtonRef}
+              type="button"
+              onClick={() => (optionsOpen ? closeOptions() : setOptionsFor(server.id))}
+              title="Space options"
+              aria-label="Space options"
+              aria-expanded={optionsOpen}
+              className="kc-sidebar-action kc-interactive flex h-7 w-7 items-center justify-center rounded-full text-base"
+              style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "pointer" }}
+            >
+              <Icon name="more" size={15} />
+            </button>
+          )}
           {server && onInvite && (
             <button
               onClick={onInvite}
@@ -375,6 +405,15 @@ export function ChannelSidebar({
             </button>
           )}
         </div>
+        {server && optionsOpen && (
+          <SpaceOptions
+            name={server.name}
+            isOwner={isOwner}
+            onLeave={() => onLeaveServer?.(server.id) ?? Promise.resolve()}
+            onDelete={(password) => onDeleteServer?.(server.id, password) ?? Promise.resolve()}
+            onClose={closeOptions}
+          />
+        )}
       </div>
 
       {/* Connection banner — only visible when not healthy */}
