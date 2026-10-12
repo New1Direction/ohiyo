@@ -141,7 +141,17 @@ test("the legal pages say where the hosted service really runs", () => {
   // What a person's browser or device contacts besides Ohiyo itself is said outright.
   assert.match(privacy, /Google Fonts/);
   assert.match(privacy, /STUN/);
-  assert.match(privacy, /Updated October 5, 2026/);
+  assert.match(privacy, /Updated October 11, 2026/);
+});
+
+test("the privacy page says you can delete your account, and what that does not reach", () => {
+  // Deleting the account arrived in the app on 11 October 2026. Encrypted messages are
+  // decrypted on the devices of the people you wrote to, so the page must not suggest
+  // deletion reaches those copies.
+  const privacy = (parse("privacy.html").querySelector("main")?.textContent ?? "").replace(/\s+/g, " ");
+  assert.match(privacy, /delete your account in the app, under Settings → Account/);
+  assert.match(privacy, /copies on their own devices/);
+  assert.match(privacy, /change your password/i);
 });
 
 test("the landscape is decoration, and matches the script that draws it", () => {
