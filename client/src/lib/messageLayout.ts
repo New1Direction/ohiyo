@@ -58,6 +58,8 @@ export interface MessageRowMetrics {
   basePx: number;
   /** Height of one line of message text. */
   linePx: number;
+  /** Size of message text. */
+  fontPx: number;
   charsPerLine: number;
   /** Width of the message text column; 0 when the list has not been measured. */
   textWidth: number;
@@ -115,6 +117,11 @@ export function messageLineCount(text: string, charsPerLine: number): number {
   return text.split("\n").reduce((lines, paragraph) => lines + wrappedLines(paragraph, charsPerLine), 0);
 }
 
+/** Height of a message's text as drawn (stub: plain lines until the formatting commit). */
+export function messageContentPx(text: string, metrics: Pick<MessageRowMetrics, "linePx" | "fontPx" | "charsPerLine" | "textWidth">): number {
+  return messageLineCount(text, metrics.charsPerLine) * metrics.linePx;
+}
+
 /** The numbers a row's height is built from, for the current width, density and font scale. */
 export function messageRowMetrics(inputs: MessageRowInputs): MessageRowMetrics {
   const { fontScale, isPhone, lineHeight, densityBasePx } = inputs;
@@ -123,7 +130,7 @@ export function messageRowMetrics(inputs: MessageRowInputs): MessageRowMetrics {
   // The density base was tuned as "a one-message group minus one line of text", so it
   // already holds that message's own padding; take it back out and count it per message.
   const basePx = densityBasePx - MESSAGE_PAD_PX + (isPhone ? PHONE_ROW_EXTRA_PX : 0);
-  return { basePx, linePx, charsPerLine: messageCharsPerLine(inputs), textWidth: messageTextWidth(inputs) };
+  return { basePx, linePx, fontPx: 0, charsPerLine: messageCharsPerLine(inputs), textWidth: messageTextWidth(inputs) };
 }
 
 /** Cozy density on an unmeasured list: what the list uses until the first measurement. */
