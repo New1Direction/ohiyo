@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { api } from "../../api";
 import { deviceId } from "../../lib/signal";
 import { forgetDevices } from "../../lib/deviceWatch";
+import { useConfirmFocus } from "../../hooks/useConfirmFocus";
 
 type Device = { device_id: number; updated_at: number };
 
@@ -35,6 +36,7 @@ export function LinkedDevices({
   const [busy, setBusy] = useState<number | null>(null);
   const [confirmEverywhere, setConfirmEverywhere] = useState(false);
   const [everywhereBusy, setEverywhereBusy] = useState(false);
+  const everywhereFocus = useConfirmFocus<HTMLSpanElement, HTMLButtonElement>(confirmEverywhere);
   const thisDevice = deviceId();
 
   // Device-link code (this device acts as the primary that authorizes a new one).
@@ -205,7 +207,12 @@ export function LinkedDevices({
         <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--bg-hover)" }}>
           {confirmEverywhere ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+              <span
+                ref={everywhereFocus.question}
+                tabIndex={-1}
+                className="text-xs"
+                style={{ color: "var(--text-secondary)" }}
+              >
                 Every session ends, this one too. You&apos;ll sign in again here.
               </span>
               <button
@@ -221,7 +228,7 @@ export function LinkedDevices({
                   }
                 }}
                 className="rounded px-2.5 py-1 text-xs font-semibold"
-                style={{ background: "var(--danger)", color: "#fff", opacity: everywhereBusy ? 0.6 : 1 }}
+                style={{ background: "var(--danger-fill)", color: "#fff", opacity: everywhereBusy ? 0.6 : 1 }}
               >
                 {everywhereBusy ? "Signing out…" : "Sign out everywhere"}
               </button>
@@ -237,6 +244,7 @@ export function LinkedDevices({
             </div>
           ) : (
             <button
+              ref={everywhereFocus.opener}
               type="button"
               onClick={() => setConfirmEverywhere(true)}
               className="rounded px-2.5 py-1 text-xs font-semibold"

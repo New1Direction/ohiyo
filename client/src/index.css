@@ -1810,10 +1810,10 @@ button:disabled,
 .kc-msg-actions button:hover { background: var(--bg-hover); color: var(--text-primary); }
 .kc-msg-actions button:active { transform: scale(0.92) translateZ(0); }
 .kc-msg-actions button.active { color: var(--accent); }
-.kc-msg-actions button.danger:hover { background: var(--danger); color: #fff; }
+.kc-msg-actions button.danger:hover { background: var(--danger-fill); color: #fff; }
 .kc-msg-actions[data-confirm="1"] { gap: 4px; padding: 3px 5px; }
 .kc-msg-actions[data-confirm="1"] button { width: auto; padding: 0 9px; height: 26px; font-size: 12px; font-weight: 600; }
-.kc-msg-actions[data-confirm="1"] button.danger { color: #fff; background: var(--danger); }
+.kc-msg-actions[data-confirm="1"] button.danger { color: #fff; background: var(--danger-fill); }
 
 /* Reaction pills */
 .kc-reaction {
@@ -3343,7 +3343,8 @@ button:disabled,
    Fixed at the top like the update bar, and below it when both show. */
 .kc-device-alert {
   position: fixed;
-  top: 12px;
+  /* Below the iPhone's status bar when installed full-screen (viewport-fit=cover). */
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
   left: 50%;
   z-index: 61;
   width: min(520px, calc(100vw - 24px));
@@ -3356,7 +3357,7 @@ button:disabled,
   font-size: 13px;
   transform: translateX(-50%);
 }
-.kc-device-alert--lowered { top: 64px; }
+.kc-device-alert--lowered { top: calc(env(safe-area-inset-top, 0px) + 64px); }
 .kc-device-alert__title { font-weight: 700; }
 .kc-device-alert__when { font-weight: 500; color: var(--text-muted); }
 .kc-device-alert__text { margin-top: 4px; line-height: 1.45; color: var(--text-secondary); }
@@ -3365,9 +3366,16 @@ button:disabled,
 .kc-device-alert__danger { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; cursor: pointer; }
 .kc-device-alert__plain { background: var(--bg-input); color: var(--text-primary); }
 .kc-device-alert__plain:hover { background: var(--bg-hover); }
-.kc-device-alert__danger { background: var(--danger); color: #fff; }
+.kc-device-alert__danger { background: var(--danger-fill); color: #fff; }
 .kc-device-alert__plain:disabled,
 .kc-device-alert__danger:disabled { opacity: 0.6; cursor: default; }
+/* On a phone the two answers are finger-sized and set apart: a slip onto "Not me" signs
+   you out everywhere. */
+@media (hover: none) and (pointer: coarse) {
+  .kc-device-alert__actions { gap: 12px; }
+  .kc-device-alert__plain,
+  .kc-device-alert__danger { min-height: 44px; padding: 10px 18px; font-size: 14px; }
+}
 
 /* ─── On/off switch (Plugins settings) ──────────────────────────────────────────
    State comes from aria-checked, so what a screen reader hears and what is drawn can't

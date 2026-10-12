@@ -252,7 +252,7 @@ export function ChannelSidebar({
           {showMention ? (
             <span
               className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
-              style={{ background: "var(--danger)", color: "#fff", minWidth: 18, textAlign: "center" }}
+              style={{ background: "var(--danger-fill)", color: "#fff", minWidth: 18, textAlign: "center" }}
               aria-label="You were mentioned"
             >
               @
@@ -829,7 +829,7 @@ function ChannelRow({
       {showMention ? (
         <span
           className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
-          style={{ background: "var(--danger)", color: "#fff", minWidth: 18, textAlign: "center" }}
+          style={{ background: "var(--danger-fill)", color: "#fff", minWidth: 18, textAlign: "center" }}
           aria-label="You were mentioned"
         >
           @
