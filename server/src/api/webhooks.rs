@@ -99,9 +99,10 @@ pub struct WebhookWithToken {
     pub url: String,
 }
 
-const WEBHOOK_COLUMNS: &str =
-    "w.id, w.channel_id, w.server_id, w.name, u.avatar_url, w.created_by, w.created_at
-     FROM webhooks w JOIN users u ON u.id = w.bot_user_id";
+const WEBHOOK_COLUMNS: &str = "w.id, w.channel_id, w.server_id, w.name, u.avatar_url, w.created_by,
+     c.display_name AS created_by_name, w.created_at
+     FROM webhooks w JOIN users u ON u.id = w.bot_user_id
+     LEFT JOIN users c ON c.id = w.created_by";
 
 fn new_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
