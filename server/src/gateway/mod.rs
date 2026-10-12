@@ -34,6 +34,11 @@ pub struct WsQuery {
 pub type WsTickets = Arc<Mutex<HashMap<String, WsTicket>>>;
 const TICKET_TTL: Duration = Duration::from_secs(30);
 
+/// Tickets one account may ask for in a minute: room for every socket it may hold
+/// ([`MAX_CONNECTIONS_PER_USER`]) to open and then reconnect. Each ticket sits in one map,
+/// behind one lock that every account shares, for [`TICKET_TTL`].
+const TICKETS_PER_MIN: usize = 60;
+
 /// Who a ticket opens a socket for, and the user's token version when it was issued:
 /// "log out everywhere" bumps the version, which voids tickets issued before it.
 pub struct WsTicket {
@@ -65,6 +70,13 @@ pub async fn create_ws_ticket(
     auth::AuthUser(user_id, token_version): auth::AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<WsTicketResponse>, (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("ws-ticket:{user_id}"),
+        TICKETS_PER_MIN,
+        Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
     // Stamped with the version of the JWT that asked, not the account's current one:
     // if "log out everywhere" lands after that JWT passed the auth check, the ticket is
     // already stale and is refused on redeem.
