@@ -257,6 +257,49 @@ fn check_auth_rate(
     Ok(())
 }
 
+/// New usernames use ASCII letters, numbers, dots, underscores and dashes, so a name can't
+/// hide look-alike letters. Names made before this rule keep working; only sign-ups check it.
+fn username_characters_allowed(name: &str) -> bool {
+    name.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+/// Whether an account already has this name, whatever its case.
+async fn username_taken<'e>(
+    db: impl sqlx::SqliteExecutor<'e>,
+    username: &str,
+) -> Result<bool, sqlx::Error> {
+    let found: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM users WHERE username = ? COLLATE NOCASE LIMIT 1")
+            .bind(username)
+            .fetch_optional(db)
+            .await?;
+    Ok(found.is_some())
+}
+
+/// The account a sign-in names: the exact username, or else the one account whose name
+/// matches whatever the case. Names were case-sensitive before, so two older accounts can
+/// differ only by case; then only the exact spelling signs in.
+async fn login_account(db: &sqlx::SqlitePool, username: &str) -> Result<Option<User>, sqlx::Error> {
+    let exact: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
+        .bind(username)
+        .fetch_optional(db)
+        .await?;
+    if exact.is_some() {
+        return Ok(exact);
+    }
+    let mut matches: Vec<User> =
+        sqlx::query_as("SELECT * FROM users WHERE username = ? COLLATE NOCASE LIMIT 2")
+            .bind(username)
+            .fetch_all(db)
+            .await?;
+    Ok(if matches.len() == 1 {
+        matches.pop()
+    } else {
+        None
+    })
+}
+
 #[derive(Deserialize)]
 pub struct RegisterBody {
     pub username: String,
@@ -301,6 +344,12 @@ pub async fn register(
             "username must be 2–32 chars".into(),
         ));
     }
+    if !username_characters_allowed(&body.username) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "usernames can use letters, numbers, dots, underscores and dashes".into(),
+        ));
+    }
     if body.password.len() < 8 {
         return Err((StatusCode::BAD_REQUEST, "password must be ≥8 chars".into()));
     }
@@ -308,13 +357,10 @@ pub async fn register(
         crate::api::limits::check_len("display name", name, crate::api::limits::DISPLAY_NAME)?;
     }
 
-    let existing: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
-        .bind(&body.username)
-        .fetch_optional(&state.db)
+    if username_taken(&state.db, &body.username)
         .await
-        .map_err(crate::api::error::internal)?;
-
-    if existing.is_some() {
+        .map_err(crate::api::error::internal)?
+    {
         return Err((StatusCode::CONFLICT, "username taken".into()));
     }
 
@@ -326,8 +372,20 @@ pub async fn register(
     let id = new_id();
     let display_name = body.display_name.unwrap_or_else(|| body.username.clone());
 
-    // The look above runs before the slow hash, so two sign-ups for one name can both pass
-    // it: the second insert breaks the unique username and is told the name is taken.
+    // The look above runs before the slow hash, so two sign-ups for one name (in any case)
+    // can both pass it. BEGIN IMMEDIATE takes the write lock, then looks again and inserts,
+    // so the second is told the name is taken.
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
+    if username_taken(&mut *tx, &body.username)
+        .await
+        .map_err(crate::api::error::internal)?
+    {
+        return Err((StatusCode::CONFLICT, "username taken".into()));
+    }
     sqlx::query(
         "INSERT INTO users (id, username, display_name, password_hash, created_at) VALUES (?,?,?,?,?)",
     )
@@ -336,7 +394,7 @@ pub async fn register(
     .bind(&display_name)
     .bind(&hash)
     .bind(now_unix())
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(|e| {
         if e.as_database_error()
@@ -347,6 +405,7 @@ pub async fn register(
             crate::api::error::internal(e)
         }
     })?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
 
     // Counted only now, so bad input or a taken username costs no registration slot.
     if register_limit > 0 {
@@ -392,21 +451,19 @@ pub async fn login(
     Json(body): Json<LoginBody>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
     check_auth_rate(&state, &headers, &addr)?;
-    let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
-        .bind(&body.username)
-        .fetch_optional(&state.db)
+    let user = login_account(&state.db, &body.username)
         .await
         .map_err(crate::api::error::internal)?;
 
     let user = user.ok_or((StatusCode::UNAUTHORIZED, "invalid credentials".into()))?;
 
     // Keyed only once the username exists, so made-up usernames can't mint limiter keys.
-    // Exact username: usernames are case-sensitive, so this is one account's key.
+    // Keyed on the account, not the spelling, so every case of a name shares one limit.
     // 0 turns the per-username limit off (the per-address auth limit above still applies).
     let login_limit = state.login_limit_per_username_per_minute;
     if login_limit > 0
         && !state.rate.check_unauth(
-            &format!("login-user:{}", body.username),
+            &format!("login-user:{}", user.id),
             login_limit,
             Duration::from_secs(60),
         )

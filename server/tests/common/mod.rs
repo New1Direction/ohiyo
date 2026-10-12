@@ -89,6 +89,9 @@ impl TestServer {
             .await
             .expect("connect + migrate test database");
         let mut state = server::build_state(pool);
+        // How full the test machine's disk is isn't the test's business: the disk guard is
+        // off unless a test turns it on in `configure`.
+        state.min_free_disk_bytes = 0;
         configure(&mut state);
         let app = server::build_app(state.clone());
 

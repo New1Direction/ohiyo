@@ -32,7 +32,7 @@ pub(crate) fn upload_dir() -> PathBuf {
 /// Default per-user cumulative upload cap (bytes). Overridable via
 /// `MAX_UPLOAD_BYTES_PER_USER` so operators can size it to their volume — it stops a
 /// single account from exhausting the shared disk and breaking the DB for everyone.
-const DEFAULT_MAX_BYTES_PER_USER: i64 = 10 * 1024 * 1024 * 1024; // 10 GiB
+const DEFAULT_MAX_BYTES_PER_USER: i64 = 1024 * 1024 * 1024; // 1 GiB
 
 fn max_bytes_per_user() -> i64 {
     std::env::var("MAX_UPLOAD_BYTES_PER_USER")
@@ -40,6 +40,59 @@ fn max_bytes_per_user() -> i64 {
         .and_then(|v| v.parse::<i64>().ok())
         .filter(|&n| n > 0)
         .unwrap_or(DEFAULT_MAX_BYTES_PER_USER)
+}
+
+/// The disk reserve uploads must leave free (see `AppState::min_free_disk_bytes`), read
+/// from `MIN_FREE_DISK_BYTES`.
+pub fn min_free_disk_from_env() -> u64 {
+    parse_min_free_disk(std::env::var("MIN_FREE_DISK_BYTES").ok().as_deref())
+}
+
+/// Free space uploads leave alone unless `MIN_FREE_DISK_BYTES` says otherwise. The
+/// database and the uploads share one volume: SQLite needs room for its WAL and for
+/// every write, and a full disk stops the whole service, not just uploads.
+const DEFAULT_MIN_FREE_DISK_BYTES: u64 = 5 * 1024 * 1024 * 1024; // 5 GiB
+
+/// A non-negative byte count, 0 meaning no guard; the default when unset or unparseable.
+fn parse_min_free_disk(raw: Option<&str>) -> u64 {
+    raw.and_then(|v| v.trim().parse().ok())
+        .unwrap_or(DEFAULT_MIN_FREE_DISK_BYTES)
+}
+
+/// What a refused upload says when the disk is down to its reserve.
+const DISK_FULL: &str = "Ohiyo is short on storage right now. Try again later.";
+
+/// How many bytes this request may still write before the volume holding `root` is down
+/// to `reserve`; `None` when there is no limit (the guard is off, or free space can't be
+/// measured here — refusing every upload over a failed measurement would be worse).
+fn disk_headroom(root: &std::path::Path, reserve: u64) -> Option<u64> {
+    if reserve == 0 {
+        return None;
+    }
+    match available_bytes(root) {
+        Ok(free) => Some(free.saturating_sub(reserve)),
+        Err(e) => {
+            tracing::warn!(error = %e, "couldn't measure free disk space; uploads are not guarded");
+            None
+        }
+    }
+}
+
+/// Bytes an unprivileged process can still write on the filesystem holding `path`.
+#[cfg(unix)]
+fn available_bytes(path: &std::path::Path) -> std::io::Result<u64> {
+    let stats = rustix::fs::statvfs(path)?;
+    Ok(stats.f_bavail.saturating_mul(stats.f_frsize))
+}
+
+#[cfg(not(unix))]
+fn available_bytes(_path: &std::path::Path) -> std::io::Result<u64> {
+    Err(std::io::Error::other("free space is only measured on Unix"))
+}
+
+fn refuse_disk_full(reserve: u64) -> (StatusCode, String) {
+    tracing::warn!(reserve, "upload refused: the disk is down to its reserve");
+    (StatusCode::INSUFFICIENT_STORAGE, DISK_FULL.into())
 }
 
 /// Media types we are willing to serve INLINE (rendered by the browser). Everything
@@ -95,6 +148,16 @@ pub async fn upload_file(
         .await
         .map_err(crate::api::error::internal)?;
 
+    // The disk guard: what this request may write before the volume is down to its
+    // reserve, measured once up front. Concurrent uploads share what's left, which is
+    // what the reserve is sized to absorb.
+    let reserve = state.min_free_disk_bytes;
+    let headroom = disk_headroom(&upload_root, reserve);
+    if headroom == Some(0) {
+        return Err(refuse_disk_full(reserve));
+    }
+    let mut written_this_request: u64 = 0;
+
     // Per-user storage quota. `used` starts at the bytes already attributable to this
     // account and grows as new (non-deduplicated) files are committed this request.
     let quota = max_bytes_per_user();
@@ -146,6 +209,7 @@ pub async fn upload_file(
             .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
         {
             size_bytes = size_bytes.saturating_add(chunk.len() as u64);
+            written_this_request = written_this_request.saturating_add(chunk.len() as u64);
             // Abort the moment this upload would push the user over quota — so an
             // over-limit file is never fully written to disk in the first place.
             if used_u.saturating_add(size_bytes) > quota_u {
@@ -153,6 +217,10 @@ pub async fn upload_file(
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "upload quota exceeded".into(),
                 ));
+            }
+            // Likewise the moment it would eat into the disk reserve.
+            if headroom.is_some_and(|room| written_this_request > room) {
+                return Err(refuse_disk_full(reserve));
             }
             hasher.update(&chunk);
             tmp_file
@@ -725,6 +793,22 @@ pub async fn serve_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_account_may_store_one_gib_of_uploads_by_default() {
+        // MAX_UPLOAD_BYTES_PER_USER is never set in this test binary.
+        assert_eq!(max_bytes_per_user(), 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn the_disk_reserve_is_five_gib_unless_set_and_zero_turns_it_off() {
+        let five_gib = 5 * 1024 * 1024 * 1024;
+        assert_eq!(parse_min_free_disk(None), five_gib);
+        assert_eq!(parse_min_free_disk(Some("not a number")), five_gib);
+        assert_eq!(parse_min_free_disk(Some("-1")), five_gib);
+        assert_eq!(parse_min_free_disk(Some("0")), 0);
+        assert_eq!(parse_min_free_disk(Some(" 1048576 ")), 1_048_576);
+    }
 
     #[test]
     fn inline_safe_allows_media_and_blocks_active_content() {

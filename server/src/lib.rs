@@ -70,6 +70,10 @@ pub struct AppState {
     /// Cloudflare's TURN relay for calls that can't connect directly; `None` unless both
     /// `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` are set at startup.
     pub cloudflare_turn: Option<api::ice::CloudflareTurn>,
+    /// Free disk space (bytes) that uploads must leave untouched, so the database on the
+    /// same volume always has room to write; 0 turns the guard off. Read once at startup
+    /// from `MIN_FREE_DISK_BYTES`.
+    pub min_free_disk_bytes: u64,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
@@ -102,6 +106,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         register_limit_per_hour: api::auth::register_limit_from_env(),
         login_limit_per_username_per_minute: api::auth::login_limit_from_env(),
         cloudflare_turn: api::ice::CloudflareTurn::from_env(),
+        min_free_disk_bytes: api::files::min_free_disk_from_env(),
     }
 }
 
