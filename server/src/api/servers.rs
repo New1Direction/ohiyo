@@ -445,6 +445,16 @@ pub async fn delete_server(
     }
     crate::api::auth::require_password(&state, &auth.0, body.password).await?;
 
+    let mut conn = state
+        .db
+        .acquire()
+        .await
+        .map_err(crate::api::error::internal)?;
+    let files = crate::api::files::files_of_server(&mut conn, &id)
+        .await
+        .map_err(crate::api::error::internal)?;
+    drop(conn);
+
     // Notify members BEFORE deleting — the cascade removes server_members rows,
     // so we must resolve recipients while they still exist.
     broadcast_to_server(&state, &id, &GatewayEvent::ServerDelete { id: id.clone() }).await;
@@ -454,6 +464,7 @@ pub async fn delete_server(
         .execute(&state.db)
         .await
         .map_err(crate::api::error::internal)?;
+    crate::api::files::release_files_in_batches(&state.db, &files).await;
 
     Ok(StatusCode::NO_CONTENT)
 }

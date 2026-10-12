@@ -365,3 +365,68 @@ async fn dead_man_wipe_deletes_messages_first_then_releases_files_in_small_batch
         "only the failed batch rolls back; the batches before and after it are released"
     );
 }
+
+async fn send_to(w: &World, channel_id: &str, file_id: &str) {
+    let res = w
+        .srv
+        .post_json_auth(
+            &format!("/api/v1/channels/{channel_id}/messages"),
+            &w.alice.token,
+            json!({ "content": "see attached", "attachment_ids": [file_id] }),
+        )
+        .await;
+    assert_eq!(res.status(), 200, "send with attachment");
+}
+
+/// A channel's messages go with it, and their uploads used to stay stored and reachable
+/// by anyone with the link.
+#[tokio::test]
+async fn deleting_a_channel_takes_its_files() {
+    let w = world().await;
+    let channel: Value = w
+        .srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{}/channels", w.server_id),
+            &w.alice.token,
+            json!({ "name": "pics" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let channel_id = channel["id"].as_str().unwrap().to_owned();
+    let file_id = upload(&w, &unique_bytes()).await;
+    send_to(&w, &channel_id, &file_id).await;
+    let blob = blob_path(&w, &file_id).await;
+
+    let res = w
+        .srv
+        .delete_auth(&format!("/api/v1/channels/{channel_id}"), &w.alice.token)
+        .await;
+    assert_eq!(res.status(), 204);
+
+    assert_eq!(file_status(&w, &file_id).await, 404);
+    assert!(!blob.exists(), "the blob is removed from disk");
+}
+
+/// The same for a whole space.
+#[tokio::test]
+async fn deleting_a_space_takes_its_files() {
+    let w = world().await;
+    let file_id = upload(&w, &unique_bytes()).await;
+    send(&w, &file_id).await;
+    let blob = blob_path(&w, &file_id).await;
+
+    let res = w
+        .srv
+        .delete_json_auth(
+            &format!("/api/v1/servers/{}", w.server_id),
+            &w.alice.token,
+            json!({ "password": "supersecret123" }),
+        )
+        .await;
+    assert_eq!(res.status(), 204);
+
+    assert_eq!(file_status(&w, &file_id).await, 404);
+    assert!(!blob.exists(), "the blob is removed from disk");
+}
