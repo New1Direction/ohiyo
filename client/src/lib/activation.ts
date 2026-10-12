@@ -82,3 +82,8 @@ export function setActivationDismissed(userId: string | null | undefined, dismis
 export function activationCompletedCount(state: ActivationState): number {
   return ACTIVATION_MILESTONES.filter((m) => Boolean(state[m])).length;
 }
+
+/** Every step done. (Placeholder: always false, to be replaced.) */
+export function isActivationComplete(_state: ActivationState): boolean {
+  return false;
+}
