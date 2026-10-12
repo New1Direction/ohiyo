@@ -1,11 +1,16 @@
 //! S-H3: the gateway `Ready` snapshot must apply View Channel exactly like REST does.
 //! A channel the member cannot see must not appear in `Ready` (name/topic), and its
 //! unread count must not leak through the `unread` map either.
+//!
+//! R-L2: a Ready the server couldn't fully read went out anyway, without what failed. A
+//! database error showed as an empty chat list, or a space with no channels, as if they
+//! were gone. Now the socket closes as a server error (1011) and the app connects again.
 
 mod common;
 
 use common::{ws::Gateway, TestServer};
 use serde_json::{json, Value};
+use sqlx::SqlitePool;
 
 const VIEW_CHANNEL: i64 = 1 << 6;
 const SEND_MESSAGES: i64 = 1 << 7;
@@ -505,4 +510,56 @@ async fn ready_names_the_other_person_in_each_one_to_one_dm() {
         "a group chat keeps its own name"
     );
     assert_eq!(peers.len(), 1);
+}
+
+/// Connect, and expect the socket to close as a server error without a Ready.
+async fn closes_without_ready(srv: &TestServer, token: &str, attempt: usize) {
+    let mut gw = Gateway::connect(srv, token).await;
+    let (code, events) = gw.wait_closed().await;
+    assert_eq!(
+        code,
+        Some(1011),
+        "attempt {attempt} closes as a server error"
+    );
+    assert!(
+        events.iter().all(|e| e["t"] != "Ready"),
+        "attempt {attempt} sends no Ready"
+    );
+}
+
+#[tokio::test]
+async fn a_chat_list_that_cant_be_read_closes_the_socket_instead_of_sending_none() {
+    let srv = TestServer::start().await;
+    let user = srv.register("readychats", "supersecret123").await;
+    let pool = SqlitePool::connect(srv.db_url()).await.unwrap();
+    sqlx::query("DROP TABLE dm_participants")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // One more try than an account may hold sockets (20): a failed one isn't left counted.
+    for attempt in 0..21 {
+        closes_without_ready(&srv, &user.token, attempt).await;
+    }
+}
+
+#[tokio::test]
+async fn a_space_that_cant_be_read_closes_the_socket_instead_of_sending_it_bare() {
+    let srv = TestServer::start().await;
+    let user = srv.register("readyspace", "supersecret123").await;
+    let res = srv
+        .post_json_auth(
+            "/api/v1/servers",
+            &user.token,
+            json!({ "name": "Unreadable" }),
+        )
+        .await;
+    assert_eq!(res.status(), 200);
+    let pool = SqlitePool::connect(srv.db_url()).await.unwrap();
+    sqlx::query("DROP TABLE categories")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    closes_without_ready(&srv, &user.token, 0).await;
 }
