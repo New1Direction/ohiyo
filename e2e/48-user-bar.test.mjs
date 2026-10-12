@@ -106,6 +106,8 @@ try {
   });
   if (headerWraps) throw new Error("on a phone the message time drops under a long name");
   log("on a phone a long name shortens and the time stays on the same line ✓");
+  // The "Welcome to …" notice sits over the first message on a phone; let it go first.
+  await phone.waitForSelector(".ohiyo-toast", { state: "detached", timeout: 12000 }).catch(() => {});
   await shot(phone, "48-user-bar-phone-chat");
 
   await phone.locator('button[aria-label="Open channels"]').first().click();
