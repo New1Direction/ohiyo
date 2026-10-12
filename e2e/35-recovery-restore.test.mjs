@@ -102,6 +102,9 @@ try {
   await pageA1.click('button[aria-label="Settings"]');
   await pageA1.click('button:has-text("Privacy & security")');
   await pageA1.click('button:has-text("Back up my keys now")');
+  // Making a backup asks for the password again: a stolen session must not replace it.
+  await pageA1.fill('input[aria-label="Your password"]', PASS);
+  await pageA1.click('form[aria-label="Confirm with your password"] button[type="submit"]');
   // "Copy code" only appears in the box that shows a freshly made code.
   const copyCode = pageA1.locator('button:has-text("Copy code")');
   await copyCode.waitFor({ timeout: 10000 });
