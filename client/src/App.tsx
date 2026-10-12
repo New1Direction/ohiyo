@@ -411,6 +411,10 @@ function AddHomeModal({ onAdd, onClose }: { onAdd: (url: string) => void; onClos
 
 const NO_NEW_DEVICES: NewDevice[] = [];
 
+/** Longest wait between asks when a refused session's "who am I?" check can't reach the
+ *  server (the waits start at 2 s and double). */
+const SIGNED_OUT_RECHECK_MAX_MS = 30_000;
+
 /** Read this account's devices and note any this device hasn't seen (deviceWatch). */
 async function checkOwnDevices(token: string, userId: string): Promise<void> {
   try {
@@ -2022,28 +2026,39 @@ function MainApp({
   useEffect(() => {
     if (connStatus !== "signed_out") return;
     let alive = true;
-    const checked = latestTokenRef.current;
-    api.me(checked).then(
-      () => {
-        // Still signed in. If the token didn't change either, try the socket again.
-        if (alive && latestTokenRef.current === checked) void gatewayRef.current?.connect();
-      },
-      (err: unknown) => {
-        if (!alive || apiStatus(err) !== 401) return;
-        // Another tab of this browser may hold a newer session for this home (its own
-        // password change ends this one and stores a new one for both): carry on with it,
-        // rather than clear it and sign that tab out too.
-        const stored = loadHomes().find((h) => h.id === activeHomeId)?.token ?? null;
-        if (stored && stored !== checked) {
-          onTokenChange(stored);
-          return;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const check = (attempt: number) => {
+      const checked = latestTokenRef.current;
+      api.me(checked).then(
+        () => {
+          // Still signed in. If the token didn't change either, try the socket again.
+          if (alive && latestTokenRef.current === checked) void gatewayRef.current?.connect();
+        },
+        (err: unknown) => {
+          if (!alive) return;
+          if (apiStatus(err) !== 401) {
+            // The question itself failed (offline, server busy): ask again in a while,
+            // rather than leave this device on "Signed out" with no way forward.
+            retry = setTimeout(() => check(attempt + 1), Math.min(SIGNED_OUT_RECHECK_MAX_MS, 2_000 * 2 ** attempt));
+            return;
+          }
+          // Another tab of this browser may hold a newer session for this home (its own
+          // password change ends this one and stores a new one for both): carry on with it,
+          // rather than clear it and sign that tab out too.
+          const stored = loadHomes().find((h) => h.id === activeHomeId)?.token ?? null;
+          if (stored && stored !== checked) {
+            onTokenChange(stored);
+            return;
+          }
+          setSignInNotice("You were signed out on this device. Sign in again to carry on.");
+          onBackToSignIn();
         }
-        setSignInNotice("You were signed out on this device. Sign in again to carry on.");
-        onBackToSignIn();
-      }
-    );
+      );
+    };
+    check(0);
     return () => {
       alive = false;
+      clearTimeout(retry);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- react to the status only; onBackToSignIn is a fresh closure each render
   }, [connStatus]);
