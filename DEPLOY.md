@@ -189,7 +189,8 @@ blobs. Losing it is unrecoverable, so back it up.
   ```
 - **Continuous backup (recommended — already wired in).** The runtime image bundles
   [Litestream](https://litestream.io). Set `LITESTREAM_REPLICA_URL` (+ store
-  credentials) and the SQLite WAL streams to object storage (S3/R2) for point-in-time
+  credentials, and `LITESTREAM_ENDPOINT` for any store other than AWS S3, such as
+  Cloudflare R2) and the SQLite WAL streams to object storage for point-in-time
   recovery, and the DB is auto-restored on a fresh volume. Setup:
   [`infra/litestream/README.md`](infra/litestream/README.md). Unset = off (no-op).
 

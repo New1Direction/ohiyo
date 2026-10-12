@@ -127,21 +127,25 @@ test("the site does not promise what the hosted service does not do today", () =
 });
 
 test("the legal pages say where the hosted service really runs", () => {
-  // The service moved from Fly.io to Railway on 3 October 2026 and stopped using Cloudflare.
-  // The privacy page went on naming Fly.io, and promising volume snapshots, for days.
+  // The service moved from Fly.io to Railway on 3 October 2026. The privacy page went on
+  // naming Fly.io, and promising volume snapshots, for days.
   const text = (page: string) => (parse(page).querySelector("main")?.textContent ?? "").replace(/\s+/g, " ");
   for (const page of ["privacy.html", "terms.html"]) {
-    assert.doesNotMatch(text(page), /Fly\.io|Cloudflare/, `${page} names a provider that is no longer used`);
+    assert.doesNotMatch(text(page), /Fly\.io/, `${page} names a provider that is no longer used`);
     assert.match(text(page), /Railway/, `${page} names the host`);
   }
   const privacy = text("privacy.html");
   assert.match(privacy, /database and uploads are stored on Railway/);
-  // Backups can't be promised from here: nothing in this repository turns them on.
   assert.doesNotMatch(privacy, /snapshots? enabled/i);
+  // Since 12 October 2026 Litestream copies the database to Cloudflare R2 (see
+  // infra/litestream/README.md): the database only, kept for 3 days.
+  assert.match(privacy, /copy of the database \(not the uploads\) is kept in Cloudflare R2/);
+  assert.match(privacy, /for up to three days/);
+  assert.match(privacy, /Cloudflare stores the copy of the database/);
   // What a person's browser or device contacts besides Ohiyo itself is said outright.
   assert.match(privacy, /Google Fonts/);
   assert.match(privacy, /STUN/);
-  assert.match(privacy, /Updated October 11, 2026/);
+  assert.match(privacy, /Updated October 12, 2026/);
 });
 
 test("the privacy page says you can delete your account, and what that does not reach", () => {

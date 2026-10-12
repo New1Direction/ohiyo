@@ -52,8 +52,14 @@ Run at least weekly and before launch milestones:
 # Local DB copy drill
 scripts/backup-restore-drill.sh
 
-# Litestream/object-store drill, when replica is configured
+# Litestream/object-store drill, when replica is configured (needs Litestream 0.3.13)
 LITESTREAM_REPLICA_URL=s3://bucket/path/to/ohiyo.db scripts/backup-restore-drill.sh
+
+# Cloudflare R2 (the hosted service) also needs the endpoint and the token's keys
+LITESTREAM_REPLICA_URL=s3://ohiyo-backups/ohiyo.db \
+LITESTREAM_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com \
+LITESTREAM_ACCESS_KEY_ID=... LITESTREAM_SECRET_ACCESS_KEY=... \
+  scripts/backup-restore-drill.sh
 ```
 
 Pass criteria:
