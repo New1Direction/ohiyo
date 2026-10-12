@@ -103,6 +103,7 @@ import { unreadTotal, withoutUnread } from "./lib/unreadTotal";
 import { useDesktopShell } from "./hooks/useDesktopShell";
 import { useAppUpdate } from "./hooks/useAppUpdate";
 import { UpdateBar } from "./components/UpdateBar";
+import { SignedOutUpdates } from "./components/SignedOutUpdates";
 import { NewDeviceAlert } from "./components/NewDeviceAlert";
 import { setSignInNotice } from "./lib/sessionNotice";
 import {
@@ -333,6 +334,7 @@ export default function App() {
           onSwitchHome={setActiveHomeId}
           onAddHome={() => setShowAddHome(true)}
         />
+        <SignedOutUpdates />
         {addHomeModal}
       </>
     );
