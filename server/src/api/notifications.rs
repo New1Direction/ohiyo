@@ -207,7 +207,8 @@ pub fn should_push(
 /// True if `content` mentions `username`, or says @everyone or @here. Same rule as the app's
 /// (client/src/lib/mentions.ts), checked against the same cases
 /// (client/test/fixtures/mention-cases.json):
-/// - a mention starts with `@` at the start of the text or after whitespace, so an email
+/// - a mention starts with `@` at the start of the text or after whitespace
+///   ([`char::is_whitespace`], so an invisible U+FEFF before it is no break), so an email
 ///   address is never one;
 /// - its name is the run of username characters (ASCII letters and digits, `.`, `_`, `-`)
 ///   after the `@`, matched in any case;
