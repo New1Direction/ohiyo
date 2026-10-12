@@ -97,10 +97,13 @@ test("the new-device alert takes the keyboard from Settings, keeps it, and hands
     assert.equal(alert.getAttribute("aria-modal"), "true");
     assert.match(where(), /^alert /, "focus moves into the alert");
 
+    const button = (text: string) =>
+      [...alert.querySelectorAll("button")].find((b) => b.textContent?.trim() === text) as unknown as HTMLButtonElement;
     press("Tab");
     assert.equal(where(), "alert button: It was me", "Tab goes to the alert's first answer");
-    press("Tab");
-    assert.equal(where(), "alert button: Not me");
+    // happy-dom has no Tab of its own between controls, so move to the last answer the way
+    // the browser would, then check the wrap the alert does itself.
+    bundle.mod.act(() => button("Not me").focus());
     press("Tab");
     assert.equal(where(), "alert button: It was me", "Tab from the last answer wraps to the first");
     press("Tab", true);
@@ -110,8 +113,7 @@ test("the new-device alert takes the keyboard from Settings, keeps it, and hands
     assert.deepEqual(closed, [], "Escape in the alert does not close Settings underneath");
     assert.ok(document.querySelector(".kc-device-alert"), "and does not dismiss the question");
 
-    const keep = [...alert.querySelectorAll("button")].find((b) => b.textContent?.trim() === "It was me");
-    bundle.mod.act(() => (keep as unknown as HTMLButtonElement).click());
+    bundle.mod.act(() => button("It was me").click());
     assert.deepEqual(f.answers, ["keep"]);
     assert.equal(document.querySelector(".kc-device-alert") === null, true, "the alert is gone");
     assert.equal(where(), inSettings, "focus is back where it was in Settings");
