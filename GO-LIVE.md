@@ -125,4 +125,4 @@ add a Cloudflare `CNAME api → <fly-app>.fly.dev`, `fly certs add api.ohiyo.gg`
 | Instant Servers control plane | ⏸ off on the hosted server: without `FLY_API_TOKEN` it refuses to create them (HTTP 503). The code remains in the repo |
 | Old Fly apps | ⚠️ not shut down when the hosting moved (see `LAUNCH-STATUS.md`); they are the owner's to remove |
 | Backups | ⚠️ not verified for Railway. The Fly volume snapshots (30-day retention) were on the old Fly volume only; Litestream continuous backup remains optional/not configured |
-| Desktop public release | ⚠️ Linux assets are public; macOS downloads remain paused until Apple Developer ID signing/notarization secrets are added |
+| Desktop public release | ⚠️ 0.3.0 is public for Mac (beta, not Apple verified) and Linux (untested by hand); Windows not yet |

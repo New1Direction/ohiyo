@@ -19,10 +19,11 @@ box; server channels are stored like any chat server's.
   <img src="./brand/kikka-chinchilla.svg" alt="Kikka, the coral chinchilla mascot" width="120" />
 </p>
 
-> **Status:** v0.2.0 public beta — early but real. The hosted app is live at
+> **Status:** v0.3.0 public beta — early but real. The hosted app is live at
 > [app.ohiyo.gg](https://app.ohiyo.gg), the public site is live at
-> [ohiyo.gg](https://ohiyo.gg), and a 28-suite end-to-end run is part of CI. Desktop builds are in
-> [Releases](../../releases); Mac builds are beta/ad-hoc signed until Apple notarization is complete.
+> [ohiyo.gg](https://ohiyo.gg), and a 28-suite end-to-end run is part of CI. Desktop apps for Mac and
+> Linux are on [ohiyo.gg](https://ohiyo.gg/#download) and in [Releases](../../releases); the Mac build is a
+> beta that Apple has not verified yet.
 
 ---
 

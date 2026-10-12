@@ -11,6 +11,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
 
+### Added
+- **ohiyo.gg has a Download section** for the desktop app, with the steps to open the Mac beta.
+
 ## [0.3.0] — 2026-10-12
 
 ### Added
