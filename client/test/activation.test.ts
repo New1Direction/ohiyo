@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   activationCompletedCount,
+  isActivationComplete,
   isActivationDismissed,
   loadActivation,
   markActivation,
@@ -44,4 +45,15 @@ test("activation dismissal is per-user", () => {
   assert.equal(isActivationDismissed("u2"), false);
   setActivationDismissed("u1", false);
   assert.equal(isActivationDismissed("u1"), false);
+});
+
+test("the checklist counts as finished only once every step is done", () => {
+  store.clear();
+  let state = loadActivation("u3");
+  for (const milestone of ["account", "server", "message", "invite"] as const) {
+    state = markActivation("u3", milestone, 100);
+    assert.equal(isActivationComplete(state), false, `not finished after ${milestone}`);
+  }
+  state = markActivation("u3", "call", 100);
+  assert.equal(isActivationComplete(state), true);
 });

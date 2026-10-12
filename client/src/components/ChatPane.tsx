@@ -19,6 +19,7 @@ import { PollWidget } from "./PollWidget";
 import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention } from "../lib/mentions";
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
+import { formatClockTime, formatFullTime, formatMessageTime } from "../lib/messageTime";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
 import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, TOUCH_ACTIONS_QUERY, lockedCardPx, messageContentPx, messageGroupTextPx, messageRowMetrics, reactionsPx, type LockedCardCopy } from "../lib/messageLayout";
 import { safeHttpUrl } from "../lib/url";
@@ -1733,16 +1734,12 @@ export function ChatPane({
                         >
                           {g.author.display_name}
                         </button>
-                        <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                          {formatTime(g.msgs[0].created_at)}
-                        </span>
+                        <MessageTime unix={g.msgs[0].created_at} className="text-xs" style={{ color: "var(--text-secondary)" }} />
                       </div>
                       {g.msgs.map((msg, mi) => (
                         <div key={msg.id} data-message-id={msg.id} className="kc-msg">
                           {mi > 0 && (
-                            <span className="kc-msg-time">
-                              {new Date(msg.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                            </span>
+                            <MessageTime unix={msg.created_at} short className="kc-msg-time" />
                           )}
                           {msg.pinned && (
                             <div className="mb-0.5 flex items-center gap-1 text-xs" style={{ color: "var(--accent)" }}>
@@ -3164,13 +3161,15 @@ function LoadingSpinner() {
   );
 }
 
-function formatTime(unix: number): string {
-  const d = new Date(unix * 1000);
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) {
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-  return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+/** A message's time ("Today at 9:23 AM"), with the full date on hover. `short` is the
+ *  clock time alone, for the later messages in a group. */
+function MessageTime({ unix, short = false, className, style }: { unix: number; short?: boolean; className?: string; style?: React.CSSProperties }) {
+  const ms = unix * 1000;
+  return (
+    <time dateTime={new Date(ms).toISOString()} title={formatFullTime(ms)} className={className} style={style}>
+      {short ? formatClockTime(ms) : formatMessageTime(ms)}
+    </time>
+  );
 }
 
 function formatBytes(bytes: number): string {

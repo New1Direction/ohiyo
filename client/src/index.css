@@ -1671,21 +1671,6 @@ button:disabled,
   font-weight: 800;
   line-height: 1.2;
 }
-.kc-privacy-mode-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  max-width: 100%;
-  margin-top: 0.15rem;
-  padding: 0.16rem 0.45rem;
-  border: 1px solid color-mix(in oklch, var(--accent) 22%, transparent);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--accent) 10%, transparent);
-  color: var(--accent);
-  font-size: 0.68rem;
-  font-weight: 800;
-  line-height: 1.2;
-}
 /* The checklist's row: a name, a count and a thin bar. It opens to the full card. */
 .kc-activation { margin: 0.9rem 0.75rem 0.5rem; }
 .kc-activation > summary {
@@ -1889,36 +1874,114 @@ button:disabled,
 }
 .kc-user-panel {
   margin-top: auto;
-  min-height: 4.55rem;
-  padding-left: 0.55rem !important;
-  padding-right: 0.55rem !important;
+  min-height: 3.6rem;
+  padding-left: 0.4rem !important;
+  padding-right: 0.4rem !important;
 }
-.kc-user-avatar-btn {
-  border-radius: var(--radius-full);
+/* Two lines, like Discord's user panel: the whole left side opens the status menu. */
+.kc-user-identity {
+  padding: 0.3rem 0.4rem;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
 }
-.kc-user-avatar-btn:hover > div {
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent) 34%, transparent),
-    0 0 18px color-mix(in oklch, var(--accent) 10%, transparent) !important;
+@media (hover: hover) and (pointer: fine) {
+  .kc-user-identity:hover { background: var(--bg-hover); }
 }
-.kc-user-status {
-  margin-top: 2px;
-  padding: 0;
-  line-height: 1.25;
+.kc-user-identity[aria-expanded="true"] { background: var(--bg-hover); }
+.kc-user-identity:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
-.kc-user-status:hover {
-  color: var(--text-secondary) !important;
+.kc-user-status { line-height: 1.3; }
+.kc-user-ghost { font-size: 0.75rem; line-height: 1; }
+.kc-user-panel .kc-sidebar-action {
+  width: 2rem;
+  height: 2rem;
 }
-.kc-user-status-input {
-  margin-top: 2px;
-  line-height: 1.25;
+.kc-user-menu {
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
+  border-radius: 14px;
+  background: var(--bg-sidebar);
+  box-shadow: 0 18px 40px -18px rgb(0 0 0 / 70%);
+  transform-origin: bottom left;
+  animation: kc-composer-menu-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
-.kc-user-actions {
-  padding-left: 1px;
+.kc-user-menu:focus { outline: none; }
+.kc-user-menu__section { display: grid; gap: 4px; }
+.kc-user-menu__section--end {
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in oklch, var(--text-primary) 8%, transparent);
 }
-.kc-user-actions .kc-sidebar-action {
-  width: 1.85rem;
-  height: 1.85rem;
+.kc-user-menu__label {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
+.kc-user-menu__field {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
+  border-radius: 9px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  outline: none;
+}
+.kc-user-menu__field:focus-visible { border-color: color-mix(in oklch, var(--accent) 60%, transparent); }
+.kc-user-menu__activity { display: grid; gap: 4px; }
+/* The activity you have set, on its own line so it can be read in full. */
+.kc-user-menu__current {
+  min-width: 0;
+  padding: 2px 4px;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.kc-user-menu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.kc-user-menu__item:active { transform: scale(0.98); }
+.kc-user-menu__item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (hover: hover) and (pointer: fine) { .kc-user-menu__item:hover { background: var(--bg-hover); } }
+@media (pointer: coarse) {
+  .kc-user-identity, .kc-user-menu__item, .kc-user-menu__field { min-height: 44px; }
+  .kc-user-panel .kc-sidebar-action { width: 44px; height: 44px; }
+}
+.kc-user-menu__note {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+@media (prefers-reduced-motion: reduce) { .kc-user-menu { animation: none; } }
 
 /* First-channel setup checklist */
 .kc-setup-checklist {
@@ -3756,19 +3819,26 @@ ol.kc-md-list { list-style: decimal; }
     height: 2rem !important;
     font-size: 0.8rem !important;
   }
+  /* One line: a long name shortens with an ellipsis rather than pushing the time onto a
+     second line ("Yesterday at 12:45 PM" is longer than the old clock time). */
   .kc-message-row .msg-meta {
     min-width: 0;
     gap: 0.45rem !important;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     line-height: 1.1;
   }
   .kc-message-row .msg-meta button {
+    min-width: 0;
     max-width: min(52vw, 15rem);
+    flex: 0 1 auto;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .kc-message-row .msg-meta span {
+  .kc-message-row .msg-meta span,
+  .kc-message-row .msg-meta time {
+    flex-shrink: 0;
+    white-space: nowrap;
     font-size: 0.72rem !important;
   }
   .kc-msg,
