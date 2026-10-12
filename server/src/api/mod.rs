@@ -29,6 +29,7 @@ pub mod search;
 pub mod server_pack;
 pub mod servers;
 pub mod signal;
+pub mod threads;
 pub mod users;
 pub mod watch;
 
@@ -288,6 +289,11 @@ pub fn router() -> Router<AppState> {
             put(channels::set_channel_category),
         )
         .route("/channels/{id}", delete(channels::delete_channel))
+        // Threads: started from a message in a space's text channel, listed per channel.
+        .route(
+            "/channels/{channel_id}/threads",
+            get(threads::list_threads).post(threads::create_thread),
+        )
         // Messages
         .route(
             "/channels/{channel_id}/messages",

@@ -33,6 +33,7 @@ import { editBlockReason, pendingAttachmentsToKeep, REATTACH_MESSAGE } from "../
 import { filesThatFit, holdingSlots, TOO_MANY_ATTACHMENTS } from "../lib/attachmentLimit";
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
+import { threadChipLabel, type ThreadSummary } from "../lib/threads";
 
 const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
 function hiddenMessagesKey(channelId: string, userId: string): string {
@@ -172,6 +173,11 @@ function linkCardHeight(messageId: string, url: string, showPreview: boolean, si
   return fetchedPreviewPx(isDirectVideoUrl(url), ogPreviewStatus(url));
 }
 
+/** Height of the line under a message that started a thread (kc-thread-chip + its margin):
+ *  30px + 6px, or 44px + 6px where fingers do the tapping (see index.css). */
+const THREAD_CHIP_PX =
+  typeof window !== "undefined" && window.matchMedia?.("(hover: none) and (pointer: coarse)").matches ? 50 : 36;
+
 function messageEmbedHeight(message: Message, channelEncrypted: boolean, sizing: EmbedSizing): number {
   const mode = linkPreviewMode(message, channelEncrypted);
   return messageCardUrls(message, mode).reduce((sum, url) => sum + linkCardHeight(message.id, url, mode !== "none", sizing), 0);
@@ -249,6 +255,16 @@ type Props = {
   onOpenNotificationSettings?: () => void;
   /** This chat is muted (or in a muted space): the bell shows crossed out. */
   chatMuted?: boolean;
+  /** Threads started in this channel, by the message each started from. */
+  threadByMessage?: ReadonlyMap<string, ThreadSummary>;
+  /** Open a thread (from the line under its message). */
+  onOpenThread?: (thread: ThreadSummary) => void;
+  /** Start a thread from a message (a space's text channels only). */
+  onStartThread?: (msg: Message) => void;
+  /** Open this channel's list of threads. */
+  onOpenThreads?: () => void;
+  /** Shown as a thread: the channel it hangs off and how to go back to it. */
+  threadView?: { parentName: string; starterDeleted: boolean; onClose: () => void };
 };
 
 /** Delivered / Seen line under your latest sent message — DMs only (iMessage-style). */
@@ -402,6 +418,11 @@ export function ChatPane({
   onSetDisappearing,
   onOpenNotificationSettings,
   chatMuted = false,
+  threadByMessage,
+  onOpenThread,
+  onStartThread,
+  onOpenThreads,
+  threadView,
 }: Props) {
   // Initialize from the persisted draft so a reload (which mounts straight into the
   // restored channel, with prevChannelRef already equal) still shows it.
@@ -922,9 +943,11 @@ export function ChatPane({
         g.msgs.map((m) => (hiddenMessageIds.has(m.id) ? 0 : (m.reactions?.length ?? 0))),
         textWidth
       );
-      return Math.ceil(basePx + textH + mediaH + reactionsH + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH + lockedH);
+      // The line under a message that started a thread.
+      const threadsH = threadByMessage ? g.msgs.filter((m) => threadByMessage.has(m.id)).length * THREAD_CHIP_PX : 0;
+      return Math.ceil(basePx + textH + mediaH + reactionsH + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH + lockedH + threadsH);
     },
-    [rows, hiddenMessageIds, e2eEnabled, openEmbeds, canOpenRecovery]
+    [rows, hiddenMessageIds, e2eEnabled, openEmbeds, canOpenRecovery, threadByMessage]
   );
 
   // Opening, closing or resizing a link card changes its row's height. Before paint, so a
@@ -932,6 +955,11 @@ export function ChatPane({
   useLayoutEffect(() => {
     listRef.current?.resetAfterIndex(0);
   }, [openEmbeds]);
+
+  // A thread started (or went) under a message: its row changes size.
+  useLayoutEffect(() => {
+    listRef.current?.resetAfterIndex(0);
+  }, [threadByMessage]);
 
   // A link preview came back empty (or arrived on a retry): its row changes size.
   useEffect(() => onOgPreviewChange(() => setOgVersion((v) => v + 1)), []);
@@ -1243,10 +1271,33 @@ export function ChatPane({
             <MenuIcon />
           </button>
         )}
-        <span style={{ color: "var(--text-muted)" }}>
-          {channel.channel_type === "dm" ? "👤" : "#"}
-        </span>
-        <span className="kc-chat-title">{chatTitle(channel, dmUsers[channel.id])}</span>
+        {threadView ? (
+          <>
+            <button
+              type="button"
+              onClick={threadView.onClose}
+              aria-label="Back to the channel"
+              title={`Back to #${threadView.parentName}`}
+              className="kc-thread-back kc-interactive -ml-1 flex items-center justify-center p-1"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <span style={{ color: "var(--text-muted)", display: "inline-flex" }} aria-hidden>
+              <Icon name="thread" size={16} />
+            </span>
+            <span className="kc-chat-title">{channel.name}</span>
+            <span className="kc-thread-parent truncate text-xs font-normal">in #{threadView.parentName}</span>
+          </>
+        ) : (
+          <>
+            <span style={{ color: "var(--text-muted)" }}>
+              {channel.channel_type === "dm" ? "👤" : "#"}
+            </span>
+            <span className="kc-chat-title">{chatTitle(channel, dmUsers[channel.id])}</span>
+          </>
+        )}
         {channel.imported && (
           <span
             className="rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide"
@@ -1299,6 +1350,17 @@ export function ChatPane({
               ))}
             </span>
             <span>{memberSummary}</span>
+          </button>
+        )}
+        {onOpenThreads && (
+          <button
+            type="button"
+            onClick={onOpenThreads}
+            aria-label="Threads"
+            title="Threads"
+            className="kc-icon-btn flex-shrink-0 text-base"
+          >
+            <Icon name="thread" />
           </button>
         )}
         {onOpenNotificationSettings && (
@@ -1676,6 +1738,10 @@ export function ChatPane({
         </ErrorBoundary>
       )}
 
+      {threadView?.starterDeleted && (
+        <p className="kc-thread-starter-gone">The first message of this thread was deleted.</p>
+      )}
+
       {/* Messages — virtualized */}
       <div ref={setListBox} className={`flex-1 overflow-hidden relative${e2eEnabled ? " kc-e2e" : ""}`}>
         {/* Screen-reader announcement of the latest message (the list is virtualized). */}
@@ -1690,6 +1756,12 @@ export function ChatPane({
         {isLoading ? (
           <div className="flex h-full items-center justify-center" style={{ color: "var(--text-muted)" }}>
             <LoadingSpinner />
+          </div>
+        ) : rows.length === 0 && threadView ? (
+          <div className="kc-thread-empty">
+            <Icon name="thread" size={28} />
+            <p className="kc-thread-empty-title">No replies yet</p>
+            <p className="kc-thread-empty-copy">Replies here stay out of #{threadView.parentName}.</p>
           </div>
         ) : rows.length === 0 ? (
           <ChannelWelcome
@@ -1833,6 +1905,23 @@ export function ChatPane({
                               ))}
                             </div>
                           )}
+                          {(() => {
+                            const thread = threadByMessage?.get(msg.id);
+                            if (!thread) return null;
+                            const label = threadChipLabel(thread.message_count, thread.last_message_at, Math.floor(Date.now() / 1000));
+                            return (
+                              <button
+                                type="button"
+                                className="kc-thread-chip"
+                                aria-label={`Open thread ${thread.name}: ${label}`}
+                                onClick={(e) => { e.stopPropagation(); onOpenThread?.(thread); }}
+                              >
+                                <Icon name="thread" size={14} />
+                                <span className="kc-thread-chip-name">{thread.name}</span>
+                                <span className="kc-thread-chip-meta">{label}</span>
+                              </button>
+                            );
+                          })()}
                           {/* Floating action toolbar — appears on hover, top-right */}
                           {editingId !== msg.id && (confirmDeleteId === msg.id ? (
                             <div className="kc-msg-actions" data-confirm="1">
@@ -1870,6 +1959,11 @@ export function ChatPane({
                               <button type="button" aria-label="Reply" title="Reply" onClick={(e) => { e.stopPropagation(); setReplyTarget(msg); }}>
                                 <Icon name="reply" size={16} />
                               </button>
+                              {onStartThread && !msg.id.startsWith("temp-") && !threadByMessage?.has(msg.id) && (
+                                <button type="button" aria-label="Start a thread" title="Start a thread" onClick={(e) => { e.stopPropagation(); onStartThread(msg); }}>
+                                  <Icon name="thread" size={16} />
+                                </button>
+                              )}
                               {onPinMessage && !msg.id.startsWith("temp-") && (
                                 <button
                                   type="button"
@@ -2095,6 +2189,8 @@ export function ChatPane({
           placeholder={
             replyTarget
               ? `Reply to ${replyTarget.author.display_name}…`
+              : threadView
+                ? `Reply in ${channel.name}…`
               : channel.name !== "dm"
                 ? `Say something to #${channel.name}…`
                 : "Say something…"
@@ -2154,6 +2250,7 @@ export function ChatPane({
             setActionSheetMsg(null);
           }}
           onReply={() => { setReplyTarget(actionSheetMsg); setActionSheetMsg(null); }}
+          onStartThread={onStartThread && !threadByMessage?.has(actionSheetMsg.id) ? () => { onStartThread(actionSheetMsg); setActionSheetMsg(null); } : undefined}
           onPin={onPinMessage ? () => { onPinMessage(actionSheetMsg.id, !actionSheetMsg.pinned); setActionSheetMsg(null); } : undefined}
           onForward={onForward ? () => { onForward(actionSheetMsg); setActionSheetMsg(null); } : undefined}
           onSave={() => { handleSave(actionSheetMsg.id); setActionSheetMsg(null); }}

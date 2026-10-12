@@ -47,6 +47,27 @@ pub struct Channel {
     /// Group-DM owner (creator); only they may remove other members. None otherwise.
     #[serde(default)]
     pub owner_id: Option<String>,
+    /// A thread's channel: the space text channel it hangs off. None for every other
+    /// channel. A thread takes this channel's permissions and is deleted with it.
+    #[serde(default)]
+    #[sqlx(default)]
+    pub parent_id: Option<String>,
+    /// The message a thread started from (it may since have been deleted). None for
+    /// anything that isn't a thread.
+    #[serde(default)]
+    #[sqlx(default)]
+    pub thread_message_id: Option<String>,
+}
+
+/// A thread as the app lists it: its channel, how many messages it holds, when the last
+/// one came, and whether the message it started from has been deleted.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadSummary {
+    #[serde(flatten)]
+    pub channel: Channel,
+    pub message_count: i64,
+    pub last_message_at: Option<i64>,
+    pub starter_deleted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -327,6 +348,9 @@ pub enum GatewayEvent {
         id: String,
     },
     ChannelCreate(Channel),
+    /// A thread started, or its message count changed (a reply, a deletion), or the message
+    /// it started from was deleted. Sent to everyone who can see the thread's channel.
+    ThreadUpdate(ThreadSummary),
     MemberJoin {
         server_id: String,
         user: PublicUser,

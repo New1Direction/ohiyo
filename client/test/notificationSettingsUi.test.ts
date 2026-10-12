@@ -146,6 +146,28 @@ test("a muted chat says until when, and Unmute turns it back on", async () => {
   }
 });
 
+test("a muted channel or DM offers Unmute and no Save; a muted space keeps Save for its level", () => {
+  const dm = openDialog(
+    { type: "channel", id: "dm1", name: "Sam", kind: "dm" },
+    { target_type: "channel", target_id: "dm1", level: null, muted: true, muted_until: null },
+  );
+  try {
+    assert.ok(dm.button("Unmute"), "Unmute is offered");
+    assert.equal(dm.button("Save"), undefined, "nothing else to save while a DM is muted");
+  } finally {
+    dm.done();
+  }
+  const space = openDialog(
+    { type: "server", id: "s1", name: "Gate HQ", kind: "space" },
+    { target_type: "server", target_id: "s1", level: "mentions", muted: true, muted_until: null },
+  );
+  try {
+    assert.ok(space.button("Save"), "a muted space can still change its level");
+  } finally {
+    space.done();
+  }
+});
+
 test("the space menu offers Notification settings", () => {
   const container = document.createElement("div");
   document.body.append(container);

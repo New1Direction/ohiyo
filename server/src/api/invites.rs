@@ -122,7 +122,7 @@ pub async fn create_invite(
 
     // Land newcomers in the server's first text channel.
     let channel_id: Option<String> = sqlx::query_scalar(
-        "SELECT id FROM channels WHERE server_id = ? AND channel_type = 'text' ORDER BY position LIMIT 1",
+        "SELECT id FROM channels WHERE server_id = ? AND channel_type = 'text' AND parent_id IS NULL ORDER BY position LIMIT 1",
     )
     .bind(&server_id)
     .fetch_optional(&state.db)

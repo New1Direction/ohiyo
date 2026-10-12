@@ -117,6 +117,10 @@ import { useAppUpdate } from "./hooks/useAppUpdate";
 import { UpdateBar } from "./components/UpdateBar";
 import { SignedOutUpdates } from "./components/SignedOutUpdates";
 import { NewDeviceAlert } from "./components/NewDeviceAlert";
+import { ThreadPanel } from "./components/ThreadPanel";
+import { StartThreadDialog } from "./components/StartThreadDialog";
+import { ThreadListDialog } from "./components/ThreadListDialog";
+import { canStartThread, defaultThreadName, threadsByMessage, upsertThread, type ThreadSummary } from "./lib/threads";
 import { setSignInNotice } from "./lib/sessionNotice";
 import {
   loadActiveHomeId,
@@ -145,6 +149,9 @@ type VoiceSidebarParticipant = {
 
 // Boot the theme + personal accent from localStorage immediately (warm first paint).
 applyActiveAppearance();
+
+/** One stable empty thread list, so a channel without threads doesn't re-render its rows. */
+const NO_THREADS: ThreadSummary[] = [];
 
 // On logout: drop decrypted plaintext, the outbox and every draft from localStorage and
 // (desktop) the vault. Identity and session keys stay.
@@ -545,6 +552,12 @@ function MainApp({
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [serverEmojis, setServerEmojis] = useState<ServerEmoji[]>([]);
+  // Threads: each channel's list (busiest first), the one open beside the channel, the
+  // message a new thread is being named from, and whether the channel's list is showing.
+  const [threadsByParent, setThreadsByParent] = useState<Record<string, ThreadSummary[]>>({});
+  const [openThread, setOpenThread] = useState<ThreadSummary | null>(null);
+  const [threadFromMessage, setThreadFromMessage] = useState<Message | null>(null);
+  const [showThreadList, setShowThreadList] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<Tab>("appearance");
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -682,6 +695,11 @@ function MainApp({
     }
   });
   const selectedChannelRef = useRef<Channel | null>(null);
+  // Every thread this app has heard of. A thread's replies arrive as ordinary messages; this
+  // is how they're told apart (the server announces a thread before its first reply).
+  const threadIdsRef = useRef<Set<string>>(new Set());
+  // thread id → the channel it hangs off, so a thread follows its channel's notification settings.
+  const threadParentRef = useRef<Map<string, string>>(new Map());
   const selectedServerIdRef = useRef<string | null>(null);
   // Last message id we've acked per channel — dedupes redundant read receipts.
   const lastAckRef = useRef<Record<string, string>>({});
@@ -894,6 +912,39 @@ function MainApp({
     lastMessageIdRef.current = lastRealMessageId(messages);
   }, [messages]);
   const appUpdate = useAppUpdate({ isSignedIn: currentUser !== null, onMessage: toast });
+  // Threads: load the open channel's list, and close a thread whose channel is no longer open.
+  const selectedChannelId = selectedChannel?.id ?? null;
+  const selectedChannelThreadable = selectedChannel ? canStartThread(selectedChannel) : false;
+  useEffect(() => {
+    setOpenThread((prev) => (prev && prev.parent_id === selectedChannelId ? prev : null));
+    setShowThreadList(false);
+    if (!selectedChannelId || !selectedChannelThreadable) return;
+    let live = true;
+    api
+      .listThreads(token, selectedChannelId)
+      .then((list) => {
+        if (!live) return;
+        for (const t of list) {
+          threadIdsRef.current.add(t.id);
+          threadParentRef.current.set(t.id, t.parent_id ?? selectedChannelId);
+        }
+        setThreadsByParent((prev) => ({ ...prev, [selectedChannelId]: list }));
+      })
+      .catch(() => {
+        // The channel still works without its thread list; the next ThreadUpdate fills it in.
+      });
+    return () => {
+      live = false;
+    };
+  }, [token, selectedChannelId, selectedChannelThreadable]);
+  const channelThreads = (selectedChannelId && threadsByParent[selectedChannelId]) || NO_THREADS;
+  // Lets the open thread listen to the gateway for its own messages.
+  const subscribeGateway = useCallback(
+    (handler: (event: GatewayEvent) => void) => gatewayRef.current?.on(handler) ?? (() => {}),
+    []
+  );
+  const threadByMessage = useMemo(() => threadsByMessage(channelThreads), [channelThreads]);
+
   useDesktopShell({
     unread: totalUnread,
     inCall: webrtc.channelId !== null,
@@ -1210,6 +1261,13 @@ function MainApp({
       case "MessageCreate": {
         const msg = event.d;
         typing.clearTyping(msg.channel_id, msg.author.id);
+        if (threadIdsRef.current.has(msg.channel_id)) {
+          // A reply in a thread: an open thread shows it itself. Threads don't count as
+          // unread yet; a reply that mentions you still notifies.
+          const me = currentUserRef.current;
+          if (me && msg.author.id !== me.id && mentionsYou(msg.content, me.username)) maybeNotify(msg);
+          break;
+        }
         if (selectedChannelRef.current?.id === msg.channel_id) {
           // Dedup by id: a duplicate MessageCreate (gateway replay, or a resend whose
           // first response was lost) must not render the message twice.
@@ -1351,6 +1409,17 @@ function MainApp({
           if (event.d.channel_type === "dm" && !dmUsersRef.current[event.d.id]) void nameDm(event.d.id);
         }
         break;
+
+      case "ThreadUpdate": {
+        // A thread started, got a reply, lost one, or lost its first message.
+        const thread = event.d;
+        threadIdsRef.current.add(thread.id);
+        if (thread.parent_id) threadParentRef.current.set(thread.id, thread.parent_id);
+        const parent = thread.parent_id;
+        if (parent) setThreadsByParent((prev) => ({ ...prev, [parent]: upsertThread(prev[parent] ?? [], thread) }));
+        setOpenThread((prev) => (prev?.id === thread.id ? thread : prev));
+        break;
+      }
 
       case "MemberJoin": {
         const { server_id, user } = event.d;
@@ -2273,12 +2342,15 @@ function MainApp({
   function maybeNotify(msg: Message) {
     if (msg.author.id === currentUserRef.current?.id) return;
     if (blockedUserIdsRef.current.has(msg.author.id)) return;
-    // Notification settings: a muted chat stays quiet, a space may want only @mentions.
-    const serverId = serversRef.current.find((s) => s.channels.some((c) => c.id === msg.channel_id))?.id ?? null;
+    // Notification settings: a muted chat stays quiet, a space may want only @mentions. A
+    // thread follows the channel it hangs off: muted with it, and an @mention still gets
+    // through unless the space is set to Nothing.
+    const channelId = threadParentRef.current.get(msg.channel_id) ?? msg.channel_id;
+    const serverId = serversRef.current.find((s) => s.channels.some((c) => c.id === channelId))?.id ?? null;
     const me = currentUserRef.current;
     const mentioned = serverId !== null && me !== null && mentionsYou(msg.content ?? "", me.username);
     const nowSecs = Math.floor(Date.now() / 1000);
-    if (!messageAlert(notifSettingsRef.current, { channelId: msg.channel_id, serverId }, mentioned, nowSecs).notify) return;
+    if (!messageAlert(notifSettingsRef.current, { channelId, serverId }, mentioned, nowSecs).notify) return;
     const lookingAtIt = isLookingAt({
       openChannelId: selectedChannelRef.current?.id,
       messageChannelId: msg.channel_id,
@@ -2894,7 +2966,60 @@ function MainApp({
               }
             : undefined
         }
+        threadByMessage={selectedChannelThreadable ? threadByMessage : undefined}
+        onOpenThread={setOpenThread}
+        onStartThread={selectedChannelThreadable ? setThreadFromMessage : undefined}
+        onOpenThreads={selectedChannelThreadable ? () => setShowThreadList(true) : undefined}
       />
+      )}
+
+      {/* A thread, open beside its channel (over it on a phone). */}
+      {openThread && selectedChannel && openThread.parent_id === selectedChannel.id && currentUser && (
+        <ThreadPanel
+          key={openThread.id}
+          token={token}
+          thread={openThread}
+          parentName={selectedChannel.name}
+          currentUserId={currentUser.id}
+          currentUsername={currentUser.username}
+          currentUser={currentUser}
+          pluginManager={pluginManagerRef.current}
+          serverEmojis={serverEmojis}
+          mentionables={selectedServer?.members ?? []}
+          onlineUserIds={onlineUsers}
+          onToast={toast}
+          onClose={() => setOpenThread(null)}
+          subscribe={subscribeGateway}
+          onOpenDm={openDmWith}
+          onBlockUser={blockUser}
+          onReportUser={(user) => void reportTarget("user", user.id, "user")}
+          onReportMessage={(msg) => void reportTarget("message", msg.id, "message")}
+        />
+      )}
+      {threadFromMessage && selectedChannel && (
+        <StartThreadDialog
+          suggestedName={defaultThreadName(threadFromMessage.content)}
+          onCancel={() => setThreadFromMessage(null)}
+          onStart={async (name) => {
+            const thread = await api.createThread(token, selectedChannel.id, threadFromMessage.id, name);
+            threadIdsRef.current.add(thread.id);
+            threadParentRef.current.set(thread.id, selectedChannel.id);
+            setThreadsByParent((prev) => ({ ...prev, [selectedChannel.id]: upsertThread(prev[selectedChannel.id] ?? [], thread) }));
+            setThreadFromMessage(null);
+            setOpenThread(thread);
+          }}
+        />
+      )}
+      {showThreadList && selectedChannel && (
+        <ThreadListDialog
+          channelName={selectedChannel.name}
+          threads={channelThreads}
+          onClose={() => setShowThreadList(false)}
+          onOpen={(thread) => {
+            setShowThreadList(false);
+            setOpenThread(thread);
+          }}
+        />
       )}
 
       {/* Voice / video / screen-share call overlay. A WebRTC throw degrades to a

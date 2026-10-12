@@ -149,6 +149,7 @@ jobs:
             /tmp/kikka-shots-${{ matrix.client_mode }}/48-message-formatting-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/49-user-bar-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/50-notif-*.png
+            /tmp/kikka-shots-${{ matrix.client_mode }}/51-threads-*.png
 
       - name: Upload E2E artifacts on failure
         if: failure()

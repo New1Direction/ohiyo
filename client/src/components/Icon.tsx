@@ -13,6 +13,7 @@ export type IconName =
   | "send"
   | "react"
   | "reply"
+  | "thread"
   | "pin"
   | "forward"
   | "bookmark"
@@ -82,6 +83,13 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <polyline points="9 17 4 12 9 7" />
       <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+    </>
+  ),
+  thread: (
+    <>
+      <path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z" />
+      <path d="M8.5 10h7" />
+      <path d="M8.5 14h4" />
     </>
   ),
   forward: (

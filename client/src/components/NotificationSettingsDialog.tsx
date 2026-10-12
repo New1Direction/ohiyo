@@ -157,9 +157,12 @@ export function NotificationSettingsDialog({ target, setting, now, onSave, onClo
           <button type="button" onClick={onClose} disabled={busy} className="kc-interactive kc-notif-cancel">
             Cancel
           </button>
-          <button type="submit" disabled={busy} className="kc-cta flex-1 py-3 text-sm">
-            Save
-          </button>
+          {/* A muted channel or DM has nothing else to change: Unmute is the action. */}
+          {(isSpace || !mutedNow) && (
+            <button type="submit" disabled={busy} className="kc-cta flex-1 py-3 text-sm">
+              Save
+            </button>
+          )}
         </div>
       </form>
     </ModalShell>

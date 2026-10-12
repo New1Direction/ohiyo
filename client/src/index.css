@@ -4642,3 +4642,114 @@ ol.kc-md-list { list-style: decimal; }
 @media (hover: none) and (pointer: coarse) {
   .kc-copy-id { min-height: 44px; }
 }
+
+/* ── Threads ───────────────────────────────────────────────────────────────────
+   A thread opens beside its channel on a computer and over it on a phone. Under the
+   message it started from sits one line: the thread's name and how busy it is. */
+.kc-thread-panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: min(440px, 40vw);
+  min-width: 320px;
+  border-left: 1px solid var(--bg-base);
+  background: var(--bg-channel);
+}
+.kc-thread-panel > .kc-chat-shell { min-height: 0; }
+@media (max-width: 768px) {
+  .kc-thread-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    width: auto;
+    min-width: 0;
+    border-left: none;
+    padding-top: env(safe-area-inset-top);
+    animation: kc-thread-in var(--dur-base) var(--ease-out);
+  }
+}
+@keyframes kc-thread-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kc-thread-panel { animation: none; }
+}
+
+.kc-thread-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 30px;
+  margin-top: 6px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, var(--bg-hover));
+  background: color-mix(in oklch, var(--accent) 8%, var(--bg-input));
+  color: var(--accent);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background-color var(--dur-tap) var(--ease-snap), border-color var(--dur-tap) var(--ease-snap);
+}
+.kc-thread-chip:hover { background: color-mix(in oklch, var(--accent) 14%, var(--bg-input)); }
+.kc-thread-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.kc-thread-chip-name {
+  overflow: hidden;
+  max-width: 240px;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kc-thread-chip-meta { color: var(--text-muted); white-space: nowrap; }
+
+.kc-thread-parent { color: var(--text-muted); }
+.kc-thread-back { color: var(--text-secondary); border-radius: var(--radius-sm, 8px); }
+.kc-thread-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.kc-thread-starter-gone {
+  margin: 10px 16px 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.kc-thread-empty {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: var(--space-6);
+  color: var(--text-muted);
+  text-align: center;
+}
+.kc-thread-empty-title { color: var(--text-primary); font-weight: 700; font-size: 15px; }
+.kc-thread-empty-copy { font-size: 13px; }
+
+.kc-thread-list { display: flex; flex-direction: column; gap: 4px; max-height: min(60vh, 480px); overflow-y: auto; }
+.kc-thread-list-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.kc-thread-list-item:hover { background: var(--bg-hover); }
+.kc-thread-list-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.kc-thread-list-text { display: flex; min-width: 0; flex-direction: column; }
+.kc-thread-list-name { overflow: hidden; color: var(--text-primary); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.kc-thread-list-meta { color: var(--text-muted); font-size: 12px; }
+@media (hover: none) and (pointer: coarse) {
+  .kc-thread-chip { height: 44px; }
+  .kc-thread-list-item { min-height: 44px; }
+  .kc-thread-back { min-width: 44px; min-height: 44px; }
+}
