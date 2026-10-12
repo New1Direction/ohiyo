@@ -98,6 +98,10 @@ Notes baked into the config:
 - **WebSockets** (`/gateway`) work over Fly's HTTP service automatically.
 - The volume at `/data` holds both `ohiyo.db` and the `uploads/` directory,
   so messages and files survive deploys and restarts.
+- Because they share it, uploads are capped twice: each account may store 1 GiB in
+  total (`MAX_UPLOAD_BYTES_PER_USER`), and once the volume is down to 5 GiB free
+  (`MIN_FREE_DISK_BYTES`, `0` turns this off) uploads are refused with 507 so the
+  database always has room to write. Size both to your volume.
 
 > **Scaling caveat:** SQLite on a local volume means exactly **one** machine — do
 > not `fly scale count 2`. When you outgrow a single node, migrate to
