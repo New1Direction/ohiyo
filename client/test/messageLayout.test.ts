@@ -11,6 +11,7 @@ import {
   DEFAULT_ROW_METRICS,
   lockedCardPx,
   messageCharsPerLine,
+  messageContentPx,
   messageGroupTextPx,
   messageLineCount,
   messageRowMetrics,
@@ -198,4 +199,83 @@ test("many reactions on a narrow screen wrap onto more rows", () => {
   assert.equal(reactionsPx([12], 300), 32 + 26 + 26);
   // A very narrow column still fits one chip a row.
   assert.equal(reactionsPx([3], 40), 32 + 26 + 26);
+});
+
+// Formatted messages (headings, quotes, lists, code blocks) are taller or narrower than
+// their source text. The row estimate follows what the renderer draws (index.css .kc-md-*).
+const wide = messageRowMetrics({ ...desktop, ...cozy });
+
+test("a line of text is drawn in the size the stylesheet sets", () => {
+  assert.equal(DEFAULT_ROW_METRICS.fontPx, 14);
+  assert.equal(messageRowMetrics({ ...phone, ...cozy }).fontPx, 15.68);
+  assert.equal(messageRowMetrics({ ...desktop, ...cozy, fontScale: 1.25 }).fontPx, 17.5);
+});
+
+test("a message with no formatting is as tall as its lines of text", () => {
+  for (const text of ["hello", "", "a".repeat(400), "one\ntwo\nthree", "🎉".repeat(60)]) {
+    assert.equal(messageContentPx(text, wide), messageLineCount(text, wide.charsPerLine) * wide.linePx, JSON.stringify(text.slice(0, 20)));
+  }
+});
+
+test("formatting marks take no room of their own", () => {
+  const marked = "**" + "word ".repeat(40) + "**";
+  assert.ok(messageContentPx(marked, wide) <= messageContentPx("word ".repeat(40), wide));
+});
+
+test("a code block is its lines in 13px type, plus its padding and margins", () => {
+  const lh = wide.linePx / wide.fontPx;
+  assert.equal(messageContentPx("```\na\nb\nc\n```", wide), 3 * 13 * lh + 20 + 12);
+  assert.equal(messageContentPx("```js\nconst a = 1;\n```", wide), 13 * lh + 20 + 12);
+});
+
+test("a code line too long for the box leaves room for its scrollbar", () => {
+  const short = messageContentPx("```\nshort\n```", wide);
+  const long = messageContentPx("```\n" + "x".repeat(400) + "\n```", wide);
+  assert.ok(long > short, `${long} > ${short}`);
+});
+
+test("a heading is taller than a line of text, and the biggest is tallest", () => {
+  const h1 = messageContentPx("# Title", wide);
+  const h2 = messageContentPx("## Title", wide);
+  const h3 = messageContentPx("### Title", wide);
+  assert.ok(h1 > h2 && h2 >= h3 && h3 >= wide.linePx, `${h1} ${h2} ${h3} ${wide.linePx}`);
+  assert.ok(h1 >= wide.fontPx * 1.5 * 1.25);
+});
+
+test("subtext is smaller than a line of text", () => {
+  assert.ok(messageContentPx("-# small print", wide) < wide.linePx);
+});
+
+test("a quote's bar and indent make its text wrap sooner", () => {
+  const words = "lorem ipsum ".repeat(60);
+  assert.ok(messageContentPx("> " + words, wide) >= messageContentPx(words, wide));
+  const onPhone = messageRowMetrics({ ...phone, ...cozy });
+  assert.ok(messageContentPx("> " + words, onPhone) >= messageContentPx(words, onPhone));
+});
+
+test("each list item takes its own line, and nesting indents further", () => {
+  assert.equal(messageContentPx("- a\n- b\n- c", wide), 3 * wide.linePx);
+  const nested = messageContentPx("- a\n  - " + "word ".repeat(60), wide);
+  assert.ok(nested >= messageContentPx("- a\n- " + "word ".repeat(60), wide));
+});
+
+test("a big emoji is as tall as it is drawn", () => {
+  assert.ok(messageContentPx("【BIG_EMOJI:🎉】", wide) >= 48);
+});
+
+test("a forwarded message has a line for who it came from", () => {
+  assert.ok(messageContentPx("【FWD:sol】hello", wide) > messageContentPx("hello", wide));
+});
+
+test("a timestamp is estimated at the width it is shown, not the width of its code", () => {
+  assert.ok(messageContentPx("<t:1700000000:F> ".repeat(8), wide) >= messageContentPx("Tuesday, November 14, 2023 10:13 PM ".repeat(8), wide));
+});
+
+test("an '(edited)' label after a heading, list, quote or code gets a line of its own", () => {
+  for (const text of ["# Title", "- a", "> said", "```\ncode\n```", "-# small"]) {
+    assert.equal(messageContentPx(text, wide, true), messageContentPx(text, wide) + wide.linePx, text);
+  }
+  // After ordinary text it sits at the end of the last line.
+  assert.equal(messageContentPx("hello", wide, true), messageContentPx("hello", wide));
+  assert.equal(messageContentPx("# Title\nthen text", wide, true), messageContentPx("# Title\nthen text", wide));
 });

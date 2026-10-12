@@ -12,10 +12,10 @@ try {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Save HQ");
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   // send a message
-  const composer = page.locator('input[placeholder*="Say something"]');
+  const composer = page.locator('textarea[placeholder*="Say something"]');
   await composer.fill("keep this one for later");
   await composer.press("Enter");
   await page.waitForSelector('[data-message-id]:not([data-message-id^="temp-"]) >> text=keep this one for later', { timeout: 8000 });

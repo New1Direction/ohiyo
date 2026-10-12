@@ -13,6 +13,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ### Added
 - **ohiyo.gg has a Download section** for the desktop app, with the steps to open the Mac beta.
+- **Messages format like Discord's.** Headings (`#`, `##`, `###`), `-#` subtext, `>` and `>>>`
+  quotes, `-` and `1.` lists, `__underline__`, `~~strike~~`, `_italic_`, ```` ```language ````
+  code blocks, `[masked](https://…)` links (the real address shows on hover, and beside the
+  link when its words name a different site), `\` escapes and `<t:…>` timestamps shown in
+  your own time and language. Shift+Enter starts a new line, and line breaks show.
 - **Threads.** Start one from any message in a space's text channel and the replies stay out of
   the channel. Under the message: the thread's name and "3 replies · last reply 5m ago",
   updating live. It opens beside the channel on a computer and full screen on a phone, and the

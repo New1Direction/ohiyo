@@ -23,7 +23,7 @@ async function onboard(page, username, display, space) {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", space);
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 }
 
 try {
@@ -63,7 +63,7 @@ try {
   await pageB.waitForSelector("text=Ja HQ", { timeout: 5000 });
   await pageB.click('button:has-text("Accept invite")');
   await pageB.waitForSelector('button[aria-label="Ja HQ"]', { timeout: 12000 });
-  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   if (!(await api(tokenB, "/servers")).body.some((s) => s.id === space.id)) throw new Error("B isn't in Ja HQ");
   if (!(await pageB.locator('button[aria-label="Jb HQ"]').count())) throw new Error("B's own space left the rail");
   log("B joined Ja HQ from the + button, and still has Jb HQ ✓");

@@ -14,7 +14,7 @@ async function onboard(page, username, display, space) {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", space);
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 }
 
 try {
@@ -37,7 +37,7 @@ try {
   await pageA.fill('input[aria-label="Search people"]', B);
   await pageA.waitForSelector(`button[aria-label="Message @${B}"]`, { timeout: 6000 });
   await pageA.click(`button[aria-label="Message @${B}"]`);
-  const composer = pageA.locator('input[placeholder="Say something…"]');
+  const composer = pageA.locator('textarea[placeholder="Say something…"]');
   await composer.waitFor({ timeout: 8000 });
   const hello = `first-hello-${u}`;
   await composer.fill(hello);

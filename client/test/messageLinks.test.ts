@@ -51,3 +51,12 @@ test("only web links count", () => {
 test("a forwarded message's cards come from the message, not from the forwarder's name", () => {
   assert.deepEqual(linkCardUrls(`【FWD:https://evil.example/name】hello ${VIDEO}`), [VIDEO]);
 });
+
+test("a masked link's card is for where it goes, never for the words shown", () => {
+  assert.deepEqual(linkCardUrls("[https://google.com](https://evil.example/login)"), ["https://evil.example/login"]);
+  assert.deepEqual(linkCardUrls("read [the docs](https://ohiyo.gg/docs) today"), ["https://ohiyo.gg/docs"]);
+});
+
+test("a link that is escaped or inside a quote's code is still handled like the renderer", () => {
+  assert.deepEqual(linkCardUrls("> `https://x.com`"), []);
+});

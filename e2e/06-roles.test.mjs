@@ -13,7 +13,7 @@ try {
   await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Perm HQ");
   await pageA.click('button:has-text("Let\'s go")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   await pageA.click('button[aria-label="Invite people"]');
   await pageA.waitForFunction(() => {
     const el = document.querySelector('input[aria-label="Invite link"]');
@@ -37,7 +37,7 @@ try {
   await pageB.click('button:has-text("Create my account")');
   await pageB.waitForSelector('button:has-text("Accept invite")', { timeout: 12000 });
   await pageB.click('button:has-text("Accept invite")');
-  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("B joined");
 
   // ── B (no perms) cannot manage roles ──
