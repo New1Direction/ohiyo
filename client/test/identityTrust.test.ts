@@ -22,6 +22,7 @@ import {
   trustState,
   onIdentityChange,
   recordDeviceSet,
+  recordInboundDevice,
   changeReason,
   type TrustBackend,
 } from "../src/lib/identityTrust.ts";
@@ -218,4 +219,48 @@ test("an empty list (offline) changes nothing", () => {
   assert.equal(recordDeviceSet("pat", []), false);
   assert.equal(trustState("pat"), "unverified");
   assert.equal(recordDeviceSet("pat", [dev(1, "A")]), false);
+});
+
+// A message can arrive from a device the directory never listed: a server that hides a
+// device from the list can still deliver from it. That is the same news as a device the
+// list adds, so it raises the same notice (loud if the contact was verified).
+test("a message from a device the directory never listed is news, and loud if verified", () => {
+  freshBackend();
+  recordDeviceSet("ora", [dev(1, "A")]);
+  markVerified("ora");
+  const fired: string[] = [];
+  const off = onIdentityChange((uid) => fired.push(uid));
+  assert.equal(recordInboundDevice("ora", 9, "Z"), true);
+  assert.equal(changeReason("ora"), "device");
+  assert.equal(trustState("ora"), "device_added_verified");
+  assert.deepEqual(fired, ["ora"]);
+  off();
+});
+
+test("a message from a listed device, under its listed key, is not news", () => {
+  freshBackend();
+  recordDeviceSet("pat", [dev(1, "A"), dev(2, "B")]);
+  assert.equal(recordInboundDevice("pat", 2, "B"), false);
+  assert.equal(changeReason("pat"), null);
+});
+
+test("a message from a listed device under another key is a key change", () => {
+  freshBackend();
+  recordDeviceSet("quin", [dev(1, "A")]);
+  assert.equal(recordInboundDevice("quin", 1, "A2"), true);
+  assert.equal(changeReason("quin"), "key");
+});
+
+test("before any device list is known, a first message is trusted on first use", () => {
+  freshBackend();
+  assert.equal(recordInboundDevice("rue", 1, "A"), false);
+  assert.equal(changeReason("rue"), null);
+});
+
+test("the notice stays while the directory goes on hiding that device", () => {
+  freshBackend();
+  recordDeviceSet("sam", [dev(1, "A")]);
+  recordInboundDevice("sam", 9, "Z");
+  recordDeviceSet("sam", [dev(1, "A")]);
+  assert.equal(changeReason("sam"), "device");
 });
