@@ -145,6 +145,10 @@ test("the legal pages say where the hosted service really runs", () => {
   // What a person's browser or device contacts besides Ohiyo itself is said outright.
   assert.match(privacy, /Google Fonts/);
   assert.match(privacy, /STUN/);
+  // Since 12 October 2026 a call that can't connect directly can go through Cloudflare's
+  // TURN relay, which sees the callers' addresses but not what is said.
+  assert.match(privacy, /relay run by Cloudflare/);
+  assert.match(privacy, /Cloudflare can't hear or see the call/);
   assert.match(privacy, /Updated October 12, 2026/);
 });
 
