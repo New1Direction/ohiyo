@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import { deleteAccountMessage } from "../../lib/apiErrors";
 
@@ -20,6 +20,11 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
   // Typing the name is a deliberate step, not a password: a phone's capital first letter
   // or trailing space shouldn't block it. The server is sent the account's own username.
   const ready = password.length > 0 && typed.trim().toLowerCase() === username.toLowerCase();
+  // Opening the form removes the button that opened it: the cursor goes to the first field.
+  const passwordField = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    if (open) passwordField.current?.focus();
+  }, [open]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -76,6 +81,7 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
       </ul>
       <div className="grid gap-2" style={{ maxWidth: 360 }}>
         <input
+          ref={passwordField}
           type="password"
           autoComplete="current-password"
           aria-label="Password"
@@ -111,7 +117,7 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
           type="submit"
           disabled={!ready || busy}
           className="rounded px-3 py-1.5 text-sm font-semibold"
-          style={{ background: "var(--danger)", color: "#fff", opacity: !ready || busy ? 0.6 : 1 }}
+          style={{ background: "var(--danger-fill)", color: "#fff", opacity: !ready || busy ? 0.6 : 1 }}
         >
           {busy ? "Deleting…" : "Delete my account"}
         </button>
