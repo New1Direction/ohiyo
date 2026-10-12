@@ -83,7 +83,7 @@ export function activationCompletedCount(state: ActivationState): number {
   return ACTIVATION_MILESTONES.filter((m) => Boolean(state[m])).length;
 }
 
-/** Every step done. (Placeholder: always false, to be replaced.) */
-export function isActivationComplete(_state: ActivationState): boolean {
-  return false;
+/** Every step done: the checklist has nothing left to say. */
+export function isActivationComplete(state: ActivationState): boolean {
+  return activationCompletedCount(state) === ACTIVATION_MILESTONES.length;
 }
