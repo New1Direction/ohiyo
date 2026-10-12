@@ -67,6 +67,7 @@ import { createDistributionTracker, editBlockReason, encryptOutgoing, EncryptedS
 import { isWellFormedEnvelope, resolveDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
 import { renewWebPush } from "./lib/push";
 import { catchUpMessages } from "./lib/catchUp";
+import { GONE_PEER, dmsWith, dmsWithNoPeer, withoutAuthor } from "./lib/deletedAccounts";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { decryptEach } from "./lib/decryptEach";
 import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
@@ -559,6 +560,8 @@ function MainApp({
   }, [currentUser?.id]);
 
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  // 1:1 chats whose other person deleted their account: no one to reply to.
+  const [goneDms, setGoneDms] = useState<ReadonlySet<string>>(new Set());
   const [idleUsers, setIdleUsers] = useState<Set<string>>(new Set());
   const [activities, setActivities] = useState<Map<string, Activity>>(new Map());
   const [watchSession, setWatchSession] = useState<WatchSession | null>(null);
@@ -1012,6 +1015,9 @@ function MainApp({
           const peers = event.d.dm_peers;
           for (const [channelId, peer] of Object.entries(peers)) dmPeerRef.current.set(channelId, peer.id);
           setDmUsers((prev) => ({ ...prev, ...peers }));
+          const gone = dmsWithNoPeer(event.d.dms, peers);
+          setGoneDms(new Set(gone));
+          if (gone.length > 0) setDmUsers((prev) => ({ ...prev, ...Object.fromEntries(gone.map((id) => [id, GONE_PEER])) }));
         }
         // Earlier builds could mark a server channel as encrypted (C-H6). Drop stored
         // entries Ready lists as server channels; keep DMs and ids it doesn't mention.
@@ -1237,6 +1243,25 @@ function MainApp({
             user,
           });
         }
+        break;
+      }
+
+      case "UserDeleted": {
+        // An account was deleted: its messages leave the screen, and a 1:1 chat with it is
+        // named "Deleted account" with no way to reply.
+        const { user_id } = event.d;
+        const chats = dmsWith(dmUsersRef.current, user_id);
+        if (chats.length > 0) {
+          setGoneDms((prev) => new Set([...prev, ...chats]));
+          setDmUsers((prev) => ({ ...prev, ...Object.fromEntries(chats.map((id) => [id, GONE_PEER])) }));
+        }
+        setMessages((prev) => withoutAuthor(prev, user_id));
+        setOnlineUsers((prev) => {
+          if (!prev.has(user_id)) return prev;
+          const next = new Set(prev);
+          next.delete(user_id);
+          return next;
+        });
         break;
       }
 
@@ -2625,6 +2650,7 @@ function MainApp({
         />
       ) : (
       <ChatPane
+        peerGone={selectedChannel?.channel_type === "dm" && goneDms.has(selectedChannel.id)}
         channel={selectedChannel}
         messages={visibleMessages}
         dmTabs={dms}
