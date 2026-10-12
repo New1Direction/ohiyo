@@ -176,3 +176,19 @@ export function lockedCardPx({ title, body, hasButton }: LockedCardCopy, textWid
 export function messageGroupTextPx(lineCounts: readonly number[], linePx: number): number {
   return lineCounts.reduce((sum, lines) => sum + Math.max(1, lines) * linePx + MESSAGE_PAD_PX, 0);
 }
+
+// Reaction chips under a message: a 22px chip with a 4px gap above (`.kc-reaction` in
+// index.css; the chip row is `mt-1 gap-1` in ChatPane), each at most about 52px wide plus
+// a 4px gap. A group keeps 6px extra once, so one reacted message stays at its tuned 32px.
+const REACTION_ROW_PX = 26;
+const REACTION_CHIP_SLOT_PX = 56;
+const REACTION_GROUP_EXTRA_PX = 6;
+
+/** Height of the reaction rows in one message group. `counts` is how many different
+ *  reactions each message has (0 for none); each reacted message wraps its chips onto as
+ *  many rows as the text column needs. */
+export function reactionsPx(counts: readonly number[], textWidth: number): number {
+  const perRow = Math.max(1, Math.floor((textWidth + 4) / REACTION_CHIP_SLOT_PX));
+  const rows = counts.reduce((sum, n) => sum + (n > 0 ? Math.ceil(n / perRow) : 0), 0);
+  return rows === 0 ? 0 : REACTION_GROUP_EXTRA_PX + rows * REACTION_ROW_PX;
+}
