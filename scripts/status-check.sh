@@ -46,7 +46,17 @@ send_alert() {
 
   local detail text payload
   detail="$(printf '%s\n' "${failure_lines[@]}" | sed 's/^/- /')"
-  text="Ohiyo beta reliability check failed: $failures failure(s)\n$detail"
+  text="$(printf 'Ohiyo beta reliability check failed: %s failure(s)\n%s' "$failures" "$detail")"
+
+  # ntfy (ntfy.sh, or a self-hosted one with ALERT_WEBHOOK_FORMAT=ntfy) shows the body as is,
+  # so it gets plain text and a title; Slack and Discord webhooks get JSON.
+  if [[ "${ALERT_WEBHOOK_FORMAT:-}" == "ntfy" || "$ALERT_WEBHOOK_URL" == https://ntfy.sh/* ]]; then
+    curl -fsS -X POST -H 'Title: Ohiyo is having trouble' -H 'Priority: high' -H 'Tags: warning' \
+      --data-binary "$text" "$ALERT_WEBHOOK_URL" >/dev/null || \
+      echo "WARN alert webhook delivery failed" >&2
+    return 0
+  fi
+
   payload="$(jq -nc --arg text "$text" '{text:$text, content:$text}')"
   curl -fsS -X POST -H 'Content-Type: application/json' -d "$payload" "$ALERT_WEBHOOK_URL" >/dev/null || \
     echo "WARN alert webhook delivery failed" >&2
