@@ -211,3 +211,11 @@ export function embedRowPx(embed: LinkEmbed, { showPreview, openHeight, textWidt
   }
   return isOpen ? openHeight + EMBED_CAPTION_PX + EMBED_GAP_PX : EMBED_CHIP_PX;
 }
+
+/** Room a fetched link preview takes in its row: a player for a direct video link, else
+ *  the card while the preview loads and once it's in, and nothing once the link turned
+ *  out to have no preview (a direct image, an API address, a page that refused). */
+export function fetchedPreviewPx(directVideo: boolean, preview: "loading" | "ready" | "none"): number {
+  if (directVideo) return 286;
+  return preview === "none" ? 0 : 98;
+}

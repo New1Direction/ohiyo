@@ -20,10 +20,10 @@ import { PollComposer } from "./PollComposer";
 import { activeMentionQuery, applyMention, splitMentions } from "../lib/mentions";
 import { DISAPPEAR_OPTIONS, formatDuration, timeLeft } from "../lib/disappearing";
 import { APPEARANCE_CHANGED_EVENT } from "../lib/appearance";
-import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, TOUCH_ACTIONS_QUERY, lockedCardPx, messageGroupTextPx, messageLineCount, messageRowMetrics, type LockedCardCopy } from "../lib/messageLayout";
+import { DEFAULT_ROW_METRICS, PHONE_LAYOUT_QUERY, TOUCH_ACTIONS_QUERY, lockedCardPx, messageGroupTextPx, messageLineCount, messageRowMetrics, reactionsPx, type LockedCardCopy } from "../lib/messageLayout";
 import { safeHttpUrl } from "../lib/url";
 import { linkPreviewMode, type LinkPreviewMode } from "../lib/linkPreviews";
-import { NO_OPEN_EMBEDS, embedKey, embedRowPx, enteringChat, linkEmbedFor, openHeightsIn, withEmbedHeight, type LinkEmbed, type OpenEmbeds } from "../lib/linkEmbeds";
+import { NO_OPEN_EMBEDS, embedKey, embedRowPx, enteringChat, fetchedPreviewPx, linkEmbedFor, openHeightsIn, withEmbedHeight, type LinkEmbed, type OpenEmbeds } from "../lib/linkEmbeds";
 import { linkCardUrls, trimUrlTail } from "../lib/messageLinks";
 import { EmbedOpenContext, PlayableEmbed, type EmbedOpenState } from "./LinkEmbeds";
 import { loadDraft, persistDraft } from "../lib/drafts";
@@ -167,7 +167,7 @@ function linkCardHeight(messageId: string, url: string, showPreview: boolean, si
     return embedRowPx(embed, { showPreview, openHeight: sizing.openHeights.get(embedKey(messageId, url)), textWidth: sizing.textWidth });
   }
   if (!showPreview) return 0;
-  return isDirectVideoUrl(url) ? 286 : 98;
+  return fetchedPreviewPx(isDirectVideoUrl(url), ogPreviewStatus(url));
 }
 
 function messageEmbedHeight(message: Message, channelEncrypted: boolean, sizing: EmbedSizing): number {
@@ -493,6 +493,8 @@ export function ChatPane({
   const enteredState = enteringChat(openEmbedState, chatId);
   if (enteredState !== openEmbedState) setOpenEmbedState(enteredState);
   const openEmbeds = openHeightsIn(enteredState, chatId);
+  // Bumped when a link preview turns out empty or arrives, so rows are measured again.
+  const [ogVersion, setOgVersion] = useState(0);
   const embedOpenState = useMemo<EmbedOpenState>(
     () => ({
       heights: openEmbeds,
@@ -877,7 +879,6 @@ export function ChatPane({
           }, 0)),
         0
       );
-      const hasReactions = g.msgs.some((m) => (m.reactions?.length ?? 0) > 0);
       const replies = g.msgs.filter((m) => m.reply_to).length;
       const pins = g.msgs.filter((m) => m.pinned).length;
       const failed = g.msgs.filter((m) => m._state === "failed").length;
@@ -893,7 +894,11 @@ export function ChatPane({
             : 0),
         0
       );
-      return Math.ceil(basePx + textH + mediaH + (hasReactions ? 32 : 0) + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH + lockedH);
+      const reactionsH = reactionsPx(
+        g.msgs.map((m) => (hiddenMessageIds.has(m.id) ? 0 : (m.reactions?.length ?? 0))),
+        textWidth
+      );
+      return Math.ceil(basePx + textH + mediaH + reactionsH + replies * 22 + pins * 20 + failed * 26 + pollH + embedsH + lockedH);
     },
     [rows, hiddenMessageIds, e2eEnabled, openEmbeds, canOpenRecovery]
   );
@@ -903,6 +908,12 @@ export function ChatPane({
   useLayoutEffect(() => {
     listRef.current?.resetAfterIndex(0);
   }, [openEmbeds]);
+
+  // A link preview came back empty (or arrived on a retry): its row changes size.
+  useEffect(() => onOgPreviewChange(() => setOgVersion((v) => v + 1)), []);
+  useEffect(() => {
+    if (ogVersion > 0) listRef.current?.resetAfterIndex(0);
+  }, [ogVersion]);
 
   const handleSend = useCallback(
     (e: React.FormEvent) => {
@@ -2434,6 +2445,23 @@ function ogCacheSet(url: string, value: OgData | null): void {
     if (oldest === undefined) break;
     ogCache.delete(oldest);
   }
+  for (const listener of [...ogListeners]) listener();
+}
+
+// The chat list sizes a preview's row before it renders, so it listens for a preview
+// turning out to have no card (or getting one on a retry) and measures again.
+const ogListeners = new Set<() => void>();
+function onOgPreviewChange(listener: () => void): () => void {
+  ogListeners.add(listener);
+  return () => {
+    ogListeners.delete(listener);
+  };
+}
+
+/** Where a link's preview stands, without touching the cache's recency order. */
+function ogPreviewStatus(url: string): "loading" | "ready" | "none" {
+  if (!ogCache.has(url)) return "loading";
+  return ogCache.get(url) === null ? "none" : "ready";
 }
 
 function useOgPreview(url: string): OgData | null {
