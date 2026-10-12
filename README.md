@@ -177,7 +177,10 @@ We would rather you know these than find them:
   a new device"). If you had verified that contact, the warning is loud and the verified
   mark drops until you compare safety numbers again. So a malicious server, or someone
   holding the contact's stolen session, could read the message that reveals the new
-  device. Compare safety numbers out of band for conversations that matter. A device
+  device. It can't add one you're never told about: your client encrypts only to the
+  devices the directory lists, under the keys it lists, and a message from a device it
+  never listed raises the same notice. Compare safety numbers out of band for
+  conversations that matter. A device
   added to **your own** account is announced on your other devices at once, with a
   one-tap "Not me" that removes it and signs out every session.
 - **Group encryption is experimental.** It is Ohiyo's own sender-key design, not

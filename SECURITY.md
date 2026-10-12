@@ -77,9 +77,14 @@ server operator could disrupt or man-in-the-middle *call setup* — consistent w
 the out-of-scope note above — so the integrity guarantee for voice is "honest
 server."
 
-Message content has a narrower guarantee than Signal's today: encryption is opt-in per
-conversation, and a new device for a contact is trusted on first use without a
-warning, so a malicious server (or someone holding a stolen session) could add a
-device and read messages sent after that. Compare safety numbers out of band for
-conversations that matter. The current limits are listed in the
+Message content has a narrower guarantee than Signal's today. Encryption is opt-in per
+conversation. And a contact's new device gets your message before you are told: your
+client encrypts to every device the directory lists, then says "They added a new
+device" in the chat (loudly, if you had verified them). So a malicious server, or
+someone holding a stolen session, could add a device and read the message that reveals
+it, and any you send before you act. It cannot add a reader you are never told about:
+the client encrypts only to devices the directory lists, under the keys it lists, and a
+message from a device the directory never showed raises the same notice. Removing a
+device gives every group chat its account is in new keys. Compare safety numbers out of
+band for conversations that matter. The current limits are listed in the
 [README](README.md#known-limits-of-the-encryption).
