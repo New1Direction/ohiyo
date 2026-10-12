@@ -34,6 +34,7 @@ import { PERM, can } from "./permissions";
 import { NotificationSettingsDialog, type NotificationSettingsTarget } from "./components/NotificationSettingsDialog";
 import { WebhooksDialog, type WebhookApi } from "./components/WebhooksDialog";
 import { mentionsMe, notificationTitle } from "./lib/messageNotify";
+import { fileUrlOn } from "./lib/fileUrl";
 import {
   isMuted,
   messageAlert,
@@ -3132,6 +3133,7 @@ function MainApp({
             .map((c) => ({ id: c.id, name: c.name }))}
           webhookApi={webhookApi}
           urlFor={(w) => `${getApiBase()}/webhooks/${w.id}/${w.token}`}
+          fileUrl={(stored) => fileUrlOn(getFileBase(), stored)}
           onCopy={(text) => navigator.clipboard.writeText(text)}
           onClose={() => setShowWebhooks(false)}
         />

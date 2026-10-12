@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ModalShell } from "./ModalShell";
 import { Icon } from "./Icon";
+import { avatarStyle } from "../lib/avatarStyle";
 
 export type WebhookSummary = {
   id: string;
@@ -30,6 +31,8 @@ type Props = {
   webhookApi: WebhookApi;
   /** The URL to post to, for a webhook whose token was just issued. */
   urlFor: (webhook: WebhookCreated) => string;
+  /** Where a stored picture URL ("/files/…") loads from: the home's file server. */
+  fileUrl: (stored: string) => string;
   onCopy: (text: string) => Promise<void>;
   onClose: () => void;
 };
@@ -47,7 +50,7 @@ function message(err: unknown, fallback: string): string {
 
 /** A space's incoming webhooks, like Discord's: make one for a channel and copy its URL
  *  (shown once), give it a new URL, rename it, give it a picture, or delete it. */
-export function WebhooksDialog({ spaceName, channels, webhookApi, urlFor, onCopy, onClose }: Props) {
+export function WebhooksDialog({ spaceName, channels, webhookApi, urlFor, fileUrl, onCopy, onClose }: Props) {
   const titleId = useId();
   const [channelId, setChannelId] = useState(channels[0]?.id ?? "");
   const [hooks, setHooks] = useState<WebhookSummary[] | null>(null);
@@ -250,7 +253,7 @@ export function WebhooksDialog({ spaceName, channels, webhookApi, urlFor, onCopy
                     <span
                       className="kc-webhooks__avatar"
                       aria-hidden="true"
-                      style={hook.avatar_url ? { backgroundImage: `url(${hook.avatar_url})` } : undefined}
+                      style={hook.avatar_url ? avatarStyle(hook.id, fileUrl(hook.avatar_url)) : undefined}
                     >
                       {!hook.avatar_url && <Icon name="webhook" size={16} />}
                     </span>

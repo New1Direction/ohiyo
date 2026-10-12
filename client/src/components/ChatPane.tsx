@@ -37,6 +37,7 @@ import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 import { threadChipLabel, type ThreadSummary } from "../lib/threads";
 import { avatarStyle } from "../lib/avatarStyle";
+import { fileUrlOn } from "../lib/fileUrl";
 
 const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
 function hiddenMessagesKey(channelId: string, userId: string): string {
@@ -2836,10 +2837,7 @@ function fitImg(w: number, h: number, maxW: number, maxH: number): { w: number; 
 }
 
 function assetUrl(url: string): string {
-  // Only http(s) absolute URLs pass through; data:/blob: are rejected so a
-  // crafted attachment URL can't smuggle an inline payload into <img>/<video>.
-  if (/^https?:/i.test(url)) return url;
-  return `${getFileBase()}${url.startsWith("/") ? url : `/${url}`}`;
+  return fileUrlOn(getFileBase(), url);
 }
 
 function VideoAttachmentPlayer({ url, filename, compact = false }: { url: string; filename: string; compact?: boolean }) {
