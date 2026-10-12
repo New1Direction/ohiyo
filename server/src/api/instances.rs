@@ -90,6 +90,22 @@ fn self_host_guide(inst: &HostedInstance) -> SelfHostGuide {
     }
 }
 
+#[derive(Serialize)]
+pub struct InstancesAvailable {
+    pub available: bool,
+}
+
+/// GET /api/v1/instances/available — whether this server can make Instant Servers, by the
+/// same rule `create_instance` applies, so the app doesn't offer what it would refuse.
+pub async fn instances_available(_auth: AuthUser) -> Json<InstancesAvailable> {
+    Json(InstancesAvailable {
+        available: provision::provisioning_available(
+            std::env::var("FLY_API_TOKEN").is_ok(),
+            cfg!(debug_assertions),
+        ),
+    })
+}
+
 /// POST /api/v1/instances — provision a new instance for the caller.
 pub async fn create_instance(
     auth: AuthUser,

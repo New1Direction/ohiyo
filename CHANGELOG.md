@@ -14,6 +14,14 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ### Added
 - **ohiyo.gg has a Download section** for the desktop app, with the steps to open the Mac beta.
 
+### Changed
+- **Settings speaks in sentence case** like the rest of the app, and the Account card no longer
+  prints your user ID; "Copy user ID" puts it on the clipboard when support or a self-hosted
+  setup asks for it.
+- **The command palette only offers Instant Servers where they can be made.** The hosted
+  service can't make them, so its palette no longer lists them. The server answers
+  `GET /api/v1/instances/available`.
+
 ## [0.3.0] — 2026-10-12
 
 ### Added
