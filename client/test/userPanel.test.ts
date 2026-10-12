@@ -171,7 +171,9 @@ test("Escape closes the menu and puts focus back on the bar", () => {
   try {
     p.open();
     p.keydown(p.menu()!, "Escape");
-    assert.equal(p.menu(), null, "the menu is closed");
+    // Compare with === null: a failing assert.equal on a DOM node prints its whole object
+    // graph and stalls the run.
+    assert.equal(p.menu() === null, true, "the menu is closed");
     const active = document.activeElement as unknown as Element | null;
     assert.equal(active?.getAttribute("aria-haspopup"), "dialog", "focus is back on the bar");
   } finally {
@@ -198,7 +200,7 @@ test("a finished owner checklist is not shown", () => {
   document.body.append(container);
   const f = bundle.mod.mountChecklist(container, ALL);
   try {
-    assert.equal(container.querySelector(".kc-activation"), null, "no 'All set 5 of 5' card");
+    assert.equal(container.querySelector(".kc-activation") === null, true, "no 'All set 5 of 5' card");
   } finally {
     f.unmount();
     container.remove();
