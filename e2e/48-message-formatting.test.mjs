@@ -44,7 +44,8 @@ try {
   if (typed !== "line one\nline two") throw new Error(`Shift+Enter didn't start a new line: ${JSON.stringify(typed)}`);
   const grown = await page.evaluate((sel) => document.querySelector(sel).getBoundingClientRect().height, COMPOSER);
   await page.press(COMPOSER, "Enter");
-  await page.waitForSelector('[data-message-id]:not([data-message-id^="temp-"]) .msg-content br', { timeout: 8000 });
+  // A <br> has no box of its own, so it is never "visible": wait for it to be there.
+  await page.waitForSelector('[data-message-id]:not([data-message-id^="temp-"]) .msg-content br', { state: "attached", timeout: 8000 });
   const after = await page.evaluate((sel) => document.querySelector(sel).getBoundingClientRect().height, COMPOSER);
   if (!(grown > after)) throw new Error(`the message box didn't grow for two lines (${grown}px) or shrink back (${after}px)`);
   log("Shift+Enter starts a new line, the box grows with it, Enter sends ✓");
