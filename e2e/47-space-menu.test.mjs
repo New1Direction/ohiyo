@@ -6,7 +6,7 @@ import { launchBrowser, register, log, settle, shot, uniq } from "./harness.mjs"
 // every run so the menu can be looked at.
 const browser = await launchBrowser();
 let failed = false;
-const COMPOSER = 'input[placeholder*="Say something"]';
+const COMPOSER = 'textarea[placeholder*="Say something"]';
 const NAME = '.channel-sidebar button[aria-haspopup="menu"]';
 const MENU = '.channel-sidebar [role="menu"]';
 

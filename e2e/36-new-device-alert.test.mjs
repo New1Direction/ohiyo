@@ -53,7 +53,7 @@ try {
   await d1.page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await d1.page.fill("#kc-space-name", "Nd HQ");
   await d1.page.click('button:has-text("Let\'s go")');
-  await d1.page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await d1.page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   const token1 = await currentToken(d1.page);
   await waitForDevices(token1, 1);
   await d1.page.waitForTimeout(800);

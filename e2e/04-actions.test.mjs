@@ -30,11 +30,11 @@ try {
   await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Action HQ");
   await pageA.click('button:has-text("Let\'s go")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   const grab = link => link;
 
   // Send a message
-  const composer = pageA.locator('input[placeholder*="Say something"]');
+  const composer = pageA.locator('textarea[placeholder*="Say something"]');
   await composer.fill("frist mesage");
   await composer.press("Enter");
   await pageA.waitForSelector("text=frist mesage", { timeout: 8000 });
@@ -45,7 +45,7 @@ try {
   // ── EDIT ──
   await grp().hover();
   await grp().getByRole("button", { name: "Edit message" }).first().click();
-  const editInput = pageA.locator('input[aria-label="Edit message"]');
+  const editInput = pageA.locator('textarea[aria-label="Edit message"]');
   await editInput.fill("first message (fixed)");
   await editInput.press("Enter");
   await pageA.waitForSelector("text=first message (fixed)", { timeout: 8000 });
@@ -96,7 +96,7 @@ try {
   await pageA.locator('input[placeholder="new-channel"]').press("Enter");
   await pageA.waitForSelector('button:has-text("random")', { timeout: 6000 });
   await pageA.click('button:has-text("random")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #random"]', { timeout: 6000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #random"]', { timeout: 6000 });
 
   const ctxB = await browser.newContext({ viewport: { width: 1100, height: 800 } });
   const pageB = await ctxB.newPage();
@@ -111,10 +111,10 @@ try {
   await pageB.click('button:has-text("Create my account")');
   await pageB.waitForSelector('button:has-text("Accept invite")', { timeout: 12000 });
   await pageB.click('button:has-text("Accept invite")');
-  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   // B posts to #general while A is on #random
-  await pageB.locator('input[placeholder*="Say something"]').fill("hey are you there");
-  await pageB.locator('input[placeholder*="Say something"]').press("Enter");
+  await pageB.locator('textarea[placeholder*="Say something"]').fill("hey are you there");
+  await pageB.locator('textarea[placeholder*="Say something"]').press("Enter");
   // A's tab title should show unread count
   await pageA.waitForFunction(() => /^\(\d+\) Ohiyo/.test(document.title), { timeout: 8000 });
   const title = await pageA.evaluate(() => document.title);

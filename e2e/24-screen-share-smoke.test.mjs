@@ -57,7 +57,7 @@ async function register(page, username, displayName, spaceName) {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", spaceName);
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 }
 
 async function createInvite(page) {
@@ -82,7 +82,7 @@ async function joinInvite(page, invite, username, displayName) {
   await page.click('button:has-text("Create my account")');
   await page.waitForSelector("text=You're invited to", { timeout: 12000 });
   await page.click('button:has-text("Accept invite")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 }
 
 async function joinVoice(page) {

@@ -37,7 +37,7 @@ try {
   await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Test HQ");
   await pageA.click('button:has-text("Let\'s go")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("A: created Test HQ, in #general");
 
   await pageA.click('button[aria-label="Invite people"]');
@@ -79,7 +79,7 @@ try {
   await shot(pageB, "12-invite-accept");
 
   await pageB.click('button:has-text("Accept invite")');
-  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   // confirm the server name is visible (joined Test HQ)
   await pageB.waitForSelector("text=Test HQ", { timeout: 6000 });
   log("B: JOINED Test HQ and landed in #general ✓");
@@ -90,7 +90,7 @@ try {
   await shot(pageB, "13-joined-server");
 
   // B sends a message; A should receive it live (shared membership)
-  const composerB = pageB.locator('input[placeholder*="Say something"]');
+  const composerB = pageB.locator('textarea[placeholder*="Say something"]');
   await composerB.fill(`hi from ${B}!`);
   await composerB.press("Enter");
   await pageB.waitForSelector(`text=hi from ${B}!`, { timeout: 8000 });
@@ -108,7 +108,7 @@ try {
   await shot(pageA, "14-find-people");
   await pageA.click(`button[aria-label="Message @${B}"]`);
   // DM opens → composer visible, find-people modal closed
-  await pageA.waitForSelector('input[placeholder*="Say something"]', { state: "visible", timeout: 8000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something"]', { state: "visible", timeout: 8000 });
   await pageA.waitForSelector('input[aria-label="Search people"]', { state: "detached", timeout: 5000 });
   log("A: opened a DM with B ✓");
   await shot(pageA, "15-dm-open");

@@ -12,7 +12,7 @@ async function onboard(page, username, display, space) {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", space);
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 }
 
 async function registerAt(page, url, username, display) {
@@ -51,13 +51,13 @@ try {
   await pageB.waitForSelector("text=Private DM invitation", { timeout: 12000 });
   await pageB.waitForSelector("text=@" + A, { timeout: 8000 });
   await pageB.click('button:has-text("Open DM with Link A")');
-  await pageB.waitForSelector('input[placeholder="Say something…"]', { timeout: 10000 });
+  await pageB.waitForSelector('textarea[placeholder="Say something…"]', { timeout: 10000 });
   if (pageB.url().includes("dm=")) throw new Error("dm token remained in URL after redeem");
   log("B redeemed link and opened A's DM ✓");
 
   const msg = `one-time-dm-${u}`;
-  await pageB.fill('input[placeholder="Say something…"]', msg);
-  await pageB.press('input[placeholder="Say something…"]', "Enter");
+  await pageB.fill('textarea[placeholder="Say something…"]', msg);
+  await pageB.press('textarea[placeholder="Say something…"]', "Enter");
   await pageB.waitForSelector(`text=${msg}`, { timeout: 8000 });
 
   await pageA.reload({ waitUntil: "domcontentloaded" });

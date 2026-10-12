@@ -20,7 +20,7 @@ const A = `ra_${u}`,
 const browser = await launchBrowser();
 let failed = false;
 
-const COMPOSER = 'input[placeholder="Say something…"]';
+const COMPOSER = 'textarea[placeholder="Say something…"]';
 const LOCKED = "text=/needs keys this device/";
 
 async function onboard(page, username, display, space) {
@@ -28,7 +28,7 @@ async function onboard(page, username, display, space) {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", space);
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 }
 
 async function login(page, username) {

@@ -13,7 +13,7 @@ try {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Outbox HQ");
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   // a second channel to switch to
   await page.click('button[aria-label="Create channel"]');
@@ -27,7 +27,7 @@ try {
     block && route.request().method() === "POST" ? route.abort("failed") : route.continue()
   );
 
-  const composer = page.locator('input[placeholder*="Say something"]');
+  const composer = page.locator('textarea[placeholder*="Say something"]');
   await composer.fill("queued while offline");
   await composer.press("Enter");
   await page.waitForSelector("text=/Couldn.t send/", { timeout: 8000 });
@@ -35,9 +35,9 @@ try {
 
   // switch away and back — the queued message must still be there (persisted)
   await page.click('button:has-text("random")');
-  await page.waitForSelector('input[placeholder*="Say something to #random"]', { timeout: 6000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #random"]', { timeout: 6000 });
   await page.click('button:has-text("general")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 6000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 6000 });
   await page.waitForSelector("text=queued while offline", { timeout: 6000 });
   await page.waitForSelector("text=/Couldn.t send/", { timeout: 4000 });
   log("queued message survived a channel switch (persisted outbox) ✓");

@@ -2350,10 +2350,15 @@ button:disabled,
   background: transparent;
   color: var(--text-primary);
 }
+/* A textarea one line tall (Shift+Enter adds lines; ChatPane grows it to fit, up to 40% of
+   the window). One line plus its padding is exactly the old 2.5rem bar. */
 .kc-composer-input {
   min-height: 2.5rem;
-  height: 2.5rem;
-  padding: 0 0.375rem;
+  padding: 0.625rem 0.375rem;
+  line-height: 1.25rem;
+  resize: none;
+  overflow-y: hidden;
+  align-self: center;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -3354,6 +3359,64 @@ button:disabled,
   font-size: calc(0.875rem * var(--msg-font-scale, 1));
   line-height: var(--msg-line-height, 1.45);
 }
+
+/* Message formatting (MessageMarkdown.tsx). The row-height estimate (messageContentPx in
+   lib/messageLayout.ts) uses these sizes; change the two together. */
+.msg-content strong { color: var(--text-primary); }
+.kc-md-heading {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.375;
+  color: var(--text-primary);
+}
+.kc-md-heading:not(:first-child) { margin-top: 0.4em; }
+.kc-md-h1 { font-size: 1.5em; }
+.kc-md-h2 { font-size: 1.25em; }
+.kc-md-h3 { font-size: 1.0625em; }
+.kc-md-subtext {
+  display: block;
+  font-size: 0.8125em;
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+.kc-md-quote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 4px solid color-mix(in oklch, var(--text-muted) 45%, transparent);
+}
+.kc-md-list { margin: 0; padding-left: 1.5em; }
+ul.kc-md-list { list-style: disc; }
+ul.kc-md-list ul.kc-md-list { list-style: circle; }
+ol.kc-md-list { list-style: decimal; }
+.kc-md-list > li::marker { color: var(--text-muted); }
+.kc-md-code {
+  background: var(--bg-input);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.9em;
+  color: var(--text-primary);
+}
+.kc-md-link { color: var(--accent); text-decoration: underline; overflow-wrap: anywhere; }
+.kc-md-link-host { color: var(--text-muted); font-size: 0.875em; }
+.kc-md-time {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--text-primary) 9%, transparent);
+  color: var(--text-primary);
+}
+.code-block { position: relative; }
+.code-block[data-lang]::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font: 600 10px/1 var(--font-ui);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: #9399b2;
+}
+.kc-edit-input { resize: vertical; min-height: 2.25rem; }
 .msg-group {
   padding-bottom: var(--msg-group-gap, 0.125rem);
 }
@@ -3784,9 +3847,9 @@ button:disabled,
     display: none !important;
   }
   .kc-composer-input {
-    height: 44px;
     min-height: 44px;
-    padding-inline: 0.375rem;
+    padding: 10px 0.375rem;
+    line-height: 24px;
     font-size: 1rem !important;
   }
 

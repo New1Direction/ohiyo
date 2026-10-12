@@ -6,7 +6,7 @@ import { launchBrowser, register, log, settle, shot, uniq } from "./harness.mjs"
 // when there is something to send (Enter sends); on a touch screen it is always there.
 const browser = await launchBrowser();
 let failed = false;
-const COMPOSER = 'input[placeholder*="Say something"]';
+const COMPOSER = 'textarea[placeholder*="Say something"]';
 const SEND = 'form.kc-composer-shell button[aria-label="Send message"]';
 
 async function onboard(page, who, space) {
@@ -21,7 +21,7 @@ async function onboard(page, who, space) {
 const readBar = (page) =>
   page.evaluate(() => {
     const form = document.querySelector("form.kc-composer-shell");
-    const input = form?.querySelector('input[placeholder*="Say something"]');
+    const input = form?.querySelector('textarea[placeholder*="Say something"]');
     const add = form?.querySelector('button[aria-label="Add to your message"], button[aria-label="Attach a file"]');
     const emoji = form?.querySelector('button[aria-label="Emoji and GIFs"]');
     const send = form?.querySelector('button[aria-label="Send message"]');

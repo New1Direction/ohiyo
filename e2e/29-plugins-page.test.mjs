@@ -7,7 +7,7 @@ import { launchBrowser, register, log, shot, uniq } from "./harness.mjs";
 const browser = await launchBrowser();
 let failed = false;
 
-const composer = (page) => page.locator('input[placeholder*="Say something"]');
+const composer = (page) => page.locator('textarea[placeholder*="Say something"]');
 async function say(page, text) {
   await composer(page).fill(text);
   await composer(page).press("Enter");
@@ -33,7 +33,7 @@ try {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Plugins HQ");
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   // Spoilers need no plugin.
   await say(page, "the ending: ||everyone lives||");
@@ -69,7 +69,7 @@ try {
 
   // The choice survives a reload, and the plugin does what it says.
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   await say(page, "🎉");
   await page.waitForSelector(".big-emoji-char", { timeout: 6000 });
   log("Big emoji stays on after a reload and enlarges an emoji-only message ✓");

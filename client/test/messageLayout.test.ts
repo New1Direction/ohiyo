@@ -270,3 +270,12 @@ test("a forwarded message has a line for who it came from", () => {
 test("a timestamp is estimated at the width it is shown, not the width of its code", () => {
   assert.ok(messageContentPx("<t:1700000000:F> ".repeat(8), wide) >= messageContentPx("Tuesday, November 14, 2023 10:13 PM ".repeat(8), wide));
 });
+
+test("an '(edited)' label after a heading, list, quote or code gets a line of its own", () => {
+  for (const text of ["# Title", "- a", "> said", "```\ncode\n```", "-# small"]) {
+    assert.equal(messageContentPx(text, wide, true), messageContentPx(text, wide) + wide.linePx, text);
+  }
+  // After ordinary text it sits at the end of the last line.
+  assert.equal(messageContentPx("hello", wide, true), messageContentPx("hello", wide));
+  assert.equal(messageContentPx("# Title\nthen text", wide, true), messageContentPx("# Title\nthen text", wide));
+});
