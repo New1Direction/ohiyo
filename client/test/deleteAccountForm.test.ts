@@ -109,7 +109,8 @@ test("a different name does not confirm", () => {
 test("opening the form puts the cursor in the password field", () => {
   const f = openForm("kikka");
   try {
-    assert.equal(document.activeElement, f.container.querySelector('input[aria-label="Password"]'));
+    // Compared by label: a failed comparison of two DOM nodes prints their whole object graphs.
+    assert.equal(document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName, "Password");
   } finally {
     f.cleanup();
   }
