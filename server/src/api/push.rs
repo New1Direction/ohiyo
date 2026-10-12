@@ -25,6 +25,12 @@ use crate::{
 
 const MAX_DISPATCH_BATCH: i64 = 100;
 const MAX_DELIVERY_ATTEMPTS: i64 = 5;
+/// Push devices one account keeps; registering another replaces the least recently used.
+const MAX_PUSH_DEVICES: i64 = 10;
+/// Device registrations per account per minute.
+const PUSH_REGISTER_MAX_PER_MIN: usize = 20;
+/// A nudge still waiting after this long is no use to anyone, and is cleaned up.
+const QUEUED_NUDGE_MAX_AGE_SECS: i64 = 7 * 86_400;
 const CONTENT_FREE_TITLE: &str = "Ohiyo";
 const CONTENT_FREE_BODY: &str = "You have new activity.";
 
@@ -310,6 +316,14 @@ pub async fn register_device(
         ));
     }
 
+    // Counted once the request is valid: a refused one stores nothing.
+    if !state.rate.check(
+        &format!("push-register:{}", auth.0),
+        PUSH_REGISTER_MAX_PER_MIN,
+        std::time::Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
     let id = new_id();
     let now = now_unix();
     sqlx::query(
@@ -335,6 +349,20 @@ pub async fn register_device(
     .bind(now)
     .bind(now)
     .bind(&auth.0)
+    .execute(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+
+    // Keep the newest MAX_PUSH_DEVICES: every device costs a queued nudge for each
+    // message the account is sent.
+    sqlx::query(
+        "DELETE FROM push_devices WHERE user_id = ? AND id NOT IN (
+           SELECT id FROM push_devices WHERE user_id = ?
+           ORDER BY updated_at DESC, rowid DESC LIMIT ?)",
+    )
+    .bind(&auth.0)
+    .bind(&auth.0)
+    .bind(MAX_PUSH_DEVICES)
     .execute(&state.db)
     .await
     .map_err(crate::api::error::internal)?;
@@ -397,20 +425,25 @@ async fn queue_for_users(
             continue;
         }
         for (device_id,) in devices {
-            sqlx::query(
+            // A nudge is a wake-up: a device with one already waiting needs no other.
+            let queued = sqlx::query(
                 "INSERT INTO push_deliveries (id, user_id, device_id, kind, status, attempts, created_at)
-                 VALUES (?,?,?,?,?,?,?)",
+                 SELECT ?,?,?,?,?,?,?
+                 WHERE NOT EXISTS (
+                   SELECT 1 FROM push_deliveries WHERE device_id = ? AND status = 'queued')",
             )
             .bind(new_id())
             .bind(user_id)
-            .bind(device_id)
+            .bind(&device_id)
             .bind(kind)
             .bind("queued")
             .bind(0_i64)
             .bind(now_unix())
+            .bind(&device_id)
             .execute(&state.db)
-            .await?;
-            result.queued += 1;
+            .await?
+            .rows_affected();
+            result.queued += queued as i64;
         }
     }
     Ok(result)
@@ -566,9 +599,14 @@ pub async fn dispatch_queued(state: &AppState, limit: i64) -> Result<DispatchRes
                 result.delivered += 1;
             }
             ProviderSendResult::MissingProvider(reason) => {
-                mark_retry(state, &job, now, &reason).await?;
                 result.skipped_missing_provider += 1;
-                result.retried += 1;
+                if job.attempts + 1 < MAX_DELIVERY_ATTEMPTS {
+                    mark_retry(state, &job, now, &reason).await?;
+                    result.retried += 1;
+                } else {
+                    mark_failed(state, &job, now, &reason, false, true).await?;
+                    result.failed += 1;
+                }
             }
             ProviderSendResult::Failed(failure) => {
                 if failure.invalid_token {
@@ -1113,9 +1151,11 @@ pub async fn sweep_stale_push_rows(state: &AppState) {
     let cutoff = now_unix() - 30 * 86_400;
     if let Err(e) = sqlx::query(
         "DELETE FROM push_deliveries
-         WHERE status IN ('delivered','failed','skipped') AND created_at < ?",
+         WHERE (status IN ('delivered','failed','skipped') AND created_at < ?)
+            OR (status = 'queued' AND created_at < ?)",
     )
     .bind(cutoff)
+    .bind(now_unix() - QUEUED_NUDGE_MAX_AGE_SECS)
     .execute(&state.db)
     .await
     {
