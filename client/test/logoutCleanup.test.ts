@@ -84,6 +84,7 @@ test("a deleted account's keys and messages leave the device in one write per st
     "ohiyo:known-devices:other": "[2]",
     "kc:tok:home": "token",
     "kc:homes:v1": "[]",
+    "kc:last-username": "me-name",
     theme: "dusk",
   });
   clearDeletedAccountData([store], "me");
