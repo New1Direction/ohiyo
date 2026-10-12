@@ -21,7 +21,7 @@ box; server channels are stored like any chat server's.
 
 > **Status:** v0.3.0 public beta — early but real. The hosted app is live at
 > [app.ohiyo.gg](https://app.ohiyo.gg), the public site is live at
-> [ohiyo.gg](https://ohiyo.gg), and a 28-suite end-to-end run is part of CI. Desktop apps for Mac and
+> [ohiyo.gg](https://ohiyo.gg), and the end-to-end suite runs in CI on every pull request. Desktop apps for Mac and
 > Linux are on [ohiyo.gg](https://ohiyo.gg/#download) and in [Releases](../../releases); the Mac build is a
 > beta that Apple has not verified yet.
 
@@ -83,7 +83,7 @@ box; server channels are stored like any chat server's.
 | Desktop  | Tauri 2 |
 | Realtime | WebRTC (voice/video/screen-share), WS gateway with one-time tickets |
 | Deploy   | Docker on Railway or Fly.io (see [`DEPLOY.md`](DEPLOY.md)) |
-| Quality  | ESLint (hooks-as-error), `tsc`, unit tests, `cargo test`, 28-suite e2e, GitHub Actions CI |
+| Quality  | ESLint (hooks-as-error), `tsc`, unit tests, `cargo test`, end-to-end suite (dev and production-preview), GitHub Actions CI |
 
 ## Repo layout
 
