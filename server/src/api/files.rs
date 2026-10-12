@@ -95,6 +95,11 @@ fn refuse_disk_full(reserve: u64) -> (StatusCode, String) {
     (StatusCode::INSUFFICIENT_STORAGE, DISK_FULL.into())
 }
 
+/// What someone over their upload limit is told.
+fn upload_limit_message(_quota_bytes: i64) -> String {
+    "upload quota exceeded".into()
+}
+
 /// Media types we are willing to serve INLINE (rendered by the browser). Everything
 /// else — notably `text/html` and `image/svg+xml`, which can execute script — is forced
 /// to download as an opaque octet-stream, so an uploaded file can never run as a
@@ -213,10 +218,7 @@ pub async fn upload_file(
             // Abort the moment this upload would push the user over quota — so an
             // over-limit file is never fully written to disk in the first place.
             if used_u.saturating_add(size_bytes) > quota_u {
-                return Err((
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "upload quota exceeded".into(),
-                ));
+                return Err((StatusCode::PAYLOAD_TOO_LARGE, upload_limit_message(quota)));
             }
             // Likewise the moment it would eat into the disk reserve.
             if headroom.is_some_and(|room| written_this_request > room) {
@@ -793,6 +795,18 @@ pub async fn serve_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_upload_limit_message_says_how_much_space_there_is_and_how_to_free_some() {
+        assert_eq!(
+            upload_limit_message(1024 * 1024 * 1024),
+            "You've used all 1 GB of your upload space. Deleting messages with files you no longer need makes room."
+        );
+        assert_eq!(
+            upload_limit_message(500 * 1024 * 1024),
+            "You've used all 500 MB of your upload space. Deleting messages with files you no longer need makes room."
+        );
+    }
 
     #[test]
     fn an_account_may_store_one_gib_of_uploads_by_default() {
