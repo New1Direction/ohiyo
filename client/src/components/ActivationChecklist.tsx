@@ -1,4 +1,4 @@
-import { activationCompletedCount, type ActivationState } from "../lib/activation";
+import { activationCompletedCount, isActivationComplete, type ActivationState } from "../lib/activation";
 
 const ITEMS: Array<{ key: keyof ActivationState; label: string; help: string }> = [
   { key: "account", label: "Create your account", help: "You’re signed in and ready." },
@@ -17,17 +17,19 @@ type Props = {
 };
 
 export function ActivationChecklist({ state, serverName, onInvite, onJoinVoice, onDismiss }: Props) {
+  // Once every step is done there is nothing left to do here, so the row goes. It used to
+  // stay in the sidebar for good as "All set 5 of 5".
+  if (isActivationComplete(state)) return null;
   const done = activationCompletedCount(state);
   const total = ITEMS.length;
   const pct = Math.round((done / total) * 100);
-  const allDone = done === total;
 
   return (
     // One quiet row under the channels until it is opened. Open by default it filled the
     // sidebar and pushed the channels, the thing the sidebar is for, out of sight.
     <details className="kc-activation">
       <summary>
-        <span className="kc-activation__title">{allDone ? "All set" : "Getting started"}</span>
+        <span className="kc-activation__title">Getting started</span>
         <span className="kc-activation__count">{done} of {total}</span>
         <span className="kc-activation-progress" aria-hidden="true">
           <span style={{ width: `${pct}%` }} />
@@ -37,11 +39,11 @@ export function ActivationChecklist({ state, serverName, onInvite, onJoinVoice, 
       <div className="kc-activation-card__head">
         <div>
           <div className="kc-activation-eyebrow">Owner launch checklist</div>
-          <h3>{allDone ? "Your space is alive 🎉" : `Launch ${serverName || "your space"}`}</h3>
+          <h3>{`Launch ${serverName || "your space"}`}</h3>
         </div>
         <button type="button" className="kc-activation-dismiss kc-interactive" onClick={onDismiss} aria-label="Hide owner launch checklist">×</button>
       </div>
-      <p>{allDone ? "Nice. Your space is ready for people." : "Five tiny steps to turn an empty room into a real community."}</p>
+      <p>Five tiny steps to turn an empty room into a real community.</p>
       <ol className="kc-activation-list">
         {ITEMS.map((item) => {
           const complete = Boolean(state[item.key]);

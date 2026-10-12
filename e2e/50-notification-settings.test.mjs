@@ -43,7 +43,7 @@ async function setMute(page, choice) {
   await dialog.waitFor({ timeout: 6000 });
   if (choice === "unmute") {
     await dialog.locator("text=Muted until you turn it back on").waitFor({ timeout: 4000 });
-    await shot(page, "49-notif-muted-dialog");
+    await shot(page, "50-notif-muted-dialog");
     await dialog.locator('button:has-text("Unmute")').click();
   } else {
     await dialog.locator('select[aria-label="Mute"]').selectOption({ label: choice });
@@ -86,7 +86,7 @@ try {
   await pageB.waitForSelector('.channel-sidebar .kc-channel-row:has-text("random") [aria-label="Muted"]', { timeout: 8000 });
   await pageB.waitForTimeout(1500);
   if (await row(pageB, "random").locator('[aria-label$="unread"]').count()) throw new Error("a muted channel shows an unread number");
-  await shot(pageB, "49-notif-muted-row");
+  await shot(pageB, "50-notif-muted-row");
   log("a message in muted #random raises no unread number ✓");
 
   await openChannel(pageB, "random");
@@ -118,7 +118,7 @@ try {
   }
   let dialog = await openSpaceDialog(pageB);
   await checkDialog(pageB, dialog, "desktop");
-  await shot(pageB, "49-notif-space-dark");
+  await shot(pageB, "50-notif-space-dark");
   await dialog.locator('button:has-text("Cancel")').click();
   await dialog.waitFor({ state: "detached", timeout: 4000 });
 
@@ -129,7 +129,7 @@ try {
   await settle(pageB, 300);
   dialog = await openSpaceDialog(pageB);
   await checkDialog(pageB, dialog, "desktop light");
-  await shot(pageB, "49-notif-space-light");
+  await shot(pageB, "50-notif-space-light");
   await dialog.locator('button:has-text("Cancel")').click();
   log("the space's dialog fits a desktop, dark and light ✓");
 
@@ -141,7 +141,7 @@ try {
   await settle(phone, 450);
   dialog = await openSpaceDialog(phone, ".kc-nav");
   await checkDialog(phone, dialog, "phone");
-  await shot(phone, "49-notif-space-phone");
+  await shot(phone, "50-notif-space-phone");
   log("on a phone the dialog fits and every choice is at least 44px ✓");
 
   console.log("\n✅ NOTIFICATION SETTINGS PASSED");

@@ -96,7 +96,7 @@ try {
 
   // A member with no profile picture shows the Ohiyo logo, on a circle that is actually painted.
   const ownAvatar = await page.evaluate(() => {
-    const el = document.querySelector('button[aria-label="Edit status"] > div');
+    const el = document.querySelector('.kc-user-avatar');
     return { logo: Boolean(el?.querySelector('svg[viewBox="0 -23 746 746"]')), bg: el ? getComputedStyle(el).backgroundImage : null };
   });
   if (!ownAvatar.logo || !ownAvatar.bg || ownAvatar.bg === "none") {
@@ -180,7 +180,9 @@ try {
   await settle(page, 300);
 
   // ── Logout → login flow with remembered username + friendly error ─
-  await page.click('[title="Sign out"]');
+  // Signing out is in the menu that opens from the user bar (the bar is two lines now).
+  await page.click('.kc-user-identity');
+  await page.click('.kc-user-menu button:has-text("Sign out")');
   // Signing out of the last account asks first, because it removes local message data.
   const signOutDialog = '[role="dialog"][aria-labelledby="kc-sign-out-title"]';
   await page.waitForSelector(signOutDialog, { timeout: 8000 });
