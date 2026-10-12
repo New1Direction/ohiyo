@@ -10,6 +10,15 @@ import { BirdMark } from "./BirdMark";
 import { markActivation } from "../lib/activation";
 import { rateLimitMessage } from "../lib/apiErrors";
 import { takeSignInNotice } from "../lib/sessionNotice";
+import {
+  friendlyAuthError,
+  MAX_USERNAME,
+  MIN_PASSWORD,
+  MIN_USERNAME,
+  USERNAME_RULE,
+  usernameProblem,
+  type AuthMode,
+} from "../lib/authForm";
 
 type Props = {
   home: OhiyoHome;
@@ -20,12 +29,9 @@ type Props = {
   onAddHome: () => void;
 };
 
-type Mode = "login" | "register" | "link";
+type Mode = AuthMode;
 
 const LAST_USERNAME_KEY = "kc:last-username";
-const MIN_PASSWORD = 8;
-const MIN_USERNAME = 2;
-const MAX_USERNAME = 32;
 // One painting per time of day. Sunset is the sunrise painting with an evening grade.
 const SCENE_IMAGE: Record<DoorSceneKey, string> = {
   sunrise: sunriseUrl,
@@ -55,20 +61,6 @@ const AUTH_FACTS = [
   "Chinchillas can have more than 50 hairs from one follicle.",
   "Foxes use their tails for balance, warmth, and style.",
 ];
-
-/** Map raw server/network errors to warm, human copy. */
-function friendlyError(raw: string, mode: Mode): string {
-  const m = raw.toLowerCase();
-  if (m.includes("failed to fetch") || m.includes("networkerror") || m.includes("load failed")) {
-    return "Can't reach Ohiyo right now — check your connection and try again.";
-  }
-  if (m.includes("username taken")) return "That username's already taken — try another?";
-  if (m.includes("invalid credentials")) return "Hmm, that username or password doesn't match.";
-  if (m.includes("password")) return `Passwords need at least ${MIN_PASSWORD} characters.`;
-  if (m.includes("username")) return `Usernames are ${MIN_USERNAME}–${MAX_USERNAME} characters.`;
-  if (mode === "login") return "Couldn't sign you in. Give it another go?";
-  return "Couldn't create your account. Give it another go?";
-}
 
 function EyeIcon({ off }: { off: boolean }) {
   return (
@@ -117,7 +109,8 @@ export function AuthScreen({ home, onAuth }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const usernameOk = username.trim().length >= MIN_USERNAME && username.trim().length <= MAX_USERNAME;
+  const usernameIssue = usernameProblem(username, mode);
+  const usernameOk = usernameIssue === null;
   const passwordOk = password.length >= MIN_PASSWORD;
   const canSubmit = usernameOk && passwordOk && !loading;
 
@@ -136,7 +129,7 @@ export function AuthScreen({ home, onAuth }: Props) {
       if (mode === "register") markActivation(res.user.id, "account");
       onAuth(res.token, res.user.id);
     } catch (err) {
-      setError(rateLimitMessage(err) ?? friendlyError(err instanceof Error ? err.message : "", mode));
+      setError(rateLimitMessage(err) ?? friendlyAuthError(err instanceof Error ? err.message : "", mode));
       setLoading(false);
     }
   }
@@ -256,12 +249,16 @@ export function AuthScreen({ home, onAuth }: Props) {
               maxLength={MAX_USERNAME}
               className="kc-field px-3.5 py-3 text-base outline-none"
             />
-            {showUsernameHint && (
+            {showUsernameHint ? (
               <p className="mt-1 px-1 text-xs" aria-live="polite" style={{ color: "var(--text-muted)" }}>
-                {username.trim().length < MIN_USERNAME
-                  ? `A little longer — ${MIN_USERNAME}+ characters.`
-                  : `Keep it under ${MAX_USERNAME} characters.`}
+                {usernameIssue}
               </p>
+            ) : (
+              mode === "register" && (
+                <p className="mt-1 px-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                  {USERNAME_RULE}
+                </p>
+              )
             )}
           </div>
 
