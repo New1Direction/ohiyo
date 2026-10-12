@@ -95,9 +95,21 @@ fn refuse_disk_full(reserve: u64) -> (StatusCode, String) {
     (StatusCode::INSUFFICIENT_STORAGE, DISK_FULL.into())
 }
 
-/// What someone over their upload limit is told.
-fn upload_limit_message(_quota_bytes: i64) -> String {
-    "upload quota exceeded".into()
+/// What someone over their upload limit is told. Deleting a message frees a file nobody
+/// else uses, which takes it off the count, so the advice holds.
+fn upload_limit_message(quota_bytes: i64) -> String {
+    const MIB: i64 = 1024 * 1024;
+    const GIB: i64 = 1024 * MIB;
+    let size = if quota_bytes >= GIB && quota_bytes % GIB == 0 {
+        format!("{} GB", quota_bytes / GIB)
+    } else if quota_bytes >= MIB {
+        format!("{} MB", (quota_bytes + MIB / 2) / MIB)
+    } else {
+        format!("{} KB", ((quota_bytes + 1023) / 1024).max(1))
+    };
+    format!(
+        "You've used all {size} of your upload space. Deleting messages with files you no longer need makes room."
+    )
 }
 
 /// Media types we are willing to serve INLINE (rendered by the browser). Everything
