@@ -435,6 +435,16 @@ pub async fn open_dm(
         owner_id: None,
     };
 
+    // Tell both people live, like a new group chat: the person being messaged lists it
+    // at once instead of after a reload, and so do the starter's other devices.
+    for uid in [&auth.0, &body.recipient_id] {
+        crate::gateway::broadcast_to_user(
+            &state.sessions,
+            uid,
+            &crate::types::GatewayEvent::ChannelCreate(channel.clone()),
+        );
+    }
+
     Ok(Json(channel))
 }
 
