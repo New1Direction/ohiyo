@@ -180,6 +180,8 @@ pub async fn list_friends(
                         password_hash: r.password_hash,
                         avatar_url: r.avatar_url,
                         created_at: r.created_at,
+                        // A friend is a person: webhook accounts can't be befriended.
+                        is_bot: false,
                     }),
                     status: r.status,
                     direction,
