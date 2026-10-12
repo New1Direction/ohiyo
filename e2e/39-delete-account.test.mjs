@@ -61,9 +61,8 @@ try {
   if (!hadKeys) throw new Error("A had no encryption keys to begin with");
   log("A owns a space B is in; both have talked");
 
-  // B is looking at A's space when A goes. B joined through the API, which doesn't tell
-  // B's open page about the space, so it loads again first.
-  await pageB.reload();
+  // B is looking at A's space when A goes. B joined through the API: the space shows up
+  // on B's open page by itself.
   await pageB.click('button[aria-label="Da HQ"]', { timeout: 15000 });
   // Picking a space selects no channel yet.
   await pageB.click('button:has-text("general")', { timeout: 10000 });
