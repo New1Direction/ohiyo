@@ -12,7 +12,7 @@ try {
   await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Mention HQ");
   await pageA.click('button:has-text("Let\'s go")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   await pageA.click('button[aria-label="Invite people"]');
   await pageA.waitForFunction(() => {
     const el = document.querySelector('input[aria-label="Invite link"]');
@@ -35,7 +35,7 @@ try {
   await pageB.click('button:has-text("Create my account")');
   await pageB.waitForSelector('button:has-text("Accept invite")', { timeout: 12000 });
   await pageB.click('button:has-text("Accept invite")');
-  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("A + B both in #general");
 
   // A makes #random; B moves there (so a mention in #general is "away")
@@ -45,12 +45,12 @@ try {
   await pageA.waitForSelector('button:has-text("random")', { timeout: 6000 });
   await pageB.waitForSelector('button:has-text("random")', { timeout: 8000 });
   await pageB.click('button:has-text("random")');
-  await pageB.waitForSelector('input[placeholder*="Say something to #random"]', { timeout: 6000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #random"]', { timeout: 6000 });
   await pageA.click('button:has-text("general")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 6000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 6000 });
 
   // ── @mention autocomplete ──
-  const composer = pageA.locator('input[placeholder*="Say something"]');
+  const composer = pageA.locator('textarea[placeholder*="Say something"]');
   await composer.click();
   await composer.pressSequentially("@be", { delay: 30 });
   await pageA.waitForSelector(`button:has-text("@${B}")`, { timeout: 5000 });

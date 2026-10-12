@@ -16,7 +16,7 @@ async function onboard(page, username, display, space) {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", space);
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 }
 
 async function openDmWith(page, username) {
@@ -26,7 +26,7 @@ async function openDmWith(page, username) {
   await page.fill('input[aria-label="Search people"]', username);
   await page.waitForSelector(`button[aria-label="Message @${username}"]`, { timeout: 8000 });
   await page.click(`button[aria-label="Message @${username}"]`);
-  await page.waitForSelector('input[placeholder="Say something…"]', { timeout: 8000 });
+  await page.waitForSelector('textarea[placeholder="Say something…"]', { timeout: 8000 });
 }
 
 try {
@@ -53,8 +53,8 @@ try {
   // A opens a DM and sends the first message so B has a DM tab to open.
   await openDmWith(pageA, B);
   const first = `privacy-hello-${u}`;
-  await pageA.fill('input[placeholder="Say something…"]', first);
-  await pageA.press('input[placeholder="Say something…"]', "Enter");
+  await pageA.fill('textarea[placeholder="Say something…"]', first);
+  await pageA.press('textarea[placeholder="Say something…"]', "Enter");
   await pageA.waitForSelector(`text=${first}`, { timeout: 8000 });
 
   await pageB.reload({ waitUntil: "domcontentloaded" });
@@ -64,20 +64,20 @@ try {
   log("B received A's message ✓");
 
   // A types but does not send. Privacy Mode should suppress TypingStart.
-  await pageA.fill('input[placeholder="Say something…"]', `typing-leak-check-${u}`);
+  await pageA.fill('textarea[placeholder="Say something…"]', `typing-leak-check-${u}`);
   await pageB.waitForTimeout(3200);
   const bTextAfterTyping = await pageB.evaluate(() => document.body.innerText);
   if (/is typing|are typing/.test(bTextAfterTyping)) {
     throw new Error("Privacy Mode leaked A typing indicator to B");
   }
-  await pageA.fill('input[placeholder="Say something…"]', "");
+  await pageA.fill('textarea[placeholder="Say something…"]', "");
   log("A typing stayed private ✓");
 
   // B replies. A is already reading the DM, but A's Privacy Mode should suppress
   // the peer-visible Seen receipt for B's message.
   const reply = `private-reply-${u}`;
-  await pageB.fill('input[placeholder="Say something…"]', reply);
-  await pageB.press('input[placeholder="Say something…"]', "Enter");
+  await pageB.fill('textarea[placeholder="Say something…"]', reply);
+  await pageB.press('textarea[placeholder="Say something…"]', "Enter");
   await pageA.waitForSelector(`text=${reply}`, { timeout: 10000 });
   await pageB.waitForSelector(".kc-receipt", { timeout: 8000 });
   await pageB.waitForTimeout(2500);

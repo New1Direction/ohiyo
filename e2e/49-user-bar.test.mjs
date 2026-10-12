@@ -6,7 +6,7 @@ import { launchBrowser, register, log, settle, shot, uniq } from "./harness.mjs"
 // Screenshots at desktop and phone width, dark and light, are kept by CI to look at.
 const browser = await launchBrowser();
 let failed = false;
-const COMPOSER = 'input[placeholder*="Say something"]';
+const COMPOSER = 'textarea[placeholder*="Say something"]';
 
 async function onboard(page, tag, displayName, space) {
   await register(page, `ub_${tag}_${uniq()}`, displayName);
@@ -57,14 +57,14 @@ try {
   if (bar.lines[0].text !== "Desk" || bar.lines[1].text !== "Set a status") throw new Error(`the bar reads ${JSON.stringify(bar.lines)}`);
   if (bar.lines.some((l) => l.wraps)) throw new Error(`a bar line wraps: ${JSON.stringify(bar.lines)}`);
   log(`the bar is two lines: ${bar.lines.map((l) => l.text).join(" / ")} (${bar.panelHeight}px) ✓`);
-  await shot(page, "48-user-bar-desktop-dark");
+  await shot(page, "49-user-bar-desktop-dark");
 
   await page.click(".kc-user-identity");
   await page.waitForSelector('.kc-user-menu[role="dialog"]', { timeout: 4000 });
   await page.click('.kc-user-menu button:has-text("Add an activity")');
   await page.waitForSelector('.kc-user-menu input[aria-label="Activity name"]', { timeout: 4000 });
   await settle(page, 300);
-  await shot(page, "48-user-bar-desktop-menu-dark");
+  await shot(page, "49-user-bar-desktop-menu-dark");
   await page.fill('.kc-user-menu input[aria-label="Activity name"]', "Chess");
   await page.locator('.kc-user-menu input[aria-label="Activity name"]').press("Enter");
   await page.keyboard.press("Escape");
@@ -82,11 +82,11 @@ try {
   await page.click('button[aria-label="Use theme: Ohiyo Light"]');
   await page.keyboard.press("Escape");
   await settle(page, 300);
-  await shot(page, "48-user-bar-desktop-light");
+  await shot(page, "49-user-bar-desktop-light");
   await page.click(".kc-user-identity");
   await page.waitForSelector('.kc-user-menu[role="dialog"]', { timeout: 4000 });
   await settle(page, 300);
-  await shot(page, "48-user-bar-desktop-menu-light");
+  await shot(page, "49-user-bar-desktop-menu-light");
   await page.keyboard.press("Escape");
 
   // ── Phone ──
@@ -108,7 +108,7 @@ try {
   log("on a phone a long name shortens and the time stays on the same line ✓");
   // The "Welcome to …" notice sits over the first message on a phone; let it go first.
   await phone.waitForSelector(".ohiyo-toast", { state: "detached", timeout: 12000 }).catch(() => {});
-  await shot(phone, "48-user-bar-phone-chat");
+  await shot(phone, "49-user-bar-phone-chat");
 
   await phone.locator('button[aria-label="Open channels"]').first().click();
   await settle(phone, 300);
@@ -121,7 +121,7 @@ try {
       .map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`),
   );
   if (small.length) throw new Error(`user bar targets smaller than 44px on a phone: ${small.join(", ")}`);
-  await shot(phone, "48-user-bar-phone-sidebar");
+  await shot(phone, "49-user-bar-phone-sidebar");
   await phone.locator(".kc-user-identity").tap();
   await phone.waitForSelector('.kc-user-menu[role="dialog"]', { timeout: 4000 });
   // The menu opens with a short scale-in; measure once it has settled.
@@ -134,7 +134,7 @@ try {
   );
   if (smallItems.length) throw new Error(`user menu targets shorter than 44px on a phone: ${smallItems.join(", ")}`);
   log("on a phone the bar is two lines and every target is at least 44px ✓");
-  await shot(phone, "48-user-bar-phone-menu");
+  await shot(phone, "49-user-bar-phone-menu");
 
   console.log("\n✅ USER BAR PASSED (two lines · menu · activity · times · phone)");
 } catch (err) {

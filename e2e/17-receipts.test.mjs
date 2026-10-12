@@ -15,7 +15,7 @@ try {
   await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Ann HQ");
   await pageA.click('button:has-text("Let\'s go")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   // ── B: register + clear onboarding (so B is searchable + has a session) ──
   const ctxB = await browser.newContext({ viewport: { width: 1100, height: 800 } });
@@ -25,7 +25,7 @@ try {
   await pageB.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageB.fill("#kc-space-name", "Bea HQ");
   await pageB.click('button:has-text("Let\'s go")');
-  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("A + B both registered");
 
   // ── A opens a DM with B via Find People ──
@@ -35,12 +35,12 @@ try {
   await pageA.fill('input[aria-label="Search people"]', B);
   await pageA.waitForSelector(`button[aria-label="Message @${B}"]`, { timeout: 6000 });
   await pageA.click(`button[aria-label="Message @${B}"]`);
-  await pageA.waitForSelector('input[placeholder="Say something…"]', { timeout: 8000 });
+  await pageA.waitForSelector('textarea[placeholder="Say something…"]', { timeout: 8000 });
   log("A opened DM with B");
 
   // ── A sends a message → "Delivered" (B hasn't read) ──
   const msg = `seen-check-${u}`;
-  const composer = pageA.locator('input[placeholder="Say something…"]');
+  const composer = pageA.locator('textarea[placeholder="Say something…"]');
   await composer.fill(msg);
   await composer.press("Enter");
   await pageA.waitForSelector(`text=${msg}`, { timeout: 8000 });

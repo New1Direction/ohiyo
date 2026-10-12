@@ -90,7 +90,7 @@ try {
   await page.fill("#kc-space-name", "The Roost");
   await page.click('button:has-text("Let\'s go")');
   // Should drop straight into #general with a usable composer
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("LANDED in #general channel immediately after create ✓");
   await settle(page, 600);
 
@@ -140,7 +140,7 @@ try {
   await page.waitForSelector('input[aria-label="Invite link"]', { state: "detached", timeout: 4000 });
 
   // ── Send a message ──────────────────────────────────────────────
-  const composer = page.locator('input[placeholder*="Say something"]');
+  const composer = page.locator('textarea[placeholder*="Say something"]');
   await composer.click();
   await composer.fill("hello kikkacord 🐦 first message!");
   await composer.press("Enter");
@@ -203,7 +203,7 @@ try {
   // Correct login
   await page.fill("#kc-password", PASS);
   await page.click('button:has-text("Sign in")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("login success → back in channel ✓");
 
   // ── Narrowing a desktop window reflows the chat (it used to stay wide and get clipped) ──
@@ -217,12 +217,12 @@ try {
   // ── Mobile drawer: chat MUST be reachable on a phone (the old break) ──
   await page.setViewportSize({ width: 320, height: 720 });
   await settle(page, 500);
-  await page.waitForSelector('input[placeholder*="Say something"]', { state: "visible", timeout: 6000 });
+  await page.waitForSelector('textarea[placeholder*="Say something"]', { state: "visible", timeout: 6000 });
   log("mobile 320: chat full-width + reachable, drawer collapsed ✓");
 
   // A message that wraps on a phone needs a taller row (rows used to be sized for a wide pane
   // and ran into each other).
-  const longLine = page.locator('input[placeholder*="Say something"]');
+  const longLine = page.locator('textarea[placeholder*="Say something"]');
   await longLine.fill("ok so the plan for saturday is: we meet at the station at ten, grab coffee, walk up to the lookout, and then whoever is still alive gets ramen after");
   await longLine.press("Enter");
   await page.waitForSelector("text=/whoever is still alive/", { timeout: 6000 });
@@ -243,7 +243,7 @@ try {
 
   await page.locator(".kc-nav button").filter({ hasText: /^general/ }).first().click();
   await page.waitForSelector(".kc-nav-scrim", { state: "detached", timeout: 4000 });
-  await page.waitForSelector('input[placeholder*="Say something"]', { state: "visible", timeout: 4000 });
+  await page.waitForSelector('textarea[placeholder*="Say something"]', { state: "visible", timeout: 4000 });
   log("mobile: picking a channel closes the drawer, back to chat ✓");
   await shot(page, "08-mobile-closed");
 

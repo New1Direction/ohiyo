@@ -24,13 +24,18 @@ function webUrl(raw: string): string | null {
 // mirror MessageContent: a forwarded-from header, fenced code, spoilers, inline code.
 const FORWARD_HEADER = /^【FWD:[^】]*】/;
 const NOT_LINKED = [/```[\s\S]*?```/g, /\|\|.+?\|\|/g, /`[^`]+`/g];
+// A masked link, [words](https://…): its card is for where it goes, never for its words.
+const MASKED_LINK = /\[[^\]\n]*\]\(<?(https?:\/\/[^\s)>]+)>?\)/g;
 
 /**
  * The links in `content` that get a card, each once, in the order they first appear.
  * A link inside code is text, and one inside a spoiler would be given away by its card.
  */
 export function linkCardUrls(content: string): string[] {
-  const text = NOT_LINKED.reduce((rest, pattern) => rest.replace(pattern, " "), content.replace(FORWARD_HEADER, ""));
+  const text = NOT_LINKED.reduce((rest, pattern) => rest.replace(pattern, " "), content.replace(FORWARD_HEADER, "")).replace(
+    MASKED_LINK,
+    " $1 "
+  );
   const urls: string[] = [];
   for (const match of text.matchAll(/https?:\/\/[^\s]+/g)) {
     const url = webUrl(trimUrlTail(match[0]));

@@ -16,11 +16,11 @@ try {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Image HQ");
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   await page.setInputFiles('input[aria-label="Attach files"]', FIXTURE);
   await page.waitForTimeout(2200); // upload completes
-  await page.locator('input[placeholder*="Say something"]').press("Enter");
+  await page.locator('textarea[placeholder*="Say something"]').press("Enter");
 
   await page.waitForSelector(".kc-img-frame", { timeout: 10000 });
   log("image attachment renders (attachments parsed correctly) ✓");

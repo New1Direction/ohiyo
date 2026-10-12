@@ -40,7 +40,7 @@ try {
   await page1.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page1.fill("#kc-space-name", "Pw HQ");
   await page1.click('button:has-text("Let\'s go")');
-  const composer = 'input[placeholder*="Say something to #general"]';
+  const composer = 'textarea[placeholder*="Say something to #general"]';
   await page1.waitForSelector(composer, { timeout: 12000 });
 
   const ctx2 = await browser.newContext({ viewport: { width: 1000, height: 760 } });

@@ -13,7 +13,7 @@ try {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Resilience HQ");
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   // Force the next message POST to fail at the network layer.
   let blockSends = true;
@@ -21,7 +21,7 @@ try {
     blockSends && route.request().method() === "POST" ? route.abort("failed") : route.continue()
   );
 
-  const composer = page.locator('input[placeholder*="Say something"]');
+  const composer = page.locator('textarea[placeholder*="Say something"]');
   await composer.fill("this should fail first");
   await composer.press("Enter");
 

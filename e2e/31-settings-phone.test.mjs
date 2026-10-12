@@ -15,7 +15,7 @@ try {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Pocket");
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something"]', { timeout: 12000 });
 
   await page.locator('button[aria-label="Open channels"]').first().click();
   await page.click('button[aria-label="Settings"]');
@@ -54,7 +54,7 @@ try {
   if (!(await back.isVisible())) throw new Error("no visible way to leave Settings on a phone");
   await back.click();
   await page.waitForSelector(DIALOG, { state: "detached", timeout: 4000 });
-  await page.waitForSelector('input[placeholder*="Say something"]', { state: "visible", timeout: 4000 });
+  await page.waitForSelector('textarea[placeholder*="Say something"]', { state: "visible", timeout: 4000 });
   log("phone settings: Back to Ohiyo is there and returns to the chat ✓");
 
   console.log("\n✅ SETTINGS ON A PHONE PASSED");

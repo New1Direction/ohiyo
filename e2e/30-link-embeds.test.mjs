@@ -54,7 +54,7 @@ try {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Link players");
   await page.click('button:has-text("Let\'s go")');
-  const composer = page.locator('input[placeholder*="Say something"]');
+  const composer = page.locator('textarea[placeholder*="Say something"]');
   await composer.waitFor({ timeout: 12000 });
   const say = async (text) => {
     await composer.fill(text);
@@ -153,10 +153,10 @@ try {
   await page.locator('input[placeholder="new-channel"]').press("Enter");
   await page.waitForSelector('button:has-text("random")', { timeout: 6000 }).catch(() => { throw new Error("the new channel did not appear"); });
   await page.click('button:has-text("random")');
-  await page.waitForSelector('input[placeholder*="Say something to #random"]', { timeout: 6000 }).catch(() => { throw new Error("could not open the new channel"); });
+  await page.waitForSelector('textarea[placeholder*="Say something to #random"]', { timeout: 6000 }).catch(() => { throw new Error("could not open the new channel"); });
   const loadsBefore = asked.filter((u) => u.startsWith("www.youtube-nocookie.com/")).length;
   await page.click('button:has-text("general")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 6000 }).catch(() => { throw new Error("could not go back to #general"); });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 6000 }).catch(() => { throw new Error("could not go back to #general"); });
   await page.waitForSelector(".kc-embed__poster", { timeout: 6000 }).catch(() => { throw new Error("the video card did not come back closed"); });
   await settle(page, 400);
   if (await page.locator("iframe").count()) throw new Error("coming back to the chat reloaded a player nobody pressed");

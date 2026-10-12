@@ -12,10 +12,10 @@ try {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Draft HQ");
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   const DRAFT = "a half-written thought for #general";
-  const composer = page.locator('input[placeholder*="Say something"]');
+  const composer = page.locator('textarea[placeholder*="Say something"]');
 
   // type a draft in #general (do NOT send)
   await composer.fill(DRAFT);
@@ -26,20 +26,20 @@ try {
   await page.locator('input[placeholder="new-channel"]').press("Enter");
   await page.waitForSelector('button:has-text("random")', { timeout: 6000 });
   await page.click('button:has-text("random")');
-  await page.waitForSelector('input[placeholder*="Say something to #random"]', { timeout: 6000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #random"]', { timeout: 6000 });
 
   // #random composer must be empty (draft didn't leak)
   await page.waitForFunction(
-    () => (document.querySelector('input[placeholder*="Say something"]')?.value ?? null) === "",
+    () => (document.querySelector('textarea[placeholder*="Say something"]')?.value ?? null) === "",
     null, { timeout: 4000 }
   );
   log("draft did not leak into #random ✓");
 
   // switch back → the #general draft is restored verbatim
   await page.click('button:has-text("general")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 6000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 6000 });
   await page.waitForFunction(
-    (expected) => (document.querySelector('input[placeholder*="Say something"]')?.value ?? "") === expected,
+    (expected) => (document.querySelector('textarea[placeholder*="Say something"]')?.value ?? "") === expected,
     DRAFT, { timeout: 4000 }
   );
   log("draft restored in #general ✓");

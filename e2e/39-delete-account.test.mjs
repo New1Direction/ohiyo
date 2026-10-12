@@ -26,7 +26,7 @@ async function onboard(page, username, display, space) {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", space);
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 }
 
 async function fillDelete(page, password, username) {
@@ -66,9 +66,9 @@ try {
   await pageB.click('button[aria-label="Da HQ"]', { timeout: 15000 });
   // Picking a space selects no channel yet.
   await pageB.click('button:has-text("general")', { timeout: 10000 });
-  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   // A says something in the app, and B sees it arrive.
-  const composerA = pageA.locator('input[placeholder*="Say something"]');
+  const composerA = pageA.locator('textarea[placeholder*="Say something"]');
   await composerA.fill(`seen-by-b-${u}`);
   await composerA.press("Enter");
   await pageB.waitForSelector(`text=seen-by-b-${u}`, { timeout: 10000 });

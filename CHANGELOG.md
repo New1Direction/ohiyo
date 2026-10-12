@@ -13,6 +13,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ### Added
 - **ohiyo.gg has a Download section** for the desktop app, with the steps to open the Mac beta.
+- **Messages format like Discord's.** Headings (`#`, `##`, `###`), `-#` subtext, `>` and `>>>`
+  quotes, `-` and `1.` lists, `__underline__`, `~~strike~~`, `_italic_`, ```` ```language ````
+  code blocks, `[masked](https://…)` links (the real address shows on hover, and beside the
+  link when its words name a different site), `\` escapes and `<t:…>` timestamps shown in
+  your own time and language. Shift+Enter starts a new line, and line breaks show.
 
 ### Changed
 - **Settings speaks in sentence case** like the rest of the app, and the Account card no longer
