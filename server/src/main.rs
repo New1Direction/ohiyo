@@ -37,6 +37,9 @@ async fn main() -> anyhow::Result<()> {
 
     let state = build_state(db);
 
+    // Before the first sweep: an outage must not count towards anyone's dead-man window.
+    api::users::credit_downtime(&state).await;
+
     // Periodic sweeps (disappearing messages, the dead-man's switch, link-token GC) and
     // content-free push dispatch, each on its own task.
     spawn_sweeper(state.clone(), BACKGROUND_INTERVAL);

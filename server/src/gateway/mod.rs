@@ -176,6 +176,10 @@ pub fn new_watch_sessions() -> WatchSessions {
     Arc::new(RwLock::new(HashMap::new()))
 }
 
+/// The shortest gap between two fresh Ready payloads sent to a connection that fell
+/// behind (see the send task in `handle_socket`).
+const RESYNC_MIN_INTERVAL: Duration = Duration::from_secs(10);
+
 /// Client events that go out to everyone who can see the sender are limited per account,
 /// across all its connections, within this window (see `within_fanout_budget`).
 const FANOUT_WINDOW: Duration = Duration::from_secs(10);
@@ -512,9 +516,14 @@ async fn handle_socket(
         }
     }
 
-    // Forward broadcast events to this WS connection. A lagging receiver (slow
-    // client during ICE trickle) drops events but must NOT tear down the stream.
+    // Forward broadcast events to this WS connection. A lagging receiver (a slow client,
+    // a tab in the background, ICE trickle) loses events but must NOT tear down the
+    // stream: that would drop a call in progress. It is sent a fresh Ready instead, which
+    // the app treats like a reconnect and catches up from.
+    let resync_state = state.clone();
+    let resync_user = user_id.clone();
     let mut send_task = tokio::spawn(async move {
+        let mut last_resync: Option<Instant> = None;
         loop {
             match rx.recv().await {
                 Ok(event) => {
@@ -528,6 +537,21 @@ async fn handle_socket(
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!("gateway: receiver lagged, dropped {n} events");
+                    // At most one rebuild per RESYNC_MIN_INTERVAL: a flood mustn't make
+                    // the server build Ready over and over.
+                    if last_resync.is_some_and(|t| t.elapsed() < RESYNC_MIN_INTERVAL) {
+                        continue;
+                    }
+                    last_resync = Some(Instant::now());
+                    let Ok(ready) = build_ready(&resync_user, &resync_state).await else {
+                        continue;
+                    };
+                    let Ok(json) = serde_json::to_string(&ready) else {
+                        continue;
+                    };
+                    if ws_tx.send(Message::Text(json.into())).await.is_err() {
+                        break;
+                    }
                 }
                 // This connection's sender left the session map (logout everywhere).
                 Err(broadcast::error::RecvError::Closed) => {
