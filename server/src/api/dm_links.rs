@@ -371,6 +371,8 @@ async fn open_or_create_dm_in_tx(
         disappearing_seconds: None,
         epoch: 0,
         owner_id: None,
+        parent_id: None,
+        thread_message_id: None,
     })
 }
 

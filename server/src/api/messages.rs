@@ -495,6 +495,14 @@ pub async fn send_message(
         expires_at,
     };
 
+    // A reply in a thread: its channel's people hear the new count first, so the app
+    // already knows this channel is a thread when the message itself arrives.
+    let in_thread = crate::api::roles::thread_parent(&state, &msg.channel_id)
+        .await
+        .is_some();
+    if in_thread {
+        crate::api::threads::announce(&state, &msg.channel_id).await;
+    }
     broadcast_to_channel(
         &state,
         &msg.channel_id,
@@ -521,7 +529,11 @@ pub async fn send_message(
     // Content-free push relay: queue a wake-up nudge for offline recipients only.
     // The relay stores no message text/channel names/E2E keys; online users already got
     // the GatewayEvent above.
-    crate::api::push::enqueue_message_pushes(&state, &msg.channel_id, &auth.0).await;
+    // Thread replies don't wake phones yet: a thread doesn't count as unread until there's
+    // a way to follow one.
+    if !in_thread {
+        crate::api::push::enqueue_message_pushes(&state, &msg.channel_id, &auth.0).await;
+    }
     Ok(Json(msg))
 }
 
@@ -972,11 +984,13 @@ pub async fn delete_message(
         &state,
         &channel_id,
         &GatewayEvent::MessageDelete {
-            id,
+            id: id.clone(),
             channel_id: channel_id.clone(),
         },
     )
     .await;
+    // A thread's count changed, or the message that started one is gone.
+    crate::api::threads::after_message_deleted(&state, &channel_id, &id).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
