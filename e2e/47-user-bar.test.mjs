@@ -68,8 +68,11 @@ try {
   await page.locator('.kc-user-menu input[aria-label="Activity name"]').press("Enter");
   await page.keyboard.press("Escape");
   await page.waitForSelector(".kc-user-menu", { state: "detached", timeout: 4000 });
-  const withActivity = await readBar(page);
-  if (!/Playing Chess/.test(withActivity.lines[1]?.text ?? "")) throw new Error(`the bar doesn't show the activity: ${JSON.stringify(withActivity.lines)}`);
+  // The server echoes the activity back before the bar shows it.
+  const shown = await page
+    .waitForFunction(() => /Playing Chess/.test(document.querySelectorAll(".kc-user-panel [data-user-line]")[1]?.textContent ?? ""), undefined, { timeout: 6000 })
+    .then(() => true, () => false);
+  if (!shown) throw new Error(`the bar doesn't show the activity: ${JSON.stringify((await readBar(page)).lines)}`);
   log("an activity added from the menu shows on the second line ✓");
 
   // Light theme, to look at.
