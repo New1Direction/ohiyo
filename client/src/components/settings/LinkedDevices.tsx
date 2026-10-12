@@ -33,6 +33,8 @@ export function LinkedDevices({
   onSignOutEverywhere?: () => Promise<void>;
 }) {
   const [devices, setDevices] = useState<Device[] | null>(null);
+  // A list that failed to load is said so, not shown as "no devices".
+  const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [confirmEverywhere, setConfirmEverywhere] = useState(false);
   const [everywhereBusy, setEverywhereBusy] = useState(false);
@@ -48,9 +50,17 @@ export function LinkedDevices({
   const load = useCallback(() => {
     api
       .listDevices(token)
-      .then(setDevices)
-      .catch(() => setDevices([]));
+      .then((list) => {
+        setDevices(list);
+        setLoadFailed(false);
+      })
+      .catch(() => setLoadFailed(true));
   }, [token]);
+  const retry = () => {
+    setLoadFailed(false);
+    setDevices(null);
+    load();
+  };
   useEffect(() => load(), [load]);
 
   // Live countdown; clear the code when it expires.
@@ -148,7 +158,19 @@ export function LinkedDevices({
         </button>
       )}
 
-      {devices === null ? (
+      {loadFailed ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+          Couldn&apos;t load your devices.
+          <button
+            type="button"
+            onClick={retry}
+            className="rounded px-2.5 py-1 text-xs font-semibold"
+            style={{ color: "var(--text-primary)", background: "var(--bg-hover)" }}
+          >
+            Try again
+          </button>
+        </div>
+      ) : devices === null ? (
         <div className="text-xs" style={{ color: "var(--text-muted)" }}>
           Loading…
         </div>
@@ -185,6 +207,7 @@ export function LinkedDevices({
                 {!isThis && (
                   <button
                     type="button"
+                    aria-label={`Remove device #${d.device_id}`}
                     disabled={busy === d.device_id}
                     onClick={() => revoke(d.device_id)}
                     className="rounded px-2.5 py-1 text-xs font-semibold"
