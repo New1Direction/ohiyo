@@ -446,11 +446,18 @@ pub async fn logout_everywhere(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    sqlx::query("UPDATE users SET token_version = token_version + 1 WHERE id = ?")
-        .bind(&auth.0)
-        .execute(&state.db)
+    let mut tx = state
+        .db
+        .begin()
         .await
         .map_err(crate::api::error::internal)?;
+    sqlx::query("UPDATE users SET token_version = token_version + 1 WHERE id = ?")
+        .bind(&auth.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    drop_link_codes(&mut tx, &auth.0).await?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
     // Close the user's live gateway sockets: each one ends when its sender leaves the map.
     state
         .sessions
@@ -509,15 +516,22 @@ pub async fn change_password(
         .await?
         .map_err(crate::api::error::internal)?;
 
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(crate::api::error::internal)?;
     let token_version: i64 = sqlx::query_scalar(
         "UPDATE users SET password_hash = ?, token_version = token_version + 1
          WHERE id = ? RETURNING token_version",
     )
     .bind(&new_hash)
     .bind(&auth.0)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
+    drop_link_codes(&mut tx, &auth.0).await?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
     state
         .sessions
         .write()
@@ -535,6 +549,24 @@ pub async fn change_password(
 // ── Device linking (QR / one-time code) ─────────────────────────────────────────
 const LINK_TTL_SECS: i64 = 120;
 const LINK_MAX_PER_MIN: usize = 20;
+/// Codes an account may mint per minute. Linking a device takes one; a stolen session
+/// minting in a loop to keep a fresh code waiting is what this stops.
+const LINK_START_MAX_PER_MIN: usize = 5;
+
+/// Drop an account's waiting device-link codes, inside the transaction that ends its
+/// sessions. A code signs a device in with no password, so one left waiting would let a
+/// session that was just thrown out straight back in.
+async fn drop_link_codes(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    user_id: &str,
+) -> Result<(), (StatusCode, String)> {
+    sqlx::query("DELETE FROM device_link_tokens WHERE user_id = ?")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    Ok(())
+}
 
 /// A one-time link code: 12 chars from a 31-char unambiguous alphabet (~59 bits, via the
 /// OS-seeded ChaCha CSPRNG). With the 2-minute TTL, single use, and per-IP rate limit on
@@ -569,6 +601,16 @@ pub async fn link_start(
     auth: crate::auth::AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<LinkStartResponse>, (StatusCode, String)> {
+    if !state.rate.check(
+        &format!("link-start:{}", auth.0),
+        LINK_START_MAX_PER_MIN,
+        Duration::from_secs(60),
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many codes — give it a moment".into(),
+        ));
+    }
     // One active code per user: clear any previous ones first (caps the table per user
     // and means a fresh request supersedes an unused old code).
     sqlx::query("DELETE FROM device_link_tokens WHERE user_id = ?")
