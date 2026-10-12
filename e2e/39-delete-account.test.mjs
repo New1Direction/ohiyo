@@ -61,6 +61,18 @@ try {
   if (!hadKeys) throw new Error("A had no encryption keys to begin with");
   log("A owns a space B is in; both have talked");
 
+  // B is looking at A's space when A goes. B joined through the API: the space shows up
+  // on B's open page by itself.
+  await pageB.click('button[aria-label="Da HQ"]', { timeout: 15000 });
+  // Picking a space selects no channel yet.
+  await pageB.click('button:has-text("general")', { timeout: 10000 });
+  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  // A says something in the app, and B sees it arrive.
+  const composerA = pageA.locator('input[placeholder*="Say something"]');
+  await composerA.fill(`seen-by-b-${u}`);
+  await composerA.press("Enter");
+  await pageB.waitForSelector(`text=seen-by-b-${u}`, { timeout: 10000 });
+
   // ── A wrong password deletes nothing ──
   await pageA.click('button[aria-label="Settings"]');
   await pageA.locator('button:has-text("Account")').first().click();
@@ -80,6 +92,8 @@ try {
   const remembered = await pageA.inputValue('input[autocomplete="username"]');
   if (remembered) throw new Error(`the sign-in screen still fills in "${remembered}"`);
   log("calm notice, empty username field ✓");
+  await pageB.waitForSelector(`text=seen-by-b-${u}`, { state: "detached", timeout: 10000 });
+  log("A's message left B's screen at once, without a reload ✓");
 
   if ((await api(tokenA, "/users/@me")).status !== 401) throw new Error("A's token still works");
   const login = await fetch(`${API}/auth/login`, {

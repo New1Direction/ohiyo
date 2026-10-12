@@ -42,6 +42,7 @@ export type GatewayEvent =
   | { t: "ChannelCreate"; d: Channel }
   | { t: "MemberJoin"; d: { server_id: string; user: PublicUser } }
   | { t: "MemberLeave"; d: { server_id: string; user_id: string } }
+  | { t: "UserDeleted"; d: { user_id: string } }
   | { t: "PermissionsUpdate"; d: { server_id: string } }
   | { t: "EventsChanged"; d: { server_id: string } }
   | { t: "ReactionUpdate"; d: { message_id: string; channel_id: string; emoji: string; user_id: string; added: boolean } }
@@ -97,7 +98,7 @@ const EVENT_TAGS: Record<GatewayEvent["t"], true> = {
   ServerDelete: true, ChannelCreate: true, MemberJoin: true, MemberLeave: true, PermissionsUpdate: true,
   EventsChanged: true, ReactionUpdate: true, ReadReceipt: true, PresenceUpdate: true, TypingStart: true,
   VoiceState: true, VoiceRoster: true, VoiceSignal: true, WatchUpdate: true, HeartbeatAck: true,
-  DeviceAdded: true,
+  DeviceAdded: true, UserDeleted: true,
 };
 const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set(Object.keys(EVENT_TAGS));
 
