@@ -245,7 +245,7 @@ export default function App() {
   function signOut(removeLocalData: boolean) {
     if (!activeHome) return;
     logoutCleanupPendingRef.current = removeLocalData;
-    persistHomes(setHomeToken(homes, activeHome.id, null));
+    persistHomes(setHomeToken(loadHomes(), activeHome.id, null));
   }
 
   // The sidebar's sign-out (the user chose to leave). Signing out of the last signed-in
@@ -332,7 +332,7 @@ export default function App() {
         onLogout={handleLogout}
         onBackToSignIn={handleBackToSignIn}
         onSessionUser={rememberHomeUser}
-        onTokenChange={(next) => persistHomes(setHomeToken(homes, activeHome.id, next))}
+        onTokenChange={(next) => persistHomes(setHomeToken(loadHomes(), activeHome.id, next))}
         onAccountDeleted={handleAccountDeleted}
       />
       {addHomeModal}
@@ -2005,6 +2005,14 @@ function MainApp({
       },
       (err: unknown) => {
         if (!alive || apiStatus(err) !== 401) return;
+        // Another tab of this browser may hold a newer session for this home (its own
+        // password change ends this one and stores a new one for both): carry on with it,
+        // rather than clear it and sign that tab out too.
+        const stored = loadHomes().find((h) => h.id === activeHomeId)?.token ?? null;
+        if (stored && stored !== checked) {
+          onTokenChange(stored);
+          return;
+        }
         setSignInNotice("You were signed out on this device. Sign in again to carry on.");
         onBackToSignIn();
       }
