@@ -10,6 +10,7 @@ const A = `tabs_${u}`;
 const NEW_PASS = "two-tabs-pass-88";
 const browser = await launchBrowser();
 let failed = false;
+let tab2 = null;
 
 const composer = 'input[placeholder*="Say something to #general"]';
 const offline = /Reconnecting you now|Connecting…|Signed out|You were signed out on this device/;
@@ -24,7 +25,7 @@ try {
   await tab1.click('button:has-text("Let\'s go")');
   await tab1.waitForSelector(composer, { timeout: 12000 });
 
-  const tab2 = await ctx.newPage();
+  tab2 = await ctx.newPage();
   tab2.on("pageerror", (e) => console.error("  T2 ERR:", e.message));
   await tab2.goto(ORIGIN, { waitUntil: "domcontentloaded" });
   await tab2.waitForSelector(composer, { timeout: 15000 });
@@ -46,6 +47,7 @@ try {
 
   // Tab 2's old session ends: it notices, then carries on with the new one.
   await tab2.waitForFunction((re) => new RegExp(re).test(document.body.innerText), offline.source, { timeout: 20000 });
+  log("tab 2 noticed its session ended");
   await tab2.waitForFunction(
     ({ re, sel }) => !new RegExp(re).test(document.body.innerText) && !!document.querySelector(sel),
     { re: offline.source, sel: composer },
@@ -67,6 +69,8 @@ try {
 } catch (err) {
   failed = true;
   console.error("\n❌ FAILED:", err.message);
+  const seen = await tab2?.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => null);
+  if (seen) console.error("  tab 2 shows:", JSON.stringify(seen));
 } finally {
   await browser.close();
 }
