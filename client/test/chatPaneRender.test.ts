@@ -480,3 +480,94 @@ test("invite step: it is not shown where there is no space to invite someone int
   assert.doesNotMatch(emptyDm(false), /Invite someone|Get an invite link/);
   assert.doesNotMatch(emptySpaceChannel(), /Invite someone|Get an invite link/);
 });
+
+// ── Threads ──
+// A space channel's messages offer "Start a thread"; a message that started one shows the
+// thread's name and how busy it is underneath; the channel header has a Threads list; and a
+// thread itself shows its name, the channel it hangs off and a way back.
+const generalChannel = { id: "c9", server_id: "s1", name: "general", channel_type: "text", position: 0, topic: null, created_at: 0 };
+function pizzaThread(patch: Props = {}): Props {
+  return {
+    id: "t1",
+    server_id: "s1",
+    name: "Pizza",
+    channel_type: "text",
+    position: 0,
+    topic: null,
+    created_at: 10,
+    parent_id: "c9",
+    thread_message_id: "m1",
+    message_count: 2,
+    last_message_at: Math.floor(Date.now() / 1000) - 120,
+    starter_deleted: false,
+    ...patch,
+  };
+}
+const threadBase = { author: peer, created_at: 1, edited_at: null, reactions: [] };
+const quietPlugins = { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s };
+
+function spaceChat(extra: Props): string {
+  return renderChatPane({
+    channel: generalChannel,
+    messages: [
+      { ...threadBase, id: "m1", channel_id: "c9", content: "who wants pizza?" },
+      { ...threadBase, id: "m2", channel_id: "c9", content: "something else" },
+    ],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: quietPlugins,
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    ...extra,
+  });
+}
+
+function threadChat(messages: Props[], starterDeleted = false): string {
+  return renderChatPane({
+    channel: pizzaThread(),
+    messages,
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: quietPlugins,
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    threadView: { parentName: "general", starterDeleted, onClose() {} },
+  });
+}
+
+test("threads: a message that started one shows the thread's name and its replies underneath", () => {
+  const html = spaceChat({ threadByMessage: new Map([["m1", pizzaThread()]]), onOpenThread() {} });
+  assert.match(html, /aria-label="Open thread Pizza: 2 replies · last reply 2m ago"/);
+  assert.equal((html.match(/class="kc-thread-chip"/g) ?? []).length, 1, "only the message that started it");
+});
+
+test("threads: messages offer Start a thread, except one that already has a thread", () => {
+  const html = spaceChat({ threadByMessage: new Map([["m1", pizzaThread()]]), onStartThread() {}, onOpenThreads() {} });
+  assert.equal((html.match(/aria-label="Start a thread"/g) ?? []).length, 1);
+  assert.match(html, /aria-label="Threads"/);
+});
+
+test("threads: a chat that can't have threads shows no thread controls", () => {
+  const html = chat("dm", false, false);
+  assert.doesNotMatch(html, /Start a thread|aria-label="Threads"|kc-thread-chip/);
+});
+
+test("threads: a thread shows its name, its channel and a way back, and replies go in it", () => {
+  const html = threadChat([{ ...threadBase, id: "r1", channel_id: "t1", content: "me! 8pm?" }]);
+  assert.match(html, /aria-label="Back to the channel"/);
+  assert.match(html, />Pizza</);
+  assert.match(html, /in #general/);
+  assert.match(html, /placeholder="Reply in Pizza…"/);
+  assert.match(html, /me! 8pm\?/);
+  assert.doesNotMatch(html, /Start a thread/, "no thread inside a thread");
+});
+
+test("threads: an empty thread says so, and so does one whose first message was deleted", () => {
+  const html = threadChat([], true);
+  assert.match(html, /No replies yet/);
+  assert.match(html, /The first message of this thread was deleted\./);
+});

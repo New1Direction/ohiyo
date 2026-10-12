@@ -452,6 +452,8 @@ pub async fn open_dm(
         disappearing_seconds: None,
         epoch: 0,
         owner_id: None,
+        parent_id: None,
+        thread_message_id: None,
     };
 
     // Tell both people live, like a new group chat: the person being messaged lists it
@@ -571,6 +573,8 @@ pub async fn open_group_dm(
         disappearing_seconds: None,
         epoch: 0,
         owner_id: Some(auth.0.clone()),
+        parent_id: None,
+        thread_message_id: None,
     };
 
     // Tell every participant about the new group live.

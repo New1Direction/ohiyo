@@ -1,4 +1,5 @@
 import { DEFAULT_HOME_URL, normalizeHomeUrl } from "./lib/homes";
+import type { ThreadSummary } from "./lib/threads";
 
 // ── Runtime endpoint config ──────────────────────────────────────────────────
 // The packaged app has a default home baked in, but the active home can switch at
@@ -62,6 +63,10 @@ export type Channel = {
   owner_id?: string | null;
   /** Imported Discord archive channel; stored as plaintext and visibly marked not E2E. */
   imported?: boolean;
+  /** A thread's channel: the space text channel it hangs off. Unset for anything else. */
+  parent_id?: string | null;
+  /** The message a thread started from. Unset for anything that isn't a thread. */
+  thread_message_id?: string | null;
 };
 
 export type Category = {
@@ -780,6 +785,17 @@ export const api = {
 
   deleteEvent: (token: string, serverId: string, eventId: string) =>
     request<void>(`/servers/${serverId}/events/${eventId}`, { method: "DELETE" }, token),
+
+  /** A channel's threads, the busiest first. */
+  listThreads: (token: string, channelId: string) =>
+    request<ThreadSummary[]>(`/channels/${channelId}/threads`, {}, token),
+
+  /** Start a thread from a message (again for the same message returns its thread). */
+  createThread: (token: string, channelId: string, messageId: string, name: string) =>
+    request<ThreadSummary>(`/channels/${channelId}/threads`, {
+      method: "POST",
+      body: JSON.stringify({ message_id: messageId, name }),
+    }, token),
 
   createChannel: (token: string, serverId: string, name: string, categoryId?: string | null) =>
     request<Channel>(`/servers/${serverId}/channels`, {

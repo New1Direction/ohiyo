@@ -514,12 +514,14 @@ async fn fetch_full_inner(
         .map_err(crate::api::error::internal)?
         .ok_or((StatusCode::NOT_FOUND, "server not found".into()))?;
 
-    let mut channels: Vec<crate::types::Channel> =
-        sqlx::query_as("SELECT * FROM channels WHERE server_id = ? ORDER BY position")
-            .bind(server_id)
-            .fetch_all(&state.db)
-            .await
-            .map_err(crate::api::error::internal)?;
+    // Threads hang off their channels and are listed with them, not in the sidebar.
+    let mut channels: Vec<crate::types::Channel> = sqlx::query_as(
+        "SELECT * FROM channels WHERE server_id = ? AND parent_id IS NULL ORDER BY position",
+    )
+    .bind(server_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
     if let Some(user_id) = viewer_id {
         channels = crate::api::roles::viewable_channels(state, server_id, user_id, channels)
             .await

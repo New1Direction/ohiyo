@@ -12,6 +12,7 @@ pub const CUSTOM_STATUS: usize = 128;
 pub const SERVER_NAME: usize = 100;
 pub const CATEGORY_NAME: usize = 100;
 pub const CHANNEL_NAME: usize = 100;
+pub const THREAD_NAME: usize = 100;
 pub const GROUP_DM_NAME: usize = 100;
 pub const CHANNEL_TOPIC: usize = 1024;
 pub const ROLE_NAME: usize = 100;

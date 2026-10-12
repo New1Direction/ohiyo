@@ -11,6 +11,8 @@ type Props = {
   isMine: boolean;
   onReact: () => void;
   onReply: () => void;
+  /** Start a thread from this message (space text channels only). */
+  onStartThread?: () => void;
   onPin?: () => void;
   onForward?: () => void;
   onSave: () => void;
@@ -26,6 +28,7 @@ export function MessageActionSheet({
   isMine,
   onReact,
   onReply,
+  onStartThread,
   onPin,
   onForward,
   onSave,
@@ -44,6 +47,7 @@ export function MessageActionSheet({
         <p className="kc-sheet-preview"><b>{msg.author.display_name}</b>{snippet}</p>
         <Row icon="react" label="Add reaction" onClick={onReact} />
         <Row icon="reply" label="Reply" onClick={onReply} />
+        {onStartThread && <Row icon="thread" label="Start a thread" onClick={onStartThread} />}
         {onPin && <Row icon="pin" label={msg.pinned ? "Unpin" : "Pin"} onClick={onPin} />}
         {onForward && <Row icon="forward" label="Forward" onClick={onForward} />}
         <Row icon="bookmark" label="Save" onClick={onSave} />

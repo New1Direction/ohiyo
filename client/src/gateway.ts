@@ -1,6 +1,7 @@
 import type { PublicUser, ServerWithChannels, Channel, Message } from "./api";
 import { gatewayUrl, api } from "./api";
 import { apiStatus } from "./lib/apiErrors";
+import type { ThreadSummary } from "./lib/threads";
 
 /** A peer already present in a voice channel when you join. */
 export type VoicePeer = {
@@ -40,6 +41,8 @@ export type GatewayEvent =
   | { t: "ServerCreate"; d: ServerWithChannels }
   | { t: "ServerDelete"; d: { id: string } }
   | { t: "ChannelCreate"; d: Channel }
+  /** A thread started, or its message count changed, or its first message was deleted. */
+  | { t: "ThreadUpdate"; d: ThreadSummary }
   | { t: "MemberJoin"; d: { server_id: string; user: PublicUser } }
   | { t: "MemberLeave"; d: { server_id: string; user_id: string } }
   | { t: "UserDeleted"; d: { user_id: string } }
@@ -98,7 +101,7 @@ const EVENT_TAGS: Record<GatewayEvent["t"], true> = {
   ServerDelete: true, ChannelCreate: true, MemberJoin: true, MemberLeave: true, PermissionsUpdate: true,
   EventsChanged: true, ReactionUpdate: true, ReadReceipt: true, PresenceUpdate: true, TypingStart: true,
   VoiceState: true, VoiceRoster: true, VoiceSignal: true, WatchUpdate: true, HeartbeatAck: true,
-  DeviceAdded: true, UserDeleted: true,
+  DeviceAdded: true, UserDeleted: true, ThreadUpdate: true,
 };
 const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set(Object.keys(EVENT_TAGS));
 

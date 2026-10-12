@@ -46,12 +46,13 @@ pub async fn list_channels(
     if !crate::api::servers::is_member(&state, &server_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "not a member of this server".into()));
     }
-    let channels: Vec<Channel> =
-        sqlx::query_as("SELECT * FROM channels WHERE server_id = ? ORDER BY position")
-            .bind(&server_id)
-            .fetch_all(&state.db)
-            .await
-            .map_err(crate::api::error::internal)?;
+    let channels: Vec<Channel> = sqlx::query_as(
+        "SELECT * FROM channels WHERE server_id = ? AND parent_id IS NULL ORDER BY position",
+    )
+    .bind(&server_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
     let mut visible = Vec::with_capacity(channels.len());
     for channel in channels {
         if crate::api::roles::has_channel_perm(
@@ -135,6 +136,8 @@ pub async fn create_channel(
         disappearing_seconds: None,
         epoch: 0,
         owner_id: None,
+        parent_id: None,
+        thread_message_id: None,
     };
 
     broadcast_to_channel(
@@ -275,11 +278,25 @@ pub async fn delete_channel(
         .acquire()
         .await
         .map_err(crate::api::error::internal)?;
-    let files = crate::api::files::files_of_channel(&mut conn, &id)
+    let mut files = crate::api::files::files_of_channel(&mut conn, &id)
         .await
         .map_err(crate::api::error::internal)?;
+    // Its threads go with it, and so do the files their messages held.
+    let threads: Vec<String> = sqlx::query_scalar("SELECT id FROM channels WHERE parent_id = ?")
+        .bind(&id)
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(crate::api::error::internal)?;
+    for thread in &threads {
+        files.extend(
+            crate::api::files::files_of_channel(&mut conn, thread)
+                .await
+                .map_err(crate::api::error::internal)?,
+        );
+    }
     drop(conn);
-    sqlx::query("DELETE FROM channels WHERE id = ?")
+    sqlx::query("DELETE FROM channels WHERE parent_id = ? OR id = ?")
+        .bind(&id)
         .bind(&id)
         .execute(&state.db)
         .await
