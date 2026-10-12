@@ -56,6 +56,13 @@ async function say(page, text) {
   await page.waitForSelector(`.msg-content:has-text("${text}")`, { timeout: 8000 });
 }
 
+// On a touch screen Enter starts a new line; Send sends.
+async function sayByTap(page, text) {
+  await page.fill(COMPOSER, text);
+  await page.locator('form.kc-composer-shell button[aria-label="Send message"]').first().tap();
+  await page.waitForSelector(`.msg-content:has-text("${text}")`, { timeout: 8000 });
+}
+
 function message(page, text) {
   return page.locator(".kc-msg", { has: page.locator(`.msg-content:has-text("${text}")`) }).first();
 }
@@ -146,14 +153,14 @@ try {
   phone.on("pageerror", (e) => console.error("  P ERR:", e.message));
   await onboard(phone, P, "Thread Pip", "Pip's place");
   const phoneText = `Phone thread ${u}`;
-  await say(phone, phoneText);
+  await sayByTap(phone, phoneText);
   await message(phone, phoneText).locator('button[aria-label="Message actions"]').tap();
   await phone.locator('button:has-text("Start a thread")').tap();
   await phone.waitForSelector(nameField, { timeout: 5000 });
   await phone.locator('button:has-text("Start thread")').tap();
   await phone.waitForSelector(`${PANEL} ${REPLY_BOX}`, { timeout: 8000 });
   await phone.fill(`${PANEL} ${REPLY_BOX}`, "from my phone");
-  await phone.keyboard.press("Enter");
+  await phone.locator(`${PANEL} button[aria-label="Send message"]`).tap();
   await phone.waitForSelector(`${PANEL} .msg-content:has-text("from my phone")`, { timeout: 8000 });
   const box = await phone.locator(PANEL).boundingBox();
   if (!box || box.width < 380) throw new Error(`the thread doesn't fill the phone screen (${box?.width}px wide)`);

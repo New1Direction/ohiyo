@@ -29,9 +29,11 @@ const readBar = (page) =>
 
 const plain = (s) => s.replace(/\s/g, " ").trim();
 
-async function sendAndReadTime(page, text) {
+// With a keyboard Enter sends; on a touch screen Enter starts a new line, so a phone taps Send.
+async function sendAndReadTime(page, text, { tap = false } = {}) {
   await page.fill(COMPOSER, text);
-  await page.keyboard.press("Enter");
+  if (tap) await page.locator('form.kc-composer-shell button[aria-label="Send message"]').first().tap();
+  else await page.keyboard.press("Enter");
   await page.waitForSelector(".msg-meta time[datetime]", { timeout: 8000 });
   return page.evaluate(() => {
     const t = document.querySelector(".msg-meta time[datetime]");
@@ -97,7 +99,7 @@ try {
   const cdp = await phoneCtx.newCDPSession(phone);
   await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
   await settle(phone, 200);
-  await sendAndReadTime(phone, "hello from my phone");
+  await sendAndReadTime(phone, "hello from my phone", { tap: true });
   const headerWraps = await phone.evaluate(() => {
     const meta = document.querySelector(".msg-meta");
     const name = meta?.querySelector("button")?.getBoundingClientRect();
