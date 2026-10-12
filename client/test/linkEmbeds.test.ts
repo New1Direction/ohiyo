@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 
 import {
   EMBED_CHIP_PX,
+  fetchedPreviewPx,
   NO_OPEN_EMBEDS,
   X_FRAME_ORIGIN,
   X_FRAME_START_PX,
@@ -231,4 +232,15 @@ test("going to another chat and straight back finds every card closed", () => {
   assert.equal(openHeightsIn(away, "random").size, 0);
   const back = enteringChat(away, "general");
   assert.equal(openHeightsIn(back, "general").size, 0, "nothing opened earlier is open again");
+});
+
+// A link in a chat that isn't encrypted gets a preview card fetched for it. Its row used
+// to keep 98px for the card whatever happened, so a link with no preview (a direct image,
+// an API address, a page that blocks the fetch) left a blank band under the message.
+test("a link's preview takes room while it loads and when it's there, none when there is none", () => {
+  assert.equal(fetchedPreviewPx(false, "loading"), 98);
+  assert.equal(fetchedPreviewPx(false, "ready"), 98);
+  assert.equal(fetchedPreviewPx(false, "none"), 0);
+  // A direct video link shows a player either way.
+  assert.equal(fetchedPreviewPx(true, "none"), 286);
 });
