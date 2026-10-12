@@ -83,6 +83,15 @@ test("release builds, and only they, look for updates", () => {
   assert.equal(workflow.split("VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}").length - 1, builds);
 });
 
+test("release builds talk to the server named in the repo, not to an address kept in a secret", () => {
+  // A secret overrides client/.env.production and nobody can read it back to check it: the
+  // one this workflow used still held the retired Fly address after the server moved.
+  const workflow = readFileSync(join(tauri, "..", "..", ".github", "workflows", "release.yml"), "utf8");
+  assert.doesNotMatch(workflow, /VITE_SERVER_URL:\s*\$\{\{\s*secrets\./);
+  const env = readFileSync(join(tauri, "..", ".env.production"), "utf8");
+  assert.match(env, /^VITE_SERVER_URL=https:\/\/ohiyo-server-production\.up\.railway\.app$/m);
+});
+
 test("the window is on screen from the start, with no colour of its own", () => {
   // Two ways of hiding the web view's white first frame were tried and measured on a Mac.
   // Both made things worse, so neither may come back without being measured again:
