@@ -1358,6 +1358,107 @@ button:disabled,
 .kc-sidebar-invite:hover {
   background: color-mix(in oklch, var(--accent) 20%, transparent) !important;
 }
+/* The space's name opens the space menu (invite, logo, channels, events, moderation,
+   report, leave or delete), like Discord. Same surface and motion as the composer's "+" menu. */
+.kc-space-menu-anchor {
+  position: relative;
+  min-width: 0;
+}
+.kc-space-name-button {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  margin-left: -6px;
+  padding: 1px 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 750;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-tap) var(--ease-snap);
+}
+.kc-space-name-button[aria-expanded="true"] {
+  background: color-mix(in oklch, var(--text-primary) 8%, transparent);
+}
+.kc-space-name-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.kc-space-name-button:focus-visible,
+.kc-space-menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .kc-space-name-button:hover { background: color-mix(in oklch, var(--text-primary) 8%, transparent); }
+  .kc-space-name-button:hover .kc-space-name-chevron { color: var(--text-primary); }
+}
+.kc-space-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: -6px;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  min-width: 13.5rem;
+  max-width: min(18rem, calc(100vw - 24px));
+  padding: 6px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
+  border-radius: 14px;
+  background: var(--bg-sidebar);
+  box-shadow: 0 18px 40px -18px rgb(0 0 0 / 70%);
+  transform-origin: top left;
+  animation: kc-space-menu-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes kc-space-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.kc-space-menu-row { display: grid; gap: 2px; }
+.kc-space-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in oklch, var(--text-primary) 10%, transparent);
+}
+.kc-space-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.kc-space-menu-item svg { flex-shrink: 0; color: var(--text-muted); }
+.kc-space-menu-item.is-danger,
+.kc-space-menu-item.is-danger svg { color: var(--danger); }
+.kc-space-menu-item:active { transform: scale(0.98); }
+.kc-space-menu-item:focus { background: var(--bg-hover); }
+@media (hover: hover) and (pointer: fine) {
+  .kc-space-menu-item:hover { background: var(--bg-hover); }
+  .kc-space-menu-item.is-danger:hover,
+  .kc-space-menu-item.is-danger:focus { background: color-mix(in oklch, var(--danger) 14%, transparent); }
+}
+@media (pointer: coarse), (max-width: 768px) {
+  .kc-space-menu-item { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kc-space-menu { animation: none; }
+  .kc-space-name-chevron { transition: none; }
+}
 .kc-channel-row {
   position: relative;
   min-height: 1.9rem;
@@ -4047,10 +4148,6 @@ button:disabled,
   /* Fingertip-sized targets for the header menu and the small sidebar buttons. */
   .kc-nav-toggle { min-width: 44px; min-height: 44px; }
   .kc-react-picker button { min-width: 40px; min-height: 40px; }
-  .kc-nav button[aria-label="Change server logo"],
-  .kc-nav button[aria-label="Events"],
-  .kc-nav button[aria-label="Report server"],
-  .kc-nav button[aria-label="Moderation queue"],
   .kc-nav button[aria-label="Manage categories"],
   .kc-nav button[aria-label="Create channel"],
   .kc-nav button[aria-label="Find people"],
