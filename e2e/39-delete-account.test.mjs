@@ -61,8 +61,10 @@ try {
   if (!hadKeys) throw new Error("A had no encryption keys to begin with");
   log("A owns a space B is in; both have talked");
 
-  // B is looking at A's space when A goes.
-  await pageB.click('button[aria-label="Da HQ"]', { timeout: 10000 });
+  // B is looking at A's space when A goes. B joined through the API, which doesn't tell
+  // B's open page about the space, so it loads again first.
+  await pageB.reload();
+  await pageB.click('button[aria-label="Da HQ"]', { timeout: 15000 });
   await pageB.waitForSelector(`text=from-a-${u}`, { timeout: 10000 });
 
   // ── A wrong password deletes nothing ──
