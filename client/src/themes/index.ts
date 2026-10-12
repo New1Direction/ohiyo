@@ -274,9 +274,22 @@ function isValidTheme(t: unknown): t is Theme {
   );
 }
 
-/** Every colour `theme` paints with: its own, and the default theme's for any it lacks. */
+const LIGHT_THEME: Theme = BUILTIN_THEMES.find((t) => t.id === "light") ?? DEFAULT_THEME;
+
+/** Whether a `#rrggbb` colour is light (anything else counts as dark). */
+function isLightColour(colour: string | undefined): boolean {
+  const hex = /^#([0-9a-f]{6})$/i.exec(colour?.trim() ?? "")?.[1];
+  if (!hex) return false;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150;
+}
+
+/** Every colour `theme` paints with: its own, and for any it lacks (a custom theme saved
+ *  before that colour existed) the built-in default of the same kind, light or dark. A
+ *  light theme given the dark default's warning amber can hardly be read. */
 export function themeVars(theme: Theme): ThemeVar {
-  return { ...DEFAULT_THEME.vars, ...theme.vars };
+  const base = isLightColour(theme.vars["--bg-channel"] ?? theme.vars["--bg-base"]) ? LIGHT_THEME : DEFAULT_THEME;
+  return { ...base.vars, ...theme.vars };
 }
 
 export function applyTheme(theme: Theme) {
