@@ -125,6 +125,29 @@ export function recordDeviceSet(userId: string, rows: readonly DeviceKey[]): boo
   return true;
 }
 
+/**
+ * A message arrived from one of a contact's devices that this device had never heard from.
+ * A server that hides a device from the directory can still deliver from it, so a device
+ * (or key) the directory never listed is the same news as one it adds: it raises the
+ * change event and joins the recorded set, which keeps the contact unverified until you
+ * compare again. Before any list is known for the contact it is trust on first use.
+ * Never call this with your own account: deviceWatch covers that.
+ */
+export function recordInboundDevice(userId: string, deviceId: number, identityKey: string): boolean {
+  const prev = backend.getItem(DEVSET_NS + userId);
+  if (prev === null) return false;
+  const known = entries(prev);
+  if (known.has(`${deviceId}:${identityKey}`)) return false;
+  const idKnown = [...known].some((e) => e.slice(0, e.indexOf(":")) === String(deviceId));
+  const reason = idKnown ? CHANGED_KEY : CHANGED_DEVICE;
+  known.add(`${deviceId}:${identityKey}`);
+  backend.setItem(DEVSET_NS + userId, [...known].sort().join("|"));
+  // A changed key is the more serious news: a new device doesn't replace it.
+  if (backend.getItem(CHANGED_NS + userId) !== CHANGED_KEY) backend.setItem(CHANGED_NS + userId, reason);
+  notify(userId);
+  return true;
+}
+
 /** Why the contact's safety number changed, if it did and you haven't dealt with it. */
 export function changeReason(userId: string): "key" | "device" | null {
   const v = backend.getItem(CHANGED_NS + userId);

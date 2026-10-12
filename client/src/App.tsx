@@ -37,7 +37,7 @@ import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendin
 import { isActivationDismissed, loadActivation, markActivation, setActivationDismissed, type ActivationState } from "./lib/activation";
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
-import { myKeyPair, deriveSharedKey, decryptMessage, isEncrypted } from "./lib/e2e";
+import { myKeyPair, deriveSharedKey, isEncrypted } from "./lib/e2e";
 import { initSignal, encryptFor, decryptFrom, deviceId, isSignalCiphertext, parseSignalCiphertextHeader, refreshContactDevices, safetyNumber, safetyNumberKeySet } from "./lib/signal";
 import { retryRetiredDevice } from "./lib/retiredDevice";
 import { acknowledgeNewDevices, forgetDevices, newDevices, onNewDevicesChange, reconcileOwnDevices, type NewDevice } from "./lib/deviceWatch";
@@ -1739,8 +1739,6 @@ function MainApp({
           });
         }
       }
-      // Legacy static key only fetched if any v1 messages are present.
-      const legacyKey = msgs.some((m) => isEncrypted(m.content)) ? await getDmKey(channelId) : null;
       // Sequential: the Double Ratchet requires in-order processing of new messages. A
       // message whose decrypt throws shows as undecryptable; the rest still load.
       let decryptedAny = false;
@@ -1777,18 +1775,15 @@ function MainApp({
           }
           return plain !== null ? messageFromDecryptedPlaintext(m, plain) : undecryptable(m);
         } else if (isEncrypted(m.content)) {
-          const pt = legacyKey ? await decryptMessage(legacyKey, m.content) : null;
-          const plain = pt !== null ? unpadMessagePlaintext(pt) : null;
-          if (plain !== null) decryptedAny = true;
-          return plain !== null ? messageFromDecryptedPlaintext(m, plain) : undecryptable(m);
+          // The first, static-key format: a server could forge one, so it isn't opened.
+          return undecryptable(m);
         }
         return m;
       }, undecryptable);
-      // E.g. a legacy static-key message that decrypted here (no sig/grp envelope).
       if (!wellFormed && shouldEnterEncryptedMode(channelType, contents, decryptedAny)) enterEncryptedMode();
       return out;
     },
-    [getDmKey, learnDmPeer, channelTypeOf]
+    [learnDmPeer, channelTypeOf]
   );
 
   // Flip a DM into (or out of) end-to-end encrypted mode — persisted; the chat shifts

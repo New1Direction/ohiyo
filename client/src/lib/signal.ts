@@ -10,7 +10,7 @@ import {
   SessionCipher,
 } from "@privacyresearch/libsignal-protocol-typescript";
 import { api } from "../api";
-import { recordDeviceSet, recordKeySeen, setIdentityTrustBackend, type DeviceKey } from "./identityTrust";
+import { recordDeviceSet, recordInboundDevice, recordKeySeen, setIdentityTrustBackend, type DeviceKey } from "./identityTrust";
 import { computeSafetyNumber } from "./safetyNumber";
 import { fanOut } from "./signalFanout";
 import { setItemEvictingPlaintextCache } from "./storageQuota";
@@ -58,6 +58,12 @@ export function setSignalBackend(b: SignalBackend) {
 function userOf(address: string): string {
   const i = address.lastIndexOf(".");
   return i === -1 ? address : address.slice(0, i);
+}
+
+function deviceOf(address: string): number | null {
+  const i = address.lastIndexOf(".");
+  const d = i === -1 ? NaN : Number(address.slice(i + 1));
+  return Number.isInteger(d) ? d : null;
 }
 
 /** User ids are UUIDs — hyphens, never dots; the address separator is ".". Reject a
@@ -153,7 +159,13 @@ class SignalStore {
     // never seen is trust-on-first-use, not a change. Returns the same boolean the
     // library expects (true iff a known key was replaced).
     if (!this.reportIdentityChanges) return Boolean(e && ab2b64(e) !== ab2b64(key));
-    return recordKeySeen(userOf(id), e ? ab2b64(e) : undefined, ab2b64(key));
+    // The first time this device meets one of a contact's devices. Outgoing sessions are
+    // built only for devices the directory lists, so this is news only when a message
+    // comes from a device (or key) the directory never listed: a server hiding a reader.
+    const user = userOf(id);
+    const device = deviceOf(id);
+    if (!e && device !== null && user !== ownUserId()) recordInboundDevice(user, device, ab2b64(key));
+    return recordKeySeen(user, e ? ab2b64(e) : undefined, ab2b64(key));
   }
 
   async loadPreKey(id: number | string) {
