@@ -72,40 +72,10 @@ export async function deriveSharedKey(
   );
 }
 
-const enc = new TextEncoder();
-const dec = new TextDecoder();
-
-function toB64(buf: ArrayBuffer | Uint8Array): string {
-  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s);
-}
-
-function fromB64(s: string): Uint8Array {
-  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-}
-
-/** Encrypt plaintext → "v1.<iv_b64>.<ciphertext_b64>" (random 96-bit IV per message). */
-export async function encryptMessage(key: CryptoKey, plaintext: string): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(plaintext));
-  return `v1.${toB64(iv)}.${toB64(ct)}`;
-}
-
-/** Decrypt a "v1.<iv>.<ct>" payload, or null if it isn't our format / auth fails. */
-export async function decryptMessage(key: CryptoKey, payload: string): Promise<string | null> {
-  const parts = payload.split(".");
-  if (parts.length !== 3 || parts[0] !== "v1") return null;
-  try {
-    const iv = fromB64(parts[1]);
-    const ct = fromB64(parts[2]);
-    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
-    return dec.decode(pt);
-  } catch {
-    return null;
-  }
-}
+// "v1." messages (the first, static-key format, sent for one day in June 2026) are no
+// longer opened or written: their key came from a public key the server handed out, with
+// nothing to check it against, so a server could forge one. A v1 message is still
+// recognised below, so it shows as unreadable rather than as raw text.
 
 /** True if a stored message looks like our E2E ciphertext envelope. */
 export function isEncrypted(payload: string): boolean {
