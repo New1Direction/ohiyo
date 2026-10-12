@@ -27,7 +27,8 @@ pub struct BlockedUser {
 #[derive(Serialize, sqlx::FromRow)]
 pub struct AbuseReport {
     pub id: String,
-    pub reporter_id: String,
+    /// None once the reporter deleted their account: the report stays.
+    pub reporter_id: Option<String>,
     pub target_type: String,
     pub target_id: String,
     pub server_id: Option<String>,
@@ -47,7 +48,8 @@ pub struct AbuseReport {
 pub struct ModerationAction {
     pub id: String,
     pub server_id: Option<String>,
-    pub actor_id: String,
+    /// None once the moderator deleted their account: the entry stays.
+    pub actor_id: Option<String>,
     pub action: String,
     pub target_type: String,
     pub target_id: String,

@@ -188,7 +188,8 @@ export type BlockedUser = PublicUser & { created_at: number };
 
 export type AbuseReport = {
   id: string;
-  reporter_id: string;
+  /** null once the reporter deleted their account. */
+  reporter_id: string | null;
   target_type: "message" | "user" | "server" | string;
   target_id: string;
   server_id: string | null;
@@ -207,7 +208,8 @@ export type AbuseReport = {
 export type ModerationAction = {
   id: string;
   server_id: string | null;
-  actor_id: string;
+  /** null once the moderator deleted their account. */
+  actor_id: string | null;
   action: string;
   target_type: string;
   target_id: string;
