@@ -98,7 +98,7 @@ const EVENT_TAGS: Record<GatewayEvent["t"], true> = {
   ServerDelete: true, ChannelCreate: true, MemberJoin: true, MemberLeave: true, PermissionsUpdate: true,
   EventsChanged: true, ReactionUpdate: true, ReadReceipt: true, PresenceUpdate: true, TypingStart: true,
   VoiceState: true, VoiceRoster: true, VoiceSignal: true, WatchUpdate: true, HeartbeatAck: true,
-  DeviceAdded: true,
+  DeviceAdded: true, UserDeleted: true,
 };
 const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set(Object.keys(EVENT_TAGS));
 
