@@ -1792,37 +1792,65 @@ export function ChatPane({
               return (
                 <div style={style} className="msg-group kc-message-row px-4 pt-2 hover:bg-white/[0.02]">
                   <div className="flex items-start gap-3">
-                    <button
-                      className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
-                      style={{
-                        background: avatarBg(g.author.id),
-                        backgroundImage: g.author.avatar_url ? `url(${assetUrl(g.author.avatar_url)})` : undefined,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                        color: "#fff",
-                        cursor: "pointer",
-                        border: "none",
-                      }}
-                      onClick={(e) => {
-                        profileAnchorRef.current = e.currentTarget as HTMLElement;
-                        setProfileUserId(g.author.id);
-                      }}
-                      title={`View ${g.author.display_name}'s profile`}
-                    >
-                      {!g.author.avatar_url && <AvatarMark />}
-                    </button>
+                    {g.author.bot ? (
+                      // A webhook (another service posting here) has no profile to open.
+                      <span
+                        className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                        style={{
+                          background: avatarBg(g.author.id),
+                          backgroundImage: g.author.avatar_url ? `url(${assetUrl(g.author.avatar_url)})` : undefined,
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                          color: "#fff",
+                        }}
+                        aria-hidden="true"
+                      >
+                        {!g.author.avatar_url && <Icon name="webhook" size={18} />}
+                      </span>
+                    ) : (
+                      <button
+                        className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                        style={{
+                          background: avatarBg(g.author.id),
+                          backgroundImage: g.author.avatar_url ? `url(${assetUrl(g.author.avatar_url)})` : undefined,
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                          color: "#fff",
+                          cursor: "pointer",
+                          border: "none",
+                        }}
+                        onClick={(e) => {
+                          profileAnchorRef.current = e.currentTarget as HTMLElement;
+                          setProfileUserId(g.author.id);
+                        }}
+                        title={`View ${g.author.display_name}'s profile`}
+                      >
+                        {!g.author.avatar_url && <AvatarMark />}
+                      </button>
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="msg-meta flex items-baseline gap-2">
-                        <button
-                          className="text-sm font-semibold"
-                          style={{ color: "var(--text-primary)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
-                          onClick={(e) => {
-                            profileAnchorRef.current = e.currentTarget as HTMLElement;
-                            setProfileUserId(g.author.id);
-                          }}
-                        >
-                          {g.author.display_name}
-                        </button>
+                        {g.author.bot ? (
+                          <span className="flex items-baseline gap-1.5">
+                            <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                              {g.author.display_name}
+                            </span>
+                            <span className="kc-app-badge" title="Posted by another app through a webhook">
+                              APP
+                            </span>
+                          </span>
+                        ) : (
+                          <button
+                            className="text-sm font-semibold"
+                            style={{ color: "var(--text-primary)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                            onClick={(e) => {
+                              profileAnchorRef.current = e.currentTarget as HTMLElement;
+                              setProfileUserId(g.author.id);
+                            }}
+                          >
+                            {g.author.display_name}
+                          </button>
+                        )}
                         <MessageTime unix={g.msgs[0].created_at} className="text-xs" style={{ color: "var(--text-secondary)" }} />
                       </div>
                       {g.msgs.map((msg, mi) => (

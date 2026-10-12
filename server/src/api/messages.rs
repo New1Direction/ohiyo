@@ -438,11 +438,7 @@ pub async fn send_message(
         Some(serde_json::to_string(&metas).unwrap_or_default())
     };
 
-    let id = new_id();
-    let now = now_unix();
     let content = body.content.trim().to_owned();
-
-    let expires_at = disappearing_expiry(&state, &channel_id, now).await;
 
     // Only honour a reply target that actually exists in this channel.
     let reply_to: Option<String> = match body.reply_to.filter(|s| !s.is_empty()) {
@@ -459,12 +455,40 @@ pub async fn send_message(
         None => None,
     };
 
+    let msg = deliver_message(
+        &state,
+        author,
+        channel_id,
+        content,
+        attachments_json,
+        reply_to,
+    )
+    .await?;
+    Ok(Json(msg))
+}
+
+/// Store a message by `author` in `channel_id`, then tell everyone in the channel, build its
+/// link previews and search entry, and wake offline phones. The caller has checked who may
+/// post, the limits and the reply target. Shared by people and webhooks (api::webhooks).
+pub(crate) async fn deliver_message(
+    state: &AppState,
+    author: User,
+    channel_id: String,
+    content: String,
+    attachments_json: Option<String>,
+    reply_to: Option<String>,
+) -> Result<MessageWithAuthor, (StatusCode, String)> {
+    let id = new_id();
+    let now = now_unix();
+    let expires_at = disappearing_expiry(state, &channel_id, now).await;
+    let author_id = author.id.clone();
+
     sqlx::query(
         "INSERT INTO messages (id, channel_id, author_id, content, created_at, attachments, reply_to, expires_at) VALUES (?,?,?,?,?,?,?,?)",
     )
     .bind(&id)
     .bind(&channel_id)
-    .bind(&auth.0)
+    .bind(&author_id)
     .bind(&content)
     .bind(now)
     .bind(&attachments_json)
@@ -497,28 +521,28 @@ pub async fn send_message(
 
     // A reply in a thread: its channel's people hear the new count first, so the app
     // already knows this channel is a thread when the message itself arrives.
-    let in_thread = crate::api::roles::thread_parent(&state, &msg.channel_id)
+    let in_thread = crate::api::roles::thread_parent(state, &msg.channel_id)
         .await
         .is_some();
     if in_thread {
-        crate::api::threads::announce(&state, &msg.channel_id).await;
+        crate::api::threads::announce(state, &msg.channel_id).await;
     }
     broadcast_to_channel(
-        &state,
+        state,
         &msg.channel_id,
         &GatewayEvent::MessageCreate(msg.clone()),
     )
     .await;
     // Resolve link-preview embeds off the hot path; a MessageUpdate follows when ready.
     spawn_embed_refresh(
-        &state,
+        state,
         msg.id.clone(),
         msg.channel_id.clone(),
         msg.content.clone(),
-        auth.0.clone(),
+        author_id.clone(),
     );
     spawn_index(
-        &state,
+        state,
         msg.id.clone(),
         msg.channel_id.clone(),
         msg.author.id.clone(),
@@ -532,10 +556,10 @@ pub async fn send_message(
     // Thread replies don't wake phones yet: a thread doesn't count as unread until there's
     // a way to follow one.
     if !in_thread {
-        crate::api::push::enqueue_message_pushes(&state, &msg.channel_id, &auth.0, &msg.content)
+        crate::api::push::enqueue_message_pushes(state, &msg.channel_id, &author_id, &msg.content)
             .await;
     }
-    Ok(Json(msg))
+    Ok(msg)
 }
 
 // ── Edit / pin ────────────────────────────────────────────────────────────────

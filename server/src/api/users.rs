@@ -40,6 +40,7 @@ pub async fn search_users(
     let users: Vec<User> = sqlx::query_as(
         "SELECT * FROM users
          WHERE (username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\') AND id != ?
+           AND is_bot = 0
          ORDER BY
            CASE WHEN username = ? THEN 0 WHEN username LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END,
            length(username)
@@ -223,11 +224,13 @@ pub async fn send_friend_request(
         return Err((StatusCode::BAD_REQUEST, "You can't add yourself.".into()));
     }
 
-    let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE id = ?")
-        .bind(&user_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(crate::api::error::internal)?;
+    // A webhook's account (api::webhooks) is nobody to befriend.
+    let exists: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM users WHERE id = ? AND is_bot = 0")
+            .bind(&user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
     if exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "User not found".into()));
     }
@@ -377,11 +380,13 @@ pub async fn open_dm(
         return Err((StatusCode::BAD_REQUEST, "You can't DM yourself.".into()));
     }
     // The recipient must exist before we create participant rows for them.
-    let recipient_exists: Option<String> = sqlx::query_scalar("SELECT id FROM users WHERE id = ?")
-        .bind(&body.recipient_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(crate::api::error::internal)?;
+    // A webhook's account (api::webhooks) is nobody to message.
+    let recipient_exists: Option<String> =
+        sqlx::query_scalar("SELECT id FROM users WHERE id = ? AND is_bot = 0")
+            .bind(&body.recipient_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
     if recipient_exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "User not found".into()));
     }
@@ -509,7 +514,8 @@ pub async fn open_group_dm(
     let placeholders = std::iter::repeat_n("?", members.len())
         .collect::<Vec<_>>()
         .join(",");
-    let existing_sql = format!("SELECT COUNT(*) FROM users WHERE id IN ({placeholders})");
+    let existing_sql =
+        format!("SELECT COUNT(*) FROM users WHERE id IN ({placeholders}) AND is_bot = 0");
     let mut existing_q = sqlx::query_scalar::<_, i64>(&existing_sql);
     for uid in &members {
         existing_q = existing_q.bind(uid);
@@ -703,11 +709,12 @@ pub async fn add_recipient(
     if !crate::api::messages::user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
-    let exists: Option<String> = sqlx::query_scalar("SELECT id FROM users WHERE id = ?")
-        .bind(&new_user)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(internal)?;
+    let exists: Option<String> =
+        sqlx::query_scalar("SELECT id FROM users WHERE id = ? AND is_bot = 0")
+            .bind(&new_user)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(internal)?;
     if exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "no such user".into()));
     }

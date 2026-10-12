@@ -33,6 +33,7 @@ import { ForwardModal } from "./components/ForwardModal";
 import { PERM, can } from "./permissions";
 import { mentionsYou } from "./lib/mentions";
 import { NotificationSettingsDialog, type NotificationSettingsTarget } from "./components/NotificationSettingsDialog";
+import { WebhooksDialog, type WebhookApi } from "./components/WebhooksDialog";
 import {
   isMuted,
   messageAlert,
@@ -623,6 +624,22 @@ function MainApp({
   const notifSettingsRef = useRef(notifSettings);
   notifSettingsRef.current = notifSettings;
   const [notifTarget, setNotifTarget] = useState<NotificationSettingsTarget | null>(null);
+  // The space's incoming webhooks (space menu → Webhooks, for people who manage channels).
+  const [showWebhooks, setShowWebhooks] = useState(false);
+  const webhookApi = useMemo<WebhookApi>(
+    () => ({
+      list: (channelId) => api.listWebhooks(token, channelId),
+      create: (channelId, name) => api.createWebhook(token, channelId, name),
+      rename: (id, name) => api.updateWebhook(token, id, { name }),
+      renew: (id) => api.renewWebhook(token, id),
+      remove: (id) => api.deleteWebhook(token, id),
+      setPicture: async (id, file) => {
+        const { id: fileId } = await uploadOne(getApiBase(), token, file);
+        return api.updateWebhook(token, id, { avatar_file_id: fileId });
+      },
+    }),
+    [token],
+  );
   // Render again when the next mute ends, so its chat counts and notifies again on time.
   const [muteTick, setMuteTick] = useState(0);
   useEffect(() => {
@@ -2815,6 +2832,14 @@ function MainApp({
                   }
                 : undefined
             }
+            onOpenWebhooks={
+              selectedServer
+                ? () => {
+                    setMobileNavOpen(false);
+                    setShowWebhooks(true);
+                  }
+                : undefined
+            }
             myStatus={myStatus}
             onSetStatus={handleSetStatus}
             myActivity={!privacyMode && currentUser ? activities.get(currentUser.id) ?? null : null}
@@ -3097,6 +3122,19 @@ function MainApp({
       )}
 
       {/* Invite-people modal — generates a shareable link for the open server */}
+      {showWebhooks && selectedServer && (
+        <WebhooksDialog
+          spaceName={selectedServer.name}
+          channels={selectedServer.channels
+            .filter((c) => c.channel_type === "text" && !c.parent_id)
+            .sort((a, b) => a.position - b.position)
+            .map((c) => ({ id: c.id, name: c.name }))}
+          webhookApi={webhookApi}
+          urlFor={(w) => `${getApiBase()}/webhooks/${w.id}/${w.token}`}
+          onCopy={(text) => navigator.clipboard.writeText(text)}
+          onClose={() => setShowWebhooks(false)}
+        />
+      )}
       {notifTarget && (
         <NotificationSettingsDialog
           target={notifTarget}
