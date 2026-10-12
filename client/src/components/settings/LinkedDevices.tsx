@@ -236,7 +236,7 @@ export function LinkedDevices({
                 className="text-xs"
                 style={{ color: "var(--text-secondary)" }}
               >
-                Every session ends, this one too. You&apos;ll sign in again here.
+                Every device signed in to your account is signed out, this one too. You&apos;ll sign in again here.
               </span>
               <button
                 type="button"

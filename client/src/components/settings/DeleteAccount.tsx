@@ -75,8 +75,11 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
           Spaces you own go to their longest-standing member. A space with nobody else in it is deleted with
           everything in it.
         </li>
+        <li>Group chats you started go to the next person in them.</li>
+        <li>In your one-to-one chats, the other person sees &ldquo;Deleted account&rdquo; and can&apos;t reply.</li>
         <li>Instant Servers you run are shut down and deleted.</li>
         <li>Your encryption keys and recovery backup are deleted, here and on the server.</li>
+        <li>Your username becomes free, and someone else can take it.</li>
         <li>It happens at once. It can&apos;t be undone, and Ohiyo can&apos;t bring anything back.</li>
       </ul>
       <div className="grid gap-2" style={{ maxWidth: 360 }}>

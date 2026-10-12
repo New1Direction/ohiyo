@@ -46,7 +46,7 @@ export function passwordChangeMessage(err: unknown): string {
     case 400:
       return `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
     case 401:
-      return "Your session has ended. Sign in again, then change your password.";
+      return "You've been signed out on this device. Sign in again, then change your password.";
     default:
       return "Couldn't change your password. Check your connection and try again.";
   }
@@ -64,7 +64,7 @@ export function deleteAccountMessage(err: unknown): string {
     case 429:
       return "Too many tries. Wait a minute, then try again.";
     case 401:
-      return "Your session has ended. If you just deleted your account, it's gone. If not, sign in again and try once more.";
+      return "You've been signed out on this device. If you just deleted your account, it's gone. If not, sign in again and try once more.";
     case 502:
       // The server's own answer names the Instant Server; a proxy's 502 doesn't.
       if (err instanceof Error && err.message.includes("Instant Server")) {
