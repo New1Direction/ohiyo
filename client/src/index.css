@@ -1571,6 +1571,13 @@ button:disabled,
   line-height: 1.3;
   transform: translateY(-1px);
 }
+/* A webhook's picture in the chat; theme colours, so it shows in light themes too. */
+.kc-webhook-avatar {
+  background-color: color-mix(in oklch, var(--accent) 18%, var(--bg-input));
+  background-size: cover;
+  background-position: center;
+  color: var(--text-primary);
+}
 .kc-webhooks__title {
   font-family: var(--font-display);
   font-weight: 700;

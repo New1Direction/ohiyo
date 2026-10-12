@@ -1795,14 +1795,8 @@ export function ChatPane({
                     {g.author.bot ? (
                       // A webhook (another service posting here) has no profile to open.
                       <span
-                        className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
-                        style={{
-                          background: avatarBg(g.author.id),
-                          backgroundImage: g.author.avatar_url ? `url(${assetUrl(g.author.avatar_url)})` : undefined,
-                          backgroundSize: "cover",
-                          backgroundPosition: "center",
-                          color: "#fff",
-                        }}
+                        className="msg-avatar kc-webhook-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                        style={g.author.avatar_url ? { backgroundImage: `url(${assetUrl(g.author.avatar_url)})` } : undefined}
                         aria-hidden="true"
                       >
                         {!g.author.avatar_url && <Icon name="webhook" size={18} />}
