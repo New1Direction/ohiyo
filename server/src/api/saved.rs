@@ -79,8 +79,12 @@ pub async fn list_saved(
             .fetch_optional(&state.db)
             .await
             .map_err(crate::api::error::internal)?;
+        // Only what you can still see: a save outlives leaving a space (and comes back if
+        // you rejoin), but it doesn't let you keep reading there.
         if let Some(msg) = msg {
-            out.push(build_full(&state, msg, &auth.0).await?);
+            if user_can_access(&state, &msg.channel_id, &auth.0).await {
+                out.push(build_full(&state, msg, &auth.0).await?);
+            }
         }
     }
     Ok(Json(out))
