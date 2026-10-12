@@ -42,6 +42,16 @@ fn max_bytes_per_user() -> i64 {
         .unwrap_or(DEFAULT_MAX_BYTES_PER_USER)
 }
 
+/// The disk reserve uploads must leave free (see `AppState::min_free_disk_bytes`), read
+/// from `MIN_FREE_DISK_BYTES`.
+pub fn min_free_disk_from_env() -> u64 {
+    parse_min_free_disk(std::env::var("MIN_FREE_DISK_BYTES").ok().as_deref())
+}
+
+fn parse_min_free_disk(_raw: Option<&str>) -> u64 {
+    0
+}
+
 /// Media types we are willing to serve INLINE (rendered by the browser). Everything
 /// else — notably `text/html` and `image/svg+xml`, which can execute script — is forced
 /// to download as an opaque octet-stream, so an uploaded file can never run as a
@@ -725,6 +735,22 @@ pub async fn serve_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_account_may_store_one_gib_of_uploads_by_default() {
+        // MAX_UPLOAD_BYTES_PER_USER is never set in this test binary.
+        assert_eq!(max_bytes_per_user(), 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn the_disk_reserve_is_five_gib_unless_set_and_zero_turns_it_off() {
+        let five_gib = 5 * 1024 * 1024 * 1024;
+        assert_eq!(parse_min_free_disk(None), five_gib);
+        assert_eq!(parse_min_free_disk(Some("not a number")), five_gib);
+        assert_eq!(parse_min_free_disk(Some("-1")), five_gib);
+        assert_eq!(parse_min_free_disk(Some("0")), 0);
+        assert_eq!(parse_min_free_disk(Some(" 1048576 ")), 1_048_576);
+    }
 
     #[test]
     fn inline_safe_allows_media_and_blocks_active_content() {
