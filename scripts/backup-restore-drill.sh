@@ -25,8 +25,20 @@ if [[ -n "${LITESTREAM_REPLICA_URL:-}" ]]; then
     echo "litestream not found; install it or run inside the server image" >&2
     exit 1
   fi
-  echo "restoring from Litestream replica: $LITESTREAM_REPLICA_URL"
-  litestream restore -if-replica-exists -o "$RESTORE_DB" "$LITESTREAM_REPLICA_URL"
+  if [[ -n "${LITESTREAM_ENDPOINT:-}" ]]; then
+    # Stores other than AWS S3 (Cloudflare R2 for the hosted service): Litestream takes
+    # the endpoint only from a config file. Same config as the server image uses.
+    echo "restoring from Litestream replica: $LITESTREAM_REPLICA_URL at $LITESTREAM_ENDPOINT"
+    "$ROOT/server/litestream-config.sh" "$RESTORE_DB" > "$WORKDIR/litestream.yml"
+    litestream restore -config "$WORKDIR/litestream.yml" -if-replica-exists "$RESTORE_DB"
+  else
+    echo "restoring from Litestream replica: $LITESTREAM_REPLICA_URL"
+    litestream restore -if-replica-exists -o "$RESTORE_DB" "$LITESTREAM_REPLICA_URL"
+  fi
+  if [[ ! -f "$RESTORE_DB" ]]; then
+    echo "the replica has no backup to restore" >&2
+    exit 1
+  fi
 elif [[ -f "$DB_FILE" ]]; then
   echo "copying local DB: $DB_FILE"
   cp "$DB_FILE" "$RESTORE_DB"

@@ -136,8 +136,12 @@ test("the legal pages say where the hosted service really runs", () => {
   }
   const privacy = text("privacy.html");
   assert.match(privacy, /database and uploads are stored on Railway/);
-  // Backups can't be promised from here: nothing in this repository turns them on.
   assert.doesNotMatch(privacy, /snapshots? enabled/i);
+  // Since 12 October 2026 Litestream copies the database to Cloudflare R2 (see
+  // infra/litestream/README.md): the database only, kept for 3 days.
+  assert.match(privacy, /copy of the database \(not the uploads\) is kept in Cloudflare R2/);
+  assert.match(privacy, /for up to three days/);
+  assert.match(privacy, /Cloudflare stores the copy of the database/);
   // What a person's browser or device contacts besides Ohiyo itself is said outright.
   assert.match(privacy, /Google Fonts/);
   assert.match(privacy, /STUN/);
