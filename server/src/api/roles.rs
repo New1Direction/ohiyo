@@ -325,7 +325,7 @@ pub async fn viewable_channels(
     let visible: Vec<bool> = channels
         .iter()
         .map(|channel| match channel.parent_id.as_deref() {
-            Some(parent) => parents.get(parent).is_some_and(|p| can_view(*p)),
+            Some(parent) => parents.get(parent).is_some_and(|p| can_view(p)),
             None => can_view(channel),
         })
         .collect();
