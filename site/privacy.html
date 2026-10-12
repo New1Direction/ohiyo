@@ -71,7 +71,7 @@
 
   <h2>Third-party providers</h2>
   <p>Ohiyo currently relies on these providers. Railway hosts the app, the server, the database and uploads. Cloudflare stores the copy of the database described under Backups and retention, and provides the relay for calls that can't connect directly. GitHub hosts this website, the source code and the desktop releases. Porkbun provides the domain name. Their processing is governed by their own terms and policies.</p>
-  <p>Two things in the app reach Google. The app loads its typefaces from Google Fonts. When you join a call, it asks Google's public STUN servers how your device can be reached. In both cases Google sees your IP address, not your messages or your call. Calls connect directly between the people in them whenever they can, so the people you call can usually see your IP address too.</p>
+  <p>One thing in the app reaches Google: when you join a call, it asks Google's public STUN servers how your device can be reached. Google sees your IP address, not your messages or your call. The app's typefaces ship with the app, so opening Ohiyo doesn't contact Google Fonts. Calls connect directly between the people in them whenever they can, so the people you call can usually see your IP address too.</p>
   <p>Some networks don't allow a direct connection. Then Ohiyo can pass the call through a relay run by Cloudflare. Cloudflare sees the IP addresses of the people in the call and carries its sound and video, which stay encrypted between them, so Cloudflare can't hear or see the call.</p>
 
   <h2>Changes</h2>
