@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useConfirmFocus } from "../hooks/useConfirmFocus";
 import { deviceAlertAgo, type NewDevice } from "../lib/deviceWatch";
 
 type Props = {
@@ -17,6 +18,7 @@ type Props = {
  *  by the devices shown, so a new set starts at the first question again. */
 export function NewDeviceAlert({ devices, busy, onKeep, onRemove, lowered }: Props) {
   const [confirming, setConfirming] = useState(false);
+  const focus = useConfirmFocus<HTMLParagraphElement, HTMLButtonElement>(confirming);
   if (devices.length === 0) return null;
   const one = devices.length === 1;
   const latest = Math.max(...devices.map((d) => d.seen_at));
@@ -28,7 +30,7 @@ export function NewDeviceAlert({ devices, busy, onKeep, onRemove, lowered }: Pro
       </div>
       {confirming ? (
         <>
-          <p className="kc-device-alert__text">
+          <p ref={focus.question} tabIndex={-1} className="kc-device-alert__text">
             Ohiyo will take {one ? "it" : "them"} off your account and sign you out everywhere, on this device too. Sign
             back in after. If someone may know your password, change it in Settings → Account.
           </p>
@@ -51,7 +53,12 @@ export function NewDeviceAlert({ devices, busy, onKeep, onRemove, lowered }: Pro
             <button type="button" className="kc-device-alert__plain" onClick={onKeep}>
               It was me
             </button>
-            <button type="button" className="kc-device-alert__danger" onClick={() => setConfirming(true)}>
+            <button
+              ref={focus.opener}
+              type="button"
+              className="kc-device-alert__danger"
+              onClick={() => setConfirming(true)}
+            >
               Not me
             </button>
           </div>

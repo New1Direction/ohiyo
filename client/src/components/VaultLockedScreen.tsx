@@ -84,7 +84,7 @@ export function ResetDeviceConfirm({ busy, onConfirm, onCancel }: { busy: boolea
         <button type="button" className="rounded px-3 py-1.5" style={{ background: "var(--bg-input)", color: "var(--text-secondary)" }} disabled={busy} onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className="rounded px-3 py-1.5 font-semibold" style={{ background: "var(--danger)", color: "#fff" }} disabled={busy} onClick={onConfirm}>
+        <button type="button" className="rounded px-3 py-1.5 font-semibold" style={{ background: "var(--danger-fill)", color: "#fff" }} disabled={busy} onClick={onConfirm}>
           Reset this device
         </button>
       </div>

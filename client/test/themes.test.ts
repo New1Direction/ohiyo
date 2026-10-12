@@ -70,3 +70,25 @@ test("every built-in theme sets a warning colour readable on its backgrounds", (
     }
   }
 });
+
+// Destructive buttons (Delete account, Remove and sign out, Sign out everywhere) were
+// white text on --danger: 2.65-4.06:1, under the 4.5:1 that small text needs, in every
+// built-in theme. They fill with --danger-fill now, a deeper red. And red text itself
+// (errors, "Delete account" headings) fell short on five themes' backgrounds.
+test("white on a danger fill is readable in every built-in theme", () => {
+  for (const theme of BUILTIN_THEMES) {
+    const fill = theme.vars["--danger-fill"];
+    assert.match(fill ?? "", /^#[0-9a-f]{6}$/i, `${theme.id} has no --danger-fill`);
+    const ratio = contrast("#ffffff", fill);
+    assert.ok(ratio >= 4.5, `${theme.id}: white on --danger-fill is ${ratio.toFixed(2)}:1`);
+  }
+});
+
+test("red text is readable on every built-in theme's backgrounds", () => {
+  for (const theme of BUILTIN_THEMES) {
+    for (const bg of ["--bg-base", "--bg-sidebar", "--bg-channel"] as const) {
+      const ratio = contrast(theme.vars["--danger"], theme.vars[bg]);
+      assert.ok(ratio >= 4.5, `${theme.id}: --danger on ${bg} is ${ratio.toFixed(2)}:1`);
+    }
+  }
+});

@@ -2125,7 +2125,7 @@ function SecurityTab({
                 type="button"
                 onClick={burn}
                 className="rounded px-3 py-1.5 text-sm font-semibold"
-                style={{ background: "var(--danger)", color: "#fff" }}
+                style={{ background: "var(--danger-fill)", color: "#fff" }}
               >
                 Yes, delete them
               </button>
