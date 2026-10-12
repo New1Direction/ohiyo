@@ -249,12 +249,13 @@ function UserMenu({
               />
             </div>
           ) : myActivity ? (
-            <div className="kc-user-menu__current">
-              <span className="truncate">{describeActivity(myActivity)}</span>
+            <>
+              <span className="kc-user-menu__label">Activity</span>
+              <span className="kc-user-menu__current">{describeActivity(myActivity)}</span>
               <button type="button" className="kc-user-menu__item kc-interactive" onClick={() => onSetActivity?.(null)}>
                 Clear activity
               </button>
-            </div>
+            </>
           ) : (
             <button type="button" className="kc-user-menu__item kc-interactive" onClick={() => setAddingActivity(true)}>
               Add an activity

@@ -1943,17 +1943,16 @@ button:disabled,
 }
 .kc-user-menu__field:focus-visible { border-color: color-mix(in oklch, var(--accent) 60%, transparent); }
 .kc-user-menu__activity { display: grid; gap: 4px; }
+/* The activity you have set, on its own line so it can be read in full. */
 .kc-user-menu__current {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   min-width: 0;
-  padding: 0 4px;
+  padding: 2px 4px;
+  overflow-wrap: anywhere;
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 600;
+  line-height: 1.35;
 }
-.kc-user-menu__current .kc-user-menu__item { margin-left: auto; flex-shrink: 0; width: auto; }
 .kc-user-menu__item {
   display: flex;
   align-items: center;
