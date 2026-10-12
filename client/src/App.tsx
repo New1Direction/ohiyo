@@ -41,6 +41,7 @@ import { myKeyPair, deriveSharedKey, isEncrypted } from "./lib/e2e";
 import { initSignal, encryptFor, decryptFrom, deviceId, isSignalCiphertext, parseSignalCiphertextHeader, refreshContactDevices, safetyNumber, safetyNumberKeySet } from "./lib/signal";
 import { retryRetiredDevice } from "./lib/retiredDevice";
 import { acknowledgeNewDevices, forgetDevices, newDevices, onNewDevicesChange, reconcileOwnDevices, type NewDevice } from "./lib/deviceWatch";
+import { notMe } from "./lib/notMe";
 import {
   onIdentityChange,
   trustState,
@@ -413,7 +414,8 @@ const NO_NEW_DEVICES: NewDevice[] = [];
 async function checkOwnDevices(token: string, userId: string): Promise<void> {
   try {
     const list = await api.listDevices(token);
-    reconcileOwnDevices(userId, deviceId(), list.map((d) => d.device_id));
+    const activeAt = new Map(list.map((d) => [d.device_id, d.updated_at]));
+    reconcileOwnDevices(userId, deviceId(), list.map((d) => d.device_id), undefined, activeAt);
   } catch {
     /* offline: the next sign-in or DeviceAdded checks again */
   }
@@ -1060,8 +1062,13 @@ function MainApp({
             handleSelectChannelRef.current(target);
           }
         }
-        // Every Ready after the first means this device was cut off for a while.
-        if (sawReadyRef.current) void catchUpOpenChat();
+        // Every Ready after the first means this device was cut off for a while: catch the
+        // open chat up, and look for a device added to the account meanwhile (its
+        // DeviceAdded went to sockets that were open then).
+        if (sawReadyRef.current) {
+          void catchUpOpenChat();
+          void checkOwnDevices(token, event.d.user.id);
+        }
         sawReadyRef.current = true;
         pluginManagerRef.current.emit("ready", event.d);
         break;
@@ -1603,9 +1610,12 @@ function MainApp({
     const ids = ownNewDevices.map((d) => d.device_id);
     setRemovingNewDevices(true);
     try {
-      for (const id of ids) await api.removeDevice(token, id);
-      forgetDevices(me, ids);
-      await signOutEverywhere();
+      await notMe(ids, {
+        removeDevice: (id) => api.removeDevice(token, id),
+        endAllSessions: () => api.logoutEverywhere(token),
+        forget: (gone) => forgetDevices(me, gone),
+      });
+      onBackToSignIn();
     } catch {
       toast("Couldn't remove it. Check your connection and try again.", "error");
       setRemovingNewDevices(false);
@@ -2691,6 +2701,7 @@ function MainApp({
       {/* Toast notifications */}
       <ToastStack toasts={toasts} />
       <NewDeviceAlert
+        key={ownNewDevices.map((d) => d.device_id).join(",")}
         devices={ownNewDevices}
         busy={removingNewDevices}
         onKeep={() => currentUser && acknowledgeNewDevices(currentUser.id)}
