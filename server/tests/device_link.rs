@@ -155,3 +155,77 @@ async fn redemption_is_rate_limited_per_ip() {
         "the 21st redemption in the window must be throttled"
     );
 }
+
+async fn mint(srv: &TestServer, token: &str) -> String {
+    srv.post_empty_auth(START, token)
+        .await
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()["code"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+/// A stolen session could mint a code, be thrown out by "Sign out everywhere", then
+/// redeem the code (it needs no password) and be back in. Ending every session has to
+/// end the codes they made as well.
+#[tokio::test]
+async fn sign_out_everywhere_ends_a_waiting_code() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("alice", "password123").await;
+    let code = mint(&srv, &alice.token).await;
+
+    let res = srv
+        .post_empty_auth("/api/v1/auth/logout-everywhere", &alice.token)
+        .await;
+    assert_eq!(res.status(), 204);
+
+    let res = srv.post_json(COMPLETE, json!({ "code": code })).await;
+    assert_eq!(
+        res.status(),
+        404,
+        "a code from before sign-out-everywhere must not sign anyone in"
+    );
+}
+
+/// The same for a password change, which ends every other session.
+#[tokio::test]
+async fn a_password_change_ends_a_waiting_code() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("alice", "password123").await;
+    let code = mint(&srv, &alice.token).await;
+
+    let res = srv
+        .post_json_auth(
+            "/api/v1/auth/password",
+            &alice.token,
+            json!({ "current_password": "password123", "new_password": "a-new-password-456" }),
+        )
+        .await;
+    assert_eq!(res.status(), 200);
+
+    let res = srv.post_json(COMPLETE, json!({ "code": code })).await;
+    assert_eq!(
+        res.status(),
+        404,
+        "a code from before the password change must not sign anyone in"
+    );
+}
+
+/// Minting is limited per account, so a stolen session can't keep a fresh code waiting
+/// by minting in a loop.
+#[tokio::test]
+async fn minting_codes_in_a_loop_is_slowed_down() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("alice", "password123").await;
+    let mut statuses = Vec::new();
+    for _ in 0..30 {
+        statuses.push(srv.post_empty_auth(START, &alice.token).await.status());
+    }
+    assert_eq!(statuses[0], 200, "the first code is minted");
+    assert!(
+        statuses.contains(&reqwest::StatusCode::TOO_MANY_REQUESTS),
+        "30 codes in a row must hit the limit: {statuses:?}"
+    );
+}
