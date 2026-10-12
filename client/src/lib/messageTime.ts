@@ -11,9 +11,11 @@ type Kind = "day" | "clock" | "date" | "full";
 // A chat formats many times; building an Intl formatter each time is the slow part.
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
+/** Whether the locale writes times with AM/PM (a 12-hour clock). */
 function usesTwelveHourClock(opts: TimeOptions): boolean {
-  const resolved = new Intl.DateTimeFormat(opts.locale, { hour: "numeric", timeZone: opts.timeZone }).resolvedOptions();
-  return resolved.hour12 ?? (resolved.hourCycle === "h11" || resolved.hourCycle === "h12");
+  return new Intl.DateTimeFormat(opts.locale, { hour: "numeric", timeZone: opts.timeZone })
+    .formatToParts(new Date(0))
+    .some((part) => part.type === "dayPeriod");
 }
 
 function build(kind: Kind, opts: TimeOptions): Intl.DateTimeFormat {

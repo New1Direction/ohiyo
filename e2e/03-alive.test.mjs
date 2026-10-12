@@ -127,9 +127,10 @@ try {
   log("A: badge cleared after opening #general ✓");
 
   // ── 4. CUSTOM STATUS ─────────────────────────────────────────────
-  await pageA.click('button[title="Set a custom status"]');
-  await pageA.fill('input[placeholder*="vibe"]', "gaming 🎮");
-  await pageA.locator('input[placeholder*="vibe"]').press("Enter");
+  // The status is set from the menu that opens from the user bar.
+  await pageA.click(".kc-user-identity");
+  await pageA.fill('.kc-user-menu input[aria-label="Status"]', "gaming 🎮");
+  await pageA.locator('.kc-user-menu input[aria-label="Status"]').press("Enter");
   await pageA.waitForSelector("text=gaming 🎮", { timeout: 6000 });
   log("A: custom status set ✓");
   await shot(pageA, "20-status");
