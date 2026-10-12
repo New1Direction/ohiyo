@@ -33,6 +33,7 @@ const readBar = (page) =>
         background: s.backgroundColor,
         backgroundImage: s.backgroundImage,
         border: [s.borderTopWidth, s.borderTopStyle].join(" "),
+        borderColor: s.borderTopColor,
         shadow: s.boxShadow,
         outline: s.outlineStyle,
       };
@@ -75,8 +76,11 @@ try {
   }
   log("the text and the icons sit flat on the bar, with no boxes of their own ✓");
 
-  // Focus: no ring around the text; the bar itself shows it, calmly.
-  const before = bar.bar;
+  // Focus: no ring around the text; the bar itself shows it, calmly. (A chat can open with
+  // the message box already focused, so start from nothing focused.)
+  await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+  await settle(page, 250);
+  const before = (await readBar(page)).bar;
   await page.click(COMPOSER);
   await settle(page, 250);
   const focused = await readBar(page);
