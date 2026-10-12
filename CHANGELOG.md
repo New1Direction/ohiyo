@@ -11,7 +11,17 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-12
+
 ### Added
+- **Desktop app for Mac and Linux:** it can stay in the tray when you close the window, so
+  notifications keep arriving (on by default on Mac, a setting on Linux), with the unread
+  count on the Mac dock icon and a tray menu (open, leave call, check for updates, open at
+  login, quit). The official builds offer their own updates and install one when you say
+  so; a copy you build yourself never looks. On Mac it asks for the microphone and camera properly,
+  so voice can work. It talks to the current server; 0.2.0 still pointed at the old one
+  and has to be replaced by hand once. Mac builds are a beta that Apple has not verified.
+  Windows is not included yet.
 - **Delete your account**, under Settings → Account. It needs your password and your
   username typed out, and it happens at once. Every message you sent is deleted, for
   everyone. A space you own goes to its longest-standing member, or is deleted if nobody
@@ -36,96 +46,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   it signs you out everywhere else, so someone who knew the old one, or copied a session,
   is out. The device you change it on stays signed in. Your encryption keys and recovery
   backup don't use the password, so nothing else needs redoing.
-
-### Changed
-- **A new sign-in screen.** A painting fills the screen and follows your local time:
-  sunrise, morning, the meadow in the afternoon, sunset, and a starry night with fireflies.
-  It greets you to match ("Good morning.", "Good evening.", "Still up?"). The fields sit
-  straight on the scene with no card around them, the long note about forgotten passwords is
-  tucked behind one line, and the whole form fits the desktop app's window without scrolling.
-- **The client installs with Bun.** `client/bun.lock` replaces `package-lock.json`, and CI,
-  the release build, the web app's Docker image and the Tauri dev/build hooks use Bun to
-  install packages and run scripts. Node still runs `tsc`, ESLint, Vite and the unit tests.
-  Contributors need [Bun](https://bun.sh) 1.4+ alongside Node 22.
-- **Dependency updates.** The server moves to tokio 1.53, serde_json 1.0.151, futures
-  0.3.34, flate2 1.1.10 and uuid 1.27. The release build uses tauri-action v1 (same
-  inputs, now on Node 24; it still uploads the updater's `latest.json` and leaves the
-  release a draft), and the watch-modes check uses setup-node v7 and upload-artifact v7.
-- **Restoring keys warns you first.** A restore makes this device take the place of the
-  device that made the backup. If both keep being used, encrypted messages can stop
-  decrypting on both. The restore box now says so, and points to Link a device when the
-  old device still works.
-- **The desktop app is on Tauri 2.12.** The Rust crates and the `@tauri-apps` npm packages
-  moved together (autostart 2.7, updater 2.13, deep-link 2.6, notification 2.6, opener
-  2.7), because the Tauri CLI refuses a build where a plugin's crate and npm package are on
-  different minors. Nothing the app does changes.
-
-### Fixed
-- **A new device's first key upload no longer fails sometimes.** It could arrive while
-  the same device was signing in to the live connection, and the server answered with an
-  error instead of waiting a moment. Opening a private DM link, and the dead-man's switch
-  deleting messages, had the same problem and are fixed the same way.
-- **Warning notes show in a warning colour.** The note asking you to back up again (for an
-  older recovery backup) and a sleeping or waking Instant Server asked for a warning colour
-  no theme defined, so they showed as plain text. Every theme has one now, readable on its
-  own backgrounds; custom themes can set it in the theme editor.
-- **A device whose session ended now goes to sign-in.** When every session was ended from
-  another device (or by a password change), the others sat on "Reconnecting you now…"
-  forever. They now notice, go to the sign-in screen, and say why.
-- **Restoring your keys on a new device no longer leaves a dead device behind.** A restore
-  makes the new device take over the backed-up device. Before, the new device's own
-  sign-in stayed listed on your account with keys nothing could use. People kept sending
-  it a copy of every encrypted message that no one could read, and it counted toward your
-  10-device limit. It is now removed during the restore, or at your next sign-in if that
-  fails.
-- **Encrypted chats keep working after a restore.** If you sent an encrypted message from
-  the new device before restoring, the people you sent it to could not read anything you
-  sent after the restore, on the devices that got that message. The restore now replaces
-  the new device's own encryption state instead of mixing it with the backup's.
-- **Restored disappearing messages now disappear on time.** Restoring a recovery backup made
-  before backups became keys-only also restores the readable copies of old encrypted
-  messages it held. Those copies were stored where the expiry cleanup never looked, so a
-  disappearing message among them that you never opened stayed on the device after its
-  time ran out. The cleanup now finds them when you sign in: copies already past their
-  time are deleted, and the rest disappear on schedule. Expired copies also no longer wait
-  for you to open an encrypted chat before they are cleaned up.
-- **Locked messages no longer overlap.** On a new device, a message it can't decrypt yet
-  shows a card that explains why, with an "Open recovery" button. The chat list made room
-  for one line of text, so the next message covered the card and its button. The list now
-  makes room for the whole card, on phones too.
-- **Your own encrypted messages stay readable.** Right after you sent a message in an
-  encrypted chat, it could turn into "This message needs keys this device doesn't have" on
-  your own screen until you reloaded. The message was never lost and the other person could
-  always read it; your copy now stays readable too.
-- **Desktop: no more frozen white window at launch.** When your computer asks for a password
-  before it lets Ohiyo read its saved keys (a Mac does after every update of the unsigned
-  beta), the app used to sit frozen behind that prompt with an empty window. It now shows
-  "Unlocking your keys" and says what the prompt is for.
-- **A calmer first screen.** The owner's launch checklist no longer fills the sidebar: it is
-  one "Getting started" row under the channels that opens when you want it. The message box
-  has a single "+" with "Upload a file" and "Create a poll" inside. The home switcher and its
-  own "+" moved to the bottom of the far-left rail, so the "+" beside your spaces is the only
-  one in reach. People who run a space are no longer offered a button to report it.
-- **The app on phones:** message text no longer runs underneath each message's ⋯ button,
-  and touching a message no longer pops the desktop toolbar over its neighbours. The ⋯ menu
-  can add a reaction. The app is sized to the part of the screen the browser leaves
-  visible, so the message box is not hidden behind the browser's bar. The channel drawer is
-  wider, lists the channels before the launch checklist, and its small buttons are big
-  enough to hit. Dialogs and the call screen fit the screen, the sign-in and first-space
-  screens scroll on small phones instead of cutting their tops off, notices appear at the
-  top instead of over the newest messages, and fields no longer make an iPhone zoom in.
-
-## [0.3.0] — 2026-10-04
-
-### Added
-- **Desktop app for Mac and Linux:** it can stay in the tray when you close the window, so
-  notifications keep arriving (on by default on Mac, a setting on Linux), with the unread
-  count on the Mac dock icon and a tray menu (open, leave call, check for updates, open at
-  login, quit). The official builds offer their own updates and install one when you say
-  so; a copy you build yourself never looks. On Mac it asks for the microphone and camera properly,
-  so voice can work. It talks to the current server; 0.2.0 still pointed at the old one
-  and has to be replaced by hand once. Mac builds are a beta that Apple has not verified.
-  Windows is not included yet.
+- **Leave a space, or delete it if it's yours.** The ⋯ button beside a space's name has
+  "Leave space" for members and "Delete space" for the owner, which asks for your password.
+  The app had neither before.
 - **YouTube videos and posts on X play in the chat:** a YouTube link shows the video's picture
   with a play button; press it and the video plays right there, from the moment the link points
   at. A link to a post on X opens the post in the chat, sized to fit. No player is loaded
@@ -181,6 +104,37 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   undecryptable-message states instead of a fake retry loop.
 
 ### Security
+- **Encryption trusts only the devices you can see.** A message is encrypted only to the
+  devices in the other person's device list, under the key listed there, which is the same
+  list their safety number and "They added a new device" come from. So the server can't
+  slip in an extra reader, and if the list can't be fetched the message isn't sent. A
+  message from a device that isn't on the list raises the new-device notice instead of
+  showing as normal, and the first encrypted-DM format, which the server could forge, is no
+  longer opened. Removing a device gives your group chats new keys, so it can't read what
+  is sent after.
+- **Signing out everywhere ends everything a stolen session left behind.** "Sign out
+  everywhere", "Not me" and a password change now also cancel any device-link code still
+  waiting, and stop push notifications to devices whose session has ended.
+- **Lasting changes ask for your password:** deleting a space, replacing or deleting your
+  recovery backup, and changing the dead man's switch. Wrong guesses are limited to 5 a
+  minute.
+- **The new-device alert is harder to miss.** It is checked again whenever the app
+  reconnects, so a device added while your laptop slept is still flagged; a second tab can
+  no longer erase it; it shows when the device was added, not when you noticed; and "Not me"
+  removes the device and signs everyone out before it forgets the device, so a failure can
+  be retried.
+- **The dead man's switch ignores our outages.** Time the server was down no longer counts
+  against you, and a switch that has fired doesn't fire again.
+- **A block also stops group chats:** someone you blocked can't add you to a group chat,
+  and you can't add them.
+- **Deleting a channel or a space deletes its files** (attachments, custom emoji and the
+  space's icon), and links to them stop working.
+- **Saved shows only messages you can still see.** Leave a space or lose access to a
+  channel, and its messages leave your Saved list.
+- **One account can't swamp everyone else:** presence, activity, voice state, watch-party
+  controls and group encryption keys are rate-limited; an account keeps its 10 most recent
+  push devices; a device holds at most 500 one-time keys, published at most 30 times a
+  minute; and an account gets at most 60 connection tickets a minute.
 - **Permissions:** role hierarchy is now enforced when unassigning and deleting roles;
   the gateway's initial channel list and unread counts respect View Channel; kick, ban
   and leave clear the member's roles, member-level overwrites and voice seat.
@@ -237,6 +191,50 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   updated past their advisories; CI now runs `npm audit` and `cargo audit`.
 
 ### Changed
+- **A new sign-in screen.** A painting fills the screen and follows your local time:
+  sunrise, morning, the meadow in the afternoon, sunset, and a starry night with fireflies.
+  It greets you to match ("Good morning.", "Good evening.", "Still up?"). The fields sit
+  straight on the scene with no card around them, the long note about forgotten passwords is
+  tucked behind one line, and the whole form fits the desktop app's window without scrolling.
+- **The client installs with Bun.** `client/bun.lock` replaces `package-lock.json`, and CI,
+  the release build, the web app's Docker image and the Tauri dev/build hooks use Bun to
+  install packages and run scripts. Node still runs `tsc`, ESLint, Vite and the unit tests.
+  Contributors need [Bun](https://bun.sh) 1.4+ alongside Node 22.
+- **Dependency updates.** The server moves to tokio 1.53, serde_json 1.0.151, futures
+  0.3.34, flate2 1.1.10 and uuid 1.27. The release build uses tauri-action v1 (same
+  inputs, now on Node 24; it still uploads the updater's `latest.json` and leaves the
+  release a draft), and the watch-modes check uses setup-node v7 and upload-artifact v7.
+- **Restoring keys warns you first.** A restore makes this device take the place of the
+  device that made the backup. If both keep being used, encrypted messages can stop
+  decrypting on both. The restore box now says so, and points to Link a device when the
+  old device still works.
+- **The desktop app is on Tauri 2.12.** The Rust crates and the `@tauri-apps` npm packages
+  moved together (autostart 2.7, updater 2.13, deep-link 2.6, notification 2.6, opener
+  2.7), because the Tauri CLI refuses a build where a plugin's crate and npm package are on
+  different minors. Nothing the app does changes.
+- **Usernames are the same in any case, and use a fixed set of characters.** For new
+  sign-ups, "Alice" and "alice" are the same name, and a name can use letters, numbers,
+  dots, dashes and underscores. The sign-up form says so before you submit. You can sign in
+  with your name in any case. Existing names keep working as they are.
+- **Uploads: 1 GB per account,** down from 10 GB (`MAX_UPLOAD_BYTES_PER_USER` changes it).
+  Uploads also stop while the server's disk has less than 5 GB free
+  (`MIN_FREE_DISK_BYTES`; 0 turns it off), so the database always has room to write. A
+  refused upload, including a picture or emoji, now says why. Running out says how much
+  space you have and that deleting messages with files you no longer need makes room.
+- **Plain words for signing out and deleting.** The app no longer says "session". The list
+  of what deleting your account does now covers group chats, one-to-one chats (they show
+  "Deleted account") and your username (free for anyone again). After a deletion the app
+  says calmly what it knows.
+- **Red buttons and red text are readable in every theme** (custom themes get a "Danger
+  button" colour in the theme editor), and the new-device alert's answers are big enough for
+  a finger. Delete account puts the cursor in the password field, and "Not me" and "Sign out
+  everywhere…" move keyboard focus to their question and back on Cancel.
+- **DMs show who they're with.** After a reload a 1:1 chat used to be called "Direct
+  Message"; it now shows the person's name, picture and online dot. A new DM appears in
+  the other person's list at once. Deleting your account fits a phone screen.
+- **Outage alerts can go to a phone.** The reliability check posts plain text with a title
+  to an ntfy topic (`ALERT_WEBHOOK_URL=https://ntfy.sh/<topic>`), and Slack or Discord
+  webhooks now get real line breaks.
 - **ohiyo.gg has a new first screen:** one painting, edge to edge. A sunlit meadow with the
   Ohiyo mark as a stone sculpture and Kikka sitting beside it, with the headline, one line of
   description and the two buttons on the sky at the left. Leaves drift across, butterflies and
@@ -291,7 +289,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   shortcut. Instant Servers remains available from the command palette (Ctrl/⌘K).
 - **The hosted backend moved from Fly.io to Railway and started with an empty
   database.** Existing hosted accounts, messages and files were not carried over, and
-  the web app drops a stored `ohiyo.fly.dev` home and asks you to sign in again.
+  the web app drops a stored `ohiyo.fly.dev` home and asks you to sign in again. The
+  desktop app connects to the new server: release builds now take the server address from
+  `client/.env.production` instead of a repository secret that still named the old one.
   Instant Servers are unavailable on the hosted service until they are rebuilt for
   another provider. The hosted web app is served from a container (`client/Dockerfile`)
   on Railway as well, and `scripts/deploy-web.sh` deploys it.
@@ -318,6 +318,83 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   first run today.
 
 ### Fixed
+- **No more missed messages after a reconnect.** When a phone wakes, Wi-Fi changes or the
+  server restarts, the open chat now catches up on what was sent, edited or deleted while
+  you were away. A connection that falls too far behind starts over instead of silently
+  losing events.
+- **A deleted account leaves everyone's screen at once.** Its messages disappear live, and
+  1:1 chats with it show "Deleted account" with no message box.
+- **A space you join shows up on your other devices** without a reload.
+- **Missing data no longer looks like loss.** If your spaces or chats can't be fully read
+  when you connect, the app reconnects instead of showing them empty.
+- **Two things at once no longer give a server error:** opening the same DM twice (you get
+  one DM), signing up with the same name twice (the second is told it's taken), quick
+  reaction taps, two people sending each other friend requests (they become friends), and
+  adding someone to a group twice (they're added once).
+- **Changing your password with two tabs open** keeps the other tab signed in after a
+  reload.
+- **A signed-out device keeps checking** when the server can't be reached, instead of
+  getting stuck.
+- **Linked devices says when its list didn't load,** with Try again, instead of showing no
+  devices. Each Remove button names its device.
+- **A light custom theme gets readable warning colours.**
+- **Sending a file that's no longer stored** is refused with "A file in this message is no
+  longer stored. Attach it again." instead of sending the message without it.
+- **Rows with reactions, and links with no preview,** no longer overlap the next message or
+  leave a gap.
+- **A new device's first key upload no longer fails sometimes.** It could arrive while
+  the same device was signing in to the live connection, and the server answered with an
+  error instead of waiting a moment. Opening a private DM link, and the dead-man's switch
+  deleting messages, had the same problem and are fixed the same way.
+- **Warning notes show in a warning colour.** The note asking you to back up again (for an
+  older recovery backup) and a sleeping or waking Instant Server asked for a warning colour
+  no theme defined, so they showed as plain text. Every theme has one now, readable on its
+  own backgrounds; custom themes can set it in the theme editor.
+- **A device whose session ended now goes to sign-in.** When every session was ended from
+  another device (or by a password change), the others sat on "Reconnecting you now…"
+  forever. They now notice, go to the sign-in screen, and say why.
+- **Restoring your keys on a new device no longer leaves a dead device behind.** A restore
+  makes the new device take over the backed-up device. Before, the new device's own
+  sign-in stayed listed on your account with keys nothing could use. People kept sending
+  it a copy of every encrypted message that no one could read, and it counted toward your
+  10-device limit. It is now removed during the restore, or at your next sign-in if that
+  fails.
+- **Encrypted chats keep working after a restore.** If you sent an encrypted message from
+  the new device before restoring, the people you sent it to could not read anything you
+  sent after the restore, on the devices that got that message. The restore now replaces
+  the new device's own encryption state instead of mixing it with the backup's.
+- **Restored disappearing messages now disappear on time.** Restoring a recovery backup made
+  before backups became keys-only also restores the readable copies of old encrypted
+  messages it held. Those copies were stored where the expiry cleanup never looked, so a
+  disappearing message among them that you never opened stayed on the device after its
+  time ran out. The cleanup now finds them when you sign in: copies already past their
+  time are deleted, and the rest disappear on schedule. Expired copies also no longer wait
+  for you to open an encrypted chat before they are cleaned up.
+- **Locked messages no longer overlap.** On a new device, a message it can't decrypt yet
+  shows a card that explains why, with an "Open recovery" button. The chat list made room
+  for one line of text, so the next message covered the card and its button. The list now
+  makes room for the whole card, on phones too.
+- **Your own encrypted messages stay readable.** Right after you sent a message in an
+  encrypted chat, it could turn into "This message needs keys this device doesn't have" on
+  your own screen until you reloaded. The message was never lost and the other person could
+  always read it; your copy now stays readable too.
+- **Desktop: no more frozen white window at launch.** When your computer asks for a password
+  before it lets Ohiyo read its saved keys (a Mac does after every update of the unsigned
+  beta), the app used to sit frozen behind that prompt with an empty window. It now shows
+  "Unlocking your keys" and says what the prompt is for.
+- **A calmer first screen.** The owner's launch checklist no longer fills the sidebar: it is
+  one "Getting started" row under the channels that opens when you want it. The message box
+  has a single "+" with "Upload a file" and "Create a poll" inside. The home switcher and its
+  own "+" moved to the bottom of the far-left rail, so the "+" beside your spaces is the only
+  one in reach. People who run a space are no longer offered a button to report it.
+- **The app on phones:** message text no longer runs underneath each message's ⋯ button,
+  and touching a message no longer pops the desktop toolbar over its neighbours. The ⋯ menu
+  can add a reaction. The app is sized to the part of the screen the browser leaves
+  visible, so the message box is not hidden behind the browser's bar. The channel drawer is
+  wider, lists the channels before the launch checklist, and its small buttons are big
+  enough to hit. Dialogs and the call screen fit the screen, the sign-in and first-space
+  screens scroll on small phones instead of cutting their tops off, notices appear at the
+  top instead of over the newest messages, and fields no longer make an iPhone zoom in.
 - **Settings said no notification ever shows message text.** That is true of push
   notifications only. Notifications while Ohiyo is running show who wrote and the start
   of the message, except in encrypted chats. The page now says so.
