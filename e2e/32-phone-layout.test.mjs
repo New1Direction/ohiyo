@@ -8,6 +8,8 @@ import { launchBrowser, register, log, settle, shot, uniq } from "./harness.mjs"
 const browser = await launchBrowser();
 let failed = false;
 const COMPOSER = 'textarea[placeholder*="Say something"]';
+// On a touch screen Enter starts a new line; Send sends.
+const SEND = 'form.kc-composer-shell button[aria-label="Send message"]';
 const MIN_TAP = 40;
 
 try {
@@ -50,7 +52,7 @@ try {
     "short one",
   ]) {
     await page.fill(COMPOSER, text);
-    await page.keyboard.press("Enter");
+    await page.locator(SEND).tap();
     await settle(page, 250);
   }
   await settle(page, 600);

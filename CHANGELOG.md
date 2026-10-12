@@ -19,6 +19,17 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   kept. A post can't pose as a person or ping @everyone, and posting is rate-limited. Not in
   DMs or group chats, which are end-to-end encrypted.
 
+### Fixed
+- **@mentions work for every username,** including ones with dots and dashes (`@alice.b`,
+  `@bob-c`): they're highlighted, offered in the mention picker, and count as mentioning you.
+  A full stop after a name ("thanks @alice.") isn't part of it, an email address is no longer
+  highlighted as a mention, and `@john.doe` no longer notifies `john`. The app and the push
+  relay read mentions by the same rule.
+- **On a phone, Enter starts a new line** and the Send button sends, like Discord's phone app.
+  With a keyboard nothing changes: Enter sends, Shift+Enter starts a new line.
+- **Notification settings go with what they were for:** deleting a space, a channel or a
+  thread deletes everyone's settings for it.
+
 ## [0.3.1] — 2026-10-12
 
 ### Added

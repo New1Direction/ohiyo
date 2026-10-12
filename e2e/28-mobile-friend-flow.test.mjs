@@ -124,7 +124,7 @@ try {
   await pageA.setInputFiles('input[aria-label="Attach files"]', VIDEO_FIXTURE);
   await pageA.waitForTimeout(2200);
   await pageA.locator('textarea[placeholder*="Say something"]').fill(`mobile-video-${u}`);
-  await pageA.locator('textarea[placeholder*="Say something"]').press("Enter");
+  await pageA.locator('form.kc-composer-shell button[aria-label="Send message"]').tap();
   await pageA.waitForSelector(".kc-video-attachment", { timeout: 12000 });
   const videoCard = pageA.locator(".kc-video-attachment").first();
   await videoCard.locator('button[aria-label^="Load and play"]').waitFor({ state: "visible", timeout: 8000 });
@@ -145,7 +145,7 @@ try {
   log("mobile video only creates <video> after click and still fits ✓");
 
   await pageB.locator('textarea[placeholder*="Say something"]').fill("yo from phone");
-  await pageB.locator('textarea[placeholder*="Say something"]').press("Enter");
+  await pageB.locator('form.kc-composer-shell button[aria-label="Send message"]').tap();
   await pageA.waitForSelector("text=yo from phone", { timeout: 10000 });
   await assertNoHorizontalOverflow(pageA, "owner receiving friend mobile message");
   log("mobile friend can send and desktop/owner receives live ✓");

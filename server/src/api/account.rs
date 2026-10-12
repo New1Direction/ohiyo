@@ -255,6 +255,7 @@ async fn remove_everything(
     let mut space_files = Vec::new();
     for server_id in &plan.deleted {
         space_files.extend(crate::api::files::files_of_server(&mut tx, server_id).await?);
+        crate::api::notifications::forget_space(&mut *tx, server_id).await?;
         sqlx::query("DELETE FROM servers WHERE id = ?")
             .bind(server_id)
             .execute(&mut *tx)

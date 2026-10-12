@@ -459,11 +459,21 @@ pub async fn delete_server(
     // so we must resolve recipients while they still exist.
     broadcast_to_server(&state, &id, &GatewayEvent::ServerDelete { id: id.clone() }).await;
 
-    sqlx::query("DELETE FROM servers WHERE id = ?")
-        .bind(&id)
-        .execute(&state.db)
+    // Everyone's notification settings for the space go in the same transaction.
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
         .await
         .map_err(crate::api::error::internal)?;
+    crate::api::notifications::forget_space(&mut *tx, &id)
+        .await
+        .map_err(crate::api::error::internal)?;
+    sqlx::query("DELETE FROM servers WHERE id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
     crate::api::files::release_files_in_batches(&state.db, &files).await;
 
     Ok(StatusCode::NO_CONTENT)
