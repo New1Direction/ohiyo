@@ -270,11 +270,21 @@ pub async fn delete_channel(
         return Err((StatusCode::FORBIDDEN, "you can't manage channels".into()));
     }
 
+    let mut conn = state
+        .db
+        .acquire()
+        .await
+        .map_err(crate::api::error::internal)?;
+    let files = crate::api::files::files_of_channel(&mut conn, &id)
+        .await
+        .map_err(crate::api::error::internal)?;
+    drop(conn);
     sqlx::query("DELETE FROM channels WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
         .await
         .map_err(crate::api::error::internal)?;
+    crate::api::files::release_files_in_batches(&state.db, &files).await;
 
     Ok(StatusCode::NO_CONTENT)
 }

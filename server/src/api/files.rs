@@ -336,6 +336,67 @@ pub(crate) fn attachment_file_ids(raw: Option<&str>) -> Vec<String> {
         .collect()
 }
 
+/// The file id in a `…/files/<id>…` URL (an avatar, banner or space icon), if it has one.
+pub(crate) fn file_id_in_url(url: &str) -> Option<String> {
+    let rest = &url[url.find("/files/")? + "/files/".len()..];
+    let id: String = rest
+        .chars()
+        .take_while(|c| !matches!(c, '?' | '/' | '#'))
+        .collect();
+    (!id.is_empty()).then_some(id)
+}
+
+/// The files a channel's messages carry. Collect them before the channel is deleted and
+/// hand them to [`release_files_in_batches`] after: the cascade removes the messages but
+/// would leave their uploads stored, and reachable by anyone with a link.
+pub(crate) async fn files_of_channel(
+    conn: &mut sqlx::SqliteConnection,
+    channel_id: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let attachments: Vec<String> = sqlx::query_scalar(
+        "SELECT attachments FROM messages WHERE channel_id = ? AND attachments IS NOT NULL",
+    )
+    .bind(channel_id)
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(attachments
+        .iter()
+        .flat_map(|raw| attachment_file_ids(Some(raw)))
+        .collect())
+}
+
+/// The files a space uses: its messages' attachments, its custom emoji and its icon. As
+/// with [`files_of_channel`], collect before deleting and release after.
+pub(crate) async fn files_of_server(
+    conn: &mut sqlx::SqliteConnection,
+    server_id: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let attachments: Vec<String> = sqlx::query_scalar(
+        "SELECT m.attachments FROM messages m JOIN channels c ON c.id = m.channel_id
+         WHERE c.server_id = ? AND m.attachments IS NOT NULL",
+    )
+    .bind(server_id)
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut ids: Vec<String> = attachments
+        .iter()
+        .flat_map(|raw| attachment_file_ids(Some(raw)))
+        .collect();
+    let emoji: Vec<String> =
+        sqlx::query_scalar("SELECT file_id FROM server_emojis WHERE server_id = ?")
+            .bind(server_id)
+            .fetch_all(&mut *conn)
+            .await?;
+    ids.extend(emoji);
+    let icon: Option<Option<String>> =
+        sqlx::query_scalar("SELECT icon_url FROM servers WHERE id = ?")
+            .bind(server_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+    ids.extend(icon.flatten().as_deref().and_then(file_id_in_url));
+    Ok(ids)
+}
+
 /// How many places still reference a file id: message attachments (either JSON shape;
 /// ids are UUIDs, so a substring match is exact), avatars, banners, server icons (all
 /// stored as `…/files/<id>…` URLs) and server emoji.
@@ -701,6 +762,21 @@ mod tests {
         left.sort();
         assert_eq!(left, ["old-blob", "tmp-in-flight"]);
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_file_id_is_read_from_a_files_url_and_nothing_else() {
+        assert_eq!(
+            file_id_in_url("https://x/files/abc-1?s=sig").as_deref(),
+            Some("abc-1")
+        );
+        assert_eq!(file_id_in_url("/files/abc-2").as_deref(), Some("abc-2"));
+        assert_eq!(
+            file_id_in_url("/files/abc-3/thumb").as_deref(),
+            Some("abc-3")
+        );
+        assert_eq!(file_id_in_url("https://example.com/icon.png"), None);
+        assert_eq!(file_id_in_url("/files/?s=x"), None);
     }
 
     #[test]
