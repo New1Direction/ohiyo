@@ -138,6 +138,21 @@ try {
   await shot(phone, "44-message-bar-phone-typed");
   log("on a touch screen, Send is always there and every bar button is at least 44px ✓");
 
+  // A phone has no Shift key: Enter starts a new line there, and Send sends.
+  await phone.fill(COMPOSER, `first line ${uniq()}`);
+  const firstLine = await phone.inputValue(COMPOSER);
+  await phone.press(COMPOSER, "Enter");
+  await settle(phone, 300);
+  const afterEnter = await phone.inputValue(COMPOSER);
+  if (afterEnter !== `${firstLine}\n`) throw new Error(`Enter on a phone didn't start a new line: ${JSON.stringify(afterEnter)}`);
+  if (await phone.locator(`.msg-content:has-text("${firstLine}")`).count()) throw new Error("Enter on a phone sent the message");
+  await phone.locator(COMPOSER).pressSequentially("second line");
+  await phone.locator(SEND).tap();
+  await phone.waitForSelector(`.msg-content:has-text("${firstLine}")`, { timeout: 8000 });
+  const sent = await phone.locator(`.msg-content:has-text("${firstLine}")`).first().innerText();
+  if (!/first line [^\n]*\n\s*second line/.test(sent)) throw new Error(`the two lines didn't arrive as two lines: ${JSON.stringify(sent)}`);
+  log("on a touch screen, Enter starts a new line and Send sends both lines ✓");
+
   console.log("\n✅ MESSAGE BAR PASSED (one flat bar · focus · Send when there's something to send · phone)");
 } catch (err) {
   failed = true;

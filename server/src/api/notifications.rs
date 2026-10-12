@@ -320,4 +320,25 @@ mod tests {
         assert!(mentions("hi @john.doe", "john.doe"), "names with dots");
         assert!(!mentions("hi @john", "john.doe"));
     }
+
+    /// The cases the app is checked against too (client/test/mentions.test.ts), so the push
+    /// relay and the app agree on whom a message mentions.
+    #[test]
+    fn mentions_agree_with_the_app() {
+        let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../client/test/fixtures/mention-cases.json"
+        ))
+        .unwrap();
+        assert!(!cases.is_empty());
+        for case in cases {
+            let content = case["content"].as_str().unwrap();
+            let name = case["name"].as_str().unwrap();
+            assert_eq!(
+                mentions(content, name),
+                case["mentions"].as_bool().unwrap(),
+                "{}: {content:?} for {name}",
+                case["why"]
+            );
+        }
+    }
 }
