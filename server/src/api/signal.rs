@@ -24,6 +24,13 @@ fn ise<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
 
 /// Most Signal devices one user may register.
 const MAX_DEVICES_PER_USER: i64 = 10;
+/// One-time prekeys one device may hold. Each start of an encrypted session takes one,
+/// and clients top up a few at a time; without a bound, publishing new ids in a loop
+/// fills the disk.
+const MAX_PREKEYS_PER_DEVICE: i64 = 500;
+/// Key publishes per account per minute. A device publishes when it starts and when it
+/// tops up its prekeys.
+const PUBLISH_KEYS_PER_MIN: usize = 30;
 
 /// Prekey-bundle fetches per minute per caller; over it, 429. A first message to a full
 /// 20-member group takes about 21 fetches, so this leaves room for several.
@@ -73,6 +80,13 @@ pub async fn publish_keys(
     }
     if b.one_time_prekeys.len() > 200 {
         return Err((StatusCode::BAD_REQUEST, "too many one-time prekeys".into()));
+    }
+    if !state.rate.check(
+        &format!("publish-keys:{}", auth.0),
+        PUBLISH_KEYS_PER_MIN,
+        std::time::Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
     }
 
     // Take the write lock up front. This reads before it writes, and a read transaction
@@ -147,11 +161,24 @@ pub async fn publish_keys(
         return Err((StatusCode::CONFLICT, "conflict".into())); // identity key is pinned
     }
 
+    // Up to MAX_PREKEYS_PER_DEVICE; past that the rest are not kept.
+    let held: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM signal_one_time_prekeys WHERE user_id = ? AND device_id = ?",
+    )
+    .bind(&auth.0)
+    .bind(b.device_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(ise)?;
+    let mut room = (MAX_PREKEYS_PER_DEVICE - held).max(0);
     for otk in &b.one_time_prekeys {
+        if room == 0 {
+            break;
+        }
         if otk.public_key.len() > 1000 {
             continue;
         }
-        sqlx::query(
+        let stored = sqlx::query(
             "INSERT OR IGNORE INTO signal_one_time_prekeys (user_id, device_id, key_id, public_key) VALUES (?,?,?,?)",
         )
         .bind(&auth.0)
@@ -160,7 +187,9 @@ pub async fn publish_keys(
         .bind(&otk.public_key)
         .execute(&mut *tx)
         .await
-        .map_err(ise)?;
+        .map_err(ise)?
+        .rows_affected();
+        room -= stored as i64;
     }
     tx.commit().await.map_err(ise)?;
     if existing_device.is_none() {
