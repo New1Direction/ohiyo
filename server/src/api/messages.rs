@@ -532,7 +532,8 @@ pub async fn send_message(
     // Thread replies don't wake phones yet: a thread doesn't count as unread until there's
     // a way to follow one.
     if !in_thread {
-        crate::api::push::enqueue_message_pushes(&state, &msg.channel_id, &auth.0).await;
+        crate::api::push::enqueue_message_pushes(&state, &msg.channel_id, &auth.0, &msg.content)
+            .await;
     }
     Ok(Json(msg))
 }

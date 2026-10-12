@@ -493,15 +493,25 @@ pub async fn dispatch_content_free(
 }
 
 /// Internal hook for a newly-created message. Figures out the channel audience,
-/// removes the author, skips online users, and queues content-free nudges.
-pub async fn enqueue_message_pushes(state: &AppState, channel_id: &str, author_id: &str) {
-    let rows: Result<Vec<(String,)>, sqlx::Error> = sqlx::query_as(
-        "SELECT sm.user_id
+/// removes the author, skips online users and anyone whose notification settings say this
+/// message shouldn't reach them, and queues content-free nudges. `content` is only read
+/// for @mentions in space channels (their messages aren't end-to-end encrypted); a DM or
+/// group chat is muted as a whole.
+pub async fn enqueue_message_pushes(
+    state: &AppState,
+    channel_id: &str,
+    author_id: &str,
+    content: &str,
+) {
+    let rows: Result<Vec<(String, String)>, sqlx::Error> = sqlx::query_as(
+        "SELECT sm.user_id, u.username
            FROM channels c JOIN server_members sm ON sm.server_id = c.server_id
+           JOIN users u ON u.id = sm.user_id
           WHERE c.id = ? AND c.server_id IS NOT NULL
          UNION
-         SELECT dp.user_id
+         SELECT dp.user_id, u.username
            FROM dm_participants dp JOIN channels c ON c.id = dp.channel_id
+           JOIN users u ON u.id = dp.user_id
           WHERE c.id = ? AND c.server_id IS NULL",
     )
     .bind(channel_id)
@@ -512,18 +522,63 @@ pub async fn enqueue_message_pushes(state: &AppState, channel_id: &str, author_i
     let Ok(rows) = rows else {
         return;
     };
-    let is_server_channel: bool =
+    let server_id: Option<String> =
         sqlx::query_scalar::<_, Option<String>>("SELECT server_id FROM channels WHERE id = ?")
             .bind(channel_id)
             .fetch_optional(&state.db)
             .await
             .ok()
             .flatten()
-            .flatten()
-            .is_some();
+            .flatten();
+    let is_server_channel = server_id.is_some();
+    // Everyone's settings for this channel and its space, in one query.
+    let settings: Vec<(String, crate::types::NotificationSetting)> =
+        sqlx::query_as::<_, (String, String, String, Option<String>, bool, Option<i64>)>(
+            "SELECT user_id, target_type, target_id, level, muted, muted_until
+           FROM notification_settings
+          WHERE (target_type = 'channel' AND target_id = ?)
+             OR (target_type = 'server' AND target_id = ?)",
+        )
+        .bind(channel_id)
+        .bind(server_id.as_deref().unwrap_or(""))
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(
+            |(user_id, target_type, target_id, level, muted, muted_until)| {
+                let setting = crate::types::NotificationSetting {
+                    target_type,
+                    target_id,
+                    level,
+                    muted,
+                    muted_until,
+                };
+                (user_id, setting)
+            },
+        )
+        .collect();
+    let now = now_unix();
     let mut recipients = Vec::new();
-    for (id,) in rows {
+    for (id, username) in rows {
         if id == author_id {
+            continue;
+        }
+        let setting_for = |target_type: &str| {
+            settings
+                .iter()
+                .find(|(user_id, s)| *user_id == id && s.target_type == target_type)
+                .map(|(_, s)| s)
+        };
+        let mentioned =
+            is_server_channel && crate::api::notifications::mentions(content, &username);
+        if !crate::api::notifications::should_push(
+            is_server_channel,
+            mentioned,
+            setting_for("server"),
+            setting_for("channel"),
+            now,
+        ) {
             continue;
         }
         if crate::api::abuse::is_blocked_pair(state, author_id, &id).await {

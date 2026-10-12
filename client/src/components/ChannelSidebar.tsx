@@ -38,6 +38,10 @@ type Props = {
   voiceParticipantsByChannel?: Map<string, VoiceSidebarParticipant[]>;
   unread?: Record<string, number>;
   mentionChannels?: Set<string>;
+  /** Channels, DMs and group chats that are muted, or in a muted space. */
+  mutedChannelIds?: ReadonlySet<string>;
+  /** "Notification settings" in the space menu. */
+  onOpenNotificationSettings?: () => void;
   myStatus?: string | null;
   onSetStatus?: (status: string) => void;
   myActivity?: Activity | null;
@@ -109,6 +113,8 @@ export function ChannelSidebar({
   voiceParticipantsByChannel,
   unread,
   mentionChannels,
+  mutedChannelIds,
+  onOpenNotificationSettings,
   myStatus,
   onSetStatus,
   myActivity,
@@ -158,6 +164,9 @@ export function ChannelSidebar({
     if (canManageChannels) spaceMenuItems.push({ label: "Create channel", icon: "plus", onSelect: () => setShowNewChannel(true) });
     if (onOpenEvents) spaceMenuItems.push({ label: "Events", icon: "calendar", onSelect: onOpenEvents });
     if (onOpenModQueue) spaceMenuItems.push({ label: "Moderation queue", icon: "history", onSelect: onOpenModQueue });
+    if (onOpenNotificationSettings) {
+      spaceMenuItems.push({ label: "Notification settings", icon: "bell", onSelect: onOpenNotificationSettings });
+    }
     // Not for the people who run the space: reporting your own space to yourself helps nobody.
     if (onReportServer && !canManageServer) spaceMenuItems.push({ label: "Report space", icon: "flag", onSelect: onReportServer });
     if (isOwner ? onDeleteServer : onLeaveServer) {
@@ -225,6 +234,7 @@ export function ChannelSidebar({
       isSelected={selectedChannelId === ch.id}
       unreadCount={unread?.[ch.id] ?? 0}
       hasMention={mentionChannels?.has(ch.id) ?? false}
+      muted={mutedChannelIds?.has(ch.id) ?? false}
       imported={Boolean(ch.imported)}
       onClick={() => onSelectChannel(ch)}
     />
@@ -235,9 +245,11 @@ export function ChannelSidebar({
     const label = other?.display_name ?? other?.username ?? (dm.channel_type === "group_dm" ? dm.name || "Group DM" : "Direct Message");
     const online = other ? onlineUsers.has(other.id) : false;
     const isSel = selectedChannelId === dm.id;
-    const unreadCount = unread?.[dm.id] ?? 0;
+    const muted = mutedChannelIds?.has(dm.id) ?? false;
+    // A muted chat shows no unread number or mention badge: it's meant to stay quiet.
+    const unreadCount = muted ? 0 : unread?.[dm.id] ?? 0;
     const hasUnread = unreadCount > 0 && !isSel;
-    const showMention = (mentionChannels?.has(dm.id) ?? false) && !isSel;
+    const showMention = !muted && (mentionChannels?.has(dm.id) ?? false) && !isSel;
     const pinned = pinnedDmIds.has(dm.id);
     return (
       <div
@@ -278,7 +290,8 @@ export function ChannelSidebar({
               />
             )}
           </div>
-          <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
+          <span className="min-w-0 flex-1 truncate text-sm" style={muted ? { opacity: 0.6 } : undefined}>{label}</span>
+          {muted && <MutedMark />}
           {showMention ? (
             <span
               className="flex-shrink-0 rounded-full px-1.5 text-xs font-bold"
@@ -615,28 +628,41 @@ export function ChannelSidebar({
   );
 }
 
+/** A small crossed-out bell: this chat is muted. */
+function MutedMark() {
+  return (
+    <span className="kc-muted-mark flex-shrink-0" role="img" aria-label="Muted" title="Muted">
+      <Icon name="bellOff" size={14} />
+    </span>
+  );
+}
+
 function ChannelRow({
-  icon, name, isSelected, unreadCount = 0, hasMention = false, imported = false, onClick,
+  icon, name, isSelected, unreadCount = 0, hasMention = false, muted = false, imported = false, onClick,
 }: {
   icon: React.ReactNode;
   name: string;
   isSelected: boolean;
   unreadCount?: number;
   hasMention?: boolean;
+  /** Muted (or in a muted space): looks quieter and shows no unread number, though an
+   *  @mention still shows, as in Discord. */
+  muted?: boolean;
   imported?: boolean;
   onClick: () => void;
 }) {
-  const hasUnread = unreadCount > 0 && !isSelected;
+  const hasUnread = !muted && unreadCount > 0 && !isSelected;
   const showMention = hasMention && !isSelected;
   return (
     <button
       type="button"
       onClick={onClick}
       aria-current={isSelected ? "page" : undefined}
-      className={`kc-channel-row kc-interactive mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 px-2 py-1 text-left text-sm${isSelected ? " is-selected" : ""}${hasUnread || showMention ? " has-unread" : ""}`}
+      className={`kc-channel-row kc-interactive mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 px-2 py-1 text-left text-sm${isSelected ? " is-selected" : ""}${hasUnread || showMention ? " has-unread" : ""}${muted ? " is-muted" : ""}`}
     >
       <span className="kc-channel-row__icon" aria-hidden="true">{icon}</span>
       <span className="truncate flex-1">{name}</span>
+      {muted && <MutedMark />}
       {isSelected && <span className="kc-channel-row__active-dot" aria-hidden="true" />}
       {imported && (
         <span

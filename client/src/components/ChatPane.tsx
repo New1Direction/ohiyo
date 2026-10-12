@@ -251,6 +251,10 @@ type Props = {
   onDismissKeyChange?: () => void;
   /** Set this channel's disappearing-message TTL in seconds (null turns it off). */
   onSetDisappearing?: (seconds: number | null) => void;
+  /** Open this chat's notification settings (mute it), from the bell in the header. */
+  onOpenNotificationSettings?: () => void;
+  /** This chat is muted (or in a muted space): the bell shows crossed out. */
+  chatMuted?: boolean;
   /** Threads started in this channel, by the message each started from. */
   threadByMessage?: ReadonlyMap<string, ThreadSummary>;
   /** Open a thread (from the line under its message). */
@@ -412,6 +416,8 @@ export function ChatPane({
   onMarkVerified,
   onDismissKeyChange,
   onSetDisappearing,
+  onOpenNotificationSettings,
+  chatMuted = false,
   threadByMessage,
   onOpenThread,
   onStartThread,
@@ -1355,6 +1361,17 @@ export function ChatPane({
             className="kc-icon-btn flex-shrink-0 text-base"
           >
             <Icon name="thread" />
+          </button>
+        )}
+        {onOpenNotificationSettings && (
+          <button
+            type="button"
+            onClick={onOpenNotificationSettings}
+            aria-label="Notification settings"
+            title={chatMuted ? "Muted — notification settings" : "Notification settings"}
+            className={`kc-icon-btn flex-shrink-0 text-base${chatMuted ? " is-muted" : ""}`}
+          >
+            <Icon name={chatMuted ? "bellOff" : "bell"} />
           </button>
         )}
         {onOpenSearch && (

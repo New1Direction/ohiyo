@@ -1576,12 +1576,24 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
         .filter(|(channel_id, _)| visible.contains(channel_id.as_str()))
         .collect();
 
+    // The account's notification settings, for the spaces and chats listed above only.
+    let visible_servers: HashSet<&str> = server_list.iter().map(|s| s.server.id.as_str()).collect();
+    let notification_settings = crate::api::notifications::settings_for_user(state, user_id)
+        .await?
+        .into_iter()
+        .filter(|setting| match setting.target_type.as_str() {
+            "server" => visible_servers.contains(setting.target_id.as_str()),
+            _ => visible.contains(setting.target_id.as_str()),
+        })
+        .collect();
+
     Ok(GatewayEvent::Ready {
         user: PublicUser::from(user),
         servers: server_list,
         dms,
         dm_peers,
         unread,
+        notification_settings,
     })
 }
 
