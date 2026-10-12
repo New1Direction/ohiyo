@@ -9,6 +9,7 @@ import {
   makeThemeId,
   THEME_VAR_GROUPS,
   BUILTIN_THEMES,
+  themeVars,
   type ThemeVar,
 } from "../src/themes/index.ts";
 
@@ -91,4 +92,33 @@ test("red text is readable on every built-in theme's backgrounds", () => {
       assert.ok(ratio >= 4.5, `${theme.id}: --danger on ${bg} is ${ratio.toFixed(2)}:1`);
     }
   }
+});
+
+// A custom theme saved before a colour existed (--warning, --danger-fill) took the dark
+// default theme's value for it, even when the theme itself is light: the default's light
+// amber warning on a white background can hardly be read.
+const withoutNewerColours = (id: string) => {
+  const { "--warning": _warning, "--danger-fill": _fill, ...older } = BUILTIN_THEMES.find((t) => t.id === id)!.vars;
+  return createCustomTheme(`Old ${id}`, older as ThemeVar, `old-${id}`);
+};
+
+test("a light custom theme missing newer colours gets ones readable on it", () => {
+  const vars = themeVars(withoutNewerColours("light"));
+  for (const bg of ["--bg-base", "--bg-sidebar", "--bg-channel"] as const) {
+    const ratio = contrast(vars["--warning"], vars[bg]);
+    assert.ok(ratio >= 4.5, `--warning on ${bg} is ${ratio.toFixed(2)}:1`);
+  }
+  const fill = contrast("#ffffff", vars["--danger-fill"]);
+  assert.ok(fill >= 4.5, `white on --danger-fill is ${fill.toFixed(2)}:1`);
+});
+
+test("a dark custom theme missing newer colours still gets the dark default's", () => {
+  const vars = themeVars(withoutNewerColours("midnight"));
+  assert.equal(vars["--warning"], BUILTIN_THEMES[0].vars["--warning"]);
+  assert.equal(vars["--danger-fill"], BUILTIN_THEMES[0].vars["--danger-fill"]);
+});
+
+test("a theme's own colours always win over the fallback", () => {
+  const light = BUILTIN_THEMES.find((t) => t.id === "light")!;
+  assert.deepEqual(themeVars(light), { ...BUILTIN_THEMES[0].vars, ...light.vars });
 });
