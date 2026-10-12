@@ -57,6 +57,7 @@ export function mountWebhooksDialog(element: HTMLElement, initial: WebhookSummar
         channels={CHANNELS}
         webhookApi={webhookApi}
         urlFor={(w) => `https://ohiyo.test/api/v1/webhooks/${w.id}/${w.token}`}
+        fileUrl={(stored) => `https://files.test${stored}`}
         onCopy={async (text) => {
           copied.push(text);
         }}

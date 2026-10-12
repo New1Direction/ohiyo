@@ -117,6 +117,22 @@ test("it lists the channel's webhooks by name and shows no URL until one is made
   }
 });
 
+test("a webhook's picture loads from the home's file server, like a person's avatar", async () => {
+  // The app and its server can be on different addresses (ohiyo.gg and the API), so a stored
+  // "/files/…" picture must be fetched from the server, not from the page's own address.
+  const f = open([{ ...existing[0], avatar_url: "/files/f1?s=sig" }]);
+  try {
+    await tick();
+    const avatar = f.container.querySelector(".kc-webhooks__avatar") as unknown as HTMLElement;
+    assert.ok(avatar, "the row has an avatar");
+    assert.match(avatar.style.backgroundImage, /https:\/\/files\.test\/files\/f1\?s=sig/);
+    assert.notEqual(avatar.style.backgroundColor, "", "a solid colour sits under the picture");
+    assert.equal(avatar.style.backgroundSize, "cover");
+  } finally {
+    f.done();
+  }
+});
+
 test("making a webhook shows its URL once, with a warning and Copy", async () => {
   const f = open();
   try {
