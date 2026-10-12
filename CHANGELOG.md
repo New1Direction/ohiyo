@@ -61,6 +61,10 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   different minors. Nothing the app does changes.
 
 ### Fixed
+- **A new device's first key upload no longer fails sometimes.** It could arrive while
+  the same device was signing in to the live connection, and the server answered with an
+  error instead of waiting a moment. Opening a private DM link, and the dead-man's switch
+  deleting messages, had the same problem and are fixed the same way.
 - **Warning notes show in a warning colour.** The note asking you to back up again (for an
   older recovery backup) and a sleeping or waking Instant Server asked for a warning colour
   no theme defined, so they showed as plain text. Every theme has one now, readable on its

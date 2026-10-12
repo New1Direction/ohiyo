@@ -75,7 +75,10 @@ pub async fn publish_keys(
         return Err((StatusCode::BAD_REQUEST, "too many one-time prekeys".into()));
     }
 
-    let mut tx = state.db.begin().await.map_err(ise)?;
+    // Take the write lock up front. This reads before it writes, and a read transaction
+    // that later upgrades fails at once (no busy wait) if another write lands in between:
+    // a new device's first publish raced its own gateway sign-in and got a 500.
+    let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await.map_err(ise)?;
 
     // Tombstone check: a device_id that has ever been used keeps its identity key pinned
     // even across removal, so delete-then-republish can't swap in a new identity key.
