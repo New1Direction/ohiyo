@@ -79,6 +79,11 @@ try {
   await fillDelete(pageA, PASS, A);
   await pageA.waitForSelector("text=/Your account was deleted/", { timeout: 12000 });
   log("A lands on sign-in: \"Your account was deleted.\" ✓");
+  // Said as news, not an error, and the deleted username isn't filled in.
+  if (await pageA.locator('[role="alert"]:has-text("Your account was deleted")').count()) throw new Error("the deletion notice is shown as an error");
+  const remembered = await pageA.inputValue('input[autocomplete="username"]');
+  if (remembered) throw new Error(`the sign-in screen still fills in "${remembered}"`);
+  log("calm notice, empty username field ✓");
   await pageB.waitForSelector(`text=from-a-${u}`, { state: "detached", timeout: 10000 });
   log("A's message left B's screen at once, without a reload ✓");
 

@@ -88,7 +88,10 @@ pub async fn delete_account(
             .await
             .map_err(internal)?;
     for id in &instances {
-        crate::provision::delete_instance(&state.db, state.provisioner.as_ref(), &me, id).await?;
+        // The app tells this apart from a proxy's 502 by these words (deleteAccountMessage).
+        crate::provision::delete_instance(&state.db, state.provisioner.as_ref(), &me, id)
+            .await
+            .map_err(|(code, _)| (code, "couldn't shut down your Instant Server".to_owned()))?;
     }
 
     let (plan, attachment_ids, orphaned_blobs) =

@@ -542,10 +542,10 @@ async fn if_the_cloud_refuses_nothing_is_deleted() {
     cloud.refuse.store(true, Ordering::SeqCst);
 
     // 502: the instance couldn't be destroyed, so the account is left exactly as it was.
-    assert_eq!(
-        delete_me(&srv, &me.token, PASS, "annstuck").await.status(),
-        502
-    );
+    // The app tells this apart from a proxy's 502 by the words.
+    let res = delete_me(&srv, &me.token, PASS, "annstuck").await;
+    assert_eq!(res.status(), 502);
+    assert!(res.text().await.unwrap().contains("Instant Server"));
     assert_eq!(
         srv.get_auth("/api/v1/users/@me", &me.token).await.status(),
         200

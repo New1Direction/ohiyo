@@ -205,10 +205,12 @@ async fn unknown_targets_create_no_per_target_limiter_keys() {
 
     let another = srv.register("anothertarget", "password123").await;
     assert_eq!(publish(&srv, &another, 1, 5).await, 204);
+    // Publishing has a limiter key of its own: count from after it.
+    let before_fetch = srv.state.rate.tracked_user_keys();
     assert_eq!(fetch(&srv, &callers[0], &another).await.status(), 200);
     assert_eq!(
         srv.state.rate.tracked_user_keys(),
-        before + 1,
+        before_fetch + 1,
         "a real target still gets its key"
     );
 }
