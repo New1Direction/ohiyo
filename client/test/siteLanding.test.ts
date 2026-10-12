@@ -115,15 +115,31 @@ test("each page has one main heading and a way to skip to the content", () => {
 test("the site does not promise what the hosted service does not do today", () => {
   for (const page of pages) {
     const html = readFileSync(join(site, page), "utf8");
-    // The hosted server moved off Fly, and the released desktop builds still point at the old one.
+    // The hosted server moved off Fly.
     assert.equal(/fly\.dev/.test(html), false, `${page} does not name the old server`);
-    assert.equal(/releases\/(latest\/)?download/.test(html), false, `${page} does not offer the outdated desktop builds`);
+    // Installer names contain the version, so a "latest" link breaks when the next version is
+    // published. Every download names one published version; an older installer updates itself.
+    assert.equal(/releases\/latest\/download/.test(html), false, `${page} links no "latest" installer`);
+    for (const [, tag, file] of html.matchAll(/releases\/download\/([^/"]+)\/([^"]+)"/g)) {
+      assert.match(tag, /^v\d+\.\d+\.\d+$/, `${page} links a version tag`);
+      assert.ok(file.includes(tag.slice(1)), `${page}: ${file} belongs to ${tag}`);
+    }
   }
   const home = readFileSync(join(site, "index.html"), "utf8");
   // Instant Servers are off on the hosted service.
   assert.equal(/Instant Server/i.test(home), false, "the home page does not advertise Instant Servers");
   // Channels in a space are not end-to-end encrypted, and the page has to say so.
   assert.match(home, /Channels inside a space\. Our server can read those/);
+});
+
+test("the download section says the Mac build is an unverified beta, and how to open it", () => {
+  const html = readFileSync(join(site, "index.html"), "utf8");
+  assert.match(html, /<section[^>]*id="download"/);
+  assert.match(html, /Apple has not verified/);
+  assert.match(html, /Open Anyway/);
+  // Seen in the hands-on update test: an unsigned build asks for the keychain after an update.
+  assert.match(html, /Always Allow/);
+  assert.ok((html.match(/releases\/download\/v/g) ?? []).length >= 5, "two Mac builds and three Linux packages");
 });
 
 test("the legal pages say where the hosted service really runs", () => {
