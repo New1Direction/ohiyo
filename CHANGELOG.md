@@ -219,7 +219,8 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 - **Uploads: 1 GB per account,** down from 10 GB (`MAX_UPLOAD_BYTES_PER_USER` changes it).
   Uploads also stop while the server's disk has less than 5 GB free
   (`MIN_FREE_DISK_BYTES`; 0 turns it off), so the database always has room to write. A
-  refused upload, including a picture or emoji, now says why.
+  refused upload, including a picture or emoji, now says why. Running out says how much
+  space you have and that deleting messages with files you no longer need makes room.
 - **Plain words for signing out and deleting.** The app no longer says "session". The list
   of what deleting your account does now covers group chats, one-to-one chats (they show
   "Deleted account") and your username (free for anyone again). After a deletion the app
@@ -288,7 +289,9 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   shortcut. Instant Servers remains available from the command palette (Ctrl/⌘K).
 - **The hosted backend moved from Fly.io to Railway and started with an empty
   database.** Existing hosted accounts, messages and files were not carried over, and
-  the web app drops a stored `ohiyo.fly.dev` home and asks you to sign in again.
+  the web app drops a stored `ohiyo.fly.dev` home and asks you to sign in again. The
+  desktop app connects to the new server: release builds now take the server address from
+  `client/.env.production` instead of a repository secret that still named the old one.
   Instant Servers are unavailable on the hosted service until they are rebuilt for
   another provider. The hosted web app is served from a container (`client/Dockerfile`)
   on Railway as well, and `scripts/deploy-web.sh` deploys it.
