@@ -70,7 +70,10 @@ try {
   await pageA.fill('input[aria-label="Your password"]', PASS);
   await pageA.click(confirm);
   await pageA.waitForSelector('button[aria-label="Sa HQ"]', { state: "detached", timeout: 10000 });
-  if ((await api(tokenA, `/servers/${space.id}`)).status !== 404) throw new Error("the space still exists");
+  // Gone, not just left: the owner can't leave, and its invite no longer resolves. (The
+  // space's own address answers 403 to anyone who isn't in it, so it can't tell.)
+  if ((await api(tokenA, "/servers")).body.some((s) => s.id === space.id)) throw new Error("the space is still A's");
+  if ((await api(tokenB, `/invites/${invite.body.code}`)).status !== 404) throw new Error("the space's invite still resolves");
   log("A deleted the space with the password, and it left A's list ✓");
 
   console.log("\n✅ LEAVE AND DELETE A SPACE PASSED");
