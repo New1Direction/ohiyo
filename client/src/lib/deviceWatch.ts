@@ -104,16 +104,24 @@ function setNew(userId: string, list: NewDevice[]): void {
 /**
  * Compare the account's device list with the one this device saw last, and remember the
  * new list. Returns the devices still waiting to be acknowledged. A device is never new
- * to itself, and a device that has left the account stops being new.
+ * to itself, and a device that has left the account stops being new. `activeAt` is when
+ * the server last saw each device; a new one is shown as of then, else as of `now`.
  */
-export function reconcileOwnDevices(userId: string, thisDevice: number, listed: readonly number[], now = Math.floor(Date.now() / 1000)): NewDevice[] {
+export function reconcileOwnDevices(
+  userId: string,
+  thisDevice: number,
+  listed: readonly number[],
+  now = Math.floor(Date.now() / 1000),
+  activeAt: ReadonlyMap<number, number> = new Map(),
+): NewDevice[] {
   const known = read(KNOWN + userId, isIdList);
   const onAccount = new Set(listed);
-  const pending = newDevices(userId).filter((d) => onAccount.has(d.device_id));
+  // From storage, not this tab's copy: another tab may have added to it since.
+  const pending = (read(NEW + userId, isNewList) ?? []).filter((d) => onAccount.has(d.device_id));
   if (known !== null) {
     const seen = new Set([...known, ...pending.map((d) => d.device_id)]);
     for (const id of listed) {
-      if (id !== thisDevice && !seen.has(id)) pending.push({ device_id: id, seen_at: now });
+      if (id !== thisDevice && !seen.has(id)) pending.push({ device_id: id, seen_at: Math.min(now, activeAt.get(id) ?? now) });
     }
   }
   write(KNOWN + userId, [...new Set([...listed, thisDevice])].sort((a, b) => a - b));
@@ -133,4 +141,14 @@ export function forgetDevices(userId: string, ids: readonly number[]): void {
   const known = read(KNOWN + userId, isIdList);
   if (known) write(KNOWN + userId, known.filter((id) => !drop.has(id)));
   setNew(userId, newDevices(userId).filter((d) => !drop.has(d.device_id)));
+}
+
+/** When the alert's device was last seen, in words: "just now", "2 min ago", "1 day ago". */
+export function deviceAlertAgo(seenAt: number, now = Math.floor(Date.now() / 1000)): string {
+  const s = Math.max(0, now - seenAt);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  const days = Math.floor(s / 86400);
+  return `${days} ${days === 1 ? "day" : "days"} ago`;
 }

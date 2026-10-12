@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { NewDevice } from "../lib/deviceWatch";
+import { deviceAlertAgo, type NewDevice } from "../lib/deviceWatch";
 
 type Props = {
   devices: NewDevice[];
@@ -12,16 +12,9 @@ type Props = {
   lowered?: boolean;
 };
 
-function ago(seenAt: number): string {
-  const s = Math.max(0, Math.floor(Date.now() / 1000) - seenAt);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86400)} days ago`;
-}
-
 /** A device was added to your account since this one last looked. Asks whether it was
- *  you; "Not me" asks once more, because it signs this device out too. */
+ *  you; "Not me" asks once more, because it signs this device out too. The parent keys it
+ *  by the devices shown, so a new set starts at the first question again. */
 export function NewDeviceAlert({ devices, busy, onKeep, onRemove, lowered }: Props) {
   const [confirming, setConfirming] = useState(false);
   if (devices.length === 0) return null;
@@ -31,7 +24,7 @@ export function NewDeviceAlert({ devices, busy, onKeep, onRemove, lowered }: Pro
     <div className={`kc-device-alert${lowered ? " kc-device-alert--lowered" : ""}`} role="alert" aria-live="assertive">
       <div className="kc-device-alert__title">
         {one ? "A new device signed in to your account" : `${devices.length} new devices signed in to your account`}
-        <span className="kc-device-alert__when"> · {ago(latest)}</span>
+        <span className="kc-device-alert__when"> · {deviceAlertAgo(latest)}</span>
       </div>
       {confirming ? (
         <>

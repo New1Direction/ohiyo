@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 
 import {
   acknowledgeNewDevices,
+  deviceAlertAgo,
   forgetDevices,
   newDevices,
   onNewDevicesChange,
@@ -91,4 +92,31 @@ test("a corrupt stored list is treated as no list, not as a crash", () => {
   stored.set(`ohiyo:known-devices:${ME}`, "{not json");
   assert.deepEqual(reconcileOwnDevices(ME, THIS, [THIS, 9], 1000), []);
   assert.deepEqual(reconcileOwnDevices(ME, THIS, [THIS, 9, 10], 2000), [{ device_id: 10, seen_at: 2000 }]);
+});
+
+// Two tabs of the app share storage but each keeps its own copy in memory. A tab that
+// hadn't seen the other's alert used to write its empty copy back over it.
+test("a tab that hasn't seen another tab's alert doesn't erase it", () => {
+  reconcileOwnDevices(ME, THIS, [THIS], 1000);
+  assert.deepEqual(ids(), []); // this tab's copy: nothing new
+  // The other tab learns of device 9 and stores it.
+  stored.set(`ohiyo:known-devices:${ME}`, JSON.stringify([9, THIS]));
+  stored.set(`ohiyo:new-devices:${ME}`, JSON.stringify([{ device_id: 9, seen_at: 2000 }]));
+  assert.deepEqual(reconcileOwnDevices(ME, THIS, [THIS, 9], 3000), [{ device_id: 9, seen_at: 2000 }]);
+  assert.deepEqual(ids(), [9]);
+});
+
+test("a device added while this one was away says when the server last saw it", () => {
+  reconcileOwnDevices(ME, THIS, [THIS], 1000);
+  const found = reconcileOwnDevices(ME, THIS, [THIS, 9], 9000, new Map([[9, 4000]]));
+  assert.deepEqual(found, [{ device_id: 9, seen_at: 4000 }]);
+});
+
+test("the alert's time reads naturally", () => {
+  const now = 100_000;
+  assert.equal(deviceAlertAgo(now - 10, now), "just now");
+  assert.equal(deviceAlertAgo(now - 120, now), "2 min ago");
+  assert.equal(deviceAlertAgo(now - 3 * 3600, now), "3 h ago");
+  assert.equal(deviceAlertAgo(now - 86_400, now), "1 day ago");
+  assert.equal(deviceAlertAgo(now - 3 * 86_400, now), "3 days ago");
 });
