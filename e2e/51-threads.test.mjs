@@ -111,7 +111,7 @@ try {
   await pageA.keyboard.press("Escape");
   log("the Threads button lists it ✓");
   await settle(pageA, 300);
-  await shot(pageA, "49-threads-desktop-dark");
+  await shot(pageA, "51-threads-desktop-dark");
 
   // Light theme, to look at.
   await pageA.locator('button[aria-label="Settings"]').first().click();
@@ -119,7 +119,7 @@ try {
   await pageA.click('button[aria-label="Use theme: Ohiyo Light"]');
   await pageA.keyboard.press("Escape");
   await settle(pageA, 300);
-  await shot(pageA, "49-threads-desktop-light");
+  await shot(pageA, "51-threads-desktop-light");
 
   // ── Phone: the thread takes the screen, back returns to the channel ──
   const phoneCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -141,7 +141,7 @@ try {
   // Let the "Welcome to Pip's place" toast go, so the screenshot shows the reply under it.
   await phone.waitForSelector("text=Welcome to Pip", { state: "detached", timeout: 10000 }).catch(() => {});
   await settle(phone, 250);
-  await shot(phone, "49-threads-phone");
+  await shot(phone, "51-threads-phone");
   await phone.locator(`${PANEL} button[aria-label="Back to the channel"]`).tap();
   await phone.waitForSelector(PANEL, { state: "detached", timeout: 5000 });
   await phone.waitForSelector(COMPOSER, { timeout: 5000 });

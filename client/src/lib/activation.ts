@@ -82,3 +82,8 @@ export function setActivationDismissed(userId: string | null | undefined, dismis
 export function activationCompletedCount(state: ActivationState): number {
   return ACTIVATION_MILESTONES.filter((m) => Boolean(state[m])).length;
 }
+
+/** Every step done: the checklist has nothing left to say. */
+export function isActivationComplete(state: ActivationState): boolean {
+  return activationCompletedCount(state) === ACTIVATION_MILESTONES.length;
+}
