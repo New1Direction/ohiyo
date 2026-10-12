@@ -39,7 +39,8 @@ try {
   log("A + B in Event HQ");
 
   // ── A creates an event ──
-  await pageA.click('button[aria-label="Events"]');
+  await pageA.click('.channel-sidebar button[aria-haspopup="menu"]');
+  await pageA.click('.channel-sidebar [role="menuitem"]:has-text("Events")');
   await pageA.waitForSelector("text=📅 Events", { timeout: 5000 });
   await pageA.fill('input[aria-label="Event title"]', "Game night");
   await pageA.fill('input[aria-label="Event time"]', "2026-06-20T20:00");
@@ -49,7 +50,8 @@ try {
   await shot(pageA, "33-events");
 
   // ── B opens events, sees it, RSVPs ──
-  await pageB.click('button[aria-label="Events"]');
+  await pageB.click('.channel-sidebar button[aria-haspopup="menu"]');
+  await pageB.click('.channel-sidebar [role="menuitem"]:has-text("Events")');
   await pageB.waitForSelector("text=Game night", { timeout: 6000 });
   log("B sees the event ✓");
   await pageB.locator('button:has-text("I\'m in")').first().click();

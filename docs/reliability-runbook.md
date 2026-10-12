@@ -23,7 +23,7 @@ This is the beta reliability checklist for the hosted service and Instant Server
    thing that protects it, so keep it long and random. A Slack or Discord webhook URL works too (it gets
    JSON); a self-hosted ntfy server needs `ALERT_WEBHOOK_FORMAT=ntfy` in the workflow's env.
 2. Recommended for the daily Instant Server smoke: create a low-privilege production account dedicated to reliability checks and add repository secrets `OHIYO_RELIABILITY_SMOKE_USERNAME` and `OHIYO_RELIABILITY_SMOKE_PASSWORD`. If these are absent, the smoke script registers a temporary user before creating/deleting the hosted instance.
-3. Optional stale-bundle guard: add a repository variable named `OHIYO_EXPECTED_APP_BUNDLE` after manual Cloudflare Pages deploys, using comma-separated live asset paths, for example:
+3. Stale-bundle guard: the repository variable `OHIYO_EXPECTED_APP_BUNDLE` names the live app's asset files, so the check notices a deploy that didn't take. `scripts/deploy-web.sh` sets it after every web deploy; set it by hand only if you deploy some other way. It holds comma-separated asset paths, for example:
 
    ```txt
    assets/index-C4w_KSpS.js,assets/index-hNuzaEh9.css

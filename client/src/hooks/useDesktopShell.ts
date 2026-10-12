@@ -23,6 +23,16 @@ export function useDesktopShell({ unread, inCall, onLeaveCall, onCheckUpdates, o
     void setInCall(inCall);
   }, [inCall]);
 
+  // The shell outlives this part of the app: on sign-out (or a switch to a home with no
+  // session) it must not keep the last account's unread count or offer to leave its call.
+  useEffect(
+    () => () => {
+      void setUnreadBadge(0);
+      void setInCall(false);
+    },
+    [],
+  );
+
   // The handlers change every render; the listeners are set up once and read the latest.
   const handlers = useRef({ onLeaveCall, onCheckUpdates, onWindowHidden });
   useEffect(() => {

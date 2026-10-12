@@ -351,3 +351,19 @@ async fn instance_tier_changes_are_operator_only() {
         .unwrap();
     assert_eq!(upgraded["tier"], "paid");
 }
+
+#[tokio::test]
+async fn the_app_can_ask_whether_instant_servers_are_offered() {
+    // The command palette offers Instant Servers only where this server can make them. A
+    // test build provisions with the in-memory fake, so the answer here is yes; a release
+    // build without FLY_API_TOKEN answers no (see provision::provisioning_available).
+    let srv = TestServer::start().await;
+    let alice = srv.register("alice", "supersecret123").await;
+    let res = srv
+        .get_auth("/api/v1/instances/available", &alice.token)
+        .await;
+    assert_eq!(res.status(), 200);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body, json!({ "available": true }));
+    assert_eq!(srv.get("/api/v1/instances/available").await.status(), 401);
+}

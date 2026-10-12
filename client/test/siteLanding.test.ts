@@ -159,7 +159,9 @@ test("the legal pages say where the hosted service really runs", () => {
   assert.match(privacy, /for up to three days/);
   assert.match(privacy, /Cloudflare stores the copy of the database/);
   // What a person's browser or device contacts besides Ohiyo itself is said outright.
-  assert.match(privacy, /Google Fonts/);
+  // Since 12 October 2026 the app's typefaces ship with it: no request to Google Fonts.
+  assert.doesNotMatch(privacy, /loads its typefaces from Google Fonts/);
+  assert.match(privacy, /typefaces ship with the app/);
   assert.match(privacy, /STUN/);
   // Since 12 October 2026 a call that can't connect directly can go through Cloudflare's
   // TURN relay, which sees the callers' addresses but not what is said.

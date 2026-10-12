@@ -762,8 +762,21 @@ function AppearanceTab({
 function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate, onTokenChange, onAccountDeleted }: { currentUser: PublicUser | null; token: string; onToast: (t: string, type?: "info" | "success" | "error") => void; onCurrentUserUpdate?: (user: PublicUser) => void; onTokenChange?: (token: string) => void; onAccountDeleted?: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentUser?.avatar_url ?? null);
+  const [idCopied, setIdCopied] = useState(false);
 
   if (!currentUser) return null;
+  const userId = currentUser.id;
+
+  // Nobody needs to read their user ID, but support and self-hosting sometimes ask for it.
+  async function copyUserId() {
+    try {
+      await navigator.clipboard.writeText(userId);
+      setIdCopied(true);
+      window.setTimeout(() => setIdCopied(false), 2000);
+    } catch {
+      onToast("Couldn't copy your user ID.", "error");
+    }
+  }
 
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -781,7 +794,7 @@ function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate, onTokenC
 
   return (
     <div>
-      <h2 className="mb-6 text-xl font-bold">My Account</h2>
+      <h2 className="mb-6 text-xl font-bold">My account</h2>
       <div className="rounded-lg p-6" style={{ background: "var(--bg-sidebar)" }}>
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -806,13 +819,21 @@ function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate, onTokenC
           <div>
             <div className="text-lg font-bold">{currentUser.display_name}</div>
             <div className="text-sm" style={{ color: "var(--text-muted)" }}>@{currentUser.username}</div>
-            <div className="text-xs mt-1 font-mono" style={{ color: "var(--text-muted)" }}>ID: {currentUser.id}</div>
+            <button
+              type="button"
+              onClick={() => void copyUserId()}
+              className="kc-copy-id mt-1 block text-xs hover:underline"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {idCopied ? "Copied" : "Copy user ID"}
+            </button>
+            <span className="sr-only" role="status">{idCopied ? "Your user ID is copied." : ""}</span>
             <button
               onClick={() => fileRef.current?.click()}
               className="mt-2 rounded px-3 py-1 text-xs font-semibold"
               style={{ background: "var(--accent)", color: "#fff" }}
             >
-              Upload Avatar / Animated GIF
+              Upload a picture or GIF
             </button>
           </div>
         </div>
@@ -874,7 +895,7 @@ function EmojiTab({ token, servers, onToast }: { token: string; servers: ServerW
 
   return (
     <div>
-      <h2 className="mb-1 text-xl font-bold">Custom Emoji</h2>
+      <h2 className="mb-1 text-xl font-bold">Custom emoji</h2>
       <p className="mb-4 text-sm" style={{ color: "var(--text-muted)" }}>
         Add your own emoji to a space, then type <code>:name:</code> in a message to use one. Animated GIFs work too.
       </p>
@@ -1363,7 +1384,7 @@ function SocialTab({ token, onToast }: { token: string; onToast: (t: string, typ
 
   return (
     <div>
-      <h2 className="mb-2 text-xl font-bold">Social Links</h2>
+      <h2 className="mb-2 text-xl font-bold">Social links</h2>
       <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
         Connect your other accounts. These appear on your profile card.
       </p>
@@ -1799,7 +1820,7 @@ function SecurityTab({
 
   return (
     <div>
-      <h2 className="mb-1 text-xl font-bold">Privacy &amp; Security</h2>
+      <h2 className="mb-1 text-xl font-bold">Privacy &amp; security</h2>
       <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
         Chats with the lock on are end-to-end encrypted; server channels are not. These controls decide what
         happens to your data if you disappear — or on demand.

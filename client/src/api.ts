@@ -603,6 +603,8 @@ export const api = {
       token
     ),
   listInstances: (token: string) => request<HostedInstance[]>("/instances", {}, token),
+  /** Whether this home can make Instant Servers at all. */
+  instantServersAvailable: (token: string) => request<unknown>("/instances/available", {}, token),
   getInstance: (id: string, token: string) =>
     request<HostedInstance>(`/instances/${id}`, {}, token),
   sleepInstance: (id: string, token: string) =>
