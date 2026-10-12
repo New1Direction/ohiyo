@@ -63,6 +63,7 @@ try {
   await page.waitForSelector('.kc-user-menu[role="dialog"]', { timeout: 4000 });
   await page.click('.kc-user-menu button:has-text("Add an activity")');
   await page.waitForSelector('.kc-user-menu input[aria-label="Activity name"]', { timeout: 4000 });
+  await settle(page, 300);
   await shot(page, "48-user-bar-desktop-menu-dark");
   await page.fill('.kc-user-menu input[aria-label="Activity name"]', "Chess");
   await page.locator('.kc-user-menu input[aria-label="Activity name"]').press("Enter");
@@ -84,6 +85,7 @@ try {
   await shot(page, "48-user-bar-desktop-light");
   await page.click(".kc-user-identity");
   await page.waitForSelector('.kc-user-menu[role="dialog"]', { timeout: 4000 });
+  await settle(page, 300);
   await shot(page, "48-user-bar-desktop-menu-light");
   await page.keyboard.press("Escape");
 
@@ -120,6 +122,8 @@ try {
   await shot(phone, "48-user-bar-phone-sidebar");
   await phone.locator(".kc-user-identity").tap();
   await phone.waitForSelector('.kc-user-menu[role="dialog"]', { timeout: 4000 });
+  // The menu opens with a short scale-in; measure once it has settled.
+  await settle(phone, 300);
   const smallItems = await phone.evaluate(() =>
     [...document.querySelectorAll(".kc-user-menu button, .kc-user-menu input")]
       .map((b) => b.getBoundingClientRect())
