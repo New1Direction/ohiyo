@@ -12,6 +12,12 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ## [Unreleased]
 
 ### Added
+- **Delete your account**, under Settings → Account. It needs your password and your
+  username typed out, and it happens at once. Every message you sent is deleted, for
+  everyone. A space you own goes to its longest-standing member, or is deleted if nobody
+  else is in it; a group you own goes to the next member. Instant Servers you run are shut
+  down. Your encryption keys and recovery backup are deleted on the server and on that
+  device. Emoji you added to someone else's space, and pictures others still use, stay.
 - **You're told when a new device signs in to your account.** Every device has its own
   encryption keys, and people encrypt a copy of each message for each one. So someone
   with a stolen session could add a device and quietly read everything sent to you after
@@ -41,10 +47,18 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   the release build, the web app's Docker image and the Tauri dev/build hooks use Bun to
   install packages and run scripts. Node still runs `tsc`, ESLint, Vite and the unit tests.
   Contributors need [Bun](https://bun.sh) 1.4+ alongside Node 22.
+- **Dependency updates.** The server moves to tokio 1.53, serde_json 1.0.151, futures
+  0.3.34, flate2 1.1.10 and uuid 1.27. The release build uses tauri-action v1 (same
+  inputs, now on Node 24; it still uploads the updater's `latest.json` and leaves the
+  release a draft), and the watch-modes check uses setup-node v7 and upload-artifact v7.
 - **Restoring keys warns you first.** A restore makes this device take the place of the
   device that made the backup. If both keep being used, encrypted messages can stop
   decrypting on both. The restore box now says so, and points to Link a device when the
   old device still works.
+- **The desktop app is on Tauri 2.12.** The Rust crates and the `@tauri-apps` npm packages
+  moved together (autostart 2.7, updater 2.13, deep-link 2.6, notification 2.6, opener
+  2.7), because the Tauri CLI refuses a build where a plugin's crate and npm package are on
+  different minors. Nothing the app does changes.
 
 ### Fixed
 - **A new device's first key upload no longer fails sometimes.** It could arrive while

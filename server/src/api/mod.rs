@@ -1,4 +1,5 @@
 pub mod abuse;
+pub mod account;
 pub mod auth;
 pub mod channels;
 pub mod discord_import;
@@ -51,7 +52,8 @@ pub fn router() -> Router<AppState> {
         .route("/devices/link/start", post(auth::link_start))
         .route("/devices/link/complete", post(auth::link_complete))
         // Users
-        .route("/users/@me", get(users::me))
+        // Delete the account (password + typed username). See account.rs.
+        .route("/users/@me", get(users::me).delete(account::delete_account))
         .route("/users/@me/saved", get(saved::list_saved))
         .route("/users/search", get(users::search_users))
         .route("/users/@me/friends", get(users::list_friends))

@@ -221,7 +221,7 @@ static ARGON2_PERMITS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_ne
 /// Run an Argon2 hash or verify on the blocking pool, so it never stalls the async
 /// executor. The permit moves into the blocking task, so a request dropped mid-hash
 /// can't free its slot before the hash is done.
-async fn run_argon2<T: Send + 'static>(
+pub(crate) async fn run_argon2<T: Send + 'static>(
     work: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, (StatusCode, String)> {
     let permit = ARGON2_PERMITS

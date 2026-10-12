@@ -1044,6 +1044,9 @@ export const api = {
   // Ends every session of this account, this one included: every token minted before now
   // stops working. The caller signs this device out after.
   logoutEverywhere: (token: string) => request<void>("/auth/logout-everywhere", { method: "POST" }, token),
+  // Deletes the account for good, at once. Needs the password and the typed username.
+  deleteAccount: (token: string, password: string, username: string) =>
+    request<void>("/users/@me", { method: "DELETE", body: JSON.stringify({ password, username }) }, token),
   // Needs the current password. Ends every session and returns a token for this one.
   changePassword: (token: string, currentPassword: string, newPassword: string) =>
     request<AuthResponse>(

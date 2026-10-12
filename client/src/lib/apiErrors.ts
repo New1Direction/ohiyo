@@ -51,3 +51,21 @@ export function passwordChangeMessage(err: unknown): string {
       return "Couldn't change your password. Check your connection and try again.";
   }
 }
+
+/** What to show when deleting the account failed. Nothing was deleted in any of these. */
+export function deleteAccountMessage(err: unknown): string {
+  switch (apiStatus(err)) {
+    case 403:
+      return "That isn't your password. Nothing was deleted.";
+    case 400:
+      return "Type your username exactly as shown. Nothing was deleted.";
+    case 429:
+      return "Too many tries. Wait a minute, then try again.";
+    case 502:
+      return "Your Instant Server couldn't be shut down, so nothing was deleted. Try again in a minute.";
+    case 401:
+      return "Your session has ended. Sign in again, then delete your account.";
+    default:
+      return "Couldn't delete your account. Check your connection and try again. Nothing was deleted.";
+  }
+}

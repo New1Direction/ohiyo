@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { clearLocalMessageData } from "../src/lib/logoutCleanup.ts";
+import { clearDeletedAccountData, clearLocalMessageData } from "../src/lib/logoutCleanup.ts";
 
 function mapStore(entries: Record<string, string>) {
   const m = new Map(Object.entries(entries));
@@ -64,4 +64,29 @@ test("keys that merely look similar are kept", () => {
   clearLocalMessageData([local]);
   assert.equal(local.m.size, 3);
   assert.equal(local.writes.length, 0, "nothing to remove, no write");
+});
+
+// Deleting the account: its keys go too, with what signing out removes. Settings and
+// another account's device lists stay.
+test("a deleted account's keys and messages leave the device in one write per store", () => {
+  const store = mapStore({
+    "kc:sig:identityKey": "id",
+    "kc:sig:sessionpeer.1": "s",
+    "kc:sig:verified:peer": "v",
+    "kc:sk:own:group": "sk",
+    "kc:e2e-keypair": "kp",
+    "kc:e2e-pt:m1": "plain",
+    "kc:e2e-pt-index": "[]",
+    "kc:outbox": "[]",
+    "kc:draft:chan": "hi",
+    "ohiyo:known-devices:me": "[1]",
+    "ohiyo:new-devices:me": "[]",
+    "ohiyo:known-devices:other": "[2]",
+    "kc:tok:home": "token",
+    "kc:homes:v1": "[]",
+    theme: "dusk",
+  });
+  clearDeletedAccountData([store], "me");
+  assert.deepEqual([...store.m.keys()].sort(), ["kc:homes:v1", "kc:tok:home", "ohiyo:known-devices:other", "theme"]);
+  assert.equal(store.writes.length, 1);
 });
