@@ -428,11 +428,11 @@ export function AuthScreen({ home, onAuth }: Props) {
                 <details className="ohiyo-door__forgot">
                   <summary>Forgot your password?</summary>
                   <p>
-                    Ohiyo can't reset it. If you're still signed in somewhere, you can{" "}
+                    Ohiyo can't reset it. If you're still signed in on another device, you can{" "}
                     <button type="button" onClick={() => switchMode("link")} className="ohiyo-door__link">
                       link this device
                     </button>{" "}
-                    from there, then set a new one in Settings → Account. If not, you can{" "}
+                    from there, which signs you in here for 30 days. If not, you can{" "}
                     <button type="button" onClick={() => switchMode("register")} className="ohiyo-door__link">
                       start a new account
                     </button>

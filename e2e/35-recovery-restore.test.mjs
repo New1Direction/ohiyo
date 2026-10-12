@@ -1,4 +1,4 @@
-import { currentToken, launchBrowser, register, log, uniq, PASS, ORIGIN } from "./harness.mjs";
+import { currentToken, launchBrowser, register, log, uniq, PASS, ORIGIN, openDm } from "./harness.mjs";
 
 // Recovery restore: A backs up keys on device 1, then loses it. B keeps writing. A signs in
 // on a fresh device 2, which can't read B's new message, restores the backup with the
@@ -42,10 +42,9 @@ async function login(page, username) {
   await page.waitForSelector('button[aria-label="Direct Messages"]', { timeout: 12000 });
 }
 
-async function openDm(page) {
+async function openDmWith(page, name) {
   await page.click('button[aria-label="Direct Messages"]');
-  await page.waitForSelector('button:has-text("Direct Message")', { timeout: 8000 });
-  await page.click('button:has-text("Direct Message")');
+  await openDm(page, name);
   await page.waitForSelector(COMPOSER, { timeout: 8000 });
 }
 
@@ -92,7 +91,7 @@ try {
   await send(pageA1, hello);
 
   await pageB.reload({ waitUntil: "domcontentloaded" });
-  await openDm(pageB);
+  await openDmWith(pageB, "Ra");
   await pageB.waitForSelector(`text=${hello}`, { timeout: 10000 });
   const readBeforeBackup = `read-before-backup-${u}`;
   await send(pageB, readBeforeBackup);
@@ -130,7 +129,7 @@ try {
     if (bDevices < 2) await new Promise((r) => setTimeout(r, 600));
   }
   if (bDevices < 2) throw new Error(`B's second device never published keys (devices=${bDevices})`);
-  await openDm(pageB2);
+  await openDmWith(pageB2, "Ra");
   log("B signed in on a second device");
 
   // ── A signs in on device 2: a new device can't read it yet ──
@@ -138,7 +137,7 @@ try {
   const pageA2 = await ctxA2.newPage();
   pageA2.on("pageerror", (e) => console.error("  A2 ERR:", e.message));
   await login(pageA2, A);
-  await openDm(pageA2);
+  await openDmWith(pageA2, "Rb");
   await pageA2.waitForSelector(LOCKED, { timeout: 10000 });
   if ((await bodyText(pageA2)).includes(afterBackup)) throw new Error("device 2 read the message before any restore");
   const device2 = await signalDevice(pageA2);
@@ -192,7 +191,7 @@ try {
   log(`the account lists device 1's id only; device 2's old id is gone ✓`);
 
   // ── The message sent after the backup is readable now ──
-  await openDm(pageA2);
+  await openDmWith(pageA2, "Rb");
   try {
     await pageA2.waitForSelector(`text=${afterBackup}`, { timeout: 12000 });
   } catch {

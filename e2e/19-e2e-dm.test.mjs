@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { currentToken, launchBrowser, register, shot, log, uniq } from "./harness.mjs";
+import { currentToken, launchBrowser, register, shot, log, uniq, openDm } from "./harness.mjs";
 
 // End-to-end encrypted DMs: A toggles encryption, sends a secret. B decrypts it.
 // CRITICAL: the server must store only ciphertext — verified via the REST API.
@@ -71,10 +71,14 @@ try {
   // ── B reloads, opens the DM, sees the DECRYPTED plaintext ──
   await pageB.reload({ waitUntil: "domcontentloaded" });
   await pageB.click('button[aria-label="Direct Messages"]');
-  await pageB.waitForSelector('button:has-text("Direct Message")', { timeout: 8000 });
-  await pageB.click('button:has-text("Direct Message")');
+  // The DM is listed under A's name, not a placeholder, though B never opened it before.
+  await pageB.waitForSelector('button[aria-label="Pin Ann"]', { timeout: 8000 });
+  if (await pageB.locator('button:has-text("Direct Message")').count()) throw new Error('B still sees a DM called "Direct Message"');
+  await openDm(pageB, "Ann");
   await pageB.waitForSelector(`text=${secret}`, { timeout: 10000 });
-  log("B opened the DM and DECRYPTED A's message ✓");
+  const title = (await pageB.locator(".kc-chat-title").innerText()).trim();
+  if (title !== "Ann") throw new Error(`B's chat header says "${title}", not "Ann"`);
+  log("B sees the DM under A's name, opened it and DECRYPTED A's message ✓");
   await shot(pageB, "36-e2e-decrypted");
 
   // ── B verifies the Signal safety number (optional identity check, one click) ──
@@ -121,8 +125,7 @@ try {
   //    The Double Ratchet can't re-decrypt either, so this proves the local cache. ──
   await pageA.reload({ waitUntil: "domcontentloaded" });
   await pageA.click('button[aria-label="Direct Messages"]');
-  await pageA.waitForSelector('button:has-text("Direct Message")', { timeout: 8000 });
-  await pageA.click('button:has-text("Direct Message")');
+  await openDm(pageA, "Bea");
   await pageA.waitForSelector(`text=${secret}`, { timeout: 10000 });
   await pageA.waitForSelector(`text=${reply}`, { timeout: 10000 });
   await pageA.waitForSelector(`text=${padOne}`, { timeout: 10000 });

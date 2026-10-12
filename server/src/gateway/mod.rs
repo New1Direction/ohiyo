@@ -1416,6 +1416,34 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
     .await
     .unwrap_or_default();
 
+    // The other person in each 1:1 DM, in one query, so the client can name every chat
+    // in the list (the channel row is just "dm").
+    let dm_peers: std::collections::HashMap<String, PublicUser> =
+        sqlx::query_as::<_, (String, String, String, String, Option<String>)>(
+            "SELECT them.channel_id, u.id, u.username, u.display_name, u.avatar_url
+             FROM dm_participants me
+             JOIN channels c ON c.id = me.channel_id AND c.channel_type = 'dm'
+             JOIN dm_participants them
+               ON them.channel_id = me.channel_id AND them.user_id != me.user_id
+             JOIN users u ON u.id = them.user_id
+             WHERE me.user_id = ?",
+        )
+        .bind(user_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(channel_id, id, username, display_name, avatar_url)| {
+            let peer = PublicUser {
+                id,
+                username,
+                display_name,
+                avatar_url,
+            };
+            (channel_id, peer)
+        })
+        .collect();
+
     // Per-channel unread counts (one query): messages newer than the user's read cursor,
     // excluding their own and expired ones, across every channel they can see. Seeds the
     // client's unread badges on connect so they no longer wipe to zero on reload.
@@ -1459,6 +1487,7 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
         user: PublicUser::from(user),
         servers: server_list,
         dms,
+        dm_peers,
         unread,
     })
 }

@@ -1,4 +1,4 @@
-import { launchBrowser, register, log, uniq } from "./harness.mjs";
+import { launchBrowser, register, log, uniq, openDm } from "./harness.mjs";
 
 const u = uniq();
 const A = `linka_${u}`;
@@ -62,8 +62,7 @@ try {
 
   await pageA.reload({ waitUntil: "domcontentloaded" });
   await pageA.click('button[aria-label="Direct Messages"]');
-  await pageA.waitForSelector('button:has-text("Direct Message")', { timeout: 10000 });
-  await pageA.click('button:has-text("Direct Message")');
+  await openDm(pageA, "Link B", 10000);
   await pageA.waitForSelector(`text=${msg}`, { timeout: 10000 });
   log("A received the DM created by the link ✓");
 

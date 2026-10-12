@@ -959,6 +959,20 @@ function MainApp({
     });
   }
 
+  // Who a 1:1 DM is with, for a chat that arrived live (Ready names the rest), so it has a
+  // name in the list rather than "Direct Message".
+  async function nameDm(channelId: string) {
+    try {
+      const people = await api.listRecipients(token, channelId);
+      const peer = people.length === 2 ? people.find((p) => p.id !== currentUserRef.current?.id) : undefined;
+      if (!peer) return;
+      dmPeerRef.current.set(channelId, peer.id);
+      setDmUsers((prev) => (prev[channelId] ? prev : { ...prev, [channelId]: peer }));
+    } catch {
+      // Offline or no longer allowed in: the next Ready names it.
+    }
+  }
+
   function handleGatewayEvent(event: GatewayEvent) {
     switch (event.t) {
       case "Ready":
@@ -966,6 +980,12 @@ function MainApp({
         setCurrentUser(event.d.user);
         setServers(event.d.servers);
         setDms(event.d.dms);
+        // Who each 1:1 DM is with, so every chat in the list has a name after a reload.
+        if (event.d.dm_peers) {
+          const peers = event.d.dm_peers;
+          for (const [channelId, peer] of Object.entries(peers)) dmPeerRef.current.set(channelId, peer.id);
+          setDmUsers((prev) => ({ ...prev, ...peers }));
+        }
         // Earlier builds could mark a server channel as encrypted (C-H6). Drop stored
         // entries Ready lists as server channels; keep DMs and ids it doesn't mention.
         setE2eChannels((prev) => {
@@ -1159,6 +1179,7 @@ function MainApp({
           // Joining a group at its current epoch seeds our first sender key in the live
           // generation (a member added mid-life starts at epoch N, not 0).
           if (event.d.channel_type === "group_dm") syncGroupEpoch(event.d.id, event.d.epoch);
+          if (event.d.channel_type === "dm" && !dmUsersRef.current[event.d.id]) void nameDm(event.d.id);
         }
         break;
 

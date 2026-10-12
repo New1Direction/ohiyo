@@ -239,6 +239,10 @@ pub enum GatewayEvent {
         user: PublicUser,
         servers: Vec<ServerWithChannels>,
         dms: Vec<Channel>,
+        /// channel_id → the other person in each 1:1 DM. The channel itself is named
+        /// "dm", so without this a client can't say who a chat is with.
+        #[serde(default)]
+        dm_peers: std::collections::HashMap<String, PublicUser>,
         /// channel_id → unread message count (newer than the user's read cursor). Lets
         /// the client seed unread badges on connect instead of starting from zero.
         #[serde(default)]

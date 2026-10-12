@@ -1,4 +1,4 @@
-import { currentToken, launchBrowser, register, shot, log, uniq } from "./harness.mjs";
+import { currentToken, launchBrowser, register, shot, log, uniq, openDm } from "./harness.mjs";
 
 // Disappearing messages: A picks a timer in the DM (both sides get the banner via the
 // live broadcast); a short TTL makes a sent message actually vanish from view.
@@ -44,8 +44,7 @@ try {
   // B opens the DM (reload so the freshly-created DM shows in the list)
   await pageB.reload({ waitUntil: "domcontentloaded" });
   await pageB.click('button[aria-label="Direct Messages"]');
-  await pageB.waitForSelector('button:has-text("Direct Message")', { timeout: 8000 });
-  await pageB.click('button:has-text("Direct Message")');
+  await openDm(pageB, "Ax");
   await pageB.waitForSelector(`text=hi-${u}`, { timeout: 10000 });
   log("A opened DM with B; both viewing it");
 

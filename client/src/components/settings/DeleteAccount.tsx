@@ -17,7 +17,9 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ready = password.length > 0 && typed === username;
+  // Typing the name is a deliberate step, not a password: a phone's capital first letter
+  // or trailing space shouldn't block it. The server is sent the account's own username.
+  const ready = password.length > 0 && typed.trim().toLowerCase() === username.toLowerCase();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,7 +27,7 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await api.deleteAccount(token, password, typed);
+      await api.deleteAccount(token, password, username);
       onDeleted();
     } catch (err) {
       setError(deleteAccountMessage(err));
@@ -88,6 +90,8 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
           <input
             type="text"
             autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
             spellCheck={false}
             aria-label="Type your username to confirm"
             value={typed}

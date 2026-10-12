@@ -283,6 +283,12 @@ function dmTabLabel(channel: Channel, user?: PublicUser): string {
   return channel.name !== "dm" ? channel.name : "DM";
 }
 
+/** The chat header: the other person's name in a 1:1 DM, else the channel's own name. */
+function chatTitle(channel: Channel, user?: PublicUser): string {
+  if (channel.channel_type === "dm" && user) return user.display_name || user.username;
+  return channel.name !== "dm" ? channel.name : "Direct Message";
+}
+
 function MenuIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1205,7 +1211,7 @@ export function ChatPane({
         <span style={{ color: "var(--text-muted)" }}>
           {channel.channel_type === "dm" ? "👤" : "#"}
         </span>
-        <span className="kc-chat-title">{channel.name !== "dm" ? channel.name : "Direct Message"}</span>
+        <span className="kc-chat-title">{chatTitle(channel, dmUsers[channel.id])}</span>
         {channel.imported && (
           <span
             className="rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide"

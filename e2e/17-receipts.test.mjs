@@ -1,4 +1,4 @@
-import { launchBrowser, ORIGIN, register, shot, settle, log, uniq, PASS } from "./harness.mjs";
+import { launchBrowser, ORIGIN, register, shot, settle, log, uniq, PASS, openDm } from "./harness.mjs";
 
 // Read receipts: A DMs B. Before B reads, A's message shows "Delivered".
 // When B opens the DM (acks), A's indicator flips to "Seen" live over the gateway.
@@ -54,9 +54,7 @@ try {
   // ── B reloads (Ready now includes the DM), opens it → reads ──
   await pageB.reload({ waitUntil: "domcontentloaded" });
   await pageB.click('button[aria-label="Direct Messages"]');
-  // B's DM label falls back to "Direct Message" (no dmUsers hydration on this path).
-  await pageB.waitForSelector('button:has-text("Direct Message")', { timeout: 8000 });
-  await pageB.click('button:has-text("Direct Message")');
+  await openDm(pageB, "Ann");
   await pageB.waitForSelector(`text=${msg}`, { timeout: 8000 });
   log("B opened the DM and read A's message");
 

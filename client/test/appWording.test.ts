@@ -51,6 +51,10 @@ const UNTRUE = [
   "note about Ohiyo",
   "Copy invite note",
   "Come hang out:",
+  // Settings → Account needs the current password, so it can't replace a forgotten one.
+  "then set a new one in Settings",
+  // Since a contact's new device is announced, verifying covers only the devices compared.
+  "Verifying a contact covers all of",
 ];
 
 const INSIDER = [
