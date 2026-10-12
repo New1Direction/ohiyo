@@ -11,6 +11,14 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
 
+### Added
+- **Incoming webhooks, like Discord's.** People who manage a space's channels can make a
+  webhook for a text channel (Space menu → Webhooks): a secret URL that another service posts
+  `{"content": "…"}` to, and the message appears in the channel under the webhook's name and
+  picture, marked APP. The URL is shown once, can be renewed, and only a hash of its token is
+  kept. A post can't pose as a person or ping @everyone, and posting is rate-limited. Not in
+  DMs or group chats, which are end-to-end encrypted.
+
 ## [0.3.1] — 2026-10-12
 
 ### Added
