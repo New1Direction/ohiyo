@@ -495,11 +495,6 @@ export function ChannelSidebar({
                 })}
               </div>
             )}
-
-            <div className="kc-sidebar-hint mx-3 mt-5">
-              <div className="kc-sidebar-hint-title">Ready when you are</div>
-              <p>Send a message, hop into voice, or invite a friend.</p>
-            </div>
           </>
         ) : (
           // DMs
