@@ -1,4 +1,5 @@
 import { api, type PushDevice } from "../api";
+import { renewPushRegistration } from "./pushRenew";
 
 export async function registerOhiyoServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator) || location.protocol !== "https:" && location.hostname !== "localhost") return null;
@@ -27,6 +28,8 @@ function key(subscription: PushSubscription, name: PushEncryptionKeyName): strin
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
+const deviceName = () => (navigator.userAgent.includes("Mobile") ? "Mobile PWA" : "Web browser");
+
 export function canUseWebPush(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
@@ -54,6 +57,22 @@ export async function enableContentFreeWebPush(token: string): Promise<PushDevic
     endpoint: subscription.endpoint,
     p256dh,
     auth,
-    device_name: navigator.userAgent.includes("Mobile") ? "Mobile PWA" : "Web browser",
+    device_name: deviceName(),
+  });
+}
+
+/** Register this browser's existing push subscription for the session `token`, since a
+ *  subscription belongs to the session that registered it (see pushRenew.ts). Asks for
+ *  nothing, and does nothing where push was never turned on. */
+export function renewWebPush(token: string): Promise<boolean> {
+  return renewPushRegistration({
+    permission: () => (canUseWebPush() ? Notification.permission : "unsupported"),
+    subscription: async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      const sub = await registration?.pushManager.getSubscription();
+      return sub ? { endpoint: sub.endpoint, p256dh: key(sub, "p256dh"), auth: key(sub, "auth") } : null;
+    },
+    deviceName: deviceName(),
+    register: (body) => api.registerPushDevice(token, body),
   });
 }
