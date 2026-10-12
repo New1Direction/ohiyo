@@ -326,6 +326,8 @@ pub async fn register(
     let id = new_id();
     let display_name = body.display_name.unwrap_or_else(|| body.username.clone());
 
+    // The look above runs before the slow hash, so two sign-ups for one name can both pass
+    // it: the second insert breaks the unique username and is told the name is taken.
     sqlx::query(
         "INSERT INTO users (id, username, display_name, password_hash, created_at) VALUES (?,?,?,?,?)",
     )
@@ -336,7 +338,15 @@ pub async fn register(
     .bind(now_unix())
     .execute(&state.db)
     .await
-    .map_err(crate::api::error::internal)?;
+    .map_err(|e| {
+        if e.as_database_error()
+            .is_some_and(|db| db.is_unique_violation())
+        {
+            (StatusCode::CONFLICT, "username taken".into())
+        } else {
+            crate::api::error::internal(e)
+        }
+    })?;
 
     // Counted only now, so bad input or a taken username costs no registration slot.
     if register_limit > 0 {

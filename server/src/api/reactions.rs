@@ -36,13 +36,21 @@ pub async fn toggle_reaction(
         return Err((StatusCode::NOT_FOUND, "message not found".into()));
     }
 
+    // Look and toggle in one write transaction: taps at once would otherwise all see no
+    // reaction, and every insert after the first would fail. BEGIN IMMEDIATE takes the
+    // write lock before the look, so each tap sees the one before it.
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
     let existing: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?",
     )
     .bind(&message_id)
     .bind(&auth.0)
     .bind(&emoji)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
 
@@ -51,7 +59,7 @@ pub async fn toggle_reaction(
             .bind(&message_id)
             .bind(&auth.0)
             .bind(&emoji)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await
             .map_err(crate::api::error::internal)?;
         false
@@ -63,11 +71,12 @@ pub async fn toggle_reaction(
         .bind(&auth.0)
         .bind(&emoji)
         .bind(now_unix())
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(crate::api::error::internal)?;
         true
     };
+    tx.commit().await.map_err(crate::api::error::internal)?;
 
     broadcast_to_channel(
         &state,
