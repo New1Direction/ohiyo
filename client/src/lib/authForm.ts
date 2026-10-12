@@ -2,16 +2,18 @@
 // numbers, dots, dashes and underscores (the server refuses anything else); signing in only
 // checks the length, so names made before that rule still sign in.
 
+import { MAX_USERNAME, MIN_USERNAME, USERNAME_CHAR } from "./usernames.ts";
+
+export { MAX_USERNAME, MIN_USERNAME };
+
 export type AuthMode = "login" | "register" | "link";
 
-export const MIN_USERNAME = 2;
-export const MAX_USERNAME = 32;
 export const MIN_PASSWORD = 8;
 
 export const USERNAME_RULE = "Letters, numbers, dots, dashes and underscores.";
 
 const ONLY = "letters, numbers, dots, dashes and underscores only.";
-const ALLOWED = /^[A-Za-z0-9._-]$/;
+const ALLOWED = new RegExp(`^${USERNAME_CHAR}$`);
 
 /** What's wrong with a typed username, in plain words, or null when it's fine. */
 export function usernameProblem(typed: string, mode: AuthMode): string | null {

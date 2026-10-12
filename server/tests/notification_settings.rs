@@ -601,3 +601,202 @@ async fn writes_are_rate_limited() {
     }
     assert_eq!(last, 429, "a flood of setting changes is slowed down");
 }
+
+/// Settings rows that name `target_id`, for anyone, straight from the database.
+async fn rows_for(srv: &TestServer, target_id: &str) -> i64 {
+    let db = SqlitePool::connect(srv.db_url()).await.unwrap();
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM notification_settings WHERE target_id = ?")
+            .bind(target_id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    db.close().await;
+    n
+}
+
+#[tokio::test]
+async fn deleting_a_channel_takes_its_settings_and_its_threads_settings() {
+    let srv = TestServer::start().await;
+    let owner = srv.register("goneowner", PASS).await;
+    let member = srv.register("gonemember", PASS).await;
+    let (server_id, general_id) = space_with_member(&srv, &owner, &member).await;
+    let channel: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{server_id}/channels"),
+            &owner.token,
+            json!({ "name": "random" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let channel_id = channel["id"].as_str().unwrap().to_owned();
+    let first: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/channels/{channel_id}/messages"),
+            &owner.token,
+            json!({ "content": "start here" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let thread: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/channels/{channel_id}/threads"),
+            &owner.token,
+            json!({ "message_id": first["id"], "name": "Side talk" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let thread_id = thread["id"].as_str().unwrap().to_owned();
+
+    for channel in [&channel_id, &general_id] {
+        let res = set(
+            &srv,
+            &member.token,
+            "channel",
+            channel,
+            json!({ "muted": true }),
+        )
+        .await;
+        assert_eq!(res.status(), 200);
+    }
+    // A thread's own row, as a later version of the app might store one.
+    let db = SqlitePool::connect(srv.db_url()).await.unwrap();
+    sqlx::query(
+        "INSERT INTO notification_settings (user_id, target_type, target_id, level, muted, muted_until, updated_at)
+         VALUES (?, 'channel', ?, NULL, 1, NULL, ?)",
+    )
+    .bind(&member.id)
+    .bind(&thread_id)
+    .bind(now_unix())
+    .execute(&db)
+    .await
+    .unwrap();
+    db.close().await;
+    assert_eq!(rows_for(&srv, &channel_id).await, 1);
+    assert_eq!(rows_for(&srv, &thread_id).await, 1);
+
+    let res = srv
+        .delete_auth(&format!("/api/v1/channels/{channel_id}"), &owner.token)
+        .await;
+    assert_eq!(res.status(), 204);
+    assert_eq!(
+        rows_for(&srv, &channel_id).await,
+        0,
+        "the channel's settings go with it"
+    );
+    assert_eq!(
+        rows_for(&srv, &thread_id).await,
+        0,
+        "and so do its threads' settings"
+    );
+    assert_eq!(
+        rows_for(&srv, &general_id).await,
+        1,
+        "another channel's settings stay"
+    );
+}
+
+#[tokio::test]
+async fn deleting_a_space_takes_every_setting_inside_it() {
+    let srv = TestServer::start().await;
+    let owner = srv.register("spacegoneowner", PASS).await;
+    let member = srv.register("spacegonemember", PASS).await;
+    let (server_id, general_id) = space_with_member(&srv, &owner, &member).await;
+    let res = set(
+        &srv,
+        &member.token,
+        "server",
+        &server_id,
+        json!({ "level": "mentions", "muted": false }),
+    )
+    .await;
+    assert_eq!(res.status(), 200);
+    let res = set(
+        &srv,
+        &member.token,
+        "channel",
+        &general_id,
+        json!({ "muted": true }),
+    )
+    .await;
+    assert_eq!(res.status(), 200);
+
+    let res = srv
+        .delete_json_auth(
+            &format!("/api/v1/servers/{server_id}"),
+            &owner.token,
+            json!({ "password": PASS }),
+        )
+        .await;
+    assert_eq!(res.status(), 204);
+    assert_eq!(
+        rows_for(&srv, &server_id).await,
+        0,
+        "the space's own settings go"
+    );
+    assert_eq!(
+        rows_for(&srv, &general_id).await,
+        0,
+        "and its channels' settings"
+    );
+}
+
+#[tokio::test]
+async fn a_space_deleted_with_its_owners_account_leaves_no_settings_behind() {
+    let srv = TestServer::start().await;
+    let owner = srv.register("lonelyowner", PASS).await;
+    let member = srv.register("formermember", PASS).await;
+    let (server_id, general_id) = space_with_member(&srv, &owner, &member).await;
+    let res = set(
+        &srv,
+        &member.token,
+        "server",
+        &server_id,
+        json!({ "level": "nothing", "muted": false }),
+    )
+    .await;
+    assert_eq!(res.status(), 200);
+    let res = set(
+        &srv,
+        &member.token,
+        "channel",
+        &general_id,
+        json!({ "muted": true }),
+    )
+    .await;
+    assert_eq!(res.status(), 200);
+    // The member leaves (their settings stay theirs), so the owner is alone in the space, and
+    // deleting the owner's account deletes the space.
+    let res = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{server_id}/leave"),
+            &member.token,
+            json!({}),
+        )
+        .await;
+    assert!(res.status().is_success(), "leave: {}", res.status());
+    let res = srv
+        .delete_json_auth(
+            "/api/v1/users/@me",
+            &owner.token,
+            json!({ "password": PASS, "username": "lonelyowner" }),
+        )
+        .await;
+    assert_eq!(res.status(), 204);
+    assert_eq!(
+        rows_for(&srv, &server_id).await,
+        0,
+        "the deleted space's settings go"
+    );
+    assert_eq!(
+        rows_for(&srv, &general_id).await,
+        0,
+        "and its channels' settings"
+    );
+}

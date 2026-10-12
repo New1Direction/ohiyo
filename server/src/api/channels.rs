@@ -295,12 +295,22 @@ pub async fn delete_channel(
         );
     }
     drop(conn);
+    // Everyone's notification settings for it and its threads go in the same transaction.
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
+    crate::api::notifications::forget_channel(&mut *tx, &id)
+        .await
+        .map_err(crate::api::error::internal)?;
     sqlx::query("DELETE FROM channels WHERE parent_id = ? OR id = ?")
         .bind(&id)
         .bind(&id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(crate::api::error::internal)?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
     crate::api::files::release_files_in_batches(&state.db, &files).await;
 
     Ok(StatusCode::NO_CONTENT)
