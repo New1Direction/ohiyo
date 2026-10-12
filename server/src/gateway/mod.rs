@@ -176,6 +176,26 @@ pub fn new_watch_sessions() -> WatchSessions {
     Arc::new(RwLock::new(HashMap::new()))
 }
 
+/// Client events that go out to everyone who can see the sender are limited per account,
+/// across all its connections, within this window (see `within_fanout_budget`).
+const FANOUT_WINDOW: Duration = Duration::from_secs(10);
+const PRESENCE_PER_WINDOW: usize = 10;
+const ACTIVITY_PER_WINDOW: usize = 10;
+const VOICE_META_PER_WINDOW: usize = 20;
+const WATCH_CONTROL_PER_WINDOW: usize = 30;
+
+/// Whether this account may send one more `kind` event now. People change their presence,
+/// activity, voice state and watch-party controls at human speed, so only a client
+/// flooding them reaches the limit; past it the event is dropped. Unlimited, a flood
+/// fills every co-member's queue and pushes their real messages out.
+fn within_fanout_budget(state: &AppState, user_id: &str, kind: &str, per_window: usize) -> bool {
+    state.rate.check(
+        &format!("fanout-{kind}:{user_id}"),
+        per_window,
+        FANOUT_WINDOW,
+    )
+}
+
 /// Server-side throttle for typing pings: (user_id, channel_id) → last broadcast.
 pub type TypingCooldowns = Arc<RwLock<HashMap<(String, String), Instant>>>;
 
@@ -706,6 +726,9 @@ async fn handle_client_event(
             listen_only,
         } => {
             let Some(me) = me else { return };
+            if !within_fanout_budget(state, user_id, "voice-meta", VOICE_META_PER_WINDOW) {
+                return;
+            }
             // Re-check access on every meta update: a user kicked/removed after joining
             // stays in the room map until WS disconnect, and would otherwise keep
             // broadcasting VoiceState. Drop the update if they can no longer see the
@@ -862,6 +885,9 @@ async fn handle_client_event(
             if privacy_enabled(state, user_id) && activity.is_some() {
                 return;
             }
+            if !within_fanout_budget(state, user_id, "activity", ACTIVITY_PER_WINDOW) {
+                return;
+            }
             let sanitized = activity.and_then(|a| a.sanitized());
             {
                 let mut acts = state.activities.write().unwrap_or_else(|e| e.into_inner());
@@ -879,6 +905,9 @@ async fn handle_client_event(
 
         ClientEvent::SetPresence { idle } => {
             if privacy_enabled(state, user_id) {
+                return;
+            }
+            if !within_fanout_budget(state, user_id, "presence", PRESENCE_PER_WINDOW) {
                 return;
             }
             let changed = {
@@ -925,6 +954,9 @@ async fn handle_client_event(
             url,
             position,
         } => {
+            if !within_fanout_budget(state, user_id, "watch", WATCH_CONTROL_PER_WINDOW) {
+                return;
+            }
             handle_watch_control(state, user_id, &channel_id, &action, url, position).await;
         }
 

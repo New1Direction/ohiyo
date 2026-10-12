@@ -1034,6 +1034,10 @@ pub async fn set_disappearing(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Sender-key relays per account per minute. A member hands out a new key when a group
+/// rekeys or they rotate; a client relaying in a loop is what this stops.
+const SENDER_KEY_MAX_PER_MIN: usize = 120;
+
 #[derive(Deserialize)]
 pub struct SenderKeyBody {
     /// recipient user_id → pairwise-encrypted SKDM envelope (only they can open it).
@@ -1049,6 +1053,14 @@ pub async fn distribute_sender_key(
     State(state): State<AppState>,
     Json(body): Json<SenderKeyBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    // Same limit as voice keys: each relay is up to 64 envelopes fanned out to members.
+    if !state.rate.check(
+        &format!("sender-key:{}", auth.0),
+        SENDER_KEY_MAX_PER_MIN,
+        Duration::from_secs(60),
+    ) {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "slow down".into()));
+    }
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
