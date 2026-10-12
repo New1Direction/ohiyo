@@ -2018,7 +2018,7 @@ export function ChatPane({
         className="kc-composer-shell mx-4 mb-4"
         style={{ marginBottom: "max(1rem, env(safe-area-inset-bottom))", display: peerGone ? "none" : undefined }}
       >
-        <div className="kc-composer-tools" aria-label="Message tools">
+        <div className="kc-composer-tools">
           {/* One "+" for everything you can add. Polls are stored unencrypted, so an encrypted
               chat has only files, and there the "+" opens the file picker directly. */}
           {e2eEnabled ? (
@@ -2058,19 +2058,6 @@ export function ChatPane({
               )}
             </div>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              setComposerPickerOpen((v) => !v);
-              setComposerPickerTab("emoji");
-            }}
-            className={`kc-icon-btn flex-shrink-0 text-base${composerPickerOpen ? " active" : ""}`}
-            title="Emoji and GIFs"
-            aria-label="Emoji and GIFs"
-            aria-expanded={composerPickerOpen}
-          >
-            <Icon name="react" />
-          </button>
         </div>
         <input
           ref={composerRef}
@@ -2100,13 +2087,30 @@ export function ChatPane({
             }
           }}
         />
-        <button
-          type="submit"
-          aria-label="Send message"
-          className={`kc-composer-send kc-icon-btn flex-shrink-0 text-lg${input.trim() || pendingFiles.length > 0 ? " active" : ""}`}
-        >
-          <Icon name="send" />
-        </button>
+        <div className="kc-composer-end">
+          <button
+            type="button"
+            onClick={() => {
+              setComposerPickerOpen((v) => !v);
+              setComposerPickerTab("emoji");
+            }}
+            className={`kc-composer-emoji kc-icon-btn flex-shrink-0 text-base${composerPickerOpen ? " active" : ""}`}
+            title="Emoji and GIFs"
+            aria-label="Emoji and GIFs"
+            aria-expanded={composerPickerOpen}
+          >
+            <Icon name="react" />
+          </button>
+          {/* With a mouse this shows only when there is something to send (Enter sends);
+              on a touch screen it is always there. See .kc-composer-send in index.css. */}
+          <button
+            type="submit"
+            aria-label="Send message"
+            className={`kc-composer-send kc-icon-btn flex-shrink-0 text-lg${input.trim() || pendingFiles.length > 0 ? " active" : ""}`}
+          >
+            <Icon name="send" />
+          </button>
+        </div>
       </form>
 
       {actionSheetMsg && (
