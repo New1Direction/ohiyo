@@ -64,6 +64,7 @@ import { formatDuration, messageExpiry } from "./lib/disappearing";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
 import { createDistributionTracker, editBlockReason, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
 import { isWellFormedEnvelope, resolveDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
+import { renewWebPush } from "./lib/push";
 import { padMessagePlaintext, unpadMessagePlaintext } from "./lib/messagePadding";
 import { decryptEach } from "./lib/decryptEach";
 import { getVaultStore, initVaultBackend, resetVaultAndRestart, restartApp } from "./lib/tauriVault";
@@ -691,6 +692,9 @@ function MainApp({
       void retryRetiredDevice((id) => api.removeDevice(token, id), currentUser.id, deviceId);
       // A device added to this account while this one was closed is announced now.
       void checkOwnDevices(token, currentUser.id);
+      // A push subscription belongs to the session that registered it; register this
+      // browser's again for this one, so its notifications carry on after a sign-in.
+      void renewWebPush(token);
       myKeyPair()
         .then((kp) => {
           if (alive) void api.publishKey(token, JSON.stringify(kp.publicJwk));

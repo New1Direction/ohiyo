@@ -52,6 +52,9 @@ struct DeliveryJob {
     endpoint: Option<String>,
     p256dh: Option<String>,
     auth: Option<String>,
+    /// Whether the device was registered by the account's current session generation.
+    /// None when the device is gone.
+    current_session: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -93,6 +96,8 @@ pub struct DispatchResult {
     pub skipped_missing_device: i64,
     pub skipped_missing_provider: i64,
     pub skipped_invalid_endpoint: i64,
+    /// Queued for a device whose session has since ended: not sent.
+    pub skipped_signed_out: i64,
 }
 
 #[derive(Debug)]
@@ -250,7 +255,9 @@ pub async fn list_devices(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<PushDevice>>, (StatusCode, String)> {
     let rows = sqlx::query_as::<_, PushDevice>(
-        "SELECT * FROM push_devices WHERE user_id = ? AND enabled = 1 ORDER BY updated_at DESC",
+        "SELECT d.* FROM push_devices d JOIN users u ON u.id = d.user_id
+         WHERE d.user_id = ? AND d.enabled = 1 AND d.token_version = u.token_version
+         ORDER BY d.updated_at DESC",
     )
     .bind(&auth.0)
     .fetch_all(&state.db)
@@ -306,15 +313,16 @@ pub async fn register_device(
     let id = new_id();
     let now = now_unix();
     sqlx::query(
-        "INSERT INTO push_devices (id, user_id, platform, endpoint, p256dh, auth, device_name, enabled, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?)
+        "INSERT INTO push_devices (id, user_id, platform, endpoint, p256dh, auth, device_name, enabled, created_at, updated_at, token_version)
+         VALUES (?,?,?,?,?,?,?,?,?,?, (SELECT token_version FROM users WHERE id = ?))
          ON CONFLICT(user_id, endpoint) DO UPDATE SET
            platform=excluded.platform,
            p256dh=excluded.p256dh,
            auth=excluded.auth,
            device_name=excluded.device_name,
            enabled=1,
-           updated_at=excluded.updated_at",
+           updated_at=excluded.updated_at,
+           token_version=excluded.token_version",
     )
     .bind(&id)
     .bind(&auth.0)
@@ -326,6 +334,7 @@ pub async fn register_device(
     .bind(1_i64)
     .bind(now)
     .bind(now)
+    .bind(&auth.0)
     .execute(&state.db)
     .await
     .map_err(crate::api::error::internal)?;
@@ -376,11 +385,13 @@ async fn queue_for_users(
             result.skipped_online += 1;
             continue;
         }
-        let devices: Vec<(String,)> =
-            sqlx::query_as("SELECT id FROM push_devices WHERE user_id = ? AND enabled = 1")
-                .bind(user_id)
-                .fetch_all(&state.db)
-                .await?;
+        let devices: Vec<(String,)> = sqlx::query_as(
+            "SELECT d.id FROM push_devices d JOIN users u ON u.id = d.user_id
+                 WHERE d.user_id = ? AND d.enabled = 1 AND d.token_version = u.token_version",
+        )
+        .bind(user_id)
+        .fetch_all(&state.db)
+        .await?;
         if devices.is_empty() {
             result.skipped_no_device += 1;
             continue;
@@ -510,9 +521,11 @@ pub async fn dispatch_queued(state: &AppState, limit: i64) -> Result<DispatchRes
     let now = now_unix();
     let rows: Vec<DeliveryJob> = sqlx::query_as(
         "SELECT pd.id, pd.device_id, pd.kind, pd.attempts,
-                d.platform, d.endpoint, d.p256dh, d.auth
+                d.platform, d.endpoint, d.p256dh, d.auth,
+                (d.token_version = u.token_version) AS current_session
          FROM push_deliveries pd
          LEFT JOIN push_devices d ON d.id = pd.device_id AND d.enabled = 1
+         LEFT JOIN users u ON u.id = d.user_id
          WHERE pd.status = 'queued'
            AND (pd.next_attempt_at IS NULL OR pd.next_attempt_at <= ?)
          ORDER BY pd.created_at ASC
@@ -533,6 +546,12 @@ pub async fn dispatch_queued(state: &AppState, limit: i64) -> Result<DispatchRes
             result.failed += 1;
             continue;
         };
+        // Queued while the device's session was live, but it has ended since.
+        if job.current_session == Some(false) {
+            mark_skipped(state, &job.id, now, "the device's session has ended").await?;
+            result.skipped_signed_out += 1;
+            continue;
+        }
         // Skipped, not deleted: the device row stays as it is.
         if !endpoint_allowed(platform, job.endpoint.as_deref().unwrap_or_default()) {
             mark_failed(state, &job, now, "push endpoint not allowed", false, false).await?;
@@ -1012,6 +1031,25 @@ async fn mark_retry(
     .bind(now + backoff_secs)
     .bind(sanitize_error(reason))
     .bind(&job.id)
+    .execute(&state.db)
+    .await?;
+    Ok(())
+}
+
+async fn mark_skipped(
+    state: &AppState,
+    id: &str,
+    now: i64,
+    reason: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE push_deliveries
+         SET status='skipped', last_attempt_at=?, next_attempt_at=NULL, last_error=?
+         WHERE id=?",
+    )
+    .bind(now)
+    .bind(sanitize_error(reason))
+    .bind(id)
     .execute(&state.db)
     .await?;
     Ok(())
