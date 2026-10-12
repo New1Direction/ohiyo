@@ -928,8 +928,68 @@ async fn wipe_authored_messages(state: &AppState, user_id: &str) -> Result<(), s
 /// Wipe data for users whose dead-man's switch has tripped (inactive past their window).
 /// Driven by the periodic task in `main`. 'history' deletes their authored messages;
 /// 'keys' also clears their server-side Signal directory + legacy public key.
+/// An outage longer than this is credited to everyone with the switch armed. A restart
+/// for a deploy takes seconds.
+const OUTAGE_THRESHOLD_SECS: i64 = 120;
+/// After an outage, extra time for everyone's apps to reconnect before a switch can fire.
+const RECONNECT_GRACE_SECS: i64 = 600;
+
+/// Note that the server is up. `credit_downtime` reads it at the next start.
+async fn record_heartbeat(state: &AppState, now: i64) {
+    if let Err(e) = sqlx::query(
+        "INSERT INTO server_heartbeat (id, at) VALUES (1, ?)
+         ON CONFLICT(id) DO UPDATE SET at = excluded.at",
+    )
+    .bind(now)
+    .execute(&state.db)
+    .await
+    {
+        tracing::warn!("couldn't record the server heartbeat: {e}");
+    }
+}
+
+/// Run once at start-up, before the first sweep. While the server was down nobody could
+/// open Ohiyo, so that time must not count towards anyone's dead-man window: move every
+/// armed user's last-seen time forward by the outage, plus time for their apps to
+/// reconnect (never past now). Returns the seconds credited; 0 after a quick restart.
+pub async fn credit_downtime(state: &AppState) -> i64 {
+    let now = now_unix();
+    let last_up: Option<i64> = sqlx::query_scalar("SELECT at FROM server_heartbeat WHERE id = 1")
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("couldn't read the server heartbeat: {e}");
+            None
+        });
+    let credit = match last_up {
+        Some(at) if now - at > OUTAGE_THRESHOLD_SECS => now - at + RECONNECT_GRACE_SECS,
+        _ => 0,
+    };
+    if credit > 0 {
+        match sqlx::query(
+            "UPDATE users SET last_active_at = MIN(last_active_at + ?, ?)
+             WHERE deadman_seconds IS NOT NULL AND last_active_at IS NOT NULL",
+        )
+        .bind(credit)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        {
+            Ok(done) => tracing::warn!(
+                seconds = credit,
+                users = done.rows_affected(),
+                "the server was down: the outage is credited to armed dead-man's switches"
+            ),
+            Err(e) => tracing::error!("couldn't credit the outage to dead-man's switches: {e}"),
+        }
+    }
+    record_heartbeat(state, now).await;
+    credit
+}
+
 pub async fn sweep_deadman(state: &AppState) {
     let now = now_unix();
+    record_heartbeat(state, now).await;
     let tripped: Vec<(String, Option<String>)> = sqlx::query_as(
         "SELECT id, deadman_scope FROM users
          WHERE deadman_seconds IS NOT NULL
@@ -954,7 +1014,9 @@ pub async fn sweep_deadman(state: &AppState) {
         // Leave an audit trail in the logs before the irreversible wipe.
         tracing::warn!(user_id = %uid, scope = ?scope, "dead-man's switch tripped — wiping data");
         if let Err(e) = wipe_authored_messages(state, &uid).await {
+            // Left armed, so the next sweep tries again.
             tracing::error!(user_id = %uid, "dead-man's switch: message wipe failed: {e}");
+            continue;
         }
         if scope.as_deref() == Some("keys") {
             for q in [
@@ -964,6 +1026,15 @@ pub async fn sweep_deadman(state: &AppState) {
             ] {
                 let _ = sqlx::query(q).bind(&uid).execute(&state.db).await;
             }
+        }
+        // It fires once. Left armed, it would wipe and log again every sweep, and delete
+        // the keys someone publishes on coming back.
+        if let Err(e) = sqlx::query("UPDATE users SET deadman_seconds = NULL WHERE id = ?")
+            .bind(&uid)
+            .execute(&state.db)
+            .await
+        {
+            tracing::error!(user_id = %uid, "dead-man's switch: couldn't turn it off after firing: {e}");
         }
     }
 }
