@@ -100,6 +100,7 @@ import { onLocalClock } from "./lib/watchSync";
 import { VOICE_UNAVAILABLE, callEnvironment, refusesCall } from "./lib/voiceSupport";
 import { arrivalInOpenChat, isLookingAt, lastRealMessageId } from "./lib/attention";
 import { unreadTotal, withoutUnread } from "./lib/unreadTotal";
+import { availabilityFrom, offersInstantServers, type InstantServersAvailability } from "./lib/instantServers";
 import { useDesktopShell } from "./hooks/useDesktopShell";
 import { useAppUpdate } from "./hooks/useAppUpdate";
 import { UpdateBar } from "./components/UpdateBar";
@@ -539,6 +540,23 @@ function MainApp({
   const [showCreateServer, setShowCreateServer] = useState(false);
   const [showDiscordImport, setShowDiscordImport] = useState(false);
   const [showInstantServers, setShowInstantServers] = useState(false);
+  // Whether this home can make Instant Servers; the palette leaves them out where it can't.
+  const [instantServers, setInstantServers] = useState<InstantServersAvailability>("unknown");
+  useEffect(() => {
+    let live = true;
+    setInstantServers("unknown");
+    api
+      .instantServersAvailable(token)
+      .then((body) => {
+        if (live) setInstantServers(availabilityFrom(body));
+      })
+      .catch(() => {
+        // An older or self-hosted home without the endpoint: keep the palette as it was.
+      });
+    return () => {
+      live = false;
+    };
+  }, [token]);
   const [showInvite, setShowInvite] = useState(false);
   const [showPrivateDmLink, setShowPrivateDmLink] = useState(false);
   const [showFindPeople, setShowFindPeople] = useState(false);
@@ -2504,13 +2522,17 @@ function MainApp({
   }, [currentUser, voiceParticipantsByChannel, webrtc.channelId, webrtc.participants, webrtc.self]);
 
   const commandActions: CommandAction[] = [
-    {
-      id: "action-instant-servers",
-      label: "Create or manage Instant Servers",
-      sub: "Hosted communities and self-hosting",
-      icon: "+",
-      run: () => setShowInstantServers(true),
-    },
+    ...(offersInstantServers(instantServers)
+      ? [
+          {
+            id: "action-instant-servers",
+            label: "Create or manage Instant Servers",
+            sub: "Hosted communities and self-hosting",
+            icon: "+",
+            run: () => setShowInstantServers(true),
+          },
+        ]
+      : []),
     {
       id: "action-private-dm-link",
       label: "Create private DM link",

@@ -15,6 +15,12 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 - **ohiyo.gg has a Download section** for the desktop app, with the steps to open the Mac beta.
 
 ### Changed
+- **Settings speaks in sentence case** like the rest of the app, and the Account card no longer
+  prints your user ID; "Copy user ID" puts it on the clipboard when support or a self-hosted
+  setup asks for it.
+- **The command palette only offers Instant Servers where they can be made.** The hosted
+  service can't make them, so its palette no longer lists them. The server answers
+  `GET /api/v1/instances/available`.
 - **The app's typefaces ship with it.** Inter, Sora and Geist Mono used to load from Google
   Fonts, which held back the first paint and showed Google the IP address of everyone who
   opened Ohiyo. The web and desktop content policies no longer allow Google's font hosts.

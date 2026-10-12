@@ -4334,3 +4334,8 @@ button:disabled,
 /* While the "Getting started" row is there it already says what to do next; the separate
    hint card above it only repeated it. */
 .channel-sidebar:has(.kc-activation) .kc-sidebar-hint { display: none; }
+
+/* "Copy user ID" on the Account card: a quiet text button, still fingertip-sized on phones. */
+@media (hover: none) and (pointer: coarse) {
+  .kc-copy-id { min-height: 44px; }
+}
