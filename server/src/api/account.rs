@@ -226,7 +226,11 @@ async fn remove_everything(
             .execute(&mut *tx)
             .await?;
     }
+    // A space with nobody else in it goes, and with it everything in it. Note the files
+    // its content used first, so they are freed after (the cascade would leave them).
+    let mut space_files = Vec::new();
     for server_id in &plan.deleted {
+        space_files.extend(crate::api::files::files_of_server(&mut tx, server_id).await?);
         sqlx::query("DELETE FROM servers WHERE id = ?")
             .bind(server_id)
             .execute(&mut *tx)
@@ -301,6 +305,7 @@ async fn remove_everything(
     let attachment_ids = attachments
         .iter()
         .flat_map(|raw| attachment_file_ids(Some(raw)))
+        .chain(space_files)
         .collect();
     Ok((plan, attachment_ids, orphaned_blobs))
 }

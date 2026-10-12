@@ -38,11 +38,13 @@ async fn queue_delivery(pool: &SqlitePool, user_id: &str) {
     .execute(pool)
     .await
     .unwrap();
+    // Queued just now: the sweep cleans up nudges that have waited for a week.
     sqlx::query(
         "INSERT INTO push_deliveries (id, user_id, device_id, kind, status, attempts, created_at)
-         VALUES ('job-1', ?, 'dev-1', 'message', 'queued', 0, 0)",
+         VALUES ('job-1', ?, 'dev-1', 'message', 'queued', 0, ?)",
     )
     .bind(user_id)
+    .bind(common::now_unix())
     .execute(pool)
     .await
     .unwrap();

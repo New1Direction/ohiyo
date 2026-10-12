@@ -14,6 +14,7 @@ import {
   messageGroupTextPx,
   messageLineCount,
   messageRowMetrics,
+  reactionsPx,
 } from "../src/lib/messageLayout.ts";
 
 const phone = { listWidth: 390, fontScale: 1, isPhone: true };
@@ -179,4 +180,22 @@ test("a locked card grows as the column narrows, and is far taller than a line o
   assert.ok(wide > 100, String(wide));
   assert.equal(lockedCardPx(needsKeys, 0), lockedCardPx(needsKeys, 448), "unmeasured list: the card's full width");
   assert.equal(wide - lockedCardPx({ ...needsKeys, hasButton: false }, 800), 36, "the Open recovery button");
+});
+
+// Reactions sit in a row of chips under each message. The guess used to add 32px once per
+// group, however many messages in it had reactions, so three reacted messages in a row
+// from one person ran into the next row.
+test("each reacted message gets its own row of chips", () => {
+  assert.equal(reactionsPx([], 600), 0);
+  assert.equal(reactionsPx([0, 0], 600), 0);
+  assert.equal(reactionsPx([1], 600), 32, "one reacted message: as before");
+  assert.equal(reactionsPx([2, 1, 3], 600), 32 + 26 + 26);
+  assert.equal(reactionsPx([1, 0, 1], 600), 32 + 26);
+});
+
+test("many reactions on a narrow screen wrap onto more rows", () => {
+  // 300px fits five chips a row: twelve reactions take three rows.
+  assert.equal(reactionsPx([12], 300), 32 + 26 + 26);
+  // A very narrow column still fits one chip a row.
+  assert.equal(reactionsPx([3], 40), 32 + 26 + 26);
 });
