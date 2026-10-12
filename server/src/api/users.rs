@@ -688,6 +688,13 @@ pub async fn add_recipient(
     if exists.is_none() {
         return Err((StatusCode::NOT_FOUND, "no such user".into()));
     }
+    // The same check as starting a group with them.
+    if crate::api::abuse::is_blocked_pair(&state, &auth.0, &new_user).await {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't add a blocked user to a group DM".into(),
+        ));
+    }
     let already: Option<i64> =
         sqlx::query_scalar("SELECT 1 FROM dm_participants WHERE channel_id = ? AND user_id = ?")
             .bind(&channel_id)
