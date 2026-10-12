@@ -152,6 +152,7 @@ function UserMenu({
 }) {
   const [addingActivity, setAddingActivity] = useState(false);
   const statusId = useId();
+  const activityId = useId();
   const menuRef = useRef<HTMLDivElement>(null);
   const statusRef = useRef<HTMLInputElement>(null);
   const kindRef = useRef<HTMLSelectElement>(null);
@@ -174,6 +175,9 @@ function UserMenu({
     const name = activityNameRef.current?.value.trim() ?? "";
     if (name) onSetActivity?.({ kind: kindRef.current?.value ?? "playing", name });
     setAddingActivity(false);
+    // The field that had focus is about to go; keep the keyboard in the menu so Escape
+    // still closes it.
+    menuRef.current?.focus();
   };
 
   return (
@@ -224,7 +228,8 @@ function UserMenu({
         <div className="kc-user-menu__section">
           {addingActivity ? (
             <div className="kc-user-menu__activity">
-              <select ref={kindRef} defaultValue="playing" aria-label="Activity type" className="kc-user-menu__field">
+              <label className="kc-user-menu__label" htmlFor={activityId}>Activity</label>
+              <select id={activityId} ref={kindRef} defaultValue="playing" aria-label="Activity type" className="kc-user-menu__field">
                 {ACTIVITY_KINDS.map((k) => (
                   <option key={k.kind} value={k.kind}>{k.icon} {k.verb}</option>
                 ))}

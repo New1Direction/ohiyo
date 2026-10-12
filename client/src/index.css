@@ -1718,7 +1718,7 @@ button:disabled,
   outline: none;
 }
 .kc-user-menu__field:focus-visible { border-color: color-mix(in oklch, var(--accent) 60%, transparent); }
-.kc-user-menu__activity { display: grid; grid-template-columns: auto 1fr; gap: 4px; }
+.kc-user-menu__activity { display: grid; gap: 4px; }
 .kc-user-menu__current {
   display: flex;
   align-items: center;

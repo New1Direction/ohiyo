@@ -150,6 +150,12 @@ test("an activity is added from the menu", () => {
     name.value = "Chess";
     p.keydown(name as unknown as Element, "Enter");
     assert.deepEqual(p.f.calls, ["activity:playing Chess"]);
+    // The name field goes once it's saved; the keyboard must stay in the menu so Escape
+    // still closes it (it used to fall to the page).
+    const active = document.activeElement as unknown as Element | null;
+    assert.equal(Boolean(active?.closest('[role="dialog"]')), true, "focus stays in the menu");
+    p.keydown(active!, "Escape");
+    assert.equal(p.menu() === null, true, "Escape closes the menu");
   } finally {
     p.done();
   }
