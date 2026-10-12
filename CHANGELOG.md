@@ -14,6 +14,11 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ### Added
 - **ohiyo.gg has a Download section** for the desktop app, with the steps to open the Mac beta.
 
+### Changed
+- **The app's typefaces ship with it.** Inter, Sora and Geist Mono used to load from Google
+  Fonts, which held back the first paint and showed Google the IP address of everyone who
+  opened Ohiyo. The web and desktop content policies no longer allow Google's font hosts.
+
 ## [0.3.0] — 2026-10-12
 
 ### Added
