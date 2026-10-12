@@ -97,14 +97,8 @@ export function NotificationSettingsDialog({ target, setting, now, onSave, onClo
                   checked={level === option.value}
                   onChange={() => setLevel(option.value)}
                 />
-                <span className="flex flex-col">
-                  <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                    {option.label}
-                  </span>
-                  <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                    {option.hint}
-                  </span>
-                </span>
+                <span className="kc-notif-option__name">{option.label}</span>
+                <span className="kc-notif-option__hint">{option.hint}</span>
               </label>
             ))}
           </fieldset>

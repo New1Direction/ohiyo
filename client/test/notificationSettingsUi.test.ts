@@ -79,7 +79,7 @@ function openDialog(target: Target, setting?: Setting) {
     text: () => container.textContent ?? "",
     // Each choice's name, without the hint under it.
     radios: () =>
-      [...container.querySelectorAll('input[type="radio"]')].map((r) => (r.closest("label")?.querySelector("span span")?.textContent ?? "").trim()),
+      [...container.querySelectorAll('input[type="radio"]')].map((r) => (r.closest("label")?.querySelector(".kc-notif-option__name")?.textContent ?? "").trim()),
     radio,
     pick: (label: string) => act(() => radio(label)!.click()),
     muteFor: (label: string) =>

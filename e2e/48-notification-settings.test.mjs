@@ -34,16 +34,18 @@ async function openChannel(page, name) {
   await page.waitForSelector(`input[placeholder*="Say something to #${name}"]`, { timeout: 10000 });
 }
 
+// A muted chat's dialog says until when and offers Unmute; an unmuted one offers the Mute list.
 async function setMute(page, choice) {
   await page.click('button[aria-label="Notification settings"]');
-  await page.waitForSelector('[role="dialog"] select[aria-label="Mute"]', { timeout: 6000 });
+  const dialog = page.locator('[role="dialog"]', { hasText: "Notifications for" });
+  await dialog.waitFor({ timeout: 6000 });
   if (choice === "unmute") {
-    await page.click('[role="dialog"] button:has-text("Unmute")');
+    await dialog.locator('button:has-text("Unmute")').click();
   } else {
-    await page.selectOption('[role="dialog"] select[aria-label="Mute"]', { label: choice });
-    await page.click('[role="dialog"] button:has-text("Save")');
+    await dialog.locator('select[aria-label="Mute"]').selectOption({ label: choice });
+    await dialog.locator('button:has-text("Save")').click();
   }
-  await page.waitForSelector('[role="dialog"] select[aria-label="Mute"]', { state: "detached", timeout: 6000 });
+  await dialog.waitFor({ state: "detached", timeout: 6000 });
 }
 
 try {

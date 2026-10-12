@@ -1511,9 +1511,11 @@ button:disabled,
   text-transform: uppercase;
 }
 .kc-notif-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 2px;
   min-height: 44px;
   padding: 10px 12px;
   border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
@@ -1522,7 +1524,9 @@ button:disabled,
   cursor: pointer;
   transition: background var(--dur-fast, 120ms) var(--ease-out, ease-out), border-color var(--dur-fast, 120ms) var(--ease-out, ease-out);
 }
-.kc-notif-option input { margin-top: 3px; accent-color: var(--accent); }
+.kc-notif-option input { grid-row: span 2; margin-top: 3px; accent-color: var(--accent); }
+.kc-notif-option__name { color: var(--text-primary); font-size: 0.875rem; font-weight: 600; }
+.kc-notif-option__hint { grid-column: 2; color: var(--text-secondary); font-size: 0.75rem; }
 .kc-notif-option.is-selected {
   border-color: color-mix(in oklch, var(--accent) 55%, transparent);
   background: color-mix(in oklch, var(--accent) 10%, transparent);
