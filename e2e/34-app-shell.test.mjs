@@ -31,6 +31,11 @@ try {
 
   // The owner is not offered a button to report their own space.
   if (await page.locator('.channel-sidebar button[aria-label="Report server"]').count()) throw new Error("the owner is shown Report server for their own space");
+  await page.locator('.channel-sidebar button[aria-haspopup="menu"]').click();
+  await page.waitForSelector('.channel-sidebar [role="menu"]', { timeout: 4000 });
+  if (await page.locator('.channel-sidebar [role="menuitem"]:has-text("Report space")').count()) throw new Error("the owner is offered Report space for their own space");
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('.channel-sidebar [role="menu"]', { state: "detached", timeout: 4000 });
   if (!(await page.locator('.channel-sidebar button[aria-label="Invite people"]').isVisible())) throw new Error("the Invite button is gone");
   log("shell: no report button on your own space ✓");
 

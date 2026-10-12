@@ -2,7 +2,7 @@ import { currentToken, launchBrowser, register, log, uniq, PASS } from "./harnes
 
 // The server could take a member out of a space, or delete a space for its owner, but the
 // app had no way to ask for either.
-//   • A member opens Space options and leaves: the space leaves their list.
+//   • A member opens the space menu (the space's name) and leaves: the space leaves their list.
 //   • The owner sees Delete, not Leave. A wrong password deletes nothing; the right one
 //     deletes the space, and it leaves the owner's list.
 const API = process.env.E2E_API || "http://localhost:3000/api/v1";
@@ -48,16 +48,22 @@ try {
 
   // ── A member leaves ──
   await pageB.click('button[aria-label="Sa HQ"]', { timeout: 15000 });
-  await pageB.click('button[aria-label="Space options"]');
-  await pageB.waitForSelector('button:has-text("Leave space")', { timeout: 6000 });
-  if (await pageB.locator('button:has-text("Delete space")').count()) throw new Error("a member is offered Delete space");
-  await pageB.click('button:has-text("Leave space")');
+  await pageB.click('.channel-sidebar button[aria-haspopup="menu"]');
+  await pageB.waitForSelector('[role="menuitem"]:has-text("Leave space")', { timeout: 6000 });
+  if (await pageB.locator('[role="menuitem"]:has-text("Delete space")').count()) throw new Error("a member is offered Delete space");
+  await pageB.click('[role="menuitem"]:has-text("Leave space")');
+  await pageB.waitForSelector('.kc-space-options button:has-text("Leave space")', { timeout: 6000 });
+  if (await pageB.locator('.kc-space-options button:has-text("Delete space")').count()) throw new Error("a member is offered Delete space");
+  await pageB.click('.kc-space-options button:has-text("Leave space")');
   await pageB.waitForSelector('button[aria-label="Sa HQ"]', { state: "detached", timeout: 10000 });
   if ((await api(tokenB, "/servers")).body.some((s) => s.id === space.id)) throw new Error("B is still a member");
-  log("B left from Space options, and the space left B's list ✓");
+  log("B left from the space menu, and the space left B's list ✓");
 
   // ── The owner deletes ──
-  await pageA.click('button[aria-label="Space options"]');
+  await pageA.click('.channel-sidebar button[aria-haspopup="menu"]');
+  await pageA.waitForSelector('[role="menuitem"]:has-text("Delete space")', { timeout: 6000 });
+  if (await pageA.locator('[role="menuitem"]:has-text("Leave space")').count()) throw new Error("the owner is offered Leave space");
+  await pageA.click('[role="menuitem"]:has-text("Delete space")');
   await pageA.waitForSelector('input[aria-label="Your password"]', { timeout: 6000 });
   if (await pageA.locator('button:has-text("Leave space")').count()) throw new Error("the owner is offered Leave space");
   const confirm = 'form[aria-label="Confirm with your password"] button[type="submit"]';

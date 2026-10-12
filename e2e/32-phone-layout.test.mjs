@@ -149,7 +149,22 @@ try {
   await shot(page, "32-phone-drawer");
 
   // A dialog never spills past the screen, and its fields do not make an iPhone zoom.
-  await page.locator('.kc-nav button[aria-label="Events"]').tap();
+  await page.locator('.kc-nav button[aria-haspopup="menu"]').tap();
+  await page.waitForSelector('.kc-nav [role="menu"]', { timeout: 4000 });
+  await settle(page, 200);
+  const spaceMenu = await page.evaluate(() => {
+    const menu = document.querySelector('.kc-nav [role="menu"]').getBoundingClientRect();
+    const rows = [...document.querySelectorAll('.kc-nav [role="menuitem"]')].map((el) => {
+      const r = el.getBoundingClientRect();
+      return { label: el.textContent.trim(), h: Math.round(r.height), right: Math.round(r.right) };
+    });
+    return { left: Math.round(menu.left), right: Math.round(menu.right), bottom: Math.round(menu.bottom), vw: innerWidth, vh: innerHeight, rows };
+  });
+  if (spaceMenu.left < 0 || spaceMenu.right > spaceMenu.vw || spaceMenu.bottom > spaceMenu.vh) throw new Error(`the space menu spills off the phone: ${JSON.stringify(spaceMenu)}`);
+  const shortRows = spaceMenu.rows.filter((r) => r.h < 44);
+  if (shortRows.length) throw new Error(`space menu rows under 44px: ${JSON.stringify(shortRows)}`);
+  log(`phone: the space menu fits and its ${spaceMenu.rows.length} rows are tappable ✓`);
+  await page.locator('.kc-nav [role="menuitem"]:has-text("Events")').tap();
   await page.waitForSelector("#kc-events-title", { timeout: 4000 });
   await settle(page, 400);
   const dialog = await page.evaluate(() => {
