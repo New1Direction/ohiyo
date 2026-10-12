@@ -202,7 +202,7 @@ async fn deleting_an_account_removes_it_and_hands_on_what_others_still_use() {
         srv.put_json_auth(
             "/api/v1/users/@me/key-backup",
             &ann.token,
-            json!({ "v": 2 })
+            json!({ "password": PASS, "backup": { "v": 2 } })
         )
         .await
         .status(),

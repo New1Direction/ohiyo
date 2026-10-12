@@ -47,6 +47,8 @@ import { pushAppearance } from "../../lib/appearanceSync";
 import { LinkedDevices } from "./LinkedDevices";
 import { ChangePassword } from "./ChangePassword";
 import { DeleteAccount } from "./DeleteAccount";
+import { ConfirmWithPassword } from "./ConfirmWithPassword";
+import { passwordStepMessage } from "../../lib/apiErrors";
 import { PluginsTab } from "./PluginsTab";
 import { DesktopAppCard } from "./DesktopAppCard";
 import type { PrivacyPrefs } from "../../lib/privacyPrefs";
@@ -1591,6 +1593,11 @@ function SecurityTab({
   const [restorePreview, setRestorePreview] = useState<RestorePreview | null>(null);
   const [previewCode, setPreviewCode] = useState("");
   const [backupBusy, setBackupBusy] = useState(false);
+  // Replacing or deleting the backup and changing the dead-man's switch ask for the
+  // password first (the server checks it), so a stolen session can't do them alone.
+  const [pendingBackup, setPendingBackup] = useState<"create" | "delete" | null>(null);
+  const [deadmanDraft, setDeadmanDraft] = useState<{ seconds: number | null; scope: "history" | "keys" } | null>(null);
+  const shownDeadman = deadmanDraft ?? { seconds, scope };
 
   useEffect(() => {
     api
@@ -1615,18 +1622,19 @@ function SecurityTab({
       }); // 404 = no backup yet
   }, [token]);
 
-  async function createBackup() {
+  async function createBackup(password: string) {
     setBackupBusy(true);
     try {
       const code = generateRecoveryCode();
       const material = exportKeyMaterial();
       const blob = await encryptBackup(code, material);
-      await api.putKeyBackup(token, blob as unknown as Record<string, unknown>);
+      await api.putKeyBackup(token, password, blob as unknown as Record<string, unknown>);
+      setPendingBackup(null);
       setNewCode(code);
       setHasBackup(true);
       setBackupInfo(backupSummary(blob));
-    } catch {
-      onToast("Couldn't create backup", "error");
+    } catch (err) {
+      onToast(passwordStepMessage(err, "Couldn't create backup"), "error");
     } finally {
       setBackupBusy(false);
     }
@@ -1779,26 +1787,31 @@ function SecurityTab({
     }
   }
 
-  async function deleteBackup() {
+  async function deleteBackup(password: string) {
+    setBackupBusy(true);
     try {
-      await api.deleteKeyBackup(token);
+      await api.deleteKeyBackup(token, password);
+      setPendingBackup(null);
       setHasBackup(false);
       setBackupInfo(null);
       setNewCode(null);
       onToast("Backup deleted", "success");
-    } catch {
-      onToast("Couldn't delete backup", "error");
+    } catch (err) {
+      onToast(passwordStepMessage(err, "Couldn't delete backup"), "error");
+    } finally {
+      setBackupBusy(false);
     }
   }
 
-  async function save(nextSeconds: number | null, nextScope: "history" | "keys") {
-    setSeconds(nextSeconds);
-    setScope(nextScope);
+  async function save(nextSeconds: number | null, nextScope: "history" | "keys", password: string) {
     try {
-      await api.setDeadman(token, nextSeconds, nextScope);
+      await api.setDeadman(token, nextSeconds, nextScope, password);
+      setSeconds(nextSeconds);
+      setScope(nextScope);
+      setDeadmanDraft(null);
       onToast(nextSeconds ? "Dead man's switch is on" : "Dead man's switch is off", "success");
-    } catch {
-      onToast("Couldn't save", "error");
+    } catch (err) {
+      onToast(passwordStepMessage(err, "Couldn't save"), "error");
     }
   }
 
@@ -1924,7 +1937,7 @@ function SecurityTab({
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={createBackup}
+              onClick={() => setPendingBackup("create")}
               disabled={backupBusy}
               className="rounded px-3 py-1.5 text-sm font-semibold"
               style={{ background: "var(--accent)", color: "#fff", opacity: backupBusy ? 0.6 : 1 }}
@@ -1938,7 +1951,7 @@ function SecurityTab({
                 </span>
                 <button
                   type="button"
-                  onClick={deleteBackup}
+                  onClick={() => setPendingBackup("delete")}
                   className="kc-interactive rounded px-2 py-1 text-xs"
                   style={{ color: "var(--danger)", background: "transparent", border: "1px solid var(--bg-hover)" }}
                 >
@@ -1947,6 +1960,16 @@ function SecurityTab({
               </>
             )}
           </div>
+        )}
+
+        {pendingBackup && !newCode && (
+          <ConfirmWithPassword
+            key={pendingBackup}
+            confirmLabel={pendingBackup === "create" ? "Back up my keys" : "Delete my backup"}
+            busy={backupBusy}
+            onConfirm={(password) => (pendingBackup === "create" ? createBackup(password) : deleteBackup(password))}
+            onCancel={() => setPendingBackup(null)}
+          />
         )}
 
         <details className="mb-3 rounded-md p-3 text-xs" style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "1px solid var(--bg-hover)" }}>
@@ -2036,12 +2059,12 @@ function SecurityTab({
         </p>
         <div className="mb-3 flex flex-wrap gap-2">
           {DEADMAN_PRESETS.map((p) => {
-            const active = (seconds ?? null) === p.seconds;
+            const active = (shownDeadman.seconds ?? null) === p.seconds;
             return (
               <button
                 key={p.label}
                 type="button"
-                onClick={() => save(p.seconds, scope)}
+                onClick={() => setDeadmanDraft({ seconds: p.seconds, scope: shownDeadman.scope })}
                 className="rounded-full px-3 py-1 text-sm font-semibold"
                 style={{
                   background: active ? "var(--accent)" : "var(--bg-input)",
@@ -2053,17 +2076,17 @@ function SecurityTab({
             );
           })}
         </div>
-        {seconds != null && (
+        {shownDeadman.seconds != null && (
           <div className="flex flex-wrap gap-2">
             {(["history", "keys"] as const).map((s) => (
               <button
                 key={s}
                 type="button"
-                onClick={() => save(seconds, s)}
+                onClick={() => setDeadmanDraft({ seconds: shownDeadman.seconds, scope: s })}
                 className="rounded px-3 py-1 text-xs"
                 style={{
-                  background: scope === s ? "var(--bg-hover)" : "transparent",
-                  color: scope === s ? "var(--text-primary)" : "var(--text-secondary)",
+                  background: shownDeadman.scope === s ? "var(--bg-hover)" : "transparent",
+                  color: shownDeadman.scope === s ? "var(--text-primary)" : "var(--text-secondary)",
                   border: "1px solid var(--bg-hover)",
                 }}
               >
@@ -2071,6 +2094,13 @@ function SecurityTab({
               </button>
             ))}
           </div>
+        )}
+        {deadmanDraft && (deadmanDraft.seconds !== seconds || deadmanDraft.scope !== scope) && (
+          <ConfirmWithPassword
+            confirmLabel={deadmanDraft.seconds == null ? "Turn it off" : seconds == null ? "Turn it on" : "Save"}
+            onConfirm={(password) => save(deadmanDraft.seconds, deadmanDraft.scope, password)}
+            onCancel={() => setDeadmanDraft(null)}
+          />
         )}
       </div>
 

@@ -90,7 +90,7 @@ async fn a_wipe_counts_references_once_per_distinct_file() {
         .post_json_auth(
             "/api/v1/users/@me/deadman",
             &alice.token,
-            json!({ "seconds": 3600 }),
+            json!({ "seconds": 3600, "password": "password123" }),
         )
         .await;
     assert_eq!(res.status(), 204);

@@ -69,3 +69,16 @@ export function deleteAccountMessage(err: unknown): string {
       return "Couldn't delete your account. Check your connection and try again. Nothing was deleted.";
   }
 }
+
+/** What to show when an action that asks for the password again was refused: a wrong
+ *  password or too many tries, said plainly; anything else as `fallback`. */
+export function passwordStepMessage(err: unknown, fallback: string): string {
+  switch (apiStatus(err)) {
+    case 403:
+      return "That isn't your password.";
+    case 429:
+      return "Too many tries. Wait a minute, then try again.";
+    default:
+      return fallback;
+  }
+}

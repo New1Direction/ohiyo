@@ -62,7 +62,7 @@ async fn sweep_skips_users_with_a_live_gateway_session() {
         .post_json_auth(
             "/api/v1/users/@me/deadman",
             &alice.token,
-            json!({ "seconds": DEADMAN_SECS }),
+            json!({ "seconds": DEADMAN_SECS, "password": "supersecret123" }),
         )
         .await;
     assert_eq!(res.status(), 204);
