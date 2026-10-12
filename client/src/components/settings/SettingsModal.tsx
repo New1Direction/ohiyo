@@ -2028,7 +2028,7 @@ function SecurityTab({
               <div className="mt-1 grid gap-1">
                 <div>Backup format v{restorePreview.version}{restorePreview.updated_at ? ` · updated ${new Date(restorePreview.updated_at * 1000).toLocaleDateString()}` : ""}{restorePreview.entry_count ? ` · ${restorePreview.entry_count} entries` : ""}</div>
                 {restorePreview.scanned_messages > 0 && <div>Checked {restorePreview.scanned_messages} recent encrypted message(s) in your chats on this home.</div>}
-                <div>In this backup: {restorePreview.material_importable} of {restorePreview.material_total} item(s) can be restored, including {restorePreview.material_signal_sessions} one-to-one chat session(s) and {restorePreview.material_sender_keys} group key(s).</div>
+                <div>In this backup: {restorePreview.material_importable} of {restorePreview.material_total} item(s) can be restored, including {restorePreview.material_signal_sessions} key(s) for one-to-one chats and {restorePreview.material_sender_keys} for group chats.</div>
                 {restorePreview.material_ignored > 0 && <div>{restorePreview.material_ignored} unsupported backup entr{restorePreview.material_ignored === 1 ? "y was" : "ies were"} skipped in the preview. Restore will be partial, not silent.</div>}
                 {restorePreview.material_plaintext_cache_entries > 0 && <div>This older backup includes {restorePreview.material_plaintext_cache_entries} plaintext-cache entr{restorePreview.material_plaintext_cache_entries === 1 ? "y" : "ies"}; new backups do not include plaintext cache by default.</div>}
                 {restorePreview.checked_messages > 0 ? (

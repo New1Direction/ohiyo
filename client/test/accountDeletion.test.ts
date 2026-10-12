@@ -37,5 +37,5 @@ test("when the answer was lost, it doesn't claim nothing was deleted", () => {
 });
 
 test("a session that has ended may mean the account is already gone", () => {
-  assert.match(deleteAccountMessage(failed(401)), /If you just deleted your account, it's gone/);
+  assert.match(deleteAccountMessage(failed(401)), /signed out on this device\. If you just deleted your account, it's gone/);
 });

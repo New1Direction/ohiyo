@@ -13,7 +13,7 @@ test("each refusal gets its own plain message", () => {
   assert.equal(passwordChangeMessage(failed(403)), "That isn't your current password.");
   assert.equal(passwordChangeMessage(failed(429)), "Too many tries. Wait a minute, then try again.");
   assert.equal(passwordChangeMessage(failed(400)), `Use at least ${PASSWORD_MIN_LENGTH} characters.`);
-  assert.match(passwordChangeMessage(failed(401)), /session has ended/);
+  assert.match(passwordChangeMessage(failed(401)), /signed out on this device/);
 });
 
 test("a network failure or an unknown status is not blamed on the password", () => {

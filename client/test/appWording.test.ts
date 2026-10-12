@@ -77,6 +77,10 @@ const INSIDER = [
   "outside-only room glow",
   "content-free PWA push",
   "standalone chrome",
+  // "Session" is the builders' word; people know "signed in" and "signed out".
+  "Every session ends",
+  "session has ended",
+  "chat session(s)",
 ];
 
 test("nothing on screen claims something that is not true", () => {

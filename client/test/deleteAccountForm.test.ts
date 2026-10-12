@@ -115,3 +115,16 @@ test("opening the form puts the cursor in the password field", () => {
     f.cleanup();
   }
 });
+
+// The list of what deleting does left out three things people would want to know first.
+test("the form says what happens to group chats, one-to-one chats and the username", () => {
+  const f = openForm("kikka");
+  try {
+    const said = f.container.textContent ?? "";
+    assert.match(said, /Group chats you started go to the next person in them/);
+    assert.match(said, /one-to-one chats, the other person sees .Deleted account. and can.t reply/);
+    assert.match(said, /Your username becomes free, and someone else can take it/);
+  } finally {
+    f.cleanup();
+  }
+});
