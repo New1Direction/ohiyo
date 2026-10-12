@@ -457,3 +457,52 @@ async fn the_view_filter_uses_the_overwrites_of_the_channel_list_it_was_given() 
         "the server's other channels are still listed"
     );
 }
+
+/// A 1:1 DM is stored with the name "dm", so unless `Ready` says who is on the other
+/// side, the sidebar, tab and chat header can only call it "Direct Message" after a
+/// reload, and for the person who was messaged, before they ever open it.
+#[tokio::test]
+async fn ready_names_the_other_person_in_each_one_to_one_dm() {
+    let srv = TestServer::start().await;
+    let ann = srv.register("peerann", "supersecret123").await;
+    let bea = srv.register("peerbea", "supersecret123").await;
+    let cal = srv.register("peercal", "supersecret123").await;
+
+    let dm: Value = srv
+        .post_json_auth(
+            "/api/v1/users/@me/dms",
+            &ann.token,
+            json!({ "recipient_id": bea.id }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let dm_id = dm["id"].as_str().unwrap().to_owned();
+    let group: Value = srv
+        .post_json_auth(
+            "/api/v1/users/@me/group-dms",
+            &ann.token,
+            json!({ "recipient_ids": [bea.id, cal.id] }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let group_id = group["id"].as_str().unwrap().to_owned();
+
+    // Bea was messaged; she never opened anything.
+    let mut gw = Gateway::connect(&srv, &bea.token).await;
+    let ready = gw.wait_for(|ev| ev["t"] == "Ready").await;
+
+    let peers = ready["d"]["dm_peers"]
+        .as_object()
+        .expect("Ready says who each DM is with");
+    assert_eq!(peers[&dm_id]["id"], json!(ann.id));
+    assert_eq!(peers[&dm_id]["username"], json!("peerann"));
+    assert!(
+        !peers.contains_key(&group_id),
+        "a group chat keeps its own name"
+    );
+    assert_eq!(peers.len(), 1);
+}
