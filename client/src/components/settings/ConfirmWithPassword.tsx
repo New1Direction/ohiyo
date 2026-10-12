@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 type Props = {
   /** What the confirm button says, e.g. "Back up my keys". */
@@ -12,7 +12,13 @@ type Props = {
  *  on its own; the server checks it. Shown in place, under the button that asked. */
 export function ConfirmWithPassword({ confirmLabel, busy = false, onConfirm, onCancel }: Props) {
   const [password, setPassword] = useState("");
+  const input = useRef<HTMLInputElement>(null);
   const ready = password.length > 0 && !busy;
+
+  // Opened by a button just pressed: put the cursor where the password goes.
+  useLayoutEffect(() => {
+    input.current?.focus();
+  }, []);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,7 +32,7 @@ export function ConfirmWithPassword({ confirmLabel, busy = false, onConfirm, onC
         autoComplete="current-password"
         aria-label="Your password"
         placeholder="Your password"
-        autoFocus
+        ref={input}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         className="rounded px-3 py-1.5 text-sm outline-none"
