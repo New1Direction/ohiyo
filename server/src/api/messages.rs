@@ -521,7 +521,7 @@ pub async fn send_message(
     // Content-free push relay: queue a wake-up nudge for offline recipients only.
     // The relay stores no message text/channel names/E2E keys; online users already got
     // the GatewayEvent above.
-    crate::api::push::enqueue_message_pushes(&state, &msg.channel_id, &auth.0).await;
+    crate::api::push::enqueue_message_pushes(&state, &msg.channel_id, &auth.0, &msg.content).await;
     Ok(Json(msg))
 }
 

@@ -32,6 +32,17 @@ import { CategoriesModal } from "./components/CategoriesModal";
 import { ForwardModal } from "./components/ForwardModal";
 import { PERM, can } from "./permissions";
 import { mentionsYou } from "./lib/mentions";
+import { NotificationSettingsDialog, type NotificationSettingsTarget } from "./components/NotificationSettingsDialog";
+import {
+  isMuted,
+  messageAlert,
+  nextMuteExpiry,
+  settingKey,
+  settingsFromList,
+  unreadFor,
+  withSetting,
+  type NotificationSettings,
+} from "./lib/notificationSettings";
 import { notify, ensureNotificationPermission, initDeepLinks, claimNotification, isDesktop } from "./lib/desktop";
 import { parseSharedLink, type SharedLink } from "./lib/inviteLinks";
 import { isOhiyoHome, readHomeInput } from "./lib/homeInput";
@@ -594,6 +605,21 @@ function MainApp({
   const [welcomed, setWelcomed] = useState(false);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [mentions, setMentions] = useState<Set<string>>(new Set());
+  // Notification settings (a space's level, mutes), synced across the account's devices.
+  const [notifSettings, setNotifSettings] = useState<NotificationSettings>({});
+  const notifSettingsRef = useRef(notifSettings);
+  notifSettingsRef.current = notifSettings;
+  const [notifTarget, setNotifTarget] = useState<NotificationSettingsTarget | null>(null);
+  // Render again when the next mute ends, so its chat counts and notifies again on time.
+  const [muteTick, setMuteTick] = useState(0);
+  useEffect(() => {
+    const next = nextMuteExpiry(notifSettings, Math.floor(Date.now() / 1000));
+    if (next === null) return;
+    // Capped at a day: a timer can't wait much longer than three weeks, and mutes last a year.
+    const wait = Math.min(86_400_000, Math.max(1000, next * 1000 - Date.now() + 500));
+    const timer = window.setTimeout(() => setMuteTick((n) => n + 1), wait);
+    return () => window.clearTimeout(timer);
+  }, [notifSettings, muteTick]);
   // Read receipts: channelId → (userId → last_read_at watermark). Drives the
   // Delivered/Seen indicator in DMs.
   const [receipts, setReceipts] = useState<Record<string, Record<string, number>>>({});
@@ -838,7 +864,28 @@ function MainApp({
   const webrtc = liveKitEnabled ? sfu : mesh;
 
   // ── Desktop shell: the tray, the dock badge, and a window that can sit hidden ──
-  const totalUnread = unreadTotal(unread);
+  // Unread numbers after notification settings: the sidebar shows `shownUnread`; the Dock,
+  // tray and tab title count `countedUnread` (muted chats and "only @mentions" spaces don't).
+  const nowSec = Math.floor(Date.now() / 1000);
+  const channelServer = new Map<string, string>();
+  for (const s of servers) for (const c of s.channels) channelServer.set(c.id, s.id);
+  const { shown: shownUnread, counted: countedUnread } = unreadFor(
+    unread,
+    mentions,
+    notifSettings,
+    (id) => channelServer.get(id) ?? null,
+    nowSec,
+  );
+  const totalUnread = unreadTotal(countedUnread);
+  // Chats that look muted in the sidebar: muted themselves, or in a muted space.
+  const mutedChannelIds = new Set<string>();
+  for (const s of servers) {
+    const spaceMuted = isMuted(notifSettings[settingKey("server", s.id)], nowSec);
+    for (const c of s.channels) {
+      if (spaceMuted || isMuted(notifSettings[settingKey("channel", c.id)], nowSec)) mutedChannelIds.add(c.id);
+    }
+  }
+  for (const d of dms) if (isMuted(notifSettings[settingKey("channel", d.id)], nowSec)) mutedChannelIds.add(d.id);
   // A window hidden in the tray is never "looking at" a chat: messages there notify and
   // count as unread, and are marked read when the window comes back.
   const windowHiddenRef = useRef(false);
@@ -1114,6 +1161,7 @@ function MainApp({
         }
         // Seed unread badges from the server so they no longer wipe to zero on reload.
         setUnread(event.d.unread ?? {});
+        setNotifSettings(settingsFromList(event.d.notification_settings ?? []));
         // Per-account onboarding flag (same batch as currentUser → no onboarding flash).
         try {
           setWelcomed(localStorage.getItem(`kc:welcomed:${event.d.user.id}`) === "1");
@@ -1446,6 +1494,11 @@ function MainApp({
         });
         break;
       }
+
+      case "NotificationSettingsUpdate":
+        // Changed on this device or another: every device follows.
+        setNotifSettings((prev) => withSetting(prev, event.d));
+        break;
 
       case "DeviceAdded": {
         // Another device registered on this account. Our own first registration comes
@@ -2220,6 +2273,12 @@ function MainApp({
   function maybeNotify(msg: Message) {
     if (msg.author.id === currentUserRef.current?.id) return;
     if (blockedUserIdsRef.current.has(msg.author.id)) return;
+    // Notification settings: a muted chat stays quiet, a space may want only @mentions.
+    const serverId = serversRef.current.find((s) => s.channels.some((c) => c.id === msg.channel_id))?.id ?? null;
+    const me = currentUserRef.current;
+    const mentioned = serverId !== null && me !== null && mentionsYou(msg.content ?? "", me.username);
+    const nowSecs = Math.floor(Date.now() / 1000);
+    if (!messageAlert(notifSettingsRef.current, { channelId: msg.channel_id, serverId }, mentioned, nowSecs).notify) return;
     const lookingAtIt = isLookingAt({
       openChannelId: selectedChannelRef.current?.id,
       messageChannelId: msg.channel_id,
@@ -2631,7 +2690,7 @@ function MainApp({
   // Servers with at least one unread channel get a dot on the rail.
   const unreadServerIds = new Set<string>();
   for (const s of servers) {
-    if (s.channels.some((c) => unread[c.id])) unreadServerIds.add(s.id);
+    if (s.channels.some((c) => shownUnread[c.id])) unreadServerIds.add(s.id);
   }
 
 
@@ -2673,8 +2732,17 @@ function MainApp({
             activeVoiceChannelId={webrtc.channelId}
             voiceParticipantCount={webrtc.participants.length + (webrtc.channelId ? 1 : 0)}
             voiceParticipantsByChannel={sidebarVoiceParticipants}
-            unread={unread}
+            unread={shownUnread}
             mentionChannels={mentions}
+            mutedChannelIds={mutedChannelIds}
+            onOpenNotificationSettings={
+              selectedServer
+                ? () => {
+                    setMobileNavOpen(false);
+                    setNotifTarget({ type: "server", id: selectedServer.id, name: selectedServer.name, kind: "space" });
+                  }
+                : undefined
+            }
             myStatus={myStatus}
             onSetStatus={handleSetStatus}
             myActivity={!privacyMode && currentUser ? activities.get(currentUser.id) ?? null : null}
@@ -2754,6 +2822,22 @@ function MainApp({
         onForward={(msg) => setForwarding(msg)}
         onReportMessage={(msg) => void reportTarget("message", msg.id, "message")}
         onOpenSearch={selectedServer ? () => setShowSearch(true) : undefined}
+        onOpenNotificationSettings={
+          selectedChannel && selectedChannel.channel_type !== "voice"
+            ? () =>
+                setNotifTarget(
+                  selectedChannel.server_id
+                    ? { type: "channel", id: selectedChannel.id, name: selectedChannel.name, kind: "channel" }
+                    : {
+                        type: "channel",
+                        id: selectedChannel.id,
+                        name: dmUsers[selectedChannel.id]?.display_name ?? (selectedChannel.name || "this chat"),
+                        kind: "dm",
+                      },
+                )
+            : undefined
+        }
+        chatMuted={selectedChannel ? mutedChannelIds.has(selectedChannel.id) : false}
         onOpenMembers={selectedServer ? () => setShowMembers(true) : undefined}
         onOpenDm={openDmWith}
         onBlockUser={blockUser}
@@ -2888,6 +2972,18 @@ function MainApp({
       )}
 
       {/* Invite-people modal — generates a shareable link for the open server */}
+      {notifTarget && (
+        <NotificationSettingsDialog
+          target={notifTarget}
+          setting={notifSettings[settingKey(notifTarget.type, notifTarget.id)]}
+          now={nowSec}
+          onSave={async (body) => {
+            const saved = await api.setNotificationSetting(token, notifTarget.type, notifTarget.id, body);
+            setNotifSettings((prev) => withSetting(prev, saved));
+          }}
+          onClose={() => setNotifTarget(null)}
+        />
+      )}
       {showInvite && selectedServer && (
         <InviteModal
           token={token}

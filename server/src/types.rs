@@ -230,6 +230,41 @@ pub struct WatchSession {
     pub server_time: f64,
 }
 
+/// How one space or channel (a space channel, DM or group chat) notifies its member. Only
+/// what differs from the defaults is stored: every message notifies, nothing is muted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct NotificationSetting {
+    /// "server" or "channel".
+    pub target_type: String,
+    pub target_id: String,
+    /// A space's level: "all", "mentions" or "nothing". None is the default (all).
+    pub level: Option<String>,
+    pub muted: bool,
+    /// When a mute ends (unix seconds). None while muted: until it's turned back on.
+    pub muted_until: Option<i64>,
+}
+
+impl NotificationSetting {
+    /// Muted at `now`: a mute whose time has passed is over.
+    pub fn is_muted(&self, now: i64) -> bool {
+        self.muted && self.muted_until.is_none_or(|until| until > now)
+    }
+
+    /// The setting as it stands at `now`, with an ended mute cleared.
+    pub fn as_of(mut self, now: i64) -> Self {
+        if self.muted && !self.is_muted(now) {
+            self.muted = false;
+            self.muted_until = None;
+        }
+        self
+    }
+
+    /// Nothing differs from the defaults, so there's nothing to keep.
+    pub fn is_default(&self) -> bool {
+        !self.muted && matches!(self.level.as_deref(), None | Some("all"))
+    }
+}
+
 // ── WebSocket gateway events ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,6 +282,9 @@ pub enum GatewayEvent {
         /// the client seed unread badges on connect instead of starting from zero.
         #[serde(default)]
         unread: std::collections::HashMap<String, i64>,
+        /// The account's notification settings for the spaces and chats listed above.
+        #[serde(default)]
+        notification_settings: Vec<NotificationSetting>,
     },
     MessageCreate(MessageWithAuthor),
     /// A message's content/pinned state changed (edit or pin/unpin).
@@ -385,6 +423,9 @@ pub enum GatewayEvent {
     DeviceAdded {
         device_id: i64,
     },
+    /// One of the account's notification settings changed. Sent to all of its sessions, so
+    /// every device mutes (or stops muting) together.
+    NotificationSettingsUpdate(NotificationSetting),
 }
 
 /// A participant already present in a voice channel.

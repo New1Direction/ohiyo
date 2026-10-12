@@ -77,8 +77,9 @@ function openDialog(target: Target, setting?: Setting) {
     ...f,
     container,
     text: () => container.textContent ?? "",
+    // Each choice's name, without the hint under it.
     radios: () =>
-      [...container.querySelectorAll('input[type="radio"]')].map((r) => (r.closest("label")?.textContent ?? "").trim()),
+      [...container.querySelectorAll('input[type="radio"]')].map((r) => (r.closest("label")?.querySelector("span span")?.textContent ?? "").trim()),
     radio,
     pick: (label: string) => act(() => radio(label)!.click()),
     muteFor: (label: string) =>
@@ -101,7 +102,7 @@ test("a space offers all messages, only @mentions or nothing, and a mute", async
   const f = openDialog({ type: "server", id: "s1", name: "Gate HQ", kind: "space" });
   try {
     assert.match(f.text(), /Gate HQ/);
-    assert.deepEqual(f.radios().map((r) => r.split("\n")[0]), ["All messages", "Only @mentions", "Nothing"]);
+    assert.deepEqual(f.radios(), ["All messages", "Only @mentions", "Nothing"]);
     assert.equal(f.radio("All messages")?.checked, true, "all messages is the default");
     f.pick("Only @mentions");
     f.muteFor("For 1 hour");

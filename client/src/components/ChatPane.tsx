@@ -243,6 +243,10 @@ type Props = {
   onDismissKeyChange?: () => void;
   /** Set this channel's disappearing-message TTL in seconds (null turns it off). */
   onSetDisappearing?: (seconds: number | null) => void;
+  /** Open this chat's notification settings (mute it), from the bell in the header. */
+  onOpenNotificationSettings?: () => void;
+  /** This chat is muted (or in a muted space): the bell shows crossed out. */
+  chatMuted?: boolean;
 };
 
 /** Delivered / Seen line under your latest sent message — DMs only (iMessage-style). */
@@ -394,6 +398,8 @@ export function ChatPane({
   onMarkVerified,
   onDismissKeyChange,
   onSetDisappearing,
+  onOpenNotificationSettings,
+  chatMuted = false,
 }: Props) {
   // Initialize from the persisted draft so a reload (which mounts straight into the
   // restored channel, with prevChannelRef already equal) still shows it.
@@ -1278,6 +1284,17 @@ export function ChatPane({
               ))}
             </span>
             <span>{memberSummary}</span>
+          </button>
+        )}
+        {onOpenNotificationSettings && (
+          <button
+            type="button"
+            onClick={onOpenNotificationSettings}
+            aria-label="Notification settings"
+            title={chatMuted ? "Muted — notification settings" : "Notification settings"}
+            className={`kc-icon-btn flex-shrink-0 text-base${chatMuted ? " is-muted" : ""}`}
+          >
+            <Icon name={chatMuted ? "bellOff" : "bell"} />
           </button>
         )}
         {onOpenSearch && (

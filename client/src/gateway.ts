@@ -1,6 +1,7 @@
 import type { PublicUser, ServerWithChannels, Channel, Message } from "./api";
 import { gatewayUrl, api } from "./api";
 import { apiStatus } from "./lib/apiErrors";
+import type { NotificationSetting } from "./lib/notificationSettings";
 
 /** A peer already present in a voice channel when you join. */
 export type VoicePeer = {
@@ -29,7 +30,7 @@ export type WatchSession = {
 };
 
 export type GatewayEvent =
-  | { t: "Ready"; d: { user: PublicUser; servers: ServerWithChannels[]; dms: Channel[]; dm_peers?: Record<string, PublicUser>; unread?: Record<string, number> } }
+  | { t: "Ready"; d: { user: PublicUser; servers: ServerWithChannels[]; dms: Channel[]; dm_peers?: Record<string, PublicUser>; unread?: Record<string, number>; notification_settings?: NotificationSetting[] } }
   | { t: "MessageCreate"; d: Message }
   | { t: "MessageUpdate"; d: Message }
   | { t: "MessageDelete"; d: { id: string; channel_id: string } }
@@ -55,6 +56,7 @@ export type GatewayEvent =
   | { t: "WatchUpdate"; d: { channel_id: string; session: WatchSession | null } }
   // A device registered its keys on this account for the first time (see deviceWatch).
   | { t: "DeviceAdded"; d: { device_id: number } }
+  | { t: "NotificationSettingsUpdate"; d: NotificationSetting }
   // The server's answer to each Heartbeat. Needs no handler: any inbound frame counts as
   // alive (lastFrameAt).
   | { t: "HeartbeatAck" };

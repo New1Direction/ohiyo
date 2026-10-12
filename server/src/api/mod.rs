@@ -16,6 +16,7 @@ pub mod keys;
 pub mod limits;
 pub mod livekit;
 pub mod messages;
+pub mod notifications;
 pub mod og;
 pub mod polls;
 pub mod profile;
@@ -103,6 +104,11 @@ pub fn router() -> Router<AppState> {
         .route("/users/{user_id}/profile", get(profile::get_user_profile))
         .route("/users/@me/prefs", get(profile::get_prefs))
         .route("/users/@me/prefs", post(profile::set_prefs))
+        .route("/users/@me/notification-settings", get(notifications::list))
+        .route(
+            "/users/@me/notification-settings/{target_type}/{target_id}",
+            put(notifications::set),
+        )
         // Encrypted E2E key backup (recovery-code model; server stores ciphertext only)
         .route("/users/@me/key-backup", get(profile::get_key_backup))
         .route("/users/@me/key-backup", put(profile::put_key_backup))

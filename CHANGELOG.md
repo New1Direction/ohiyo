@@ -13,6 +13,12 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ### Added
 - **ohiyo.gg has a Download section** for the desktop app, with the steps to open the Mac beta.
+- **Notification settings, like Discord's.** A space can notify you about every message, only
+  @mentions, or nothing (Space menu → Notification settings). Mute a space, a channel or a DM
+  for 15 minutes, an hour, 8 hours, a day, or until you turn it back on (the bell in its
+  header). A muted chat sends no notification or push and adds nothing to your unread
+  number; an @mention still gets through unless the space is set to Nothing. Settings follow
+  your account to every device, and the push relay obeys them.
 
 ### Changed
 - **Settings speaks in sentence case** like the rest of the app, and the Account card no longer
