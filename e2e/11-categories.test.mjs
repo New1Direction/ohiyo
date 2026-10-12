@@ -12,7 +12,7 @@ try {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Cat HQ");
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   // create a channel "lounge" (uncategorized)
   await page.click('button[aria-label="Create channel"]');

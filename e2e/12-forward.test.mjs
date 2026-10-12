@@ -12,7 +12,7 @@ try {
   await page.waitForSelector("#kc-space-name", { timeout: 12000 });
   await page.fill("#kc-space-name", "Fwd HQ");
   await page.click('button:has-text("Let\'s go")');
-  await page.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
 
   // second channel to forward into
   await page.click('button[aria-label="Create channel"]');
@@ -21,7 +21,7 @@ try {
   await page.waitForSelector('button:has-text("archive")', { timeout: 6000 });
 
   // send a message in #general
-  const composer = page.locator('input[placeholder*="Say something"]');
+  const composer = page.locator('textarea[placeholder*="Say something"]');
   await composer.fill("a keepsake worth forwarding");
   await composer.press("Enter");
   await page.waitForSelector("text=a keepsake worth forwarding", { timeout: 8000 });
@@ -43,7 +43,7 @@ try {
 
   // ── open #archive → forwarded message with attribution ──
   await page.click('button:has-text("archive")');
-  await page.waitForSelector('input[placeholder*="Say something to #archive"]', { timeout: 6000 });
+  await page.waitForSelector('textarea[placeholder*="Say something to #archive"]', { timeout: 6000 });
   await page.waitForSelector("text=a keepsake worth forwarding", { timeout: 6000 });
   await page.waitForSelector("text=/Forwarded from/", { timeout: 6000 });
   log("#archive shows the forwarded message with 'Forwarded from Fia' ✓");

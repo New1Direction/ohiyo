@@ -41,7 +41,7 @@ try {
   await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Vibe HQ");
   await pageA.click('button:has-text("Let\'s go")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   await pageA.click('button[aria-label="Invite people"]');
   await pageA.waitForFunction(() => {
     const el = document.querySelector('input[aria-label="Invite link"]');
@@ -63,20 +63,20 @@ try {
   await pageB.click('button:has-text("Create my account")');
   await pageB.waitForSelector('button:has-text("Accept invite")', { timeout: 12000 });
   await pageB.click('button:has-text("Accept invite")');
-  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("B joined Vibe HQ, both in #general");
 
   // ── 1. TYPING INDICATOR ──────────────────────────────────────────
-  await pageA.locator('input[placeholder*="Say something"]').fill("hey ben checking typing");
+  await pageA.locator('textarea[placeholder*="Say something"]').fill("hey ben checking typing");
   await pageB.waitForSelector("text=/is typing/", { timeout: 6000 });
   const typingText = await pageB.textContent("text=/is typing/");
   log(`B sees typing: "${typingText.trim()}" ✓`);
   await shot(pageB, "16-typing");
-  await pageA.locator('input[placeholder*="Say something"]').fill(""); // cancel, don't send
+  await pageA.locator('textarea[placeholder*="Say something"]').fill(""); // cancel, don't send
 
   // ── 2. REPLIES ───────────────────────────────────────────────────
-  await pageB.locator('input[placeholder*="Say something"]').fill("original msg from ben");
-  await pageB.locator('input[placeholder*="Say something"]').press("Enter");
+  await pageB.locator('textarea[placeholder*="Say something"]').fill("original msg from ben");
+  await pageB.locator('textarea[placeholder*="Say something"]').press("Enter");
   await pageA.waitForSelector("text=original msg from ben", { timeout: 8000 });
   // A clicks Reply on Ben's message
   const benMsg = pageA.locator(".msg-group", { hasText: "original msg from ben" });
@@ -85,8 +85,8 @@ try {
   await pageA.waitForSelector("text=/Replying to/", { timeout: 4000 });
   log("A: reply chip shows ✓");
   await shot(pageA, "17-reply-compose");
-  await pageA.locator('input[placeholder*="Reply to"]').fill("haha good one");
-  await pageA.locator('input[placeholder*="Reply to"]').press("Enter");
+  await pageA.locator('textarea[placeholder*="Reply to"]').fill("haha good one");
+  await pageA.locator('textarea[placeholder*="Reply to"]').press("Enter");
   // A's own reply should render with a quote of the original
   await pageA.waitForSelector("text=haha good one", { timeout: 8000 });
   // B receives the reply WITH the quote
@@ -104,11 +104,11 @@ try {
   await pageA.locator('input[placeholder="new-channel"]').press("Enter");
   await pageA.waitForSelector('button:has-text("random")', { timeout: 6000 });
   await pageA.click('button:has-text("random")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #random"]', { timeout: 6000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #random"]', { timeout: 6000 });
   log("A switched to #random");
   // B posts to #general while A is viewing #random
-  await pageB.locator('input[placeholder*="Say something"]').fill("ping while you're away");
-  await pageB.locator('input[placeholder*="Say something"]').press("Enter");
+  await pageB.locator('textarea[placeholder*="Say something"]').fill("ping while you're away");
+  await pageB.locator('textarea[placeholder*="Say something"]').press("Enter");
   // A should get an unread badge on #general (lowercase text channel + a digit)
   await pageA.waitForFunction(() => {
     const btns = [...document.querySelectorAll("button")];

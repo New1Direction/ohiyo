@@ -7,7 +7,7 @@ import { launchBrowser, register, log, settle, shot, uniq } from "./harness.mjs"
 // iPhone zooms the whole page when one is focused.
 const browser = await launchBrowser();
 let failed = false;
-const COMPOSER = 'input[placeholder*="Say something"]';
+const COMPOSER = 'textarea[placeholder*="Say something"]';
 const MIN_TAP = 40;
 
 try {

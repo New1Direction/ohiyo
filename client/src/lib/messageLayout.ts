@@ -4,6 +4,8 @@
 // desktop pane. They mirror the message rules in index.css (.kc-message-row, .kc-msg,
 // .msg-content); change the two together.
 
+import { inlinePlainText, parseMarkdown, type Block, type ListBlock } from "./markdown.ts";
+
 /** The guess used before the list has been measured. */
 export const DEFAULT_CHARS_PER_LINE = 80;
 const MIN_CHARS_PER_LINE = 12;
@@ -58,6 +60,8 @@ export interface MessageRowMetrics {
   basePx: number;
   /** Height of one line of message text. */
   linePx: number;
+  /** Size of message text. */
+  fontPx: number;
   charsPerLine: number;
   /** Width of the message text column; 0 when the list has not been measured. */
   textWidth: number;
@@ -115,6 +119,97 @@ export function messageLineCount(text: string, charsPerLine: number): number {
   return text.split("\n").reduce((lines, paragraph) => lines + wrappedLines(paragraph, charsPerLine), 0);
 }
 
+// Formatted text (MessageMarkdown, `.kc-md-*` and `.code-block` in index.css). Sizes are in
+// ems of the message text unless marked px; change the two together.
+const HEADING_SCALE = [1.5, 1.25, 1.0625];
+const HEADING_LINE_HEIGHT = 1.375;
+const HEADING_GAP_EM = 0.4; // above a heading that isn't the first thing in its box
+const HEADING_WIDTH = 1.08; // bold glyphs are wider
+const SUBTEXT_SCALE = 0.8125;
+const SUBTEXT_LINE_HEIGHT = 1.3;
+const QUOTE_INDENT_PX = 16; // 4px bar + 12px padding
+const LIST_INDENT_EM = 1.5;
+const CODE_FONT_PX = 13;
+const CODE_BOX_PX = 20 + 12; // padding top and bottom, margin top and bottom
+const CODE_SIDE_PX = 28 + 3; // padding left and right, the accent bar
+const CODE_CHAR_EM = 0.6; // monospace
+const CODE_SCROLLBAR_PX = 15; // a line too long for the box scrolls sideways
+const BIG_EMOJI_PX = 40 * 1.2; // 2.5rem at line-height 1.2
+const FORWARD_FONT_PX = 11;
+const FORWARD_GAP_PX = 2;
+
+type ContentMetrics = Pick<MessageRowMetrics, "linePx" | "fontPx" | "charsPerLine" | "textWidth">;
+
+/** Lines a run of drawn text takes at `charsPerLine`. */
+function textLines(text: string, charsPerLine: number): number {
+  return text.split("\n").reduce((lines, paragraph) => lines + wrappedLines(paragraph, charsPerLine), 0);
+}
+
+/** Characters per line once `px` of the line is given to an indent. */
+function narrower(charsPerLine: number, m: ContentMetrics, px: number): number {
+  const fewer = m.textWidth > 0 ? Math.floor((charsPerLine * px) / m.textWidth) : Math.ceil(px / (m.fontPx * AVG_CHAR_EM));
+  return Math.max(MIN_CHARS_PER_LINE, charsPerLine - fewer);
+}
+
+function listPx(list: ListBlock, m: ContentMetrics, charsPerLine: number): number {
+  const inner = narrower(charsPerLine, m, m.fontPx * LIST_INDENT_EM);
+  return list.items.reduce(
+    (sum, item) =>
+      sum + textLines(inlinePlainText(item.children), inner) * m.linePx + (item.sublist ? listPx(item.sublist, m, inner) : 0),
+    0
+  );
+}
+
+function blocksPx(blocks: readonly Block[], m: ContentMetrics, charsPerLine: number): number {
+  const lineHeight = m.linePx / m.fontPx;
+  return blocks.reduce((sum, block, index) => {
+    switch (block.kind) {
+      case "paragraph":
+        return sum + textLines(inlinePlainText(block.children), charsPerLine) * m.linePx;
+      case "heading": {
+        const scale = HEADING_SCALE[block.level - 1];
+        const fits = Math.max(MIN_CHARS_PER_LINE, Math.floor(charsPerLine / (scale * HEADING_WIDTH)));
+        const lines = textLines(inlinePlainText(block.children), fits);
+        return sum + lines * m.fontPx * scale * HEADING_LINE_HEIGHT + (index > 0 ? m.fontPx * scale * HEADING_GAP_EM : 0);
+      }
+      case "subtext": {
+        const fits = Math.max(MIN_CHARS_PER_LINE, Math.floor(charsPerLine / SUBTEXT_SCALE));
+        return sum + textLines(inlinePlainText(block.children), fits) * m.fontPx * SUBTEXT_SCALE * SUBTEXT_LINE_HEIGHT;
+      }
+      case "quote":
+        return sum + blocksPx(block.children, m, narrower(charsPerLine, m, QUOTE_INDENT_PX));
+      case "list":
+        return sum + listPx(block, m, charsPerLine);
+      case "code": {
+        const lines = block.text.split("\n");
+        const fits = m.textWidth > 0 ? Math.floor((m.textWidth - CODE_SIDE_PX) / (CODE_FONT_PX * CODE_CHAR_EM)) : Infinity;
+        const scrolls = lines.some((line) => columns(line) > fits);
+        return sum + lines.length * CODE_FONT_PX * lineHeight + CODE_BOX_PX + (scrolls ? CODE_SCROLLBAR_PX : 0);
+      }
+    }
+  }, 0);
+}
+
+/**
+ * Height of a message's text as drawn, formatting included; an empty message takes a line.
+ * `trailer`: an inline label follows the text ("(edited)", a disappearing-message timer).
+ * It sits at the end of a last line of text, but after a heading, list, quote or code block
+ * it needs a line of its own.
+ */
+export function messageContentPx(text: string, m: ContentMetrics, trailer = false): number {
+  if (!text) return m.linePx;
+  const forwarded = /^【FWD:[^】]*】([\s\S]*)$/.exec(text);
+  if (forwarded) {
+    const header = FORWARD_FONT_PX * (m.linePx / m.fontPx) + FORWARD_GAP_PX;
+    return header + (forwarded[1] ? messageContentPx(forwarded[1], m, trailer) : trailer ? m.linePx : 0);
+  }
+  if (text.startsWith("【BIG_EMOJI:") && text.endsWith("】")) return Math.max(m.linePx, BIG_EMOJI_PX);
+  const blocks = parseMarkdown(text);
+  if (blocks.length === 0) return m.linePx;
+  const ownLine = trailer && blocks[blocks.length - 1].kind !== "paragraph" ? m.linePx : 0;
+  return blocksPx(blocks, m, m.charsPerLine) + ownLine;
+}
+
 /** The numbers a row's height is built from, for the current width, density and font scale. */
 export function messageRowMetrics(inputs: MessageRowInputs): MessageRowMetrics {
   const { fontScale, isPhone, lineHeight, densityBasePx } = inputs;
@@ -123,7 +218,8 @@ export function messageRowMetrics(inputs: MessageRowInputs): MessageRowMetrics {
   // The density base was tuned as "a one-message group minus one line of text", so it
   // already holds that message's own padding; take it back out and count it per message.
   const basePx = densityBasePx - MESSAGE_PAD_PX + (isPhone ? PHONE_ROW_EXTRA_PX : 0);
-  return { basePx, linePx, charsPerLine: messageCharsPerLine(inputs), textWidth: messageTextWidth(inputs) };
+  const fontPx = isPhone ? PHONE_FONT_PX : DESKTOP_FONT_PX * scale;
+  return { basePx, linePx, fontPx, charsPerLine: messageCharsPerLine(inputs), textWidth: messageTextWidth(inputs) };
 }
 
 /** Cozy density on an unmeasured list: what the list uses until the first measurement. */

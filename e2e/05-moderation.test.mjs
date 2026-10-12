@@ -28,10 +28,10 @@ try {
   await pageA.waitForSelector("#kc-space-name", { timeout: 12000 });
   await pageA.fill("#kc-space-name", "Mod HQ");
   await pageA.click('button:has-text("Let\'s go")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   // seed messages, grab invite
-  await pageA.locator('input[placeholder*="Say something"]').fill("find this needle in general");
-  await pageA.locator('input[placeholder*="Say something"]').press("Enter");
+  await pageA.locator('textarea[placeholder*="Say something"]').fill("find this needle in general");
+  await pageA.locator('textarea[placeholder*="Say something"]').press("Enter");
   await pageA.waitForSelector("text=find this needle in general", { timeout: 8000 });
   await pageA.click('button[aria-label="Invite people"]');
   await pageA.waitForFunction(() => { const el = document.querySelector('input[aria-label="Invite link"]'); return el && el.value.includes("invite="); }, { timeout: 6000 });
@@ -45,7 +45,7 @@ try {
   await pageA.locator('input[placeholder="new-channel"]').press("Enter");
   await pageA.waitForSelector('button:has-text("random")', { timeout: 6000 });
   await pageA.click('button:has-text("random")');
-  await pageA.waitForSelector('input[placeholder*="Say something to #random"]', { timeout: 6000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #random"]', { timeout: 6000 });
 
   // ── SEARCH (from #random, find the #general message, jump to it) ──
   await pageA.click('button[aria-label="Open search"]');
@@ -56,7 +56,7 @@ try {
   await shot(pageA, "24-search");
   await pageA.click('button:has-text("find this needle in general")');
   // jumped to #general
-  await pageA.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 6000 });
+  await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 6000 });
   log("clicking a result jumps to its channel ✓");
 
   // ── B joins ──
@@ -73,7 +73,7 @@ try {
   await pageB.click('button:has-text("Create my account")');
   await pageB.waitForSelector('button:has-text("Accept invite")', { timeout: 12000 });
   await pageB.click('button:has-text("Accept invite")');
-  await pageB.waitForSelector('input[placeholder*="Say something to #general"]', { timeout: 12000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   await pageB.waitForSelector("text=Mod HQ", { timeout: 6000 });
   log("B joined Mod HQ");
 
