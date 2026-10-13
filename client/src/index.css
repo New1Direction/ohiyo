@@ -2790,6 +2790,26 @@ button:disabled,
   border-color: color-mix(in oklch, var(--accent) 28%, transparent);
   background: color-mix(in oklch, var(--accent) 10%, var(--bg-input));
 }
+/* Settings → Help & feedback, at the foot of the sidebar: quieter than "Back to Ohiyo". */
+.kc-settings-help {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: .86rem;
+  font-weight: 720;
+  cursor: pointer;
+}
+.kc-settings-help:hover,
+.kc-settings-help--active {
+  color: var(--text-primary);
+  border-color: color-mix(in oklch, var(--accent) 28%, transparent);
+  background: color-mix(in oklch, var(--accent) 10%, var(--bg-input));
+}
+.kc-settings-help:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.kc-settings-help__short { display: none; }
 .kc-settings-content {
   background:
     radial-gradient(circle at 18% 8%, color-mix(in oklch, var(--accent) 10%, transparent), transparent 30rem),
@@ -3336,6 +3356,10 @@ button:disabled,
   .kc-settings-sidebar__title { margin-top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .kc-settings-sidebar__footer { grid-area: close; margin: 0; padding: 0; }
   .kc-settings-close { width: auto; min-height: 40px; padding: 0 14px; border-radius: 999px; white-space: nowrap; }
+  .kc-settings-sidebar__footer { display: flex; align-items: center; gap: 6px; }
+  .kc-settings-help { width: auto; min-height: 40px; padding: 0 12px; border-radius: 999px; white-space: nowrap; }
+  .kc-settings-help__long { display: none; }
+  .kc-settings-help__short { display: inline; }
   .kc-settings-nav {
     grid-area: nav;
     display: flex;

@@ -65,6 +65,8 @@ test("every built-in plugin does something when it is switched on", () => {
   }
   // Spoilers are part of chat for everyone now, not a switch only the reader can flip.
   assert.ok(!ids.includes("spoiler-text"));
+  // Sounds are Settings → Notifications now, and follow the notification rules.
+  assert.ok(!ids.includes("message-sound"));
 });
 
 test("plugin descriptions are plain sentences, with no developer words", () => {
