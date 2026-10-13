@@ -113,8 +113,8 @@ export function VoiceTab() {
         How your microphone works in calls. These settings are kept on this device.
       </p>
 
-      <section className="kc-voice-section" aria-labelledby="kc-voice-mode-title">
-        <h3 id="kc-voice-mode-title" className="kc-voice-section__title">Input mode</h3>
+      <section className="kc-voice-panel" aria-labelledby="kc-voice-mode-title">
+        <h3 id="kc-voice-mode-title" className="kc-voice-panel__title">Input mode</h3>
         <div className="kc-voice-options" role="radiogroup" aria-labelledby="kc-voice-mode-title">
           <label className={`kc-voice-option${prefs.inputMode === "voice" ? " kc-voice-option--on" : ""}`}>
             <input type="radio" name="kc-voice-input-mode" value="voice" checked={prefs.inputMode === "voice"} onChange={() => setMode("voice")} />
@@ -155,8 +155,8 @@ export function VoiceTab() {
         )}
       </section>
 
-      <section className="kc-voice-section" aria-labelledby="kc-voice-sensitivity-title">
-        <h3 id="kc-voice-sensitivity-title" className="kc-voice-section__title">Input sensitivity</h3>
+      <section className="kc-voice-panel" aria-labelledby="kc-voice-sensitivity-title">
+        <h3 id="kc-voice-sensitivity-title" className="kc-voice-panel__title">Input sensitivity</h3>
         {prefs.inputMode === "voice" ? (
           <label className="kc-voice-check">
             <input
@@ -210,8 +210,8 @@ export function VoiceTab() {
         {micError && <p className="kc-voice-note kc-voice-note--error" role="alert">{micError}</p>}
       </section>
 
-      <section className="kc-voice-section" aria-labelledby="kc-voice-keys-title">
-        <h3 id="kc-voice-keys-title" className="kc-voice-section__title">In a call</h3>
+      <section className="kc-voice-panel" aria-labelledby="kc-voice-keys-title">
+        <h3 id="kc-voice-keys-title" className="kc-voice-panel__title">In a call</h3>
         <p className="kc-voice-note">
           <kbd className="kc-voice-key__kbd">Ctrl</kbd> + <kbd className="kc-voice-key__kbd">Shift</kbd> + <kbd className="kc-voice-key__kbd">M</kbd> mutes and
           {" "}<kbd className="kc-voice-key__kbd">Ctrl</kbd> + <kbd className="kc-voice-key__kbd">Shift</kbd> + <kbd className="kc-voice-key__kbd">D</kbd> deafens (⌘ instead of Ctrl on a Mac).
