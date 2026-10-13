@@ -3155,6 +3155,13 @@ function MainApp({
     );
   }
 
+  /** Whether a call outside a voice channel is a one-to-one DM or a group chat's. */
+  function chatCallKind(channelId: string | null): "dm" | "group" | null {
+    const chat = channelId ? dms.find((d) => d.id === channelId) : undefined;
+    if (!chat) return null;
+    return chat.channel_type === "dm" ? "dm" : "group";
+  }
+
   /** A DM's or group chat's name, as the call screen shows it. */
   function chatCallName(channelId: string | null): string | null {
     const chat = channelId ? dms.find((d) => d.id === channelId) : undefined;
@@ -3166,13 +3173,6 @@ function MainApp({
       .filter((m) => m.id !== currentUser?.id)
       .map((m) => m.display_name || m.username);
     return names.length ? names.join(", ") : "Group chat";
-  }
-
-  /** Whether a call outside a voice channel is a one-to-one DM or a group chat's. */
-  function chatCallKind(channelId: string | null): "dm" | "group" | null {
-    const chat = channelId ? dms.find((d) => d.id === channelId) : undefined;
-    if (!chat) return null;
-    return chat.channel_type === "dm" ? "dm" : "group";
   }
 
   const sidebarVoiceParticipants = useMemo(() => {

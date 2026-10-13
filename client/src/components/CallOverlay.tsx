@@ -666,8 +666,8 @@ function ScreenShareParticipantChip({
 
 export function CallOverlay({ webrtc, currentUser, channelName, callKind = "voice", pushToTalk = null, ringing = false }: Props) {
   const { localStream, remoteStreams, participants, self, callState, quality } = webrtc;
-  const [minimized, setMinimized] = useState(false);
   const heading = callHeading(callKind, channelName);
+  const [minimized, setMinimized] = useState(false);
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [showAudioSheet, setShowAudioSheet] = useState(false);
   const [volumeByUser, setVolumeByUser] = useState<Record<string, number>>(() => loadCallVolumes());
