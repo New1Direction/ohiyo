@@ -169,12 +169,13 @@ function MonthGrid({ events, todayKey, focusKey, setDay, onOpen, locale }: GridP
                         type="button"
                         tabIndex={-1}
                         className={`kc-cal-chip${ev.cancelled ? " is-cancelled" : ""}`}
+                        title={`${formatTime(ev.starts_at, locale)} · ${ev.title}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           onOpen(ev.id);
                         }}
                       >
-                        <span className="kc-cal-chip-time">{formatTime(ev.starts_at, locale)}</span> {ev.title}
+                        {ev.title}
                       </button>
                     ))}
                     {list.length > PER_CELL && <span className="kc-cal-more">+{list.length - PER_CELL} more</span>}

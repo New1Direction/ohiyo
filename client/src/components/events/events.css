@@ -94,7 +94,7 @@
   color: var(--text-muted);
 }
 .kc-cal-day {
-  height: 5.25rem;
+  height: 4.5rem;
   padding: 4px;
   vertical-align: top;
   border-radius: var(--radius-sm);
@@ -139,7 +139,6 @@
 }
 .kc-cal-chip:hover { background: color-mix(in oklch, var(--accent) 30%, transparent); }
 .kc-cal-chip.is-cancelled { text-decoration: line-through; opacity: 0.6; }
-.kc-cal-chip-time { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .kc-cal-more { display: block; margin-top: 1px; font-size: 0.6875rem; color: var(--text-muted); }
 .kc-cal-dots { display: none; color: var(--accent); letter-spacing: 1px; line-height: 1; }
 
