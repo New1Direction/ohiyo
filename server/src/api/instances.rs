@@ -1,10 +1,12 @@
 //! Instant Servers control-plane endpoints. Authenticated; owner-scoped.
 
 use crate::auth::AuthUser;
+use crate::billing::{self, BillingSummary, PaidPlan, Provisioner};
 use crate::types::HostedInstance;
 use crate::{provision, AppState};
+use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -23,11 +25,25 @@ pub struct SetTierBody {
     pub tier: String,
 }
 
+/// Starting a checkout more often than this is a bug or abuse, not a customer.
+const MAX_CHECKOUTS_PER_HOUR: usize = 10;
+
+/// An instance as the owner's app sees it: the registry row plus its paid plan, if any.
 #[derive(Serialize)]
-pub struct BillingCheckout {
-    pub mode: String,
+pub struct InstanceView {
+    #[serde(flatten)]
+    pub instance: HostedInstance,
+    pub billing: Option<BillingSummary>,
+}
+
+#[derive(Serialize)]
+pub struct CheckoutStarted {
     pub checkout_url: String,
-    pub note: String,
+}
+
+#[derive(Serialize)]
+pub struct PortalLink {
+    pub url: String,
 }
 
 #[derive(Serialize)]
@@ -93,16 +109,31 @@ fn self_host_guide(inst: &HostedInstance) -> SelfHostGuide {
 #[derive(Serialize)]
 pub struct InstancesAvailable {
     pub available: bool,
+    /// `live` (Fly Machines), `simulated` (a development build's fake: nothing really
+    /// runs) or `off`.
+    pub provisioner: Provisioner,
+    pub paid_plan: PaidPlan,
+}
+
+fn current_provisioner() -> Provisioner {
+    billing::provisioner_kind(
+        std::env::var("FLY_API_TOKEN").is_ok(),
+        cfg!(debug_assertions),
+    )
 }
 
 /// GET /api/v1/instances/available — whether this server can make Instant Servers, by the
-/// same rule `create_instance` applies, so the app doesn't offer what it would refuse.
-pub async fn instances_available(_auth: AuthUser) -> Json<InstancesAvailable> {
+/// same rule `create_instance` applies, so the app doesn't offer what it would refuse;
+/// and whether the paid plan can be bought, with the reason when it can't.
+pub async fn instances_available(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+) -> Json<InstancesAvailable> {
+    let provisioner = current_provisioner();
     Json(InstancesAvailable {
-        available: provision::provisioning_available(
-            std::env::var("FLY_API_TOKEN").is_ok(),
-            cfg!(debug_assertions),
-        ),
+        available: provisioner != Provisioner::Off,
+        provisioner,
+        paid_plan: billing::paid_plan(state.billing.as_ref(), provisioner),
     })
 }
 
@@ -112,10 +143,7 @@ pub async fn create_instance(
     State(state): State<AppState>,
     Json(body): Json<CreateInstanceBody>,
 ) -> Result<Json<HostedInstance>, (StatusCode, String)> {
-    if !provision::provisioning_available(
-        std::env::var("FLY_API_TOKEN").is_ok(),
-        cfg!(debug_assertions),
-    ) {
+    if current_provisioner() == Provisioner::Off {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             "Instant Servers aren't available on this server yet.".into(),
@@ -141,7 +169,7 @@ pub async fn create_instance(
 pub async fn list_instances(
     auth: AuthUser,
     State(state): State<AppState>,
-) -> Result<Json<Vec<HostedInstance>>, (StatusCode, String)> {
+) -> Result<Json<Vec<InstanceView>>, (StatusCode, String)> {
     let rows = sqlx::query_as::<_, HostedInstance>(
         "SELECT * FROM hosted_instances WHERE owner_id = ? ORDER BY created_at DESC",
     )
@@ -149,7 +177,29 @@ pub async fn list_instances(
     .fetch_all(&state.db)
     .await
     .map_err(crate::api::error::internal)?;
-    Ok(Json(rows))
+    let subs = billing::subscriptions_for_owner(&state.db, &auth.0).await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|instance| {
+                let billing = subs
+                    .iter()
+                    .find(|s| s.instance_id == instance.id)
+                    .map(BillingSummary::from);
+                InstanceView { instance, billing }
+            })
+            .collect(),
+    ))
+}
+
+async fn view(
+    state: &AppState,
+    instance: HostedInstance,
+) -> Result<InstanceView, (StatusCode, String)> {
+    let billing = billing::subscription_for(&state.db, &instance.id)
+        .await?
+        .as_ref()
+        .map(BillingSummary::from);
+    Ok(InstanceView { instance, billing })
 }
 
 /// GET /api/v1/instances/{id} — status of one of the caller's instances.
@@ -157,17 +207,9 @@ pub async fn get_instance(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<HostedInstance>, (StatusCode, String)> {
-    let inst = sqlx::query_as::<_, HostedInstance>(
-        "SELECT * FROM hosted_instances WHERE id = ? AND owner_id = ?",
-    )
-    .bind(&id)
-    .bind(&auth.0)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(crate::api::error::internal)?
-    .ok_or((StatusCode::NOT_FOUND, "instance not found".to_string()))?;
-    Ok(Json(inst))
+) -> Result<Json<InstanceView>, (StatusCode, String)> {
+    let inst = load_owner_instance(&state, &auth.0, &id).await?;
+    Ok(Json(view(&state, inst).await?))
 }
 
 /// POST /api/v1/instances/{id}/sleep — stop the managed machine and mark it sleeping.
@@ -226,7 +268,7 @@ pub async fn export_instance(
         instance: inst,
         data_note: "This ownership pack is control-plane metadata plus self-host instructions. The raw Server Pack is downloaded from the hosted home itself and contains SQLite/uploads ciphertext, not users' recovery codes or everyone’s readable history.".into(),
         self_host: guide,
-        billing_note: "Free managed servers can sleep. Paid managed servers are intended to be always-on after checkout/manual activation.".into(),
+        billing_note: "Free managed servers can be put to sleep. On the paid plan Ohiyo keeps the server running and never puts it to sleep; there is no uptime SLA during the beta. Exporting and self-hosting stay free on either plan.".into(),
     }))
 }
 
@@ -240,39 +282,134 @@ pub async fn graduate_instance(
     Ok(Json(self_host_guide(&inst)))
 }
 
-/// GET /api/v1/instances/{id}/billing — return a checkout/contact URL. If a real
-/// checkout URL is not configured, the product still has a working operator handoff.
+fn billing_or_unavailable(state: &AppState) -> Result<&billing::Billing, (StatusCode, String)> {
+    let plan = billing::paid_plan(state.billing.as_ref(), current_provisioner());
+    match (state.billing.as_ref(), plan.reason) {
+        (Some(b), None) => Ok(b),
+        (_, reason) => Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            reason.unwrap_or_else(|| "Payments aren't set up on this server yet.".into()),
+        )),
+    }
+}
+
+/// POST /api/v1/instances/{id}/billing/checkout — start Stripe Checkout for the paid
+/// plan of one of the caller's servers. The plan only turns on when Stripe's signed
+/// webhook confirms the payment, never on the strength of the redirect back.
 pub async fn billing_checkout(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<BillingCheckout>, (StatusCode, String)> {
+) -> Result<Json<CheckoutStarted>, (StatusCode, String)> {
     let inst = load_owner_instance(&state, &auth.0, &id).await?;
-    let configured = std::env::var("OHIYO_BILLING_CHECKOUT_URL")
-        .ok()
-        .filter(|s| !s.is_empty());
-    let checkout_url = configured.unwrap_or_else(|| {
-        format!(
-            "mailto:hello@ohiyo.gg?subject=Upgrade%20{}%20to%20Ohiyo%20Always-On&body=Please%20upgrade%20Instant%20Server%20{}%20({})%20to%20the%20paid%20always-on%20tier.",
-            inst.name.replace(' ', "%20"),
-            inst.name.replace(' ', "%20"),
-            inst.id
+    let billing = billing_or_unavailable(&state)?;
+    if !state.rate.check(
+        &format!("checkout:{}", auth.0),
+        MAX_CHECKOUTS_PER_HOUR,
+        Duration::from_secs(3600),
+    ) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many checkouts started — try again in a bit".into(),
+        ));
+    }
+    let checkout_url = billing::start_checkout(&state.db, billing, &auth.0, &inst).await?;
+    Ok(Json(CheckoutStarted { checkout_url }))
+}
+
+/// POST /api/v1/instances/{id}/billing/cancel — end the paid plan when the current
+/// period ends. The server stays paid until then, then drops to the free plan.
+pub async fn billing_cancel(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<InstanceView>, (StatusCode, String)> {
+    let inst = load_owner_instance(&state, &auth.0, &id).await?;
+    let Some(billing) = state.billing.as_ref() else {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Payments aren't set up on this server yet.".into(),
+        ));
+    };
+    billing::cancel_at_period_end(&state.db, billing, &inst.id).await?;
+    Ok(Json(view(&state, inst).await?))
+}
+
+/// POST /api/v1/billing/portal — a Stripe customer-portal link for the caller's own
+/// billing account (payment method, invoices, cancel or resume).
+pub async fn billing_portal(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<PortalLink>, (StatusCode, String)> {
+    let Some(billing) = state.billing.as_ref() else {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Payments aren't set up on this server yet.".into(),
+        ));
+    };
+    let Some(customer) = billing::customer_for(&state.db, &auth.0).await? else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "you have no billing account yet".into(),
+        ));
+    };
+    let url = billing
+        .provider
+        .create_portal(
+            &customer,
+            &format!("{}/?instant_billing=portal", billing.app_url),
         )
-    });
-    Ok(Json(BillingCheckout {
-        mode: if checkout_url.starts_with("mailto:") { "operator" } else { "checkout" }.into(),
-        checkout_url,
-        note: "Paid tier keeps a managed encrypted community server always-on for the whole group; billing activation is intentionally separate from E2E keys/data.".into(),
-    }))
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "couldn't open the billing portal");
+            (
+                StatusCode::BAD_GATEWAY,
+                "the payment service didn't answer — try again in a moment".to_string(),
+            )
+        })?;
+    Ok(Json(PortalLink { url }))
+}
+
+/// POST /api/v1/billing/stripe/webhook — Stripe's signed event feed. A bad signature is
+/// a 400; a failure to apply is a 5xx so Stripe delivers the event again.
+pub async fn stripe_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let Some(billing) = state.billing.as_ref() else {
+        return Err((StatusCode::NOT_FOUND, "billing is not configured".into()));
+    };
+    let signature = headers
+        .get("stripe-signature")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    billing
+        .provider
+        .verify_webhook(&body, signature, crate::types::now_unix())
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid signature".to_string()))?;
+    let event: serde_json::Value = serde_json::from_slice(&body)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid event".to_string()))?;
+    billing::handle_event(
+        &state.db,
+        state.provisioner.as_ref(),
+        billing.provider.as_ref(),
+        &event,
+    )
+    .await?;
+    Ok(StatusCode::OK)
 }
 
 /// DELETE /api/v1/instances/{id} — destroy one of the caller's instances and remove it
-/// from the routing registry.
+/// from the routing registry. A paid plan is cancelled first; if it can't be, nothing
+/// is destroyed.
 pub async fn delete_instance(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let inst = load_owner_instance(&state, &auth.0, &id).await?;
+    billing::release_instance(&state.db, state.billing.as_ref(), &inst.id).await?;
     provision::delete_instance(&state.db, state.provisioner.as_ref(), &auth.0, &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

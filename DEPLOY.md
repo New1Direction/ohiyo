@@ -152,7 +152,8 @@ selects it and the `/healthz` check). Settings that differ from Fly:
   `railway ssh`: `dd if=/dev/zero of=/data/.probe bs=4k count=8 conv=fsync` a few
   times, then delete the file. If it is slow, attach a new volume.
 - Instant Servers are provisioned through Fly Machines. Without `FLY_API_TOKEN` a
-  release build refuses to create them.
+  release build refuses to create them, and the paid plan isn't sold either (Stripe
+  settings: `GO-LIVE.md` §3b).
 
 **The web app** runs as a second Railway service from `client/Dockerfile`: it builds
 the Vite bundle (the backend address comes from `client/.env.production`) and serves it

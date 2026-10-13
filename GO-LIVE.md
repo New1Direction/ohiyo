@@ -100,7 +100,45 @@ the moment `FLY_API_TOKEN` is present.
    `https://<subdomain>.ohiyo.gg` answers.
 
 > Per-instance volumes are created automatically by the provisioner (3 GiB, for the SQLite
-> DB + uploads). Free-tier cap is 3 instances/user, rate-limited to 5 provisions/user/hour.
+> DB + uploads). Free-tier cap is 3 free instances/user (paid ones don't count),
+> rate-limited to 5 provisions/user/hour.
+
+### 3b. (After 3) The paid plan — Stripe **[you]**
+
+The paid plan (about $8 per community per month) is sold only when **both** Stripe is
+configured and Instant Servers really run here (`FLY_API_TOKEN`). Otherwise the app shows
+"Paid plan unavailable" with the reason, and the server refuses checkouts (HTTP 503).
+
+1. In Stripe, create a product "Ohiyo paid server" with a **recurring monthly price**
+   ($8/month). Note its price id (`price_…`).
+2. Add a webhook endpoint `https://<control-plane host>/api/v1/billing/stripe/webhook`
+   with these events: `checkout.session.completed`,
+   `checkout.session.async_payment_succeeded`, `customer.subscription.created`,
+   `customer.subscription.updated`, `customer.subscription.deleted`,
+   `customer.subscription.paused`, `customer.subscription.resumed`. Note its signing
+   secret (`whsec_…`).
+3. Turn on the **customer portal** (Settings → Billing → Customer portal): allow updating
+   the payment method, viewing invoices, and cancelling at the end of the period.
+4. On the control-plane host set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+   `STRIPE_PRICE_ID`, and optionally `OHIYO_PAID_PRICE_LABEL` (default `$8/month`) and
+   `OHIYO_APP_URL` (where checkout returns to, default `https://app.ohiyo.gg`).
+5. Test with Stripe test-mode keys first: upgrade a server in the app, pay with
+   `4242 4242 4242 4242`, and check that it shows **Paid · stays on** within a minute.
+   Then cancel it in the app and check that it says when it ends.
+
+How it behaves:
+
+- The plan turns on only from Stripe's signed webhook, never from the redirect back.
+- A failed renewal (`past_due`) keeps the plan while Stripe retries; once Stripe gives up
+  (`unpaid`/`canceled`) the server moves to the free plan. It keeps running and keeps its
+  data either way.
+- Cancelling in the app or the portal ends the plan at the end of the paid period.
+- Deleting a paid server (or the account) cancels its subscription immediately, without
+  a refund for the rest of the period; if Stripe can't be reached, nothing is deleted.
+- "Stays on" means Ohiyo never puts a paid server to sleep, and a paid server asleep at
+  payment is woken. There is no uptime SLA yet.
+- `PATCH /api/v1/instances/{id}/tier` (operators only) still sets a tier by hand, for
+  comps; Stripe events don't touch servers they didn't sell.
 
 ## 4. Optional — move the API onto the brand domain **[you]**
 
@@ -123,6 +161,7 @@ add a Cloudflare `CNAME api → <fly-app>.fly.dev`, `fly certs add api.ohiyo.gg`
 | Backend API | ✅ live at `https://ohiyo-server-production.up.railway.app` (Railway, fresh database since 2026-10-03). `api.ohiyo.gg` still points at the old Fly app |
 | Domain `ohiyo.gg` | ✅ owned. `app` points at Railway; the wildcard `*.ohiyo.gg` (and so `api`) still points at the old Fly app until it is shut down |
 | Instant Servers control plane | ⏸ off on the hosted server: without `FLY_API_TOKEN` it refuses to create them (HTTP 503). The code remains in the repo |
+| Instant Servers paid plan (Stripe) | ⏸ built, not configured: needs live Instant Servers plus the Stripe settings in §3b. Until then the app says "Paid plan unavailable" |
 | Old Fly apps | ⚠️ not shut down when the hosting moved (see `LAUNCH-STATUS.md`); they are the owner's to remove |
 | Backups | ⚠️ not verified for Railway. The Fly volume snapshots (30-day retention) were on the old Fly volume only; Litestream continuous backup remains optional/not configured |
 | Desktop public release | ⚠️ 0.3.0 is public for Mac (beta, not Apple verified) and Linux (untested by hand); Windows not yet |

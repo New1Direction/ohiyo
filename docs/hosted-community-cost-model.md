@@ -1,6 +1,8 @@
 # Hosted Community Cost Model
 
-Ohiyo's Instant Servers pricing target is simple: free servers can sleep; paid servers stay always-on for less than one Discord Nitro for the whole community.
+Ohiyo's Instant Servers pricing target is simple: free servers can sleep; paid servers stay on for less than one Discord Nitro for the whole community.
+
+The paid plan is billed through Stripe at the price in `STRIPE_PRICE_ID` (planned: $8/month per community) and is only sold where Instant Servers really run; see `GO-LIVE.md` §3b. "Stays on" means Ohiyo never puts a paid server to sleep; there is no uptime SLA yet.
 
 Live model endpoint:
 

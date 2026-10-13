@@ -9,6 +9,7 @@
 
 pub mod api;
 pub mod auth;
+pub mod billing;
 pub mod db;
 pub mod gateway;
 pub mod import;
@@ -57,6 +58,9 @@ pub struct AppState {
     pub watch: gateway::WatchSessions,
     /// Cloud orchestrator for Instant Servers — fake in tests/dev, Fly Machines in prod.
     pub provisioner: std::sync::Arc<dyn provision::MachineProvisioner>,
+    /// Paid Instant Servers (Stripe); `None` unless Stripe is configured at startup, and
+    /// then nobody can buy the paid plan.
+    pub billing: Option<billing::Billing>,
     /// Unix timestamp when this process state was built; used for public status uptime.
     pub started_at: i64,
     /// How long a gateway socket may send nothing before it is closed as half-open.
@@ -113,6 +117,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         privacy: gateway::new_privacy_users(),
         watch: gateway::new_watch_sessions(),
         provisioner,
+        billing: billing::Billing::from_env(),
         started_at: types::now_unix(),
         gateway_idle_timeout: gateway::IDLE_TIMEOUT,
         register_limit_per_hour: api::auth::register_limit_from_env(),

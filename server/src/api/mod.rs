@@ -182,7 +182,18 @@ pub fn router() -> Router<AppState> {
             "/instances/{id}/graduate",
             get(instances::graduate_instance),
         )
-        .route("/instances/{id}/billing", get(instances::billing_checkout))
+        // Paid plan (~$8/month per community): Stripe Checkout, cancel, customer portal.
+        .route(
+            "/instances/{id}/billing/checkout",
+            post(instances::billing_checkout),
+        )
+        .route(
+            "/instances/{id}/billing/cancel",
+            post(instances::billing_cancel),
+        )
+        .route("/billing/portal", post(instances::billing_portal))
+        // Stripe's signed webhook: no account, the signature is the authentication.
+        .route("/billing/stripe/webhook", post(instances::stripe_webhook))
         // Discord import (local/admin Discrawl archive path; env-gated)
         .route(
             "/imports/discord/capability",

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { api, type HostedInstance, type SelfHostGuide } from "../api";
+import { openPaymentPage } from "../lib/desktop";
+import { planFor, readinessFrom, type Plan, type Readiness } from "../lib/instantServers";
 import { ModalShell } from "./ModalShell";
 import { Icon } from "./Icon";
 
@@ -27,6 +29,20 @@ function statusTone(status: HostedInstance["status"]) {
   return "var(--text-muted)";
 }
 
+const chip = { background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" } as const;
+
+function PlanBadge({ plan }: { plan: Plan }) {
+  const paid = plan.kind === "paid" || plan.kind === "comped";
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[11px] font-bold uppercase"
+      style={{ background: paid ? "color-mix(in oklch, var(--accent) 18%, var(--bg-input))" : "var(--bg-input)", color: paid ? "var(--accent)" : "var(--text-muted)" }}
+    >
+      {plan.badge}
+    </span>
+  );
+}
+
 function downloadJson(filename: string, value: unknown) {
   const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -46,6 +62,7 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guide, setGuide] = useState<{ name: string; guide: SelfHostGuide } | null>(null);
+  const [readiness, setReadiness] = useState<Readiness>(() => readinessFrom(null));
 
   const freeCount = useMemo(() => instances.filter((i) => i.tier === "free" && i.status !== "failed").length, [instances]);
 
@@ -62,6 +79,24 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
   }, [token]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    let live = true;
+    api.instantServersAvailable(token).then((body) => { if (live) setReadiness(readinessFrom(body)); }).catch(() => {});
+    return () => { live = false; };
+  }, [token]);
+
+  // Checkout and the billing portal happen in a browser; coming back to this window is
+  // when a paid plan may have changed.
+  useEffect(() => {
+    const onFocus = () => { if (document.visibilityState === "visible") void api.listInstances(token).then(setInstances).catch(() => {}); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [token]);
 
   async function run<T>(key: string, fn: () => Promise<T>, after?: (value: T) => void) {
     setBusy(key);
@@ -100,12 +135,32 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
     await run(`graduate:${inst.id}`, () => api.getGraduateGuide(inst.id, token), (g) => setGuide({ name: inst.name, guide: g }));
   }
 
-  async function billing(inst: HostedInstance) {
-    await run(`billing:${inst.id}`, () => api.getBillingCheckout(inst.id, token), (checkout) => {
-      window.open(checkout.checkout_url, "_blank", "noopener,noreferrer");
-      onToast(checkout.mode === "operator" ? "Opened paid-tier request email." : "Opened checkout.", "info");
+  async function upgrade(inst: HostedInstance) {
+    await run(`upgrade:${inst.id}`, () => api.startPaidPlanCheckout(inst.id, token), (checkout) => {
+      onToast("Opening secure checkout…", "info");
+      void openPaymentPage(checkout.checkout_url);
     });
   }
+
+  async function manageBilling(inst: HostedInstance) {
+    await run(`portal:${inst.id}`, () => api.openBillingPortal(token), (portal) => {
+      void openPaymentPage(portal.url);
+    });
+  }
+
+  async function cancelPlan(inst: HostedInstance) {
+    if (!confirm(`Cancel the paid plan for ${inst.name}? It stays paid until the end of this period, then moves to the free plan. The server and its data stay.`)) return;
+    await run(`cancel:${inst.id}`, () => api.cancelPaidPlan(inst.id, token), () => onToast("Paid plan will end at the end of this period.", "success"));
+  }
+
+  function remove(inst: HostedInstance, plan: Plan) {
+    const paidNote = plan.kind === "paid" ? " Its paid plan ends right away, and the rest of this period isn't refunded." : "";
+    if (confirm(`Delete ${inst.name}?${paidNote} Export first if you need it.`)) {
+      void run(`delete:${inst.id}`, () => api.deleteInstance(inst.id, token), () => onToast("Instant Server deleted.", "success"));
+    }
+  }
+
+  const price = readiness.paid.priceLabel ?? "a monthly fee";
 
   return (
     <ModalShell onClose={onClose} labelledBy="kc-instant-title" maxWidthClass="max-w-4xl">
@@ -114,16 +169,27 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>Instant Servers</p>
             <h2 id="kc-instant-title" style={{ fontFamily: "var(--font-display)", fontWeight: 850, fontSize: "var(--text-2xl)", color: "var(--text-primary)" }}>
-              Managed encrypted homes you can leave anytime
+              Managed homes you can leave anytime
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-              Create a hosted Ohiyo server, sleep/wake it, download an ownership pack, graduate to self-host, or start the always-on paid tier. Control-plane data is infra metadata only — not message plaintext or E2E keys.
+              Free servers can be put to sleep, up to 3 per account. The paid plan ({price} per community) keeps one server running: Ohiyo never puts it to sleep, and it doesn't count toward your free servers. Export and self-hosting stay free on either plan. Billing sees server and plan details only, never messages or keys.
             </p>
           </div>
           <button type="button" onClick={refresh} className="kc-interactive rounded-full px-3 py-2 text-sm font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" }}>
             Refresh
           </button>
         </div>
+
+        {readiness.provisioner === "simulated" && (
+          <div role="status" className="rounded-2xl px-3 py-2 text-sm leading-6" style={{ background: "color-mix(in oklch, var(--warning) 14%, var(--bg-channel))", border: "1px solid color-mix(in oklch, var(--warning) 45%, transparent)", color: "var(--text-primary)" }}>
+            <b>Development server.</b> Servers here are simulated: no machine really runs, so nothing on this home is kept on, paid plan or not.
+          </div>
+        )}
+        {!readiness.paid.available && readiness.provisioner !== "unknown" && (
+          <div className="rounded-2xl px-3 py-2 text-sm leading-6" style={{ background: "var(--bg-channel)", border: "1px solid var(--bg-hover)", color: "var(--text-muted)" }}>
+            <b style={{ color: "var(--text-secondary)" }}>Paid plan unavailable.</b> {readiness.paid.reason}
+          </div>
+        )}
 
         <form onSubmit={create} className="rounded-3xl p-4" style={{ background: "linear-gradient(145deg, color-mix(in oklch, var(--accent) 7%, var(--bg-elevated)), var(--bg-elevated))", border: "1px solid color-mix(in oklch, var(--accent) 18%, var(--border-subtle))" }}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -160,17 +226,22 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
           </div>
         ) : (
           <div className="grid gap-3">
-            {instances.map((inst) => (
+            {instances.map((inst) => {
+              const plan = planFor(inst, readiness);
+              return (
               <div key={inst.id} className="rounded-3xl p-4" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="truncate text-base font-bold" style={{ color: "var(--text-primary)" }}>{inst.name}</h3>
                       <span className="rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ background: "color-mix(in oklch, var(--bg-input) 76%, transparent)", color: statusTone(inst.status) }}>{STATUS_COPY[inst.status]}</span>
-                      <span className="rounded-full px-2 py-0.5 text-[11px] font-bold uppercase" style={{ background: inst.tier === "paid" ? "color-mix(in oklch, var(--accent) 18%, var(--bg-input))" : "var(--bg-input)", color: inst.tier === "paid" ? "var(--accent)" : "var(--text-muted)" }}>{inst.tier === "paid" ? "Always-on" : "Free / sleeps"}</span>
+                      <PlanBadge plan={plan} />
                     </div>
                     <p className="mt-1 truncate text-sm" style={{ color: "var(--text-muted)" }}>{inst.public_url ?? `${inst.subdomain}.ohiyo.gg`}</p>
                     {inst.error && <p className="mt-1 text-xs" style={{ color: "var(--danger)" }}>{inst.error}</p>}
+                    {"note" in plan && plan.note && (
+                      <p className="mt-1 text-xs" style={{ color: inst.billing?.status === "past_due" ? "var(--danger)" : "var(--text-muted)" }}>{plan.note}</p>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2 lg:justify-end">
                     {inst.public_url && (
@@ -183,16 +254,26 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
                     )}
                     <button type="button" onClick={() => exportPack(inst)} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" }}>Export</button>
                     <button type="button" onClick={() => showGraduate(inst)} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" }}>Self-host</button>
-                    <button type="button" onClick={() => billing(inst)} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--accent)", border: "none" }}>Billing</button>
-                    {inst.tier !== "paid" && (
-                      // Changing the tier is operator-only on the server (an owner gets 403).
-                      <button type="button" disabled className="rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-muted)", border: "none", cursor: "not-allowed", opacity: 0.7 }}>Paid plan: coming soon</button>
+                    {plan.action === "upgrade" && (
+                      <button type="button" onClick={() => upgrade(inst)} disabled={busy === `upgrade:${inst.id}`} className="kc-cta rounded-full px-3 py-2 text-xs font-bold">{busy === `upgrade:${inst.id}` ? "Opening checkout…" : plan.label}</button>
                     )}
-                    <button type="button" onClick={() => { if (confirm(`Delete ${inst.name}? Export first if you need it.`)) void run(`delete:${inst.id}`, () => api.deleteInstance(inst.id, token), () => onToast("Instant Server deleted.", "success")); }} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--danger)", border: "none" }}><Icon name="trash" size={13} /> Delete</button>
+                    {plan.action === "unavailable" && (
+                      <button type="button" disabled title={plan.reason} aria-label={`Paid plan unavailable: ${plan.reason}`} className="rounded-full px-3 py-2 text-xs font-semibold" style={{ ...chip, color: "var(--text-muted)", cursor: "not-allowed", opacity: 0.7 }}>Paid plan unavailable</button>
+                    )}
+                    {plan.action === "manage" && (
+                      <>
+                        <button type="button" onClick={() => manageBilling(inst)} disabled={busy === `portal:${inst.id}`} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ ...chip, color: "var(--accent)" }}>Manage billing</button>
+                        {plan.canCancel && (
+                          <button type="button" onClick={() => cancelPlan(inst)} disabled={busy === `cancel:${inst.id}`} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={chip}>Cancel plan</button>
+                        )}
+                      </>
+                    )}
+                    <button type="button" onClick={() => remove(inst, plan)} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ ...chip, color: "var(--danger)" }}><Icon name="trash" size={13} /> Delete</button>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

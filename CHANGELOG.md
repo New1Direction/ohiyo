@@ -12,6 +12,14 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ## [Unreleased]
 
 ### Added
+- **A paid plan for Instant Servers,** about $8 a month per community. Upgrade a server from
+  Instant Servers and pay with Stripe Checkout; the plan turns on when Stripe confirms the
+  payment. Ohiyo never puts a paid server to sleep, and paid servers don't count toward the
+  3 free ones. Cancel in the app (it stays paid until the period ends) or manage the card and
+  invoices in Stripe's billing portal. A failed renewal keeps the plan while Stripe retries,
+  then the server moves to the free plan and keeps running. Deleting a paid server or the
+  account cancels its plan first. Where payments or real hosting aren't set up, the app says
+  "Paid plan unavailable" and why, and a development server says its servers are simulated.
 - **Events, properly.** A month calendar (today marked, arrow keys move between days) and an
   agenda, which phones open on. An event can have an end time, a place (one of the space's
   voice or text channels, or an address or link of your own) and a cover picture. Answer

@@ -16,6 +16,9 @@ list under "Web beta ready" has not been re-verified since July._
   to `ohiyo.fly.dev` and have to be replaced by hand once.
 - Instant Servers are unavailable on the hosted service (they need Fly Machines); the
   server refuses to create them and the daily provisioning smoke is off.
+- The paid Instant Servers plan (Stripe Checkout, webhook, customer portal, about $8 per
+  community per month) is built (2026-10-13) but not sold: it needs live Instant Servers
+  and the Stripe settings in `GO-LIVE.md` §3b. The app says "Paid plan unavailable" and why.
 - `OHIYO_OPERATOR_USER_IDS` is set on Railway.
 - Still to do by the owner: shut down the old Fly apps, and delete the unused
   Cloudflare Pages project `ohiyo-app`. The wildcard `*.ohiyo.gg` record (and so

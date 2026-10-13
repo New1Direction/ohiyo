@@ -51,8 +51,11 @@ box; server channels are stored like any chat server's.
 - **Instant Servers** — launch your own community server in **one tap**. We host it
   (Minecraft-Realms-style): encrypted DMs and group chats are ciphertext on the box,
   while server channels are stored in the clear like any chat server's. Export anytime,
-  or graduate to your own box, or self-host for **$0**; all for less than one Discord
-  Nitro. *(Phase 1 shipped — control plane + provisioning; design + plan in
+  or graduate to your own box, or self-host for **$0**. Free servers can sleep; the
+  optional paid plan (about $8 a month per community, less than one Discord Nitro) keeps
+  one running, paid by card through Stripe and cancellable in the app. *(Control plane,
+  provisioning and the paid plan are built; they're off on the hosted service until Fly
+  and Stripe are set up — see [`GO-LIVE.md`](GO-LIVE.md). Design in
   [`docs/superpowers/`](docs/superpowers/).)*
 - **One-command Discord template migration** — give Ohiyo a Discord Server Template
   link and it reconstructs categories, channels, roles, best-effort permission bits,

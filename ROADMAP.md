@@ -43,7 +43,8 @@ Your own encrypted server, in one tap — and you actually own it. Like Minecraf
 - [ ] **Phase 2 — sleep/wake** — idle instances auto-stop and wake-on-request (sub-second), with a "waking…" UX
 - [ ] **Phase 3 — notification relay** — content-free pushes so a *sleeping* server can still ping you at 2am
 - [ ] **Phase 4 — export + graduate** — download-my-server + move-to-your-own-box flows
-- [ ] **Phase 5 — tiers + billing** — free (sleeps) vs paid (always-on, custom domain), payment + suspend/grace lifecycle
+- [x] **Phase 5a — paid plan + billing** — Stripe Checkout, signed webhook, customer portal, cancel at period end, `past_due` grace then back to free, paid servers outside the free cap, plan cancelled before a server or account is deleted. Sold only where Instant Servers really run.
+- [ ] **Phase 5b** — custom domains for paid servers, automatic sleep for idle free servers, an uptime SLA
 - [ ] **Phase 1b — in-app server switch** — point the running client at a freshly-provisioned `*.ohiyo.gg` URL (the client is single-server at build time today)
 
 ## Foundations (cross-cutting)
