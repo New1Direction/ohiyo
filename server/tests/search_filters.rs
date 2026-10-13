@@ -274,7 +274,14 @@ async fn has_finds_links_files_images_and_embeds() {
     let w = world().await;
     say(&w, &w.owner, &w.general, "see https://example.com/x").await;
     let png = upload(&w, &w.owner, "pic.png", "image/png", PNG).await;
-    say_with(&w, &w.owner, &w.general, "a picture", &[png.clone()]).await;
+    say_with(
+        &w,
+        &w.owner,
+        &w.general,
+        "a picture",
+        std::slice::from_ref(&png),
+    )
+    .await;
     let txt = upload(&w, &w.owner, "notes.txt", "text/plain", b"plain notes").await;
     say_with(&w, &w.owner, &w.general, "a document", &[txt]).await;
     let embedded = say(&w, &w.owner, &w.general, "a card").await;
