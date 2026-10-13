@@ -300,6 +300,10 @@ pub fn router() -> Router<AppState> {
             get(moderation::list_timeouts),
         )
         .route(
+            "/servers/{server_id}/moderatable",
+            get(moderation::list_moderatable),
+        )
+        .route(
             "/servers/{server_id}/members/{user_id}/timeout",
             put(moderation::set_timeout).delete(moderation::remove_timeout),
         )

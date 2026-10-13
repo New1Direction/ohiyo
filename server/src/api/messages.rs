@@ -860,6 +860,9 @@ async fn set_pin(
             .await
             .map_err(crate::api::error::internal)?;
     let msg = msg.ok_or((StatusCode::NOT_FOUND, "message not found".into()))?;
+    if msg.call_log.is_some() {
+        return Err((StatusCode::BAD_REQUEST, "a call log can't be pinned".into()));
+    }
 
     let flag = if pinned { 1 } else { 0 };
     sqlx::query("UPDATE messages SET pinned = ? WHERE id = ?")
@@ -951,6 +954,23 @@ pub async fn delete_message(
             .ok()
             .flatten();
     let server_id = row.and_then(|(s,)| s);
+    // A call log is the record of a call, so the people in it can't remove it, not even the
+    // caller (its author). Only a moderator in a space could, and call logs live in DMs.
+    if msg.call_log.is_some()
+        && !(server_id.is_some()
+            && crate::api::roles::has_channel_perm(
+                &state,
+                &channel_id,
+                &auth.0,
+                crate::api::roles::perm::MANAGE_MESSAGES,
+            )
+            .await)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "a call log can't be deleted".into(),
+        ));
+    }
     if msg.author_id != auth.0 {
         // Mods with MANAGE_MESSAGES can delete others' messages in a server channel.
         let can = match server_id.as_deref() {

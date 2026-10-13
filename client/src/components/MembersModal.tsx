@@ -5,7 +5,7 @@ import { ModalShell } from "./ModalShell";
 import { AvatarMark } from "./BirdMark";
 import { TimeoutDialog } from "./moderation/TimeoutDialog";
 import { BanDialog } from "./moderation/BanDialog";
-import { timeoutEnds } from "../lib/moderation";
+import { canActOn, timeoutEnds } from "../lib/moderation";
 import "./moderation/moderation.css";
 
 type Props = {
@@ -24,6 +24,8 @@ type Props = {
   canTimeout?: boolean;
   /** Members timed out right now: when each time out ends (unix seconds). */
   timeouts?: ReadonlyMap<string, number>;
+  /** The members you outrank and so may time out; unknown until the server answers. */
+  moderatable?: ReadonlySet<string>;
   canManageRoles: boolean;
   onManageRoles: () => void;
   onKick: (userId: string) => void;
@@ -59,7 +61,7 @@ export function ActivityLine({ activity }: { activity: Activity }) {
 /** Server member list. Moderation actions appear per your permissions. */
 export function MembersModal({
   members, ownerId, currentUserId, onlineUsers, idleUsers, activities, voiceMembers, onJoinVoice, onOpenDm, canKick, canBan,
-  canTimeout = false, timeouts, canManageRoles, onManageRoles, onKick, onBan, onTimeout, onRemoveTimeout, onClose,
+  canTimeout = false, timeouts, moderatable, canManageRoles, onManageRoles, onKick, onBan, onTimeout, onRemoveTimeout, onClose,
 }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [dmBusyId, setDmBusyId] = useState<string | null>(null);
@@ -178,7 +180,7 @@ export function MembersModal({
               )}
             </div>
 
-            {canTimeout && m.id !== ownerId && m.id !== currentUserId && (
+            {canActOn(m.id, { ownerId, currentUserId, allowed: canTimeout, moderatable }) && (
               timedOutUntil(m.id) !== null ? (
                 onRemoveTimeout && (
                   <button

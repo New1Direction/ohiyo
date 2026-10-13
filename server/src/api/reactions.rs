@@ -26,15 +26,21 @@ pub async fn toggle_reaction(
         return Err((StatusCode::BAD_REQUEST, "invalid emoji".into()));
     }
     // channel_id is attacker-controlled — confirm the message actually lives in it.
-    let belongs: Option<(i64,)> =
-        sqlx::query_as("SELECT 1 FROM messages WHERE id = ? AND channel_id = ?")
+    let belongs: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT call_log FROM messages WHERE id = ? AND channel_id = ?")
             .bind(&message_id)
             .bind(&channel_id)
             .fetch_optional(&state.db)
             .await
             .map_err(crate::api::error::internal)?;
-    if belongs.is_none() {
+    let Some((call_log,)) = belongs else {
         return Err((StatusCode::NOT_FOUND, "message not found".into()));
+    };
+    if call_log.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "a call log can't be reacted to".into(),
+        ));
     }
 
     // Look and toggle in one write transaction: taps at once would otherwise all see no
