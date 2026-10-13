@@ -1,0 +1,240 @@
+/* ─── Moderation tools: time out, ban, bans, invites, slowmode, the log ─────────────
+   Every colour is a theme token, so each theme (light, dark, and the rest) carries these
+   without its own rules. Danger is kept for what removes someone; the accent for choices. */
+
+.kc-mod-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 850;
+  letter-spacing: -0.03em;
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+}
+.kc-mod-lede {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.kc-mod-section { margin-top: 1.25rem; }
+.kc-mod-fieldset { min-width: 0; margin: 1.25rem 0 0; padding: 0; border: 0; }
+.kc-mod-legend {
+  margin-bottom: 0.5rem;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* A row of lengths to pick from: radios drawn as chips. The radio stays in the page (not
+   display:none) so arrow keys and screen readers work as for any radio group. */
+.kc-mod-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+@media (max-width: 420px) {
+  .kc-mod-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.kc-mod-choice { position: relative; display: block; cursor: pointer; }
+.kc-mod-choice input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.kc-mod-choice span {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.kc-mod-choice:hover span { border-color: color-mix(in oklch, var(--accent) 40%, transparent); color: var(--text-primary); }
+.kc-mod-choice input:checked + span {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 16%, var(--bg-input));
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.kc-mod-choice input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.kc-mod-choice input:active + span { transform: scale(0.98); }
+
+.kc-mod-field { display: flex; flex-direction: column; gap: 0.375rem; margin-top: 1rem; }
+.kc-mod-field > span { color: var(--text-secondary); font-size: 0.8125rem; font-weight: 600; }
+.kc-mod-field textarea { resize: vertical; min-height: 4.5rem; }
+.kc-mod-field select,
+.kc-mod-field input,
+.kc-mod-field textarea { width: 100%; min-height: 44px; }
+
+.kc-mod-error {
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--danger) 12%, transparent);
+  color: var(--danger);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.kc-mod-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+.kc-mod-button {
+  min-height: 44px;
+  padding: 0.5rem 1.125rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.kc-mod-button:disabled { opacity: 0.6; cursor: default; }
+.kc-mod-button--danger {
+  border: 1px solid transparent;
+  background: var(--danger-fill, var(--danger));
+  color: #fff;
+}
+.kc-mod-button--danger:hover:not(:disabled) { filter: brightness(1.08); }
+.kc-mod-button--small { min-height: 36px; padding: 0.25rem 0.75rem; font-size: 0.8125rem; }
+
+/* Lists: bans, invite links, log entries. */
+.kc-mod-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-height: min(56vh, 28rem);
+  margin: 1rem 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.kc-mod-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 7%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--bg-input) 70%, transparent);
+}
+.kc-mod-row[data-faded="true"] { opacity: 0.6; }
+.kc-mod-row__body { min-width: 0; flex: 1; }
+.kc-mod-row__name { color: var(--text-primary); font-size: 0.875rem; font-weight: 700; overflow-wrap: anywhere; }
+.kc-mod-row__meta { margin-top: 0.125rem; color: var(--text-muted); font-size: 0.75rem; line-height: 1.45; overflow-wrap: anywhere; }
+.kc-mod-row__reason {
+  margin: 0.375rem 0 0;
+  padding-left: 0.625rem;
+  border-left: 2px solid color-mix(in oklch, var(--text-muted) 40%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+.kc-mod-row__code { font-family: var(--font-mono); font-size: 0.875rem; color: var(--text-primary); }
+.kc-mod-initial {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--accent) 22%, var(--bg-input));
+  color: var(--text-primary);
+  font-weight: 800;
+}
+.kc-mod-empty {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border: 1px dashed color-mix(in oklch, var(--text-muted) 35%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+.kc-mod-action { color: var(--text-primary); font-weight: 700; }
+.kc-mod-action[data-tone="danger"] { color: var(--danger); }
+.kc-mod-action[data-tone="calm"] { color: var(--accent); }
+
+/* An on/off setting with what it does underneath. */
+.kc-mod-setting {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-sidebar);
+}
+.kc-mod-setting + .kc-mod-setting { margin-top: 0.5rem; }
+.kc-mod-setting[data-on="true"][data-tone="warning"] {
+  background: color-mix(in oklch, var(--warning) 14%, var(--bg-sidebar));
+}
+
+/* A member who is timed out, in the member list. */
+.kc-mod-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.125rem;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--warning) 18%, transparent);
+  color: var(--text-primary);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+/* What the composer says while you're timed out or in slowmode. */
+.kc-composer-mod {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin: 0 1rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--accent) 9%, var(--bg-input));
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+.kc-composer-mod:empty { display: none; }
+.kc-composer-mod[data-kind="timeout"] {
+  margin-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding: 0.875rem 1rem;
+  background: color-mix(in oklch, var(--warning) 14%, var(--bg-input));
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+.kc-composer-mod__wait { margin-left: auto; color: var(--text-primary); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kc-composer-mod svg { flex-shrink: 0; color: var(--accent); }
+.kc-composer-mod[data-kind="timeout"] svg { color: var(--warning); }
+
+/* A phone's chat header has no room for it: there it shows only while slowmode is on, and
+   the space menu sets it. */
+@media (max-width: 640px) {
+  .kc-chat-header .kc-slowmode-button:not(.active) { display: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kc-mod-choice span { transition: none; }
+  .kc-mod-choice input:active + span { transform: none; }
+}

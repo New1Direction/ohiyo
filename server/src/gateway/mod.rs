@@ -707,6 +707,13 @@ async fn handle_client_event(
             if !crate::api::messages::user_can_access(state, &channel_id, user_id).await {
                 return;
             }
+            // Someone timed out in the space can't join its calls (their app says why).
+            if crate::api::moderation::timeout_in_channel(state, &channel_id, user_id)
+                .await
+                .is_some()
+            {
+                return;
+            }
 
             // Build the roster of peers already present (before adding ourselves),
             // then register ourselves. Single lock, no await inside. Returns None

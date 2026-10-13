@@ -86,6 +86,9 @@ try {
   await pageA.getByRole("button", { name: `Remove Kicky` }).click();
   // inline confirm → Ban (removes + blocks rejoining)
   await pageA.getByRole("button", { name: "Ban", exact: true }).click();
+  // The ban dialog: an optional reason and whether to wipe their recent messages; Ban again.
+  await pageA.waitForSelector("text=Ban Kicky", { timeout: 5000 });
+  await pageA.click('[role="dialog"] button:has-text("Ban")');
   // B should be dropped from Mod HQ
   await pageB.waitForFunction(() => !/Mod HQ/.test(document.body.innerText), { timeout: 8000 });
   log("B was banned — Mod HQ gone from B's app ✓");

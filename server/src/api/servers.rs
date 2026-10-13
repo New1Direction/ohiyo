@@ -295,11 +295,14 @@ async fn remove_member(
     Ok(())
 }
 
-/// POST /servers/{server_id}/bans/{user_id} — owner bans (and removes) a member.
+/// POST /servers/{server_id}/bans/{user_id} — ban (and remove) a member. The optional body
+/// gives a reason and how far back to delete their messages ({"reason", "delete_message_seconds"});
+/// no body means neither, as older apps send it.
 pub async fn ban_member(
     auth: AuthUser,
     Path((server_id, target_id)): Path<(String, String)>,
     State(state): State<AppState>,
+    body: axum::body::Bytes,
 ) -> Result<StatusCode, (StatusCode, String)> {
     require_mod_action(
         &state,
@@ -309,19 +312,26 @@ pub async fn ban_member(
         crate::api::roles::perm::BAN_MEMBERS,
     )
     .await?;
+    let options = crate::api::bans::ban_options(&body)?;
 
     sqlx::query(
-        "INSERT OR IGNORE INTO server_bans (server_id, user_id, banned_by, banned_at) VALUES (?,?,?,?)",
+        "INSERT OR IGNORE INTO server_bans (server_id, user_id, banned_by, banned_at, reason) VALUES (?,?,?,?,?)",
     )
     .bind(&server_id)
     .bind(&target_id)
     .bind(&auth.0)
     .bind(now_unix())
+    .bind(&options.reason)
     .execute(&state.db)
     .await
     .map_err(crate::api::error::internal)?;
 
     remove_member(&state, &server_id, &target_id).await?;
+    let metadata = serde_json::json!({
+        "reason": options.reason,
+        "delete_message_seconds": options.delete_message_seconds,
+    })
+    .to_string();
     crate::api::abuse::log_action(
         &state,
         crate::api::abuse::ActionLog {
@@ -331,10 +341,17 @@ pub async fn ban_member(
             target_type: "user",
             target_id: &target_id,
             report_id: None,
-            metadata: None,
+            metadata: Some(&metadata),
         },
     )
     .await?;
+    crate::api::bans::delete_recent_messages(
+        &state,
+        &server_id,
+        &target_id,
+        options.delete_message_seconds,
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
