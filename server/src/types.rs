@@ -472,6 +472,9 @@ pub enum GatewayEvent {
         /// True when the participant joined with no microphone (receive-only).
         #[serde(rename = "listenOnly", default)]
         listen_only: bool,
+        /// True when the participant hears nobody (deafened). A deafened person is always muted.
+        #[serde(default)]
+        deafened: bool,
     },
     /// Sent to a user when they join a voice channel: the peers already present.
     /// The joiner initiates WebRTC offers to each of these peers.
@@ -518,6 +521,9 @@ pub struct VoicePeer {
     /// True when the peer joined with no microphone (receive-only).
     #[serde(rename = "listenOnly", default)]
     pub listen_only: bool,
+    /// True when the peer hears nobody (deafened). A deafened peer is always muted.
+    #[serde(default)]
+    pub deafened: bool,
 }
 
 // ── Client → server events (parsed in the gateway inbound loop) ────────────────
@@ -535,6 +541,9 @@ pub enum ClientEvent {
         /// True when the client has no microphone and joins receive-only.
         #[serde(default)]
         listen_only: bool,
+        /// True when the client joins deafened. Apps that don't know about deafen leave it out.
+        #[serde(default)]
+        deafened: bool,
     },
     /// Leave a voice channel.
     LeaveVoice { channel_id: String },
@@ -547,6 +556,10 @@ pub enum ClientEvent {
         /// True when the client is participating receive-only (no microphone).
         #[serde(default)]
         listen_only: bool,
+        /// True when the client hears nobody (deafened). Apps that don't know about deafen
+        /// leave it out.
+        #[serde(default)]
+        deafened: bool,
     },
     /// Relay a WebRTC offer/answer/ICE candidate to another peer.
     Signal {
