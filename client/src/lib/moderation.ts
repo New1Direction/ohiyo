@@ -142,7 +142,20 @@ const ACTION_WORDS: Record<string, string> = {
   create_report: "Reported",
   block_user: "Blocked",
   unblock_user: "Unblocked",
+  reorder_roles: "Reordered roles",
+  set_channel_permissions: "Changed a channel's permissions",
+  sync_channel_permissions: "Synced a channel with its category",
 };
+
+function metadataName(metadata: string | null): string | null {
+  if (!metadata) return null;
+  try {
+    const parsed = JSON.parse(metadata) as { name?: unknown };
+    return typeof parsed.name === "string" && parsed.name ? parsed.name : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The actions the moderation log can be filtered by, in plain words. */
 export const MOD_ACTION_FILTERS: readonly { action: string; label: string }[] = [
@@ -155,6 +168,8 @@ export const MOD_ACTION_FILTERS: readonly { action: string; label: string }[] = 
   { action: "set_slowmode", label: "Slowmode" },
   { action: "pause_invites", label: "Paused invites" },
   { action: "resume_invites", label: "Resumed invites" },
+  { action: "update_role", label: "Role edits" },
+  { action: "set_channel_permissions", label: "Channel permissions" },
 ];
 
 /** One moderation log action in plain words: "Banned", "Timed out for 10 minutes"… */
@@ -168,8 +183,34 @@ export function describeModAction(entry: { action: string; metadata: string | nu
     const seconds = metadataSeconds(entry.metadata) ?? 0;
     return seconds > 0 ? `Set slowmode to ${slowmodeLabel(seconds)}` : "Turned slowmode off";
   }
+  if (entry.action === "update_role") {
+    const name = metadataName(entry.metadata);
+    return name ? `Edited the ${name} role` : "Edited a role";
+  }
+  if (entry.action === "rename_space") {
+    const name = metadataName(entry.metadata);
+    return name ? `Renamed the space to ${name}` : "Renamed the space";
+  }
+  if (entry.action === "update_channel") {
+    const name = metadataName(entry.metadata);
+    return name ? `Edited #${name}` : "Edited a channel";
+  }
   const words = ACTION_WORDS[entry.action];
   if (words) return words;
   const spaced = entry.action.replace(/_/g, " ").trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/**
+ * Whether to offer an action like Time out on `memberId`: you have the permission, they're
+ * not the owner or you, and they're among the members the server says you outrank
+ * (`moderatable`, from GET /servers/{id}/moderatable; until it answers, only the owner and
+ * you are left out). The server refuses the rest anyway.
+ */
+export function canActOn(
+  memberId: string,
+  ctx: { ownerId: string; currentUserId: string; allowed: boolean; moderatable?: ReadonlySet<string> },
+): boolean {
+  if (!ctx.allowed || memberId === ctx.ownerId || memberId === ctx.currentUserId) return false;
+  return ctx.moderatable ? ctx.moderatable.has(memberId) : true;
 }

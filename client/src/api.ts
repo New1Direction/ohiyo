@@ -3,6 +3,7 @@ import { DEFAULT_HOME_URL, normalizeHomeUrl } from "./lib/homes";
 import type { NotificationLevel, NotificationSetting, NotificationTarget } from "./lib/notificationSettings";
 import type { WebhookCreated, WebhookSummary } from "./components/WebhooksDialog";
 import type { ThreadSummary } from "./lib/threads";
+import type { OverwriteBits, OverwriteRow } from "./lib/roleColors";
 import type { RecoveryCodes, TwoFactorChallenge, TwoFactorSetup, TwoFactorStatus } from "./lib/twoFactor";
 
 // ── Runtime endpoint config ──────────────────────────────────────────────────
@@ -105,6 +106,10 @@ export type ServerWithChannels = Server & {
   channels: Channel[];
   members: PublicUser[];
   categories?: Category[];
+  /** The space's roles, for name colours and the member list's sections. */
+  roles?: Role[];
+  /** Who holds which role (not @everyone, which everyone holds). */
+  member_roles?: { user_id: string; role_id: string }[];
 };
 
 export type ReactionGroup = {
@@ -398,7 +403,12 @@ export type Role = {
   position: number;
   created_at: number;
   is_everyone?: boolean;
+  /** Members holding it are listed under it in the member list. */
+  hoist?: boolean;
 };
+
+/** Where a set of permission overwrites applies: a channel, or a category and its channels. */
+export type OverwriteScope = { type: "channel" | "category"; id: string };
 
 export type InviteInfo = {
   code: string;
@@ -944,6 +954,10 @@ export const api = {
   listTimeouts: (token: string, serverId: string) =>
     request<MemberTimeout[]>(`/servers/${serverId}/timeouts`, {}, token),
 
+  /** The ids of the members you may time out (you outrank them; not the owner or an admin). */
+  listModeratable: (token: string, serverId: string) =>
+    request<string[]>(`/servers/${serverId}/moderatable`, {}, token),
+
   setSlowmode: (token: string, channelId: string, seconds: number) =>
     request<void>(`/channels/${channelId}/slowmode`, { method: "PUT", body: JSON.stringify({ seconds }) }, token),
 
@@ -973,6 +987,55 @@ export const api = {
 
   unassignRole: (token: string, serverId: string, userId: string, roleId: string) =>
     request<void>(`/servers/${serverId}/members/${userId}/roles/${roleId}`, { method: "DELETE" }, token),
+
+  /** Change a role's name, colour (null: none), permissions, or whether it's shown separately. */
+  updateRole: (
+    token: string,
+    serverId: string,
+    roleId: string,
+    patch: { name?: string; color?: string | null; permissions?: number; hoist?: boolean },
+  ) =>
+    request<Role>(`/servers/${serverId}/roles/${roleId}`, { method: "PATCH", body: JSON.stringify(patch) }, token),
+
+  /** Put the roles ranked below yours in a new order, highest first. */
+  reorderRoles: (token: string, serverId: string, roleIds: string[]) =>
+    request<void>(`/servers/${serverId}/role-order`, { method: "PUT", body: JSON.stringify({ role_ids: roleIds }) }, token),
+
+  renameServer: (token: string, serverId: string, name: string) =>
+    request<ServerWithChannels>(`/servers/${serverId}`, { method: "PATCH", body: JSON.stringify({ name }) }, token),
+
+  /** Rename a channel or change its topic ("" clears the topic). */
+  updateChannel: (token: string, channelId: string, patch: { name?: string; topic?: string }) =>
+    request<Channel>(`/channels/${channelId}`, { method: "PATCH", body: JSON.stringify(patch) }, token),
+
+  // A channel's or category's own permissions, per @everyone, role or member.
+  listOverwrites: (token: string, serverId: string, scope: OverwriteScope) =>
+    request<OverwriteRow[]>(`/servers/${serverId}/permission-overwrites/${scope.type}/${scope.id}`, {}, token),
+
+  setOverwrite: (
+    token: string,
+    serverId: string,
+    scope: OverwriteScope,
+    targetType: string,
+    targetId: string | null,
+    bits: OverwriteBits,
+  ) =>
+    request<void>(
+      `/servers/${serverId}/permission-overwrites/${scope.type}/${scope.id}/${targetType}/${targetId ?? "everyone"}`,
+      { method: "PUT", body: JSON.stringify(bits) },
+      token,
+    ),
+
+  deleteOverwrite: (token: string, serverId: string, scope: OverwriteScope, targetType: string, targetId: string | null) =>
+    request<void>(
+      `/servers/${serverId}/permission-overwrites/${scope.type}/${scope.id}/${targetType}/${targetId ?? "everyone"}`,
+      { method: "DELETE" },
+      token,
+    ),
+
+  /** Drop all of a channel's own permissions, so it follows its category's. */
+  clearOverwrites: (token: string, serverId: string, scope: OverwriteScope) =>
+    request<void>(`/servers/${serverId}/permission-overwrites/${scope.type}/${scope.id}`, { method: "DELETE" }, token),
 
   /** A page of a space's message search, read like Discord's (from:, in:, has:, dates…).
    *  Days in before:/after:/during: are this device's own (its time zone goes along). */

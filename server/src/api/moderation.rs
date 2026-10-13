@@ -141,17 +141,18 @@ async fn require_moderator_over(
         .await
         .map_err(crate::api::error::internal)?;
     let owner_id = owner_id.ok_or((StatusCode::NOT_FOUND, "space not found".into()))?;
-    if target_id == owner_id {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "the owner can't be timed out".into(),
-        ));
-    }
+    // Permission first: without it the answer is 403 whoever the target is.
     let actor_permissions = roles::member_permissions(state, server_id, actor_id).await;
     if actor_permissions & (flag | perm::ADMINISTRATOR) == 0 {
         return Err((
             StatusCode::FORBIDDEN,
             "you don't have permission for that".into(),
+        ));
+    }
+    if target_id == owner_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "the owner can't be timed out".into(),
         ));
     }
     if active_timeout(state, server_id, actor_id).await.is_some() {
@@ -298,6 +299,56 @@ pub async fn remove_timeout(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// GET /servers/{server_id}/moderatable — the ids of the members the caller may time out, by
+/// the rule [`require_moderator_over`] enforces, so the app offers Time out only on them.
+/// Empty without the permission (or while timed out); 404 outside the space.
+pub async fn list_moderatable(
+    auth: AuthUser,
+    Path(server_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    if !crate::api::servers::is_member(&state, &server_id, &auth.0).await {
+        return Err((StatusCode::NOT_FOUND, "space not found".into()));
+    }
+    let permissions = roles::member_permissions(&state, &server_id, &auth.0).await;
+    if permissions & (perm::MODERATE_MEMBERS | perm::ADMINISTRATOR) == 0
+        || active_timeout(&state, &server_id, &auth.0).await.is_some()
+    {
+        return Ok(Json(Vec::new()));
+    }
+    let owner_id: Option<String> = sqlx::query_scalar("SELECT owner_id FROM servers WHERE id = ?")
+        .bind(&server_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    let actor_rank = roles::member_top_position(&state, &server_id, &auth.0).await;
+    // Each member's top role position, as `roles::member_top_position` reads it, in one go.
+    let ranks: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT sm.user_id, COALESCE(MAX(r.position), -1)
+         FROM server_members sm
+         LEFT JOIN member_roles mr ON mr.server_id = sm.server_id AND mr.user_id = sm.user_id
+         LEFT JOIN roles r ON r.id = mr.role_id
+         WHERE sm.server_id = ?
+         GROUP BY sm.user_id",
+    )
+    .bind(&server_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+    let mut ids = Vec::new();
+    for (user_id, rank) in ranks {
+        if rank >= actor_rank || user_id == auth.0 || owner_id.as_deref() == Some(&user_id) {
+            continue;
+        }
+        if roles::member_permissions(&state, &server_id, &user_id).await & perm::ADMINISTRATOR != 0
+        {
+            continue;
+        }
+        ids.push(user_id);
+    }
+    Ok(Json(ids))
+}
+
 /// GET /servers/{server_id}/timeouts — the space's current time outs, for the people who
 /// can hand them out (the member list shows them).
 pub async fn list_timeouts(
@@ -431,18 +482,24 @@ pub fn with_retry_after(error: ApiError) -> Response {
 }
 
 /// Claim `user_id`'s next message in `channel_id` under its slowmode, or say how long to
-/// wait. People who manage messages or channels aren't slowed down, and DMs have none.
+/// wait. People who manage messages or channels aren't slowed down, and DMs have none. A
+/// thread without its own slowmode is as slow as the channel it hangs off.
 pub async fn claim_slowmode(
     state: &AppState,
     channel_id: &str,
     user_id: &str,
 ) -> Result<(), ApiError> {
-    let row: Option<(Option<String>, i64)> =
-        sqlx::query_as("SELECT server_id, slowmode_seconds FROM channels WHERE id = ?")
-            .bind(channel_id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(crate::api::error::internal)?;
+    let row: Option<(Option<String>, i64)> = sqlx::query_as(
+        "SELECT c.server_id,
+                CASE WHEN c.slowmode_seconds > 0 THEN c.slowmode_seconds
+                     ELSE COALESCE(p.slowmode_seconds, 0) END
+         FROM channels c LEFT JOIN channels p ON p.id = c.parent_id
+         WHERE c.id = ?",
+    )
+    .bind(channel_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
     let Some((Some(_), slowmode)) = row else {
         return Ok(());
     };

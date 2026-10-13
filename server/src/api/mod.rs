@@ -24,6 +24,7 @@ pub mod messages;
 pub mod moderation;
 pub mod notifications;
 pub mod og;
+pub mod overwrites;
 pub mod polls;
 pub mod profile;
 pub mod push;
@@ -232,7 +233,7 @@ pub fn router() -> Router<AppState> {
         .route("/servers", get(servers::list_servers))
         .route("/servers", post(servers::create_server))
         .route("/servers/{id}", get(servers::get_server))
-        .route("/servers/{id}", delete(servers::delete_server))
+        .route("/servers/{id}", delete(servers::delete_server).patch(servers::update_server))
         .route("/servers/{id}/icon", post(servers::set_server_icon))
         // NOTE: there is deliberately no open "/servers/{id}/join" — joining a server
         // requires a valid invite code via POST /invites/{code} (see api::invites).
@@ -275,7 +276,19 @@ pub fn router() -> Router<AppState> {
         .route("/servers/{server_id}/roles", post(roles::create_role))
         .route(
             "/servers/{server_id}/roles/{role_id}",
-            delete(roles::delete_role),
+            delete(roles::delete_role).patch(roles::update_role),
+        )
+        .route(
+            "/servers/{server_id}/role-order",
+            put(roles::reorder_roles),
+        )
+        .route(
+            "/servers/{server_id}/permission-overwrites/{scope_type}/{scope_id}",
+            get(overwrites::list_overwrites).delete(overwrites::clear_overwrites),
+        )
+        .route(
+            "/servers/{server_id}/permission-overwrites/{scope_type}/{scope_id}/{target_type}/{target_id}",
+            put(overwrites::set_overwrite).delete(overwrites::delete_overwrite),
         )
         .route(
             "/servers/{server_id}/members/{user_id}/roles",
@@ -303,6 +316,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/servers/{server_id}/timeouts",
             get(moderation::list_timeouts),
+        )
+        .route(
+            "/servers/{server_id}/moderatable",
+            get(moderation::list_moderatable),
         )
         .route(
             "/servers/{server_id}/members/{user_id}/timeout",
@@ -336,7 +353,7 @@ pub fn router() -> Router<AppState> {
             "/servers/{server_id}/channels/{channel_id}/category",
             put(channels::set_channel_category),
         )
-        .route("/channels/{id}", delete(channels::delete_channel))
+        .route("/channels/{id}", delete(channels::delete_channel).patch(channels::update_channel))
         // Incoming webhooks: made per text channel by people who manage channels; posted to
         // with no account at their secret URL (see api::webhooks).
         .route(

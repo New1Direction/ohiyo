@@ -13,7 +13,7 @@ import { CommandPalette, type CommandAction } from "./components/CommandPalette"
 import { CallOverlay } from "./components/CallOverlay";
 import { IncomingCallCard } from "./components/IncomingCallCard";
 import { callCountsAsUnread, nextRings, type IncomingRing } from "./lib/dmCall";
-import { startRingtone } from "./lib/ringtone";
+import { ringVolume, startRingtone } from "./lib/ringtone";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BootSplash } from "./components/BootSplash";
 import { Onboarding } from "./components/Onboarding";
@@ -29,6 +29,9 @@ import { FindPeopleModal } from "./components/FindPeopleModal";
 import { SearchModal, type SearchHit } from "./components/SearchModal";
 import { MembersModal } from "./components/MembersModal";
 import { RolesModal } from "./components/RolesModal";
+import { RenameSpaceDialog } from "./components/RenameSpaceDialog";
+import { ChannelSettingsModal } from "./components/ChannelSettingsModal";
+import { memberRolesOf, nameColors } from "./lib/roleColors";
 import { EventsModal } from "./components/EventsModal";
 import { EventBanner } from "./components/events/EventBanner";
 import { SavedModal } from "./components/SavedModal";
@@ -639,6 +642,8 @@ function MainApp({
   const [showSearch, setShowSearch] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showRoles, setShowRoles] = useState(false);
+  const [showRenameSpace, setShowRenameSpace] = useState(false);
+  const [channelSettingsFor, setChannelSettingsFor] = useState<Channel | null>(null);
   const [showEvents, setShowEvents] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
@@ -649,6 +654,7 @@ function MainApp({
   const [slowmodeFor, setSlowmodeFor] = useState<Channel | null>(null);
   // Members timed out in the selected space (for those who can time out): user → until.
   const [memberTimeouts, setMemberTimeouts] = useState<ReadonlyMap<string, number>>(new Map());
+  const [moderatable, setModeratable] = useState<ReadonlySet<string> | undefined>(undefined);
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   // maybeNotify runs from the gateway handler registered once per token, so it reads the
   // current blocked list through this ref, not the first render's.
@@ -1023,7 +1029,10 @@ function MainApp({
   const ringAudible = rings.some((r) => !mutedChannelIds.has(r.channelId));
   useEffect(() => {
     if (!ringAudible) return;
-    return startRingtone();
+    // Settings → Notifications: sounds off rings silently, and the slider sets how loud.
+    const volume = ringVolume(loadSoundPrefs());
+    if (volume === null) return;
+    return startRingtone(volume);
   }, [ringAudible]);
   const hasRings = rings.length > 0;
   useEffect(() => {
@@ -1226,11 +1235,17 @@ function MainApp({
   const canTimeoutMembers = can(myPerms, PERM.MODERATE_MEMBERS);
   useEffect(() => {
     setMemberTimeouts(new Map());
+    setModeratable(undefined);
     if (!showMembers || !selectedServerId || !canTimeoutMembers) return;
     let alive = true;
     api
       .listTimeouts(token, selectedServerId)
       .then((rows) => alive && setMemberTimeouts(new Map(rows.map((t): [string, number] => [t.user_id, t.until]))))
+      .catch(() => {});
+    // Whom you outrank, so Time out isn't offered on someone the server would refuse.
+    api
+      .listModeratable(token, selectedServerId)
+      .then((ids) => alive && setModeratable(new Set(ids)))
       .catch(() => {});
     return () => {
       alive = false;
@@ -1588,14 +1603,27 @@ function MainApp({
         break;
       }
 
-      case "ServerCreate":
+      case "ServerCreate": {
         // Upsert: also used as a "server changed" signal (categories, channel moves).
         setServers((prev) =>
           prev.some((s) => s.id === event.d.id)
             ? prev.map((s) => (s.id === event.d.id ? event.d : s))
             : [...prev, event.d]
         );
+        // The open channel was made private to us, or deleted: step out of it.
+        const open = selectedChannelRef.current;
+        if (open && open.server_id === event.d.id && !open.parent_id && !event.d.channels.some((c) => c.id === open.id)) {
+          const next = event.d.channels.find((c) => c.channel_type === "text");
+          if (next) handleSelectChannelRef.current(next);
+          else {
+            setSelectedChannel(null);
+            selectedChannelRef.current = null;
+            setMessages([]);
+          }
+          toast(`#${open.name} isn't open to you any more.`);
+        }
         break;
+      }
 
       case "ServerDelete":
         setServers((prev) => prev.filter((s) => s.id !== event.d.id));
@@ -3181,6 +3209,13 @@ function MainApp({
     );
   }
 
+  /** Whether a call outside a voice channel is a one-to-one DM or a group chat's. */
+  function chatCallKind(channelId: string | null): "dm" | "group" | null {
+    const chat = channelId ? dms.find((d) => d.id === channelId) : undefined;
+    if (!chat) return null;
+    return chat.channel_type === "dm" ? "dm" : "group";
+  }
+
   /** A DM's or group chat's name, as the call screen shows it. */
   function chatCallName(channelId: string | null): string | null {
     const chat = channelId ? dms.find((d) => d.id === channelId) : undefined;
@@ -3193,6 +3228,10 @@ function MainApp({
       .map((m) => m.display_name || m.username);
     return names.length ? names.join(", ") : "Group chat";
   }
+
+  // Names take the colour of their highest coloured role in the open space.
+  const openSpace = servers.find((s) => s.id === selectedServerId);
+  const roleNameColors = useMemo(() => nameColors(openSpace ?? {}), [openSpace]);
 
   const sidebarVoiceParticipants = useMemo(() => {
     const next = new Map<string, VoiceSidebarParticipant[]>();
@@ -3485,6 +3524,13 @@ function MainApp({
             canManageChannels={can(myPerms, PERM.MANAGE_CHANNELS)}
             canManageServer={can(myPerms, PERM.MANAGE_SERVER)}
             onOpenCategories={() => setShowCategories(true)}
+            onRenameSpace={selectedServer && can(myPerms, PERM.MANAGE_SERVER) ? () => { setMobileNavOpen(false); setShowRenameSpace(true); } : undefined}
+            onOpenRoles={selectedServer && can(myPerms, PERM.MANAGE_ROLES) ? () => { setMobileNavOpen(false); setShowRoles(true); } : undefined}
+            onOpenChannelSettings={
+              selectedServer && selectedChannel && selectedChannel.server_id === selectedServer.id && !selectedChannel.parent_id && can(myPerms, PERM.MANAGE_CHANNELS)
+                ? () => { setMobileNavOpen(false); setChannelSettingsFor(selectedChannel); }
+                : undefined
+            }
             onSelectChannel={handleSelectChannel}
             onJoinVoice={handleJoinVoice}
             onCreateChannel={handleCreateChannel}
@@ -3594,6 +3640,8 @@ function MainApp({
         onReportUser={(user) => void reportTarget("user", user.id, "user")}
         mentionables={selectedServer?.members ?? []}
         channelMembers={selectedServer?.members ?? undefined}
+        nameColors={roleNameColors}
+        rolesOf={selectedServer ? (userId) => memberRolesOf(selectedServer, userId) : undefined}
         onlineUserIds={onlineUsers}
         activityNotices={selectedChannel ? chatActivityNotices.filter((notice) => notice.channelId === selectedChannel.id) : []}
         currentUsername={currentUser.username}
@@ -3783,6 +3831,7 @@ function MainApp({
           webrtc={webrtc}
           currentUser={currentUser}
           channelName={voiceChannel?.name ?? chatCallName(webrtc.channelId) ?? "Voice"}
+          callKind={voiceChannel ? "voice" : chatCallKind(webrtc.channelId) ?? "voice"}
           pushToTalk={voiceControls.pushToTalk}
           ringing={outgoingCall !== null && outgoingCall === webrtc.channelId}
         />
@@ -3972,10 +4021,12 @@ function MainApp({
           canBan={can(myPerms, PERM.BAN_MEMBERS)}
           canTimeout={canTimeoutMembers}
           timeouts={memberTimeouts}
+          moderatable={moderatable}
           onTimeout={handleTimeout}
           onRemoveTimeout={handleRemoveTimeout}
           canManageRoles={can(myPerms, PERM.MANAGE_ROLES)}
           onManageRoles={() => { setShowMembers(false); setShowRoles(true); }}
+          space={selectedServer}
           onKick={handleKick}
           onBan={handleBan}
           onClose={() => setShowMembers(false)}
@@ -3989,7 +4040,33 @@ function MainApp({
           serverId={selectedServer.id}
           members={selectedServer.members}
           ownerId={selectedServer.owner_id}
+          currentUserId={currentUser.id}
+          myPermissions={myPerms}
           onClose={() => setShowRoles(false)}
+        />
+      )}
+
+      {showRenameSpace && selectedServer && (
+        <RenameSpaceDialog
+          name={selectedServer.name}
+          onRename={async (name) => {
+            const updated = await api.renameServer(token, selectedServer.id, name);
+            setServers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+            toast(`Renamed to ${updated.name}.`, "success");
+          }}
+          onClose={() => setShowRenameSpace(false)}
+        />
+      )}
+
+      {channelSettingsFor && selectedServer && channelSettingsFor.server_id === selectedServer.id && (
+        <ChannelSettingsModal
+          token={token}
+          serverId={selectedServer.id}
+          channel={selectedServer.channels.find((c) => c.id === channelSettingsFor.id) ?? channelSettingsFor}
+          roles={selectedServer.roles ?? []}
+          members={selectedServer.members}
+          myPermissions={myPerms}
+          onClose={() => setChannelSettingsFor(null)}
         />
       )}
 

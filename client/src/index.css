@@ -1221,7 +1221,7 @@ button:disabled,
   .kc-nav { transition: none !important; }
 }
 
-:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+:where(button, a, input, textarea, select, [tabindex]:not([tabindex="-1"])):focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--bg-channel), 0 0 0 4px color-mix(in oklch, var(--accent) 70%, transparent);
   border-radius: var(--radius-md);
@@ -1409,6 +1409,10 @@ button:disabled,
   width: max-content;
   min-width: 13.5rem;
   max-width: min(18rem, calc(100vw - 24px));
+  /* A space's managers get a long menu: on a short window it scrolls instead of spilling. */
+  max-height: calc(100dvh - 96px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
   border-radius: 14px;
@@ -4966,14 +4970,15 @@ ol.kc-md-list { list-style: decimal; }
 
 /* ── Voice controls: Settings → Voice & video, and the push to talk indicator ── */
 .kc-voice-settings { max-width: 46rem; }
-.kc-voice-section {
+/* Its cards. Not .kc-voice-section: that's the sidebar's Voice Channels block. */
+.kc-voice-panel {
   margin-bottom: var(--space-6);
   padding: var(--space-4);
   border-radius: var(--radius-lg);
   background: var(--bg-sidebar);
   border: 1px solid var(--bg-hover);
 }
-.kc-voice-section__title {
+.kc-voice-panel__title {
   margin: 0 0 var(--space-3);
   font-size: var(--text-xs);
   font-weight: 800;

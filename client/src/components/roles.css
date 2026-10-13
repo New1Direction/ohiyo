@@ -1,0 +1,295 @@
+/* Roles list, role editor, channel settings and a channel's permissions. */
+
+.kc-role-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.kc-role-row {
+  border-top: 1px solid var(--bg-input);
+  padding: var(--space-3, 12px) 4px;
+  border-radius: 10px;
+  transition: background var(--dur-fast, 120ms) var(--ease-out, ease-out), opacity var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+.kc-role-row[draggable="true"] { cursor: grab; }
+.kc-role-row.is-dragging { opacity: 0.45; }
+.kc-role-grip { color: var(--text-muted); font-size: 0.75rem; letter-spacing: -2px; user-select: none; }
+.kc-role-dot { width: 10px; height: 10px; border-radius: var(--radius-full, 999px); flex-shrink: 0; }
+.kc-role-move,
+.kc-role-edit,
+.kc-role-back,
+.kc-channel-perms__remove {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 12%, transparent);
+  border-radius: var(--radius-md, 10px);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-fast, 120ms) var(--ease-out, ease-out), color var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+.kc-role-move:disabled { opacity: 0.35; cursor: default; }
+.kc-role-edit { color: var(--accent); }
+.kc-role-back { margin-bottom: 12px; }
+.kc-role-move:focus-visible,
+.kc-role-edit:focus-visible,
+.kc-role-back:focus-visible,
+.kc-channel-perms__remove:focus-visible,
+.kc-role-swatch:focus-visible,
+.kc-tristate__btn:focus-visible,
+.kc-switch:focus-visible,
+.kc-channel-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .kc-role-row:hover { background: color-mix(in oklch, var(--text-primary) 4%, transparent); }
+  .kc-role-move:not(:disabled):hover,
+  .kc-role-edit:hover,
+  .kc-role-back:hover,
+  .kc-channel-perms__remove:hover { background: var(--bg-hover); color: var(--text-primary); }
+}
+
+/* The role editor */
+.kc-role-editor { display: flex; flex-direction: column; gap: 16px; }
+.kc-role-editor__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-xl, 1.375rem);
+  color: var(--text-primary);
+}
+.kc-role-editor__field { display: flex; flex-direction: column; gap: 6px; }
+.kc-role-editor__group { display: flex; flex-direction: column; gap: 6px; border: none; margin: 0; padding: 0; min-width: 0; }
+.kc-role-editor__legend {
+  margin-bottom: 2px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.kc-role-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.kc-role-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full, 999px);
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--text-primary) 18%, transparent);
+  cursor: pointer;
+  transition: transform var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+.kc-role-swatch[aria-pressed="true"] { border-color: var(--text-primary); transform: scale(1.08); }
+.kc-role-swatch--none {
+  background:
+    linear-gradient(135deg, transparent 45%, var(--danger) 45%, var(--danger) 55%, transparent 55%),
+    var(--bg-input);
+}
+@media (hover: hover) and (pointer: fine) {
+  .kc-role-swatch:hover { transform: scale(1.08); }
+}
+.kc-role-editor__custom { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.kc-role-editor__custom .kc-field { width: 7.5rem; font-family: var(--font-mono); }
+.kc-role-picker {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md, 10px);
+  background: none;
+  cursor: pointer;
+}
+.kc-role-editor__preview { font-weight: 700; font-size: 0.9375rem; }
+.kc-role-editor__note { color: var(--text-secondary); font-size: 0.75rem; }
+.kc-role-editor__note.is-error { color: var(--danger); }
+.kc-role-editor__warning {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--warning) 50%, transparent);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+}
+.kc-role-editor__actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -10px;
+  padding: 18px 10px 6px;
+  /* The modal's own lower colour, faded in, so the list scrolls away under the buttons. */
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklch, var(--bg-base) 86%, var(--bg-channel)) 16px
+  );
+}
+.kc-role-editor__saved { margin-right: auto; color: var(--green); font-size: 0.8125rem; font-weight: 600; }
+
+.kc-role-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 2px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.kc-role-option input { grid-row: span 2; margin-top: 3px; accent-color: var(--accent); }
+.kc-role-option__name { color: var(--text-primary); font-size: 0.875rem; font-weight: 600; }
+.kc-role-option__hint { grid-column: 2; color: var(--text-secondary); font-size: 0.75rem; }
+.kc-role-option.is-locked { cursor: not-allowed; opacity: 0.6; }
+.kc-role-option:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Channel settings */
+.kc-channel-tabs { display: flex; gap: 4px; margin: 12px 0 16px; border-bottom: 1px solid var(--bg-input); }
+.kc-channel-tab {
+  min-height: 40px;
+  padding: 0 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.kc-channel-tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--accent); }
+
+.kc-channel-perms { display: flex; flex-direction: column; gap: 14px; max-height: 60vh; overflow-y: auto; }
+.kc-channel-perms__private {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-input);
+}
+.kc-channel-perms__add { display: flex; gap: 8px; flex-wrap: wrap; }
+.kc-channel-perms__add select { flex: 1 1 12rem; min-height: 40px; }
+.kc-channel-perms__target {
+  border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
+  border-radius: 12px;
+  padding: 8px 12px;
+}
+.kc-channel-perms__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0 8px; }
+.kc-channel-perms__name { font-weight: 700; color: var(--text-primary); }
+.kc-channel-perms__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in oklch, var(--text-primary) 6%, transparent);
+}
+.kc-channel-perms__sync { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* Allow / inherit / deny */
+.kc-tristate {
+  display: inline-flex;
+  flex-shrink: 0;
+  border-radius: var(--radius-md, 10px);
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 12%, transparent);
+}
+.kc-tristate__btn {
+  width: 36px;
+  height: 32px;
+  border: none;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--dur-fast, 120ms) var(--ease-out, ease-out), color var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+.kc-tristate__btn + .kc-tristate__btn { border-left: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent); }
+.kc-tristate__btn:disabled { cursor: not-allowed; opacity: 0.5; }
+.kc-tristate__btn.is-allow[aria-pressed="true"] { background: color-mix(in oklch, var(--green) 30%, var(--bg-input)); color: var(--text-primary); }
+.kc-tristate__btn.is-inherit[aria-pressed="true"] { background: var(--bg-hover); color: var(--text-primary); }
+.kc-tristate__btn.is-deny[aria-pressed="true"] { background: color-mix(in oklch, var(--danger) 30%, var(--bg-input)); color: var(--text-primary); }
+
+/* The private-channel switch */
+.kc-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-full, 999px);
+  background: var(--bg-hover);
+  cursor: pointer;
+  transition: background var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+.kc-switch[aria-checked="true"] { background: var(--accent); }
+.kc-switch:disabled { opacity: 0.5; cursor: not-allowed; }
+.kc-switch__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full, 999px);
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  transition: transform var(--dur-normal, 200ms) var(--ease-out, ease-out);
+}
+.kc-switch[aria-checked="true"] .kc-switch__knob { transform: translateX(18px); }
+
+/* A member's roles on their profile card */
+.kc-profile-roles { padding: 0 16px 12px; }
+.kc-profile-roles__title {
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.kc-profile-roles__list { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.kc-profile-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--radius-full, 999px);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Member list sections, by "show separately" roles and then online / offline */
+.kc-members-group {
+  margin: 10px 4px 2px;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* In the phone member panel, a moderator's buttons go under the name instead of squeezing it out. */
+.kc-modal--side .kc-polish-row { flex-wrap: wrap; row-gap: 6px; }
+.kc-modal--side .kc-polish-row > .min-w-0 { flex: 1 0 calc(100% - 3rem); }
+
+@media (prefers-reduced-motion: reduce) {
+  .kc-role-row,
+  .kc-role-swatch,
+  .kc-switch,
+  .kc-switch__knob,
+  .kc-tristate__btn { transition: none; }
+}
+
