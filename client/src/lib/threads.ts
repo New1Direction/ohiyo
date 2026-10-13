@@ -2,6 +2,7 @@
 // channel of its own that hangs off its parent channel; the server lists a channel's threads
 // and sends a ThreadUpdate when one starts or its message count changes.
 import type { Channel } from "../api";
+import type { MessageAlert, NotificationSettings } from "./notificationSettings.ts";
 
 /** A thread as the server lists it: its channel plus how busy it is. */
 export type ThreadSummary = Channel & {
@@ -10,6 +11,12 @@ export type ThreadSummary = Channel & {
   message_count: number;
   last_message_at: number | null;
   starter_deleted: boolean;
+  /** Who started it; null once they've deleted their account. Absent from older servers. */
+  owner_id?: string | null;
+  /** No messages for a week (the server's view when it was listed). */
+  archived?: boolean;
+  /** Whether you follow it; only in your own list, not in what everyone hears. */
+  following?: boolean;
 };
 
 /** Longest suggested name; the person can type up to 100 characters. */
@@ -68,4 +75,31 @@ export function canStartThread(
   channel: Pick<Channel, "server_id" | "channel_type"> & { parent_id?: string | null }
 ): boolean {
   return Boolean(channel.server_id) && channel.channel_type === "text" && !channel.parent_id;
+}
+
+// ── Stubs: rename, delete, follow, unread and archive (filled in next) ──
+export const ARCHIVE_AFTER_SECONDS = 0;
+export function isArchived(_thread: ThreadSummary, _now: number): boolean {
+  return false;
+}
+export function splitThreads(list: readonly ThreadSummary[], _now: number): { active: ThreadSummary[]; older: ThreadSummary[] } {
+  return { active: [...list], older: [] };
+}
+export function removeThread(list: readonly ThreadSummary[], _id: string): ThreadSummary[] {
+  return [...list];
+}
+export function withFollow(set: ReadonlySet<string>, _id: string, _on: boolean): ReadonlySet<string> {
+  return set;
+}
+export function canManageThread(_thread: ThreadSummary, _me: string, _perms: number): boolean {
+  return false;
+}
+export function threadAlert(
+  _settings: NotificationSettings,
+  _ctx: { parentId: string; serverId: string | null },
+  _following: boolean,
+  _mentioned: boolean,
+  _now: number,
+): MessageAlert {
+  return { notify: false, count: false, show: false };
 }
