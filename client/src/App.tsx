@@ -41,6 +41,7 @@ import { SlowmodeDialog } from "./components/moderation/SlowmodeDialog";
 import { InvitesDialog } from "./components/moderation/InvitesDialog";
 import { BansDialog } from "./components/moderation/BansDialog";
 import { mentionsMe, notificationTitle } from "./lib/messageNotify";
+import { loadSoundPrefs, playSound, shouldPlaySound } from "./lib/notificationSounds";
 import { fileUrlOn } from "./lib/fileUrl";
 import {
   isMuted,
@@ -2676,10 +2677,19 @@ function MainApp({
     });
     if (lookingAtIt) return;
     const body = msg.content?.slice(0, 140) || "Sent an attachment";
+    // A sound follows the same rules (everything above), and by default only for a DM or an
+    // @mention (lib/notificationSounds.ts).
+    const sounds = loadSoundPrefs();
+    const playIt = shouldPlaySound(
+      { fromMe: false, blocked: false, notifyAllowed: true, lookingAtIt: false, isDirect: serverId === null && !threadParentRef.current.has(msg.channel_id), mentioned },
+      sounds,
+    );
     // Native OS notification under Tauri, Web Notification in a browser — but only from
     // ONE tab/window when several are open (claimNotification), so no double-ping.
     void claimNotification(msg.id).then((mine) => {
-      if (mine) void notify({ title: notificationTitle(msg.author), body });
+      if (!mine) return;
+      if (playIt) playSound(sounds.sound, sounds.volume);
+      void notify({ title: notificationTitle(msg.author), body });
     });
   }
 
@@ -3204,6 +3214,16 @@ function MainApp({
           },
         ]
       : []),
+    {
+      id: "action-help",
+      label: "Help & feedback",
+      sub: "Service status, report a bug, ask a question",
+      icon: "?",
+      run: () => {
+        setSettingsTab("help");
+        setShowSettings(true);
+      },
+    },
     {
       id: "action-private-dm-link",
       label: "Create private DM link",

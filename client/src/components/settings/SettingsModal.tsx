@@ -53,11 +53,21 @@ import { ConfirmWithPassword } from "./ConfirmWithPassword";
 import { passwordStepMessage } from "../../lib/apiErrors";
 import { PluginsTab } from "./PluginsTab";
 import { DesktopAppCard } from "./DesktopAppCard";
+import { HelpTab, type ServiceStatus } from "./HelpTab";
+import { SoundSettings } from "./SoundSettings";
+import { APP_VERSION } from "../../lib/appVersion";
 import { VoiceTab } from "./VoiceTab";
 import type { PrivacyPrefs } from "../../lib/privacyPrefs";
 import { AvatarMark } from "../BirdMark";
 
-export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security" | "notifications" | "voice";
+export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security" | "notifications" | "voice" | "help";
+
+/** This home's live status for Settings → Help & feedback (a stable function for its effect). */
+async function fetchServiceStatus(): Promise<ServiceStatus> {
+  const res = await fetch(`${getApiBase()}/reliability/status`);
+  if (!res.ok) throw new Error(`status ${res.status}`);
+  return (await res.json()) as ServiceStatus;
+}
 
 const SETTINGS_TABS: Array<{ id: Tab; label: string; description: string }> = [
   { id: "account", label: "Account", description: "Login and basics" },
@@ -203,6 +213,16 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
           </nav>
 
           <div className="kc-settings-sidebar__footer">
+            <button
+              type="button"
+              onClick={() => setTab("help")}
+              className={`kc-settings-help kc-interactive${tab === "help" ? " kc-settings-help--active" : ""}`}
+              aria-current={tab === "help" ? "page" : undefined}
+              aria-label="Help & feedback"
+            >
+              <span className="kc-settings-help__long">Help &amp; feedback</span>
+              <span className="kc-settings-help__short" aria-hidden="true">Help</span>
+            </button>
             <div className="kc-settings-sidebar__hint">
               <span aria-hidden="true" />
               {tab === "profile" ? "Save your profile when ready." : "Changes save as you go."}
@@ -223,6 +243,9 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
           {tab === "security" && <SecurityTab token={token} userId={currentUser?.id} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} onSignOutEverywhere={onSignOutEverywhere} />}
           {tab === "notifications" && <NotificationsTab token={token} onToast={onToast} />}
           {tab === "voice" && <VoiceTab />}
+          {tab === "help" && (
+            <HelpTab version={APP_VERSION} desktop={isDesktop()} home={getApiBase()} userAgent={navigator.userAgent} loadStatus={fetchServiceStatus} />
+          )}
           {tab === "emoji" && <EmojiTab token={token} servers={servers} onToast={onToast} />}
         </div>
       </div>
@@ -1497,6 +1520,8 @@ function NotificationsTab({ token, onToast }: { token: string; onToast: (t: stri
       </p>
 
       {isDesktop() && <DesktopAppCard onToast={onToast} />}
+
+      <SoundSettings />
 
       <div className="mb-6 grid gap-3 md:grid-cols-2">
         <div className="rounded-lg p-4" style={{ background: "var(--bg-sidebar)", border: "1px solid var(--bg-hover)" }}>

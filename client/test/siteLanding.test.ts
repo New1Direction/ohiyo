@@ -168,6 +168,9 @@ test("the legal pages say where the hosted service really runs", () => {
   assert.match(privacy, /relay run by Cloudflare/);
   assert.match(privacy, /Cloudflare can't hear or see the call/);
   assert.match(privacy, /Updated October 12, 2026/);
+  // GIF search (KLIPY) goes through the server; GIF images load from KLIPY in the browser.
+  assert.match(privacy, /Your search goes from the Ohiyo server to KLIPY/);
+  assert.match(privacy, /load from KLIPY's servers in your browser/);
 });
 
 test("the privacy page says you can delete your account, and what that does not reach", () => {

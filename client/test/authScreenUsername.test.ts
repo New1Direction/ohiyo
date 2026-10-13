@@ -108,3 +108,17 @@ test("signing in takes an older name that has other characters", () => {
     door.cleanup();
   }
 });
+
+test("the sign-up form says creating an account agrees to the Terms and the Privacy Policy, with links", () => {
+  const door = openDoor();
+  try {
+    door.signUp();
+    assert.match(door.text().replace(/\s+/g, " "), /By creating an account you agree to the Terms and the Privacy Policy/);
+    const href = (label: string) =>
+      [...door.container.querySelectorAll("a")].find((a) => (a.textContent ?? "").trim() === label)?.getAttribute("href");
+    assert.equal(href("Terms"), "https://ohiyo.gg/terms.html");
+    assert.equal(href("Privacy Policy"), "https://ohiyo.gg/privacy.html");
+  } finally {
+    door.cleanup();
+  }
+});
