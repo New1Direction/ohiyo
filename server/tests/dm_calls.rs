@@ -49,8 +49,8 @@ async fn start_call(srv: &TestServer, who: &AuthOk, channel: &str) -> reqwest::R
 }
 
 async fn ready(srv: &TestServer, who: &AuthOk) -> Gateway {
-    let mut gw = Gateway::connect(srv, &who.token).await;
-    gw.wait_for(|e| e["t"] == "Ready").await;
+    let mut gw = Box::pin(Gateway::connect(srv, &who.token)).await;
+    next(&mut gw, |e| e["t"] == "Ready").await;
     gw
 }
 
@@ -70,6 +70,12 @@ fn call_log_in<'a>(channel: &'a str, state: &'a str) -> impl Fn(&Value) -> bool 
             && e["d"]["channel_id"] == channel
             && e["d"]["call"]["state"] == state
     }
+}
+
+/// Reads the next matching event through a box. Each `wait_for` holds a 64 KiB buffer, and these
+/// scenarios wait often enough that unboxed reads overflow the test thread's stack in a debug build.
+async fn next(gw: &mut Gateway, pred: impl Fn(&Value) -> bool) -> Value {
+    Box::pin(gw.wait_for(pred)).await
 }
 
 async fn join_voice(gw: &mut Gateway, channel: &str) {
@@ -98,14 +104,14 @@ async fn rings_every_device() {
     assert_eq!(body["ringing"], json!([bob.id]), "{body}");
 
     for gw in [&mut bob_phone, &mut bob_laptop] {
-        let ring = gw.wait_for(ring_in(&dm)).await;
+        let ring = next(gw, ring_in(&dm)).await;
         assert_eq!(ring["d"]["caller"]["id"], alice.id.as_str(), "{ring}");
         assert_eq!(ring["d"]["video"], false, "{ring}");
         assert!(ring["d"]["message_id"].is_string(), "{ring}");
     }
 
     // The chat gets a call log message, written by the caller.
-    let log = alice_gw.wait_for(call_log_in(&dm, "ringing")).await;
+    let log = next(&mut alice_gw, call_log_in(&dm, "ringing")).await;
     assert_eq!(log["d"]["author"]["id"], alice.id.as_str(), "{log}");
 }
 
@@ -125,15 +131,15 @@ async fn answer_and_hang_up() {
     let mut alice_gw = ready(&srv, &alice).await;
 
     join_voice(&mut alice_gw, &dm).await;
-    alice_gw.wait_for(|e| e["t"] == "VoiceRoster").await;
+    next(&mut alice_gw, |e| e["t"] == "VoiceRoster").await;
     assert_eq!(start_call(&srv, &alice, &dm).await.status(), 200);
-    bob_phone.wait_for(ring_in(&dm)).await;
-    bob_laptop.wait_for(ring_in(&dm)).await;
+    next(&mut bob_phone, ring_in(&dm)).await;
+    next(&mut bob_laptop, ring_in(&dm)).await;
 
     // Bob answers on his phone; his laptop stops ringing.
     join_voice(&mut bob_phone, &dm).await;
-    bob_laptop.wait_for(ring_stop_in(&dm, "answered")).await;
-    alice_gw.wait_for(call_log_in(&dm, "ongoing")).await;
+    next(&mut bob_laptop, ring_stop_in(&dm, "answered")).await;
+    next(&mut alice_gw, call_log_in(&dm, "ongoing")).await;
 
     // Both hang up: the log says the call ended and how long it lasted.
     bob_phone
@@ -142,7 +148,7 @@ async fn answer_and_hang_up() {
     alice_gw
         .send(&json!({ "t": "LeaveVoice", "d": { "channel_id": dm } }))
         .await;
-    let ended = alice_gw.wait_for(call_log_in(&dm, "ended")).await;
+    let ended = next(&mut alice_gw, call_log_in(&dm, "ended")).await;
     assert!(
         ended["d"]["call"]["duration_secs"]
             .as_i64()
@@ -238,16 +244,17 @@ async fn unanswered() {
     let mut alice_gw = ready(&srv, &alice).await;
 
     join_voice(&mut alice_gw, &dm).await;
-    alice_gw.wait_for(|e| e["t"] == "VoiceRoster").await;
+    next(&mut alice_gw, |e| e["t"] == "VoiceRoster").await;
     assert_eq!(start_call(&srv, &alice, &dm).await.status(), 200);
-    bob_gw.wait_for(ring_in(&dm)).await;
+    next(&mut bob_gw, ring_in(&dm)).await;
 
-    bob_gw.wait_for(ring_stop_in(&dm, "missed")).await;
-    let ended = alice_gw
-        .wait_for(|e| e["t"] == "CallEnded" && e["d"]["channel_id"] == dm.as_str())
-        .await;
+    next(&mut bob_gw, ring_stop_in(&dm, "missed")).await;
+    let ended = next(&mut alice_gw, |e| {
+        e["t"] == "CallEnded" && e["d"]["channel_id"] == dm.as_str()
+    })
+    .await;
     assert_eq!(ended["d"]["outcome"], "missed", "{ended}");
-    bob_gw.wait_for(call_log_in(&dm, "missed")).await;
+    next(&mut bob_gw, call_log_in(&dm, "missed")).await;
 }
 
 #[tokio::test]
@@ -264,9 +271,9 @@ async fn declined() {
     let mut alice_gw = ready(&srv, &alice).await;
 
     join_voice(&mut alice_gw, &dm).await;
-    alice_gw.wait_for(|e| e["t"] == "VoiceRoster").await;
+    next(&mut alice_gw, |e| e["t"] == "VoiceRoster").await;
     assert_eq!(start_call(&srv, &alice, &dm).await.status(), 200);
-    bob_gw.wait_for(ring_in(&dm)).await;
+    next(&mut bob_gw, ring_in(&dm)).await;
 
     assert_eq!(
         srv.post_empty_auth(&format!("/api/v1/channels/{dm}/call/decline"), &bob.token)
@@ -274,12 +281,13 @@ async fn declined() {
             .status(),
         204
     );
-    bob_gw.wait_for(ring_stop_in(&dm, "declined")).await;
-    let ended = alice_gw
-        .wait_for(|e| e["t"] == "CallEnded" && e["d"]["channel_id"] == dm.as_str())
-        .await;
+    next(&mut bob_gw, ring_stop_in(&dm, "declined")).await;
+    let ended = next(&mut alice_gw, |e| {
+        e["t"] == "CallEnded" && e["d"]["channel_id"] == dm.as_str()
+    })
+    .await;
     assert_eq!(ended["d"]["outcome"], "declined", "{ended}");
-    let log = alice_gw.wait_for(call_log_in(&dm, "declined")).await;
+    let log = next(&mut alice_gw, call_log_in(&dm, "declined")).await;
     assert_eq!(log["d"]["call"]["declined_by"], bob.id.as_str(), "{log}");
 }
 
@@ -297,15 +305,15 @@ async fn cancelled() {
     let mut alice_gw = ready(&srv, &alice).await;
 
     join_voice(&mut alice_gw, &dm).await;
-    alice_gw.wait_for(|e| e["t"] == "VoiceRoster").await;
+    next(&mut alice_gw, |e| e["t"] == "VoiceRoster").await;
     assert_eq!(start_call(&srv, &alice, &dm).await.status(), 200);
-    bob_gw.wait_for(ring_in(&dm)).await;
+    next(&mut bob_gw, ring_in(&dm)).await;
 
     alice_gw
         .send(&json!({ "t": "LeaveVoice", "d": { "channel_id": dm } }))
         .await;
-    bob_gw.wait_for(ring_stop_in(&dm, "cancelled")).await;
-    bob_gw.wait_for(call_log_in(&dm, "missed")).await;
+    next(&mut bob_gw, ring_stop_in(&dm, "cancelled")).await;
+    next(&mut bob_gw, call_log_in(&dm, "missed")).await;
 }
 
 #[tokio::test]
@@ -324,14 +332,15 @@ async fn seat_limit() {
     let mut carol_gw = ready(&srv, &carol).await;
 
     join_voice(&mut alice_gw, &group).await;
-    alice_gw.wait_for(|e| e["t"] == "VoiceRoster").await;
+    next(&mut alice_gw, |e| e["t"] == "VoiceRoster").await;
     join_voice(&mut bob_gw, &group).await;
-    bob_gw.wait_for(|e| e["t"] == "VoiceRoster").await;
+    next(&mut bob_gw, |e| e["t"] == "VoiceRoster").await;
 
     join_voice(&mut carol_gw, &group).await;
-    let refused = carol_gw
-        .wait_for(|e| e["t"] == "VoiceRefused" || e["t"] == "VoiceRoster")
-        .await;
+    let refused = next(&mut carol_gw, |e| {
+        e["t"] == "VoiceRefused" || e["t"] == "VoiceRoster"
+    })
+    .await;
     assert_eq!(refused["t"], "VoiceRefused", "{refused}");
     assert_eq!(refused["d"]["channel_id"], group.as_str(), "{refused}");
 }
@@ -379,7 +388,7 @@ async fn late_ring() {
     let dm = open_dm(&srv, &alice, &bob).await;
     assert_eq!(start_call(&srv, &alice, &dm).await.status(), 200);
 
-    let mut bob_gw = Gateway::connect(&srv, &bob.token).await;
-    let ring = bob_gw.wait_for(ring_in(&dm)).await;
+    let mut bob_gw = Box::pin(Gateway::connect(&srv, &bob.token)).await;
+    let ring = next(&mut bob_gw, ring_in(&dm)).await;
     assert_eq!(ring["d"]["caller"]["id"], alice.id.as_str(), "{ring}");
 }
