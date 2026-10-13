@@ -190,7 +190,11 @@ try {
       scroll: list ? [list.scrollTop, list.scrollHeight, list.clientHeight] : null,
     };
   });
-  log(`phone: ${JSON.stringify(look)}`);
+  if (!look.bar) throw new Error("the bar isn't shown on a phone");
+  // The "Jump to present" pill is for reading history; a chat that fits the screen has none.
+  if (look.pill && look.scroll && look.scroll[1] <= look.scroll[2]) {
+    throw new Error(`the jump pill shows though the whole chat fits the screen: ${JSON.stringify(look)}`);
+  }
   const overflow = await pageA.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   if (overflow) throw new Error("the page scrolls sideways on a phone");
   await shot(pageA, "55-catch-up-phone");

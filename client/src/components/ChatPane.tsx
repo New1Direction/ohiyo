@@ -749,6 +749,7 @@ export function ChatPane({
     if (forceBottomRef.current || atBottomRef.current) {
       listRef.current?.scrollToItem(last, "end");
       forceBottomRef.current = false;
+      atBottomRef.current = true; // pinned to the latest until they scroll up
       setShowJump(false);
     } else {
       setShowJump(true);
@@ -760,7 +761,9 @@ export function ChatPane({
   // remember this channel's reading position for restore-on-return.
   function handleListScroll() {
     const el = listOuterRef.current;
-    if (!el) return;
+    // A list not laid out yet (its first render, before it has a height) says nothing about
+    // where they're reading.
+    if (!el || el.clientHeight === 0) return;
     atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
     if (atBottomRef.current) setShowJump(false);
     if (channel?.id) scrollMapRef.current[channel.id] = { offset: el.scrollTop, atBottom: atBottomRef.current };
@@ -2229,7 +2232,7 @@ export function ChatPane({
         </ErrorBoundary>
         {showJump && (
           <button type="button" className="kc-jump-bottom" onClick={jumpToBottom} aria-label="Jump to latest messages">
-            ↓ New messages
+            ↓ Jump to present
           </button>
         )}
       </div>
