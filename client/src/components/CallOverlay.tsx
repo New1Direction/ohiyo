@@ -11,11 +11,14 @@ import {
   type ScreenSharePresetId,
 } from "../webrtc/screenShare";
 import { AvatarMark } from "./BirdMark";
+import type { PushToTalkStatus } from "../hooks/useVoiceControls";
 
 type Props = {
   webrtc: UseWebRTCReturn;
   currentUser: PublicUser | null;
   channelName: string;
+  /** Set while push to talk is the input mode: the key to hold, and whether you're talking. */
+  pushToTalk?: PushToTalkStatus | null;
 };
 
 // ── Icons (simple stroke set) ──────────────────────────────────────────────────
@@ -26,6 +29,8 @@ const Icon = {
   videoOff: "M3 3l18 18 M10 6h5v3 M15 13v5H4a1 1 0 0 1-1-1V7",
   screen: "M3 4h18v12H3z M8 20h8 M12 16v4",
   speaker: "M11 5 6 9H3v6h3l5 4V5z M15.5 8.5a5 5 0 0 1 0 7 M18.5 5.5a9 9 0 0 1 0 13",
+  headphones: "M4 15v-3a8 8 0 0 1 16 0v3 M4 15h3v5H5a1 1 0 0 1-1-1v-4z M20 15h-3v5h2a1 1 0 0 0 1-1v-4z",
+  headphonesOff: "M3 3l18 18 M4 15v-3a8 8 0 0 1 2.3-5.6 M9.2 4.6A8 8 0 0 1 20 12v3 M4 15h3v5H5a1 1 0 0 1-1-1v-4z M20 15h-3v5h2a1 1 0 0 0 .7-.3",
   hangup: "M3 11a17 17 0 0 1 18 0l-2.5 3a2 2 0 0 1-2.3.5l-2-1a2 2 0 0 1-1.2-1.8v-1a11 11 0 0 0-4 0v1a2 2 0 0 1-1.2 1.8l-2 1a2 2 0 0 1-2.3-.5L3 11z",
 };
 
@@ -146,7 +151,9 @@ function useAudioLevel(stream: MediaStream | null, active: boolean) {
   return { level, speaking: active && level > 0.035 };
 }
 
-function RemoteAudioSink({ stream, volume, outputDeviceId }: { stream: MediaStream | null; volume: number; outputDeviceId: string }) {
+function RemoteAudioSink({
+  stream, volume, outputDeviceId, deafened,
+}: { stream: MediaStream | null; volume: number; outputDeviceId: string; deafened: boolean }) {
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -159,6 +166,12 @@ function RemoteAudioSink({ stream, volume, outputDeviceId }: { stream: MediaStre
     if (audioTracks.length) void audioEl.play().catch((err) => console.warn("[call] remote audio playback blocked", err));
     return () => { audioEl.srcObject = null; };
   }, [stream, volume, outputDeviceId]);
+
+  // Deafened: the call's sound is off. Kept apart from the effect above so undeafening
+  // doesn't restart playback.
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.muted = deafened;
+  }, [deafened]);
 
   return <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />;
 }
@@ -174,12 +187,13 @@ function StrokeIcon({ d, size = 20 }: { d: string; size?: number }) {
 
 // ── A single participant tile ──────────────────────────────────────────────────
 function VideoTile({
-  stream, name, avatarUrl, muted, video, screen, isSelf, quality, volume, onVolumeChange,
+  stream, name, avatarUrl, muted, deafened, video, screen, isSelf, quality, volume, onVolumeChange,
 }: {
   stream: MediaStream | null;
   name: string;
   avatarUrl: string | null;
   muted: boolean;
+  deafened?: boolean;
   video: boolean;
   screen: boolean;
   isSelf: boolean;
@@ -289,9 +303,9 @@ function VideoTile({
         fontSize: "var(--text-sm)", fontWeight: 600, backdropFilter: "blur(6px)",
       }}>
         <span style={{ color: muted ? "var(--danger)" : speaking ? "var(--green)" : "#7CF2B0" }}>
-          <StrokeIcon d={muted ? Icon.micOff : Icon.mic} size={14} />
+          <StrokeIcon d={deafened ? Icon.headphonesOff : muted ? Icon.micOff : Icon.mic} size={14} />
         </span>
-        {name}{isSelf && " (you)"}{muted ? " · muted" : speaking ? " · speaking" : ""}{screen && " · sharing"}
+        {name}{isSelf && " (you)"}{deafened ? " · deafened" : muted ? " · muted" : speaking ? " · speaking" : ""}{screen && " · sharing"}
         {quality && <ConnectionBadge level={quality} size={13} />}
       </div>
     </div>
@@ -496,7 +510,10 @@ function ControlBtn({
       ? "linear-gradient(145deg, color-mix(in oklch, var(--accent) 82%, white), var(--accent-hover))"
       : "color-mix(in oklch, var(--text-primary) 6%, var(--bg-input))";
   const color = danger || active ? "#fff" : "var(--text-secondary)";
-  const short = label.replace("Turn ", "").replace(" off", "").replace(" on", "").replace("Call ", "");
+  // A short caption under the button: "Turn camera on" → "Camera", "Call audio" → "Audio". Only
+  // the hang-up button says Leave; a red Mute or Deafen keeps its own caption.
+  const trimmed = label === "Leave call" ? "Leave" : label.replace("Turn ", "").replace(" off", "").replace(" on", "").replace("Call ", "");
+  const short = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: compact ? 4 : 6, minWidth: compact ? 48 : 64 }}>
       <button
@@ -517,7 +534,7 @@ function ControlBtn({
       </button>
       {!compact && (
         <span style={{ color: danger ? "var(--danger)" : active ? "var(--accent)" : "var(--text-muted)", fontSize: 11, fontWeight: 800, lineHeight: 1 }}>
-          {danger ? "Leave" : short}
+          {short}
         </span>
       )}
     </div>
@@ -558,12 +575,13 @@ function LivePill() {
 }
 
 function VoiceParticipantRow({
-  stream, name, avatarUrl, muted, isSelf, listenOnly, volume, onVolumeChange,
+  stream, name, avatarUrl, muted, deafened, isSelf, listenOnly, volume, onVolumeChange,
 }: {
   stream: MediaStream | null;
   name: string;
   avatarUrl: string | null;
   muted: boolean;
+  deafened?: boolean;
   isSelf: boolean;
   listenOnly?: boolean;
   volume: number;
@@ -586,9 +604,9 @@ function VoiceParticipantRow({
         <div className="kc-call-voice-row__name">{name}{isSelf ? " (you)" : ""}</div>
         <div className="kc-call-voice-row__status">
           <span className="kc-call-voice-row__mic" aria-hidden="true">
-            <StrokeIcon d={muted ? Icon.micOff : Icon.mic} size={13} />
+            <StrokeIcon d={deafened ? Icon.headphonesOff : muted ? Icon.micOff : Icon.mic} size={13} />
           </span>
-          {listenOnly ? "Listening only" : muted ? "Muted" : speaking ? "Speaking" : isSelf ? "Mic is on" : "Listening"}
+          {listenOnly ? "Listening only" : deafened ? "Deafened" : muted ? "Muted" : speaking ? "Speaking" : isSelf ? "Mic is on" : "Listening"}
         </div>
       </div>
       {!isSelf && onVolumeChange && (
@@ -611,19 +629,20 @@ function VoiceParticipantRow({
 }
 
 function ScreenShareParticipantChip({
-  stream, name, avatarUrl, muted, screen, isSelf, listenOnly, quality,
+  stream, name, avatarUrl, muted, deafened, screen, isSelf, listenOnly, quality,
 }: {
   stream: MediaStream | null;
   name: string;
   avatarUrl: string | null;
   muted: boolean;
+  deafened?: boolean;
   screen: boolean;
   isSelf: boolean;
   listenOnly?: boolean;
   quality?: QualityLevel;
 }) {
   const { speaking } = useAudioLevel(stream, !!stream && !muted);
-  const status = screen ? "Sharing" : listenOnly ? "Listening" : muted ? "Muted" : speaking ? "Speaking" : isSelf ? "You" : "Here";
+  const status = screen ? "Sharing" : listenOnly ? "Listening" : deafened ? "Deafened" : muted ? "Muted" : speaking ? "Speaking" : isSelf ? "You" : "Here";
 
   return (
     <div className={`kc-screen-chip${speaking ? " kc-screen-chip--speaking" : ""}${muted ? " kc-screen-chip--muted" : ""}`}>
@@ -631,7 +650,7 @@ function ScreenShareParticipantChip({
       <div className="kc-screen-chip__body">
         <div className="kc-screen-chip__name">{name}{isSelf ? " (you)" : ""}</div>
         <div className="kc-screen-chip__status">
-          <span aria-hidden="true"><StrokeIcon d={muted ? Icon.micOff : Icon.mic} size={12} /></span>
+          <span aria-hidden="true"><StrokeIcon d={deafened ? Icon.headphonesOff : muted ? Icon.micOff : Icon.mic} size={12} /></span>
           {status}
           {quality && <ConnectionBadge level={quality} size={12} />}
         </div>
@@ -640,7 +659,7 @@ function ScreenShareParticipantChip({
   );
 }
 
-export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
+export function CallOverlay({ webrtc, currentUser, channelName, pushToTalk = null }: Props) {
   const { localStream, remoteStreams, participants, self, callState, quality } = webrtc;
   const [minimized, setMinimized] = useState(false);
   const [showShareSheet, setShowShareSheet] = useState(false);
@@ -705,6 +724,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       name: selfName,
       avatarUrl: selfAvatar,
       muted: self.muted,
+      deafened: self.deafened,
       video: self.video,
       screen: self.screen,
       listenOnly: self.listenOnly,
@@ -717,6 +737,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       name: p.user.display_name,
       avatarUrl: p.user.avatar_url,
       muted: p.muted,
+      deafened: Boolean(p.deafened),
       video: p.video,
       screen: p.screen,
       listenOnly: p.listenOnly,
@@ -734,10 +755,25 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
   const screenPerson = sortedMediaPeople.find((p) => p.screen) ?? sortedMediaPeople[0];
   const supportPeople = screenPerson ? sortedMediaPeople.filter((p) => p.id !== screenPerson.id) : [];
 
+  const pttIndicator = pushToTalk && (
+    <div
+      className={`kc-ptt-indicator${pushToTalk.transmitting ? " kc-ptt-indicator--live" : ""}`}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="kc-ptt-indicator__dot" aria-hidden="true" />
+      {pushToTalk.keyLabel
+        ? pushToTalk.transmitting ? "Talking" : `Hold ${pushToTalk.keyLabel} to talk`
+        : "No push to talk key yet, so your voice goes out when you speak"}
+    </div>
+  );
+
   const controls = (compact = false) => (
     <div className={`${compact ? "kc-call-controls kc-call-controls--compact" : "kc-call-controls"}${hasScreenShare && !compact ? " kc-call-controls--screen" : ""}`}>
       <ControlBtn compact={compact} d={self.muted ? Icon.micOff : Icon.mic} label={self.listenOnly ? "Try microphone" : self.muted ? "Unmute" : "Mute"}
         onClick={() => { void webrtc.toggleAudio(); }} active={false} danger={self.muted && !self.listenOnly} />
+      <ControlBtn compact={compact} d={self.deafened ? Icon.headphonesOff : Icon.headphones} label={self.deafened ? "Undeafen" : "Deafen"}
+        onClick={() => { void webrtc.toggleDeafen(); }} active={false} danger={self.deafened} />
       <ControlBtn compact={compact} d={self.video ? Icon.video : Icon.videoOff} label={self.video ? "Turn camera off" : "Turn camera on"}
         onClick={webrtc.toggleVideo} active={self.video} />
       <ControlBtn compact={compact} d={Icon.screen} label={self.screen ? "Stop sharing" : "Share screen"}
@@ -755,6 +791,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       name={person.name}
       avatarUrl={person.avatarUrl}
       muted={person.muted}
+      deafened={person.deafened}
       isSelf={person.isSelf}
       listenOnly={person.listenOnly}
       volume={person.isSelf ? 1 : volumeByUser[person.id] ?? 1}
@@ -769,6 +806,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
       name={person.name}
       avatarUrl={person.avatarUrl}
       muted={person.muted}
+      deafened={person.deafened}
       video={person.video}
       screen={person.screen}
       isSelf={person.isSelf}
@@ -805,6 +843,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
           stream={person.stream}
           volume={volumeByUser[person.id] ?? 1}
           outputDeviceId={audioOutputId}
+          deafened={self.deafened}
         />
       ))}
       {minimized ? (
@@ -828,6 +867,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
               Open
             </button>
           </div>
+          {pttIndicator}
           {controls(true)}
         </div>
       ) : (
@@ -885,8 +925,8 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
                   <div style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.45 }}>Waiting for someone else to hop in. This room is ready when they are.</div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, color: self.muted ? "var(--danger)" : "var(--green)", fontSize: 12, fontWeight: 850 }}>
-                  <StrokeIcon d={self.muted ? Icon.micOff : Icon.mic} size={14} />
-                  {self.muted ? "Muted" : "Mic is on"}
+                  <StrokeIcon d={self.deafened ? Icon.headphonesOff : self.muted ? Icon.micOff : Icon.mic} size={14} />
+                  {self.deafened ? "Deafened" : self.muted ? "Muted" : "Mic is on"}
                 </div>
               </div>
             </div>
@@ -923,6 +963,7 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
                       name={person.name}
                       avatarUrl={person.avatarUrl}
                       muted={person.muted}
+                      deafened={person.deafened}
                       screen={person.screen}
                       isSelf={person.isSelf}
                       listenOnly={person.listenOnly}
@@ -940,7 +981,8 @@ export function CallOverlay({ webrtc, currentUser, channelName }: Props) {
             </div>
           )}
 
-          <div style={{ marginTop: "clamp(12px, 2vh, 22px)" }}>
+          <div style={{ marginTop: "clamp(12px, 2vh, 22px)", display: "grid", justifyItems: "center", gap: 10 }}>
+            {pttIndicator}
             {controls(false)}
           </div>
         </>
