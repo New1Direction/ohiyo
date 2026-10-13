@@ -138,6 +138,7 @@ pub async fn create_channel(
         owner_id: None,
         parent_id: None,
         thread_message_id: None,
+        slowmode_seconds: 0,
     };
 
     broadcast_to_channel(
