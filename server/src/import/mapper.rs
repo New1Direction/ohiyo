@@ -219,6 +219,8 @@ pub fn map_discord_permissions(bits: Option<&str>) -> i64 {
     const DISCORD_SEND_MESSAGES: u128 = 1 << 11;
     const DISCORD_MANAGE_MESSAGES: u128 = 1 << 13;
     const DISCORD_MANAGE_ROLES: u128 = 1 << 28;
+    const DISCORD_CREATE_INSTANT_INVITE: u128 = 1 << 0;
+    const DISCORD_MODERATE_MEMBERS: u128 = 1 << 40;
 
     if discord & DISCORD_ADMINISTRATOR != 0 {
         return crate::api::roles::perm::ALL;
@@ -248,6 +250,12 @@ pub fn map_discord_permissions(bits: Option<&str>) -> i64 {
     }
     if discord & DISCORD_MANAGE_GUILD != 0 {
         out |= crate::api::roles::perm::MANAGE_SERVER;
+    }
+    if discord & DISCORD_CREATE_INSTANT_INVITE != 0 {
+        out |= crate::api::roles::perm::CREATE_INVITE;
+    }
+    if discord & DISCORD_MODERATE_MEMBERS != 0 {
+        out |= crate::api::roles::perm::MODERATE_MEMBERS;
     }
     out
 }

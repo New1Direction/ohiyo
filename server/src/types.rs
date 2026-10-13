@@ -26,6 +26,10 @@ pub struct Server {
     pub owner_id: String,
     pub icon_url: Option<String>,
     pub created_at: i64,
+    /// Every invite link turns newcomers away while this is set.
+    #[serde(default)]
+    #[sqlx(default)]
+    pub invites_paused: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -62,6 +66,10 @@ pub struct Channel {
     #[serde(default)]
     #[sqlx(default)]
     pub thread_message_id: Option<String>,
+    /// Seconds one person must wait between messages here (0 = no slowmode).
+    #[serde(default)]
+    #[sqlx(default)]
+    pub slowmode_seconds: i64,
 }
 
 /// A thread as the app lists it: its channel, how many messages it holds, when the last
@@ -356,6 +364,11 @@ pub enum GatewayEvent {
     DisappearingUpdate {
         channel_id: String,
         seconds: Option<i64>,
+    },
+    /// A channel's slowmode changed (0 turns it off).
+    SlowmodeUpdate {
+        channel_id: String,
+        seconds: i64,
     },
     /// A group member's encrypted Sender Key Distribution Message (group E2E bootstrap).
     /// `envelope` is a pairwise-encrypted SKDM only this recipient device can open.

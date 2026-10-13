@@ -99,3 +99,15 @@ export function passwordStepMessage(err: unknown, fallback: string): string {
       return fallback;
   }
 }
+
+/** Why a message was refused by the space's moderation, said plainly: slowmode (429 from
+ *  server/src/api/moderation.rs, "slowmode: you can send again in 8s") or a time out (403
+ *  "you're timed out in this space"); else null. */
+export function moderationRefusal(err: unknown): string | null {
+  if (!(err instanceof Error)) return null;
+  const status = apiStatus(err);
+  const wait = /^slowmode: you can send again in (\d+)s/.exec(err.message);
+  if (status === 429 && wait) return `slowmode is on here. You can send again in ${wait[1]}s.`;
+  if (status === 403 && err.message.startsWith("you're timed out")) return "you're timed out in this space.";
+  return null;
+}

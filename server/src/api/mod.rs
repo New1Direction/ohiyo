@@ -1,6 +1,7 @@
 pub mod abuse;
 pub mod account;
 pub mod auth;
+pub mod bans;
 pub mod calls;
 pub mod channels;
 pub mod discord_import;
@@ -12,11 +13,13 @@ pub mod events;
 pub mod files;
 pub mod ice;
 pub mod instances;
+pub mod invite_controls;
 pub mod invites;
 pub mod keys;
 pub mod limits;
 pub mod livekit;
 pub mod messages;
+pub mod moderation;
 pub mod notifications;
 pub mod og;
 pub mod polls;
@@ -266,7 +269,28 @@ pub fn router() -> Router<AppState> {
             delete(roles::unassign_role),
         )
         // Invites
-        .route("/servers/{id}/invites", post(invites::create_invite))
+        .route(
+            "/servers/{id}/invites",
+            get(invite_controls::list_invites).post(invites::create_invite),
+        )
+        .route(
+            "/servers/{server_id}/invite-settings",
+            get(invite_controls::get_invite_settings)
+                .patch(invite_controls::update_invite_settings),
+        )
+        .route("/servers/{server_id}/bans", get(bans::list_bans))
+        .route(
+            "/servers/{server_id}/timeouts",
+            get(moderation::list_timeouts),
+        )
+        .route(
+            "/servers/{server_id}/members/{user_id}/timeout",
+            put(moderation::set_timeout).delete(moderation::remove_timeout),
+        )
+        .route(
+            "/channels/{channel_id}/slowmode",
+            put(moderation::set_slowmode),
+        )
         .route("/invites/{code}", get(invites::get_invite))
         .route("/invites/{code}", post(invites::redeem_invite))
         .route("/invites/{code}", delete(invites::revoke_invite))

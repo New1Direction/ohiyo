@@ -30,6 +30,8 @@ export type IconName =
   | "lock"
   | "lockOpen"
   | "clock"
+  | "hourglass"
+  | "shield"
   | "tv"
   | "flag"
   | "leave"
@@ -194,6 +196,17 @@ const PATHS: Record<IconName, ReactNode> = {
       <polyline points="17 2 12 7 7 2" />
     </>
   ),
+  // Slowmode.
+  hourglass: (
+    <>
+      <path d="M6 2h12" />
+      <path d="M6 22h12" />
+      <path d="M7 2v4a5 5 0 0 0 10 0V2" />
+      <path d="M7 22v-4a5 5 0 0 1 10 0v4" />
+    </>
+  ),
+  // Moderation: bans and the moderation log.
+  shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
   flag: (
     <>
       <path d="M5 21V4" />

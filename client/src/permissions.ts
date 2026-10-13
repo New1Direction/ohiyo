@@ -9,6 +9,8 @@ export const PERM = {
   VIEW_CHANNEL: 1 << 6,
   SEND_MESSAGES: 1 << 7,
   ADMINISTRATOR: 1 << 8,
+  MODERATE_MEMBERS: 1 << 9,
+  CREATE_INVITE: 1 << 10,
 } as const;
 
 export type PermFlag = (typeof PERM)[keyof typeof PERM];
@@ -18,10 +20,12 @@ export const PERM_LABELS: { flag: PermFlag; label: string; hint: string }[] = [
   { flag: PERM.MANAGE_MESSAGES, label: "Manage messages", hint: "Delete anyone's messages, pin" },
   { flag: PERM.KICK_MEMBERS, label: "Kick members", hint: "Remove members (they can rejoin)" },
   { flag: PERM.BAN_MEMBERS, label: "Ban members", hint: "Remove & block from rejoining" },
+  { flag: PERM.MODERATE_MEMBERS, label: "Time out members", hint: "They can read, but not post, react or join voice" },
   { flag: PERM.MANAGE_ROLES, label: "Manage roles", hint: "Create roles & assign them" },
   { flag: PERM.MANAGE_SERVER, label: "Manage server", hint: "Rename and customize the server" },
   { flag: PERM.VIEW_CHANNEL, label: "View channels", hint: "See channels by default" },
   { flag: PERM.SEND_MESSAGES, label: "Send messages", hint: "Post in text channels by default" },
+  { flag: PERM.CREATE_INVITE, label: "Create invites", hint: "Make invite links to the space" },
   { flag: PERM.ADMINISTRATOR, label: "Administrator", hint: "Can do everything in every channel" },
 ];
 

@@ -446,3 +446,55 @@ async fn a_restart_in_the_middle_of_a_call_does_not_leave_its_log_open() {
     let log = last_message(&srv, &alice, &live).await;
     assert_eq!(log["call"]["state"], "ringing", "{log}");
 }
+
+#[tokio::test]
+async fn a_time_out_in_a_space_does_not_stop_calls_in_dms() {
+    Box::pin(timed_out_caller()).await;
+}
+
+async fn timed_out_caller() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("modalice", "password123").await;
+    let bob = srv.register("modbob", "password123").await;
+
+    // Bob is in Alice's space, and she times him out there.
+    let space: Value = srv
+        .post_json_auth("/api/v1/servers", &alice.token, json!({ "name": "Rules" }))
+        .await
+        .json()
+        .await
+        .unwrap();
+    let server_id = space["id"].as_str().unwrap();
+    let invite: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{server_id}/invites"),
+            &alice.token,
+            json!({}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let code = invite["code"].as_str().unwrap();
+    let joined = srv
+        .post_json_auth(&format!("/api/v1/invites/{code}"), &bob.token, json!({}))
+        .await;
+    assert_eq!(joined.status(), 200);
+    let timed_out = srv
+        .put_json_auth(
+            &format!("/api/v1/servers/{server_id}/members/{}/timeout", bob.id),
+            &alice.token,
+            json!({ "seconds": 600, "reason": "spam" }),
+        )
+        .await;
+    assert!(timed_out.status().is_success(), "{}", timed_out.status());
+
+    // A time out is for that space: Bob can still call Alice in their DM and join the call.
+    let dm = open_dm(&srv, &bob, &alice).await;
+    let mut alice_gw = ready(&srv, &alice).await;
+    let mut bob_gw = ready(&srv, &bob).await;
+    join_voice(&mut bob_gw, &dm).await;
+    next(&mut bob_gw, |e| e["t"] == "VoiceRoster").await;
+    assert_eq!(start_call(&srv, &bob, &dm).await.status(), 200);
+    next(&mut alice_gw, ring_in(&dm)).await;
+}
