@@ -155,6 +155,7 @@ jobs:
             /tmp/kikka-shots-${{ matrix.client_mode }}/54-search-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/56-dm-calls-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/55-moderation-*.png
+            /tmp/kikka-shots-${{ matrix.client_mode }}/58-help-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/59-two-factor-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/60-roles-*.png
 

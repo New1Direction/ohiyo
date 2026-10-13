@@ -38,6 +38,7 @@ import { MessageActionSheet } from "./MessageActionSheet";
 import { threadChipLabel, type ThreadSummary } from "../lib/threads";
 import { ThreadOptionsMenu } from "./ThreadOptionsMenu";
 import { avatarStyle } from "../lib/avatarStyle";
+import { ComposerMediaPicker, type GifResult } from "./ComposerMediaPicker";
 import { slowmodeLabel, slowmodeWait } from "../lib/moderation";
 import { ComposerModerationNotice } from "./moderation/ComposerModerationNotice";
 import { useTimedOut } from "./moderation/useModerationClock";
@@ -106,27 +107,10 @@ const OgAuthTokenContext = createContext<string>("");
 const MessageIdContext = createContext<string>("");
 
 const QUICK_EMOJI = ["👍", "❤️", "😂", "😮", "😢", "🔥", "✅", "🎉", "👀", "🚀", "💯", "🙏", "😍", "😎", "🤔"];
-const EMOJI_CATALOG = [
-  ["😀", "grin happy smile"], ["😂", "laugh tears funny"], ["🤣", "rofl laughing"], ["😭", "cry sob"], ["🥹", "teary touched"], ["😍", "love heart eyes"],
-  ["🥰", "love hearts"], ["😘", "kiss"], ["😎", "cool sunglasses"], ["🥳", "party celebrate"], ["😤", "huff angry"], ["😡", "rage angry"],
-  ["🤯", "mind blown"], ["🫡", "salute"], ["🤔", "think hmm"], ["🫠", "melt"], ["🫶", "heart hands"], ["🙏", "pray please thanks"],
-  ["👍", "thumbs up yes"], ["👎", "thumbs down no"], ["👏", "clap applause"], ["🙌", "raise hands"], ["💪", "strong flex"], ["🤝", "handshake"],
-  ["❤️", "heart love red"], ["🧡", "orange heart"], ["💛", "yellow heart"], ["💚", "green heart"], ["💙", "blue heart"], ["💜", "purple heart"],
-  ["🖤", "black heart"], ["🤍", "white heart"], ["💔", "broken heart"], ["💕", "two hearts"], ["💯", "hundred"], ["✨", "sparkles"],
-  ["🔥", "fire hot"], ["⭐", "star"], ["🌙", "moon"], ["☀️", "sun"], ["🌈", "rainbow"], ["⚡", "lightning"],
-  ["🎉", "party popper"], ["🎊", "confetti"], ["🎂", "cake birthday"], ["🎁", "gift"], ["🏆", "trophy"], ["🥇", "gold medal"],
-  ["👀", "eyes look"], ["💀", "skull dead"], ["🤡", "clown"], ["🤌", "chef kiss"], ["😈", "devil"], ["👻", "ghost"],
-  ["🐱", "cat"], ["🐶", "dog"], ["🐸", "frog"], ["🐧", "penguin"], ["🐭", "mouse"], ["🐰", "bunny"],
-  ["🍕", "pizza"], ["🍔", "burger"], ["🍟", "fries"], ["🍣", "sushi"], ["🍪", "cookie"], ["☕", "coffee"],
-  ["🎮", "game controller"], ["🎧", "headphones music"], ["🎵", "music note"], ["🎬", "movie film"], ["📸", "camera"], ["💻", "laptop code"],
-  ["🚀", "rocket launch"], ["🛸", "ufo"], ["🧠", "brain smart"], ["🫵", "you point"], ["✅", "check yes"], ["❌", "x no"],
-] as const;
-// Tenor API key. Prefer VITE_TENOR_KEY (set per-deployment); the public sample key
-// from Tenor's docs is a rate-limited DEV-ONLY fallback so the GIF picker still works
-// locally without setup. Production deployments should set VITE_TENOR_KEY.
-const TENOR_SAMPLE_KEY = "LIVDSRZULELA";
-const TENOR_KEY = import.meta.env.VITE_TENOR_KEY || TENOR_SAMPLE_KEY;
-type GifResult = { id: string; title: string; url: string; preview: string };
+
+// Whether each home can search GIFs, learned once per session from its trending page (which
+// the picker shows first anyway). Keyed by API base, since each home has its own server.
+const gifAvailability = new Map<string, boolean>();
 
 export type ChatActivityNotice = {
   id: string;
@@ -542,7 +526,9 @@ export function ChatPane({
   const [composerPickerOpen, setComposerPickerOpen] = useState(false);
   const [composerPickerTab, setComposerPickerTab] = useState<"emoji" | "gif">("emoji");
   const [emojiQuery, setEmojiQuery] = useState("");
-  const [gifQuery, setGifQuery] = useState("excited");
+  const [gifQuery, setGifQuery] = useState("");
+  const [gifsAvailable, setGifsAvailable] = useState<boolean>(() => gifAvailability.get(getApiBase()) ?? false);
+  const [gifError, setGifError] = useState(false);
   const [gifResults, setGifResults] = useState<GifResult[]>([]);
   const [gifLoading, setGifLoading] = useState(false);
   const [gifUrl, setGifUrl] = useState("");
@@ -899,41 +885,53 @@ export function ChatPane({
     return () => window.removeEventListener("click", close);
   }, [emojiPickerFor]);
 
-  // GIF search: uses Tenor's public sample API key from their docs. If it fails,
-  // the picker still supports pasting any GIF URL.
+  // Does this home search GIFs? Asked once per session: its server answers available:false
+  // without a KLIPY key, and then the picker shows no GIFs tab.
   useEffect(() => {
-    if (!composerPickerOpen || composerPickerTab !== "gif") return;
+    const base = getApiBase();
+    if (gifAvailability.has(base)) return;
+    let alive = true;
+    api.trendingGifs(token).then(
+      (page) => {
+        gifAvailability.set(base, page.available);
+        if (!alive) return;
+        setGifsAvailable(page.available);
+        if (page.available) setGifResults(page.results);
+      },
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
+  }, [token]);
+
+  // GIF search goes through this home's server to KLIPY (api::gifs): the search never carries
+  // this device's address to KLIPY. With nothing typed, the picker shows what's trending.
+  useEffect(() => {
+    if (!composerPickerOpen || composerPickerTab !== "gif" || !gifsAvailable) return;
     const q = gifQuery.trim();
-    if (!q) {
-      setGifResults([]);
-      return;
-    }
-    const controller = new AbortController();
+    let alive = true;
     const timer = window.setTimeout(() => {
       setGifLoading(true);
-      fetch(`https://g.tenor.com/v1/search?q=${encodeURIComponent(q)}&key=${TENOR_KEY}&limit=18&media_filter=minimal`, { signal: controller.signal })
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error("gif search failed"))))
-        .then((data: { results?: Array<{ id: string; title?: string; media?: Array<{ gif?: { url: string }; tinygif?: { url: string } }> }> }) => {
-          const results = (data.results ?? [])
-            .map((g) => {
-              const media = g.media?.[0];
-              const url = media?.gif?.url;
-              const preview = media?.tinygif?.url ?? url;
-              return url && preview ? { id: g.id, title: g.title || "GIF", url, preview } : null;
-            })
-            .filter((g): g is GifResult => Boolean(g));
-          setGifResults(results);
+      setGifError(false);
+      (q ? api.searchGifs(token, q) : api.trendingGifs(token))
+        .then((page) => {
+          if (alive) setGifResults(page.results);
         })
-        .catch((err) => {
-          if (err.name !== "AbortError") setGifResults([]);
+        .catch(() => {
+          if (!alive) return;
+          setGifResults([]);
+          setGifError(true);
         })
-        .finally(() => setGifLoading(false));
-    }, 250);
+        .finally(() => {
+          if (alive) setGifLoading(false);
+        });
+    }, q ? 300 : 0);
     return () => {
+      alive = false;
       window.clearTimeout(timer);
-      controller.abort();
     };
-  }, [composerPickerOpen, composerPickerTab, gifQuery]);
+  }, [composerPickerOpen, composerPickerTab, gifQuery, gifsAvailable, token]);
 
   // Apply plugin message transforms. Memoized so react-window's VariableSizeList
   // doesn't get fresh array identities (and discard its measured-height cache) on
@@ -2321,10 +2319,12 @@ export function ChatPane({
           serverEmojis={serverEmojis}
           onPickEmoji={(em) => insertComposerText(em)}
           onPickCustomEmoji={(em) => insertComposerText(`:${em.name}:`)}
+          gifsAvailable={gifsAvailable && !e2eEnabled}
           gifQuery={gifQuery}
           onGifQuery={setGifQuery}
           gifResults={gifResults}
           gifLoading={gifLoading}
+          gifError={gifError}
           gifUrl={gifUrl}
           onGifUrl={setGifUrl}
           onSendGif={sendGif}
@@ -2871,161 +2871,6 @@ function EmbedCard({ embed }: { embed: Embed }) {
   if (playable) return <PlayableEmbed url={embed.url} embed={playable} openKey={embedKey(messageId, embed.url)} showPreview title={embed.title} />;
   if (isDirectVideoUrl(embed.url)) return <DirectVideoLinkPreview url={embed.url} />;
   return <StandardLinkPreviewCard url={embed.url} data={embed} />;
-}
-
-// ── Composer emoji/GIF picker ────────────────────────────────────────────────
-
-function ComposerMediaPicker({
-  tab,
-  onTab,
-  emojiQuery,
-  onEmojiQuery,
-  serverEmojis,
-  onPickEmoji,
-  onPickCustomEmoji,
-  gifQuery,
-  onGifQuery,
-  gifResults,
-  gifLoading,
-  gifUrl,
-  onGifUrl,
-  onSendGif,
-}: {
-  tab: "emoji" | "gif";
-  onTab: (tab: "emoji" | "gif") => void;
-  emojiQuery: string;
-  onEmojiQuery: (q: string) => void;
-  serverEmojis: ServerEmoji[];
-  onPickEmoji: (emoji: string) => void;
-  onPickCustomEmoji: (emoji: ServerEmoji) => void;
-  gifQuery: string;
-  onGifQuery: (q: string) => void;
-  gifResults: GifResult[];
-  gifLoading: boolean;
-  gifUrl: string;
-  onGifUrl: (url: string) => void;
-  onSendGif: (url: string) => void;
-}) {
-  const q = emojiQuery.trim().toLowerCase();
-  const unicode = EMOJI_CATALOG.filter(([emoji, tags]) => !q || emoji.includes(q) || tags.includes(q)).slice(0, 96);
-  const custom = serverEmojis.filter((e) => !q || e.name.toLowerCase().includes(q)).slice(0, 48);
-  const pill = (active: boolean): React.CSSProperties => ({
-    border: "none",
-    borderRadius: 999,
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 800,
-    cursor: "pointer",
-    background: active ? "var(--accent)" : "var(--bg-input)",
-    color: active ? "#fff" : "var(--text-secondary)",
-  });
-
-  return (
-    <div
-      className="mx-4 mb-2 overflow-hidden rounded-2xl border"
-      style={{ background: "var(--bg-sidebar)", borderColor: "var(--bg-hover)", boxShadow: "var(--shadow-md)" }}
-    >
-      <div className="flex items-center justify-between gap-2 border-b p-2" style={{ borderColor: "var(--bg-hover)" }}>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => onTab("emoji")} style={pill(tab === "emoji")}>Emoji</button>
-          <button type="button" onClick={() => onTab("gif")} style={pill(tab === "gif")}>GIFs</button>
-        </div>
-        <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-          {tab === "emoji" ? "Unicode + server emoji" : "Powered by Tenor · paste links too"}
-        </div>
-      </div>
-
-      {tab === "emoji" ? (
-        <div className="p-3">
-          <input
-            value={emojiQuery}
-            onChange={(e) => onEmojiQuery(e.target.value)}
-            placeholder="Search emoji…"
-            className="kc-field mb-3 w-full px-3 py-2 text-sm outline-none"
-          />
-          {custom.length > 0 && (
-            <>
-              <div className="mb-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Server emoji</div>
-              <div className="mb-3 grid grid-cols-8 gap-1 sm:grid-cols-10">
-                {custom.map((em) => (
-                  <button
-                    key={em.id}
-                    type="button"
-                    onClick={() => onPickCustomEmoji(em)}
-                    className="kc-interactive flex h-9 items-center justify-center rounded-lg"
-                    style={{ border: "none", background: "var(--bg-input)", cursor: "pointer" }}
-                    title={`:${em.name}:`}
-                  >
-                    <img src={`${getFileBase()}${em.url}`} alt={`:${em.name}:`} className="max-h-7 max-w-7 object-contain" />
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Emoji</div>
-          <div className="grid max-h-56 grid-cols-8 gap-1 overflow-y-auto sm:grid-cols-12">
-            {unicode.map(([emoji, tags]) => (
-              <button
-                key={`${emoji}-${tags}`}
-                type="button"
-                onClick={() => onPickEmoji(emoji)}
-                className="kc-interactive flex h-9 items-center justify-center rounded-lg text-xl"
-                style={{ border: "none", background: "transparent", cursor: "pointer" }}
-                title={tags}
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="p-3">
-          <div className="mb-3 flex gap-2">
-            <input
-              value={gifQuery}
-              onChange={(e) => onGifQuery(e.target.value)}
-              placeholder="Search GIFs…"
-              className="kc-field min-w-0 flex-1 px-3 py-2 text-sm outline-none"
-            />
-            <button type="button" onClick={() => onGifQuery(gifQuery || "excited")} className="kc-cta px-3 py-2 text-sm">Search</button>
-          </div>
-          <div className="mb-3 flex gap-2">
-            <input
-              value={gifUrl}
-              onChange={(e) => onGifUrl(e.target.value)}
-              placeholder="Or paste a GIF/image URL…"
-              className="kc-field min-w-0 flex-1 px-3 py-2 text-sm outline-none"
-            />
-            <button type="button" onClick={() => onSendGif(gifUrl)} className="kc-cta px-3 py-2 text-sm">Send</button>
-          </div>
-          {gifLoading ? (
-            <div className="grid grid-cols-3 gap-2">
-              {[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="kc-skeleton h-24 rounded-xl" />)}
-            </div>
-          ) : gifResults.length > 0 ? (
-            <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
-              {gifResults.map((gif) => (
-                <button
-                  key={gif.id}
-                  type="button"
-                  onClick={() => onSendGif(gif.url)}
-                  className="kc-interactive overflow-hidden rounded-xl border p-0"
-                  style={{ borderColor: "var(--bg-hover)", background: "var(--bg-input)", cursor: "pointer" }}
-                  title={gif.title}
-                >
-                  <img src={gif.preview} alt={gif.title} className="h-24 w-full object-cover" loading="lazy" />
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl p-4 text-center text-sm" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
-              No GIFs loaded. Try another search or paste a GIF link.
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── Attachment list ───────────────────────────────────────────────────────────
