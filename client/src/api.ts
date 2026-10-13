@@ -928,6 +928,10 @@ export const api = {
   listTimeouts: (token: string, serverId: string) =>
     request<MemberTimeout[]>(`/servers/${serverId}/timeouts`, {}, token),
 
+  /** The ids of the members you may time out (you outrank them; not the owner or an admin). */
+  listModeratable: (token: string, serverId: string) =>
+    request<string[]>(`/servers/${serverId}/moderatable`, {}, token),
+
   setSlowmode: (token: string, channelId: string, seconds: number) =>
     request<void>(`/channels/${channelId}/slowmode`, { method: "PUT", body: JSON.stringify({ seconds }) }, token),
 

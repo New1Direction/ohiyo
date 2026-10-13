@@ -11,12 +11,15 @@ import {
   type ScreenSharePresetId,
 } from "../webrtc/screenShare";
 import { AvatarMark } from "./BirdMark";
+import { callHeading, type CallKind } from "../lib/callTitle";
 import type { PushToTalkStatus } from "../hooks/useVoiceControls";
 
 type Props = {
   webrtc: UseWebRTCReturn;
   currentUser: PublicUser | null;
   channelName: string;
+  /** What the call is in: a voice channel, a one-to-one DM, or a group chat. */
+  callKind?: CallKind;
   /** Set while push to talk is the input mode: the key to hold, and whether you're talking. */
   pushToTalk?: PushToTalkStatus | null;
   /** True while a DM call you started rings and nobody has answered yet. */
@@ -677,8 +680,9 @@ function ScreenShareParticipantChip({
   );
 }
 
-export function CallOverlay({ webrtc, currentUser, channelName, pushToTalk = null, ringing = false }: Props) {
+export function CallOverlay({ webrtc, currentUser, channelName, callKind = "voice", pushToTalk = null, ringing = false }: Props) {
   const { localStream, remoteStreams, participants, self, callState, quality } = webrtc;
+  const heading = callHeading(callKind, channelName);
   const [minimized, setMinimized] = useState(false);
   const phoneLayout = usePhoneCallLayout();
   const callBar = minimized && phoneLayout;
@@ -979,8 +983,8 @@ export function CallOverlay({ webrtc, currentUser, channelName, pushToTalk = nul
               <div className="kc-voice-stack-card kc-fade-up">
                 <div className="kc-voice-stack-card__head">
                   <div>
-                    <div className="kc-call-kicker">Voice room</div>
-                    <div className="kc-voice-stack-card__title">People in {channelName}</div>
+                    <div className="kc-call-kicker">{heading.kicker}</div>
+                    <div className="kc-voice-stack-card__title">{heading.title}</div>
                   </div>
                   <div className="kc-voice-stack-card__count">{total} here</div>
                 </div>

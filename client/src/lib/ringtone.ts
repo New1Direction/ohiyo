@@ -1,8 +1,21 @@
 // A short, soft two-note ring made with WebAudio (no sound files), repeated until stopped.
 // Used for an incoming DM call; silent where audio can't play (no AudioContext, or the
-// browser hasn't allowed sound yet).
+// browser hasn't allowed sound yet). How loud follows Settings → Notifications.
+
+import type { SoundPrefs } from "./notificationSounds";
 
 type AudioContextCtor = typeof AudioContext;
+
+/** The ring's gain with the volume slider all the way up; the default 0.6 gives 0.18. */
+const RING_FULL_VOLUME = 0.3;
+
+/** How loud the ring is for these sound settings; `null` when it should be silent. */
+export function ringVolume(prefs: Pick<SoundPrefs, "enabled" | "volume">): number | null {
+  if (!prefs.enabled) return null;
+  const volume = Math.min(1, Math.max(0, Number.isFinite(prefs.volume) ? prefs.volume : 0));
+  if (volume === 0) return null;
+  return Math.round(RING_FULL_VOLUME * volume * 1000) / 1000;
+}
 
 /** Start ringing; returns a function that stops it. */
 export function startRingtone(volume = 0.18): () => void {

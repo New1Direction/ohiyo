@@ -129,6 +129,28 @@ pub async fn is_enabled(state: &AppState, user_id: &str) -> Result<bool, ApiErro
     Ok(on.is_some())
 }
 
+/// Seal a secret that opened only under the old (`JWT_SECRET`) key again under the current
+/// key, so the old key can one day go. Only if the row still holds what was read, so a new
+/// setup meanwhile isn't overwritten. Failing here only means trying again next time.
+async fn reseal(
+    state: &AppState,
+    secret_box: &tf::SecretBox,
+    user_id: &str,
+    stale: &[u8],
+    secret: &[u8],
+) {
+    let saved =
+        sqlx::query("UPDATE two_factor SET secret_enc = ? WHERE user_id = ? AND secret_enc = ?")
+            .bind(secret_box.seal(user_id, secret))
+            .bind(user_id)
+            .bind(stale)
+            .execute(&state.db)
+            .await;
+    if let Err(e) = saved {
+        tracing::warn!("couldn't seal a two-factor secret under the new key: {e}");
+    }
+}
+
 /// Check a typed code — six digits from the app, or a recovery code — and use it up.
 /// `Ok(false)` when it's wrong.
 async fn use_code(state: &AppState, user_id: &str, typed: &str) -> Result<bool, ApiError> {
@@ -165,13 +187,17 @@ async fn use_code(state: &AppState, user_id: &str, typed: &str) -> Result<bool, 
             format!("{UNAVAILABLE} right now — use a recovery code"),
         ));
     };
-    let Some(secret) = secret_box.open(user_id, &sealed) else {
+    let Some(opened) = secret_box.open_checked(user_id, &sealed) else {
         tracing::warn!("a two-factor secret didn't open with this server's key");
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             format!("{UNAVAILABLE} right now — use a recovery code"),
         ));
     };
+    if opened.stale {
+        reseal(state, secret_box, user_id, &sealed, &opened.plaintext).await;
+    }
+    let secret = opened.plaintext;
     let Some(step) = tf::verify_code(&secret, typed, now_unix(), last_step) else {
         return Ok(false);
     };
@@ -369,9 +395,13 @@ pub async fn enable(
             "start setting up two-factor sign-in first".into(),
         ));
     };
-    let secret = secret_box
-        .open(&auth.0, &sealed)
+    let opened = secret_box
+        .open_checked(&auth.0, &sealed)
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE.into()))?;
+    if opened.stale {
+        reseal(&state, &secret_box, &auth.0, &sealed, &opened.plaintext).await;
+    }
+    let secret = opened.plaintext;
     let code = body.code.unwrap_or_default();
     let Some(step) = tf::verify_code(&secret, &code, now_unix(), 0) else {
         record_wrong_code(&state, &auth.0).await?;
