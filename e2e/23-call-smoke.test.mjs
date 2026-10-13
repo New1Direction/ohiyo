@@ -123,6 +123,35 @@ try {
   await pageB.waitForSelector("text=Muted", { timeout: 12000 });
   log("mute state propagates live ✓");
 
+  // Deafen: A hears nobody, is muted too, and B sees it. Undeafening puts A's mic back.
+  await pageA.click('button[aria-label="Unmute"]');
+  await pageA.waitForSelector('button[aria-label="Mute"]', { timeout: 8000 });
+  await pageA.click('button[aria-label="Deafen"]');
+  await pageA.waitForSelector('button[aria-label="Undeafen"]', { timeout: 8000 });
+  await pageA.waitForSelector('button[aria-label="Unmute"]', { timeout: 8000 });
+  const silenced = await pageA.evaluate(() => {
+    const sinks = [...document.querySelectorAll(".kc-call-overlay audio")];
+    return sinks.length > 0 && sinks.every((a) => a.muted);
+  });
+  if (!silenced) throw new Error("A still hears the call while deafened");
+  await pageB.waitForFunction(() => document.body.innerText.toLowerCase().includes("deafened"), undefined, { timeout: 12000 });
+  log("deafen silences the call for A, mutes A, and B sees A deafened ✓");
+  await pageA.click('button[aria-label="Undeafen"]');
+  await pageA.waitForSelector('button[aria-label="Deafen"]', { timeout: 8000 });
+  await pageA.waitForSelector('button[aria-label="Mute"]', { timeout: 8000 });
+  await pageB.waitForFunction(() => !document.body.innerText.toLowerCase().includes("deafened"), undefined, { timeout: 12000 });
+  const hearing = await pageA.evaluate(() => [...document.querySelectorAll(".kc-call-overlay audio")].every((a) => !a.muted));
+  if (!hearing) throw new Error("A still hears nothing after undeafening");
+  log("undeafening brings the sound and A's mic back, for both ✓");
+
+  await pageA.keyboard.press("Control+Shift+D");
+  await pageA.waitForSelector('button[aria-label="Undeafen"]', { timeout: 8000 });
+  await pageA.keyboard.press("Control+Shift+D");
+  await pageA.waitForSelector('button[aria-label="Deafen"]', { timeout: 8000 });
+  await pageA.keyboard.press("Control+Shift+M");
+  await pageA.waitForSelector('button[aria-label="Unmute"]', { timeout: 8000 });
+  log("Ctrl+Shift+D deafens and Ctrl+Shift+M mutes during a call ✓");
+
   await pageA.click('button:has-text("Minimize")');
   await pageA.waitForSelector('button:has-text("Open")', { timeout: 8000 });
   await pageA.click('button:has-text("Open")');

@@ -52,6 +52,7 @@ import { addToOutbox, removeFromOutbox, setOutboxState, outboxForChannel, pendin
 import { isActivationDismissed, loadActivation, markActivation, setActivationDismissed, type ActivationState } from "./lib/activation";
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useWebRTCLiveKit } from "./hooks/useWebRTCLiveKit";
+import { useVoiceControls } from "./hooks/useVoiceControls";
 import { myKeyPair, deriveSharedKey, isEncrypted } from "./lib/e2e";
 import { initSignal, encryptFor, decryptFrom, deviceId, isSignalCiphertext, parseSignalCiphertextHeader, refreshContactDevices, safetyNumber, safetyNumberKeySet } from "./lib/signal";
 import { retryRetiredDevice } from "./lib/retiredDevice";
@@ -159,6 +160,7 @@ type VoiceSidebarParticipant = {
   video: boolean;
   screen: boolean;
   listenOnly: boolean;
+  deafened?: boolean;
   isSelf?: boolean;
 };
 
@@ -914,8 +916,8 @@ function MainApp({
     sendJoin: (cid: string, muted: boolean, video: boolean, listenOnly: boolean) =>
       gatewayRef.current?.send({ t: "JoinVoice", d: { channel_id: cid, muted, video, listen_only: listenOnly } }),
     sendLeave: (cid: string) => gatewayRef.current?.send({ t: "LeaveVoice", d: { channel_id: cid } }),
-    sendMeta: (cid: string, muted: boolean, video: boolean, screen: boolean, listenOnly: boolean) =>
-      gatewayRef.current?.send({ t: "VoiceMeta", d: { channel_id: cid, muted, video, screen, listen_only: listenOnly } }),
+    sendMeta: (cid: string, muted: boolean, video: boolean, screen: boolean, listenOnly: boolean, deafened: boolean) =>
+      gatewayRef.current?.send({ t: "VoiceMeta", d: { channel_id: cid, muted, video, screen, listen_only: listenOnly, deafened } }),
     sendSignal: (to: string, kind: string, payload: string) =>
       gatewayRef.current?.send({
         t: "Signal",
@@ -925,6 +927,8 @@ function MainApp({
   const mesh = useWebRTC(webrtcCallbacks);
   const sfu = useWebRTCLiveKit(webrtcCallbacks, token);
   const webrtc = liveKitEnabled ? sfu : mesh;
+  // Push to talk, input sensitivity and the mute/deafen shortcuts, from this device's settings.
+  const voiceControls = useVoiceControls(webrtc);
 
   // ── Desktop shell: the tray, the dock badge, and a window that can sit hidden ──
   // Unread numbers after notification settings: the sidebar shows `shownUnread`; the Dock,
@@ -1775,6 +1779,7 @@ function MainApp({
               video: event.d.video,
               screen: event.d.screen,
               listenOnly: Boolean(event.d.listenOnly),
+              deafened: Boolean(event.d.deafened),
             });
             next.set(channel_id, members);
           }
@@ -2803,6 +2808,7 @@ function MainApp({
           video: peer.video,
           screen: peer.screen,
           listenOnly: Boolean(peer.listenOnly),
+          deafened: Boolean(peer.deafened),
         });
       }
       if (currentUser) {
@@ -2813,6 +2819,7 @@ function MainApp({
           video: webrtc.self.video,
           screen: webrtc.self.screen,
           listenOnly: Boolean(webrtc.self.listenOnly),
+          deafened: webrtc.self.deafened,
           isSelf: true,
         });
       }
@@ -3262,6 +3269,7 @@ function MainApp({
           webrtc={webrtc}
           currentUser={currentUser}
           channelName={voiceChannel?.name ?? "Voice"}
+          pushToTalk={voiceControls.pushToTalk}
         />
       </ErrorBoundary>
 
