@@ -5436,6 +5436,114 @@ ol.kc-md-list { list-style: decimal; }
   .kc-incoming-call-btn, .kc-join-call-btn { transition: none; }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   Phones: the drawer's tab bar, the Mentions list, the member list from the right,
+   and the slim call bar (swipes: hooks/useSwipeNav.ts)
+   ═══════════════════════════════════════════════════════════ */
+.kc-phone-tabs, .kc-mentions-inbox { display: none; }
+
+@media (max-width: 768px) {
+  /* The drawer: the two rails side by side, the tab bar along the foot. */
+  .kc-nav { display: grid; grid-template-columns: auto auto; grid-template-rows: minmax(0, 1fr) auto; }
+  .kc-nav .server-sidebar, .kc-nav .channel-sidebar { min-height: 0; }
+  .kc-nav .channel-sidebar { position: relative; }
+
+  .kc-phone-tabs {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px;
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in oklch, var(--bg-base) 92%, black);
+    border-top: 1px solid color-mix(in oklch, var(--text-primary) 8%, transparent);
+  }
+  .kc-phone-tab {
+    min-height: 52px; min-width: 44px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    border: 0; border-radius: var(--radius-lg);
+    background: transparent; color: var(--text-muted);
+    font: inherit; cursor: pointer;
+  }
+  .kc-phone-tab[aria-current="page"] { color: var(--text-primary); }
+  .kc-phone-tab-icon {
+    position: relative;
+    display: grid; place-items: center;
+    width: 48px; height: 28px; border-radius: var(--radius-full);
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+  .kc-phone-tab[aria-current="page"] .kc-phone-tab-icon {
+    background: color-mix(in oklch, var(--accent) 18%, transparent);
+    color: var(--accent);
+  }
+  .kc-phone-tab-label { font-size: 11px; font-weight: 700; letter-spacing: 0.01em; }
+  .kc-phone-tab-badge {
+    position: absolute; top: -4px; right: 4px;
+    min-width: 18px; height: 18px; padding: 0 5px;
+    border-radius: 9px;
+    background: var(--danger-fill, var(--danger)); color: #fff;
+    font-size: 11px; font-weight: 800; line-height: 18px; text-align: center;
+  }
+
+  /* Mentions: over the channel list while its tab is on. */
+  .kc-mentions-inbox {
+    display: flex; flex-direction: column; gap: var(--space-2);
+    position: absolute; inset: 0; z-index: 2;
+    padding: calc(env(safe-area-inset-top, 0px) + var(--space-4)) var(--space-3) var(--space-3);
+    overflow-y: auto;
+    background: var(--bg-channel);
+  }
+  .kc-mentions-title { font-family: var(--font-display); font-weight: 800; font-size: var(--text-lg); color: var(--text-primary); padding-inline: var(--space-1); }
+  .kc-mentions-empty { color: var(--text-muted); font-size: var(--text-sm); line-height: 1.5; padding-inline: var(--space-1); }
+  .kc-mentions-list { display: flex; flex-direction: column; gap: 2px; }
+  .kc-mentions-item {
+    width: 100%; min-height: 48px;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: var(--space-2);
+    align-items: center; text-align: left;
+    padding: 6px var(--space-2);
+    border: 0; border-radius: var(--radius-md);
+    background: transparent; color: var(--text-primary); font: inherit; cursor: pointer;
+  }
+  .kc-mentions-item:active { background: var(--bg-hover); }
+  .kc-mentions-item-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kc-mentions-item-where { grid-row: 2; color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kc-mentions-item-count { position: static; grid-row: 1 / span 2; grid-column: 2; }
+
+  /* The member list: a panel from the right that follows a swipe back out. */
+  .kc-backdrop--side { place-items: stretch end; padding: 0; }
+  /* In the panel the title keeps its count on its line, Manage roles goes below if it must,
+     and the list fills the panel instead of stopping at a desktop dialog's height. */
+  .kc-modal--side .kc-polish-hero { flex-wrap: wrap; row-gap: var(--space-2); }
+  .kc-modal--side .kc-polish-title { white-space: nowrap; }
+  .kc-modal--side .kc-members-list { max-height: none !important; }
+  .kc-modal--side {
+    width: min(22rem, 88vw); max-width: none !important; height: 100%;
+    border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+    overflow-y: auto;
+    padding: calc(env(safe-area-inset-top, 0px) + var(--space-6)) var(--space-5) calc(env(safe-area-inset-bottom, 0px) + var(--space-5)) !important;
+    animation: kc-side-in var(--dur-base) var(--ease-out) both;
+    transition: transform var(--dur-base) var(--ease-out);
+  }
+}
+@keyframes kc-side-in { from { transform: translateX(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .kc-modal--side { animation: none; transition: none; }
+}
+
+/* A minimised call on a phone: a slim bar under the chat header (CallOverlay). */
+.kc-call-bar { display: flex; align-items: center; gap: 6px; }
+.kc-call-bar-open {
+  flex: 1; min-width: 0; min-height: 44px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 4px; border: 0; background: transparent;
+  color: var(--text-primary); font: inherit; text-align: left; cursor: pointer;
+}
+.kc-call-bar-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
+.kc-call-bar-count { color: var(--text-muted); font-size: 12px; font-weight: 700; }
+@media (max-width: 760px) {
+  /* Keep the newest messages clear of the bar. */
+  body:has(.kc-call-overlay--bar) .kc-chat-header { margin-bottom: 62px; }
+}
+
 /* ── Catching up (like Discord) ──
    The red "New messages" line above the first unread message; the bar at the top of the chat
    ("12 new messages since 3:12 PM", Jump, Mark as read); the pencil beside a chat with an

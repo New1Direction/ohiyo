@@ -67,7 +67,7 @@ try {
   await pageA.click('[aria-label="Private channel"]', { timeout: 6000 });
   await pageA.selectOption('select[aria-label="Let a role in"]', mods.id);
   await pageA.waitForSelector('[aria-label="Mods · View channels: Allow"][aria-pressed="true"]', { timeout: 8000 });
-  await shot(pageA, "60-roles-channel-permissions-dark");
+  await shot(pageA, "61-roles-channel-permissions-dark");
   await pageA.keyboard.press("Escape");
   log("Robin made #staff private for Mods");
 
@@ -88,7 +88,7 @@ try {
   await pageA.fill('input[aria-label="Custom colour"]', "#e0569a");
   await pageA.click('button:has-text("Save changes")');
   await settle(pageA, 400);
-  await shot(pageA, "60-roles-editor-dark");
+  await shot(pageA, "61-roles-editor-dark");
   await pageA.keyboard.press("Escape");
   await pageA.click('.channel-sidebar button:has-text("general")', { timeout: 8000 });
   await pageA.fill('textarea[placeholder*="Say something to #general"]', "hi Sasha");
@@ -103,7 +103,7 @@ try {
     return sasha && robin && sasha !== robin ? { sasha, robin } : null;
   }, null, { timeout: 10000 });
   const { sasha, robin } = await colors.jsonValue();
-  await shot(pageA, "60-roles-colored-name-dark");
+  await shot(pageA, "61-roles-colored-name-dark");
   log(`Sasha's name is coloured (${sasha}, Robin's stays ${robin})`);
 
   // ── Rename the space ──
@@ -124,11 +124,11 @@ try {
   await pageA.click('label:has-text("Show members separately") input[type="checkbox"]');
   await pageA.click('button:has-text("Save changes")');
   await pageA.waitForSelector("text=Saved ✓", { timeout: 6000 });
-  await shot(pageA, "60-roles-editor-light");
+  await shot(pageA, "61-roles-editor-light");
   await pageA.keyboard.press("Escape");
   await pageA.getByRole("button", { name: /See who's here/i }).click();
   await pageA.waitForSelector('.kc-members-group:has-text("Mods")', { timeout: 8000 });
-  await shot(pageA, "60-roles-member-list-light");
+  await shot(pageA, "61-roles-member-list-light");
   await pageA.keyboard.press("Escape");
   log("Mods shown separately: the member list gives them their own section");
 
@@ -136,7 +136,7 @@ try {
   await openSpaceMenu(pageA, "Channel settings");
   await pageA.click('[role="tab"]:has-text("Permissions")', { timeout: 6000 });
   await pageA.waitForSelector('[aria-label="Mods · View channels: Allow"][aria-pressed="true"]', { timeout: 8000 });
-  await shot(pageA, "60-roles-channel-permissions-light");
+  await shot(pageA, "61-roles-channel-permissions-light");
   await pageA.keyboard.press("Escape");
 
   await pageA.setViewportSize({ width: 390, height: 844 });
@@ -147,7 +147,12 @@ try {
   await pageA.click('.kc-nav [role="menuitem"]:has-text("Channel settings")', { timeout: 6000 });
   await pageA.click('[role="tab"]:has-text("Permissions")', { timeout: 6000 });
   await pageA.waitForSelector('[aria-label="Mods · View channels: Allow"][aria-pressed="true"]', { timeout: 8000 });
-  await shot(pageA, "60-roles-channel-permissions-phone");
+  await shot(pageA, "61-roles-channel-permissions-phone");
+  await pageA.keyboard.press("Escape");
+  await settle(pageA, 300);
+  await pageA.getByRole("button", { name: /See who's here/i }).click();
+  await pageA.waitForSelector('[role="dialog"].kc-modal--side .kc-members-group:has-text("Mods")', { timeout: 8000 });
+  await shot(pageA, "61-roles-member-list-phone");
   await pageA.keyboard.press("Escape");
   log("channel permissions and the role editor shot in light and on a phone");
 
