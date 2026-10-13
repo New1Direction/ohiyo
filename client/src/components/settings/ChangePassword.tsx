@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../../api";
 import { passwordChangeMessage, PASSWORD_MIN_LENGTH as MIN_LENGTH } from "../../lib/apiErrors";
+import { codeKind, stepUpCodeMessage } from "../../lib/twoFactor";
 
 type Props = {
   token: string;
@@ -8,14 +9,20 @@ type Props = {
   onToast: (t: string, type?: "info" | "success" | "error") => void;
   /** The server ended every session and gave this one a fresh token. */
   onChanged: (token: string) => void;
+  /** Two-factor sign-in is on, so the change needs a code too. */
+  needsCode?: boolean;
 };
 
 /** Change the password. Every other session ends, so whoever had the old password, or a
  *  copied session, is signed out. Encryption keys and the recovery backup don't use it. */
-export function ChangePassword({ token, username, onToast, onChanged }: Props) {
+export function ChangePassword({ token, username, onToast, onChanged, needsCode = false }: Props) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [repeat, setRepeat] = useState("");
+  const [code, setCode] = useState("");
+  // The server asked for a code this card didn't know it needed (the status hadn't loaded).
+  const [codeAsked, setCodeAsked] = useState(false);
+  const showCode = needsCode || codeAsked;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +34,12 @@ export function ChangePassword({ token, username, onToast, onChanged }: Props) {
         : next.length > 0 && next === current
           ? "That's the password you have now."
           : null;
-  const ready = current.length > 0 && next.length >= MIN_LENGTH && repeat === next && next !== current;
+  const ready =
+    current.length > 0 &&
+    next.length >= MIN_LENGTH &&
+    repeat === next &&
+    next !== current &&
+    (!showCode || codeKind(code) !== null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,14 +47,18 @@ export function ChangePassword({ token, username, onToast, onChanged }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.changePassword(token, current, next);
+      const typed = codeKind(code) === "totp" ? code.replace(/[\s-]/g, "") : code.trim();
+      const res = await api.changePassword(token, current, next, showCode ? typed : undefined);
       setCurrent("");
       setNext("");
       setRepeat("");
+      setCode("");
       onChanged(res.token);
       onToast("Password changed. You're signed out everywhere else.", "success");
     } catch (err) {
-      setError(passwordChangeMessage(err));
+      const codeProblem = stepUpCodeMessage(err);
+      if (codeProblem) setCodeAsked(true);
+      setError(codeProblem ?? passwordChangeMessage(err));
     } finally {
       setBusy(false);
     }
@@ -92,6 +108,19 @@ export function ChangePassword({ token, username, onToast, onChanged }: Props) {
           className={field}
           style={fieldStyle}
         />
+        {showCode && (
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            aria-label="Code from your authenticator app"
+            placeholder="Code from your authenticator app"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className={`${field} font-mono`}
+            style={fieldStyle}
+          />
+        )}
       </div>
       {(error ?? problem) && (
         <p className="mt-2 text-xs" role="alert" style={{ color: "var(--danger)" }}>

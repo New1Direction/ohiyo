@@ -12,6 +12,14 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ## [Unreleased]
 
 ### Added
+- **Two-factor sign-in.** Settings → Account → Two-factor sign-in: enter your password, scan
+  the QR code with an authenticator app (Google Authenticator, 1Password, Authy, Aegis…) or
+  type its setup key, enter the code it shows, and save the 10 recovery codes. Signing in then
+  asks for a code after the password, and a recovery code works instead, once each. Changing
+  your password or deleting your account also asks for a code, and so do turning it off and
+  making new recovery codes. Your other devices are told when it's turned on or off. The
+  secret is stored encrypted and recovery codes only as hashes. Signing in to an account with
+  it on needs this version of the app: the desktop app gets it in its next release.
 - **Incoming webhooks, like Discord's.** People who manage a space's channels can make a
   webhook for a text channel (Space menu → Webhooks): a secret URL that another service posts
   `{"content": "…"}` to, and the message appears in the channel under the webhook's name and

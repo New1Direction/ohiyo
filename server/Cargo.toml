@@ -28,6 +28,10 @@ tokio-stream = "0.1"
 futures-util = "0.3"
 dotenvy = "0.15"
 rand = "0.8"
+# Two-factor secrets are stored encrypted (auth::two_factor). Both are already in the tree
+# through web-push, with exactly these features, so nothing new is built.
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+hkdf = "0.12"
 sha2 = "0.10"
 hmac = "0.12"
 sha1 = "0.10"
