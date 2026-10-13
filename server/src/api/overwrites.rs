@@ -66,14 +66,15 @@ async fn scope_permissions(
     };
     match scope_type {
         "channel" => {
-            let row: Option<(Option<String>, String)> =
-                sqlx::query_as("SELECT server_id, channel_type FROM channels WHERE id = ?")
+            // A thread takes its parent channel's permissions, so it has none of its own.
+            let row: Option<(Option<String>, Option<String>)> =
+                sqlx::query_as("SELECT server_id, parent_id FROM channels WHERE id = ?")
                     .bind(scope_id)
                     .fetch_optional(&state.db)
                     .await
                     .map_err(crate::api::error::internal)?;
             match row {
-                Some((Some(sid), kind)) if sid == server_id && kind != "thread" => {}
+                Some((Some(sid), None)) if sid == server_id => {}
                 _ => return Err(not_found()),
             }
             Ok(roles::channel_permissions(state, scope_id, user_id).await)
@@ -186,7 +187,10 @@ pub async fn set_overwrite(
             "a permission can't be both allowed and denied".into(),
         ));
     }
-    if (allow | deny) & !mine != 0 {
+    // Like Discord: whatever changes, added or lifted, has to be the editor's own to give.
+    let (old_allow, old_deny) =
+        current_bits(&state, &scope_type, &scope_id, &target_type, &target).await?;
+    if ((allow ^ old_allow) | (deny ^ old_deny)) & !mine != 0 {
         return Err((
             StatusCode::FORBIDDEN,
             "you can't set permissions you don't have".into(),
@@ -253,8 +257,16 @@ pub async fn delete_overwrite(
     )>,
     State(state): State<AppState>,
 ) -> Result<StatusCode, ApiError> {
-    require_manage(&state, &server_id, &scope_type, &scope_id, &auth.0).await?;
+    let mine = require_manage(&state, &server_id, &scope_type, &scope_id, &auth.0).await?;
     let target = check_target(&state, &server_id, &target_type, &target_id, &auth.0).await?;
+    let (old_allow, old_deny) =
+        current_bits(&state, &scope_type, &scope_id, &target_type, &target).await?;
+    if (old_allow | old_deny) & !mine != 0 {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't lift permissions you don't have".into(),
+        ));
+    }
     sqlx::query(
         "DELETE FROM permission_overwrites
          WHERE scope_type = ? AND scope_id = ? AND target_type = ? AND target_id IS ?",
@@ -312,6 +324,31 @@ pub async fn clear_overwrites(
     .await?;
     announce(&state, &server_id).await;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// What one target is allowed and denied at a scope now (nothing set: both 0).
+async fn current_bits(
+    state: &AppState,
+    scope_type: &str,
+    scope_id: &str,
+    target_type: &str,
+    target: &Option<String>,
+) -> Result<(i64, i64), ApiError> {
+    // An imported space can hold more than one row per target; together they apply.
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT allow_permissions, deny_permissions FROM permission_overwrites
+         WHERE scope_type = ? AND scope_id = ? AND target_type = ? AND target_id IS ?",
+    )
+    .bind(scope_type)
+    .bind(scope_id)
+    .bind(target_type)
+    .bind(target)
+    .fetch_all(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+    Ok(rows
+        .into_iter()
+        .fold((0, 0), |(allow, deny), (a, d)| (allow | a, deny | d)))
 }
 
 /// The stored target id for a path target (None for @everyone), after checking it belongs

@@ -284,7 +284,7 @@ pub async fn update_channel(
     {
         return Err((StatusCode::FORBIDDEN, "you can't manage channels".into()));
     }
-    if channel.channel_type == "thread" {
+    if channel.parent_id.is_some() {
         return Err((
             StatusCode::BAD_REQUEST,
             "rename a thread from its own menu".into(),

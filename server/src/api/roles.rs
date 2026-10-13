@@ -780,7 +780,8 @@ pub async fn update_role(
         role.color = color.map(|c| c.to_ascii_lowercase());
     }
     if let Some(permissions) = body.permissions {
-        let permissions = permissions & perm::ALL;
+        // Bits Ohiyo doesn't know (from an imported Discord role) stay as they were.
+        let permissions = (permissions & perm::ALL) | (role.permissions & !perm::ALL);
         let changed = permissions ^ role.permissions;
         if changed & !grantable(&state, &server_id, &auth.0).await != 0 {
             return Err((
