@@ -146,6 +146,10 @@ pub struct Message {
     /// Unix time this message self-destructs (disappearing messages); NULL = never.
     #[serde(default)]
     pub expires_at: Option<i64>,
+    /// The call log of a DM or group-chat call (JSON); NULL for every other message.
+    #[serde(default)]
+    #[sqlx(default)]
+    pub call_log: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -232,6 +236,9 @@ pub struct MessageWithAuthor {
     /// Unix time this message self-destructs (disappearing messages); None = never.
     #[serde(default)]
     pub expires_at: Option<i64>,
+    /// The call log, on the message a DM or group-chat call left in the chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call: Option<serde_json::Value>,
 }
 
 /// What a user is currently doing — the "rich presence" layer that powers the
@@ -405,6 +412,33 @@ pub enum GatewayEvent {
     ThreadFollowUpdate {
         thread: ThreadSummary,
         following: bool,
+    },
+    /// A call is ringing for you in a DM or group chat (sent to every device of each person
+    /// being called). `ring_until` is when it stops on its own and counts as missed.
+    CallRing {
+        channel_id: String,
+        message_id: String,
+        caller: PublicUser,
+        video: bool,
+        ring_until: i64,
+    },
+    /// Stop ringing for this chat's call on this device. `reason`: answered (on this or
+    /// another device), declined, cancelled (the caller hung up) or missed.
+    CallRingStop {
+        channel_id: String,
+        message_id: String,
+        reason: String,
+    },
+    /// A DM call is over (`outcome`: ended, missed or declined): anyone still in it hangs up.
+    CallEnded {
+        channel_id: String,
+        message_id: String,
+        outcome: String,
+    },
+    /// You couldn't join this voice room. `reason`: "full".
+    VoiceRefused {
+        channel_id: String,
+        reason: String,
     },
     MemberJoin {
         server_id: String,
