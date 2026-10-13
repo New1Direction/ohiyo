@@ -48,6 +48,8 @@ export type Server = {
   owner_id: string;
   icon_url: string | null;
   created_at: number;
+  /** Every invite link turns newcomers away while this is set. */
+  invites_paused?: boolean;
 };
 
 /** A channel a search page's messages are in; a thread names its parent channel. */
@@ -85,6 +87,8 @@ export type Channel = {
   parent_id?: string | null;
   /** The message a thread started from. Unset for anything that isn't a thread. */
   thread_message_id?: string | null;
+  /** Seconds each person waits between messages here (0 or unset: no slowmode). */
+  slowmode_seconds?: number;
 };
 
 export type Category = {
@@ -243,6 +247,39 @@ export type ModerationAction = {
   created_at: number;
 };
 
+/** A moderation log entry as the app shows it: the action, plus who did it and to whom by
+ *  name (null once that account is gone) and the reason, if one was given. */
+export type ModerationLogEntry = ModerationAction & {
+  actor_name: string | null;
+  target_name: string | null;
+  reason: string | null;
+};
+
+/** Someone banned from a space: who, by whom (null once that account is gone), why, when. */
+export type BanEntry = {
+  user: { id: string; username: string; display_name: string; avatar_url: string | null };
+  banned_by_name: string | null;
+  reason: string | null;
+  banned_at: number;
+};
+
+/** One of a space's invite links, as its list shows it. */
+export type InviteRow = {
+  code: string;
+  created_by: string | null;
+  created_by_name: string | null;
+  uses: number;
+  max_uses: number | null;
+  expires_at: number | null;
+  created_at: number;
+};
+
+/** Whether a space's invites are paused, and whether its members may make them. */
+export type InviteSettings = { paused: boolean; members_can_invite: boolean };
+
+/** A member's time out: until when (unix seconds) and why. */
+export type MemberTimeout = { user_id: string; until: number; reason: string | null };
+
 export type PrivateDmLinkInfo = {
   token: string;
   expires_at: number;
@@ -341,6 +378,8 @@ export type InvitePreview = {
   icon_url: string | null;
   member_count: number;
   already_member: boolean;
+  /** The space has paused its invites: joining would be turned away. */
+  paused?: boolean;
 };
 
 export type ImportHistoryWindow = "All" | "Last90Days";
@@ -611,8 +650,21 @@ export const api = {
     request<AbuseReport[]>(`/servers/${serverId}/mod-queue`, {}, token),
   resolveReport: (token: string, serverId: string, reportId: string, status: "resolved" | "dismissed", note?: string | null) =>
     request<AbuseReport>(`/servers/${serverId}/mod-queue/${reportId}/resolve`, { method: "POST", body: JSON.stringify({ status, note: note ?? null }) }, token),
-  listModerationActions: (token: string, serverId: string) =>
-    request<ModerationAction[]>(`/servers/${serverId}/moderation-actions`, {}, token),
+  /** A page of a space's moderation log, newest first; `before`/`beforeId` (the last entry
+   *  of the page before) fetch the next. */
+  listModerationActions: (
+    token: string,
+    serverId: string,
+    opts: { action?: string; before?: number; beforeId?: string; limit?: number } = {},
+  ) => {
+    const query = new URLSearchParams();
+    if (opts.action) query.set("action", opts.action);
+    if (opts.before !== undefined) query.set("before", String(opts.before));
+    if (opts.beforeId) query.set("before_id", opts.beforeId);
+    if (opts.limit !== undefined) query.set("limit", String(opts.limit));
+    const qs = query.toString();
+    return request<ModerationLogEntry[]>(`/servers/${serverId}/moderation-actions${qs ? `?${qs}` : ""}`, {}, token);
+  },
   listHiddenMessages: (token: string, channelId: string) =>
     request<string[]>(`/channels/${channelId}/hidden-messages`, {}, token),
   hideMessage: (token: string, channelId: string, messageId: string, hidden = true) =>
@@ -800,12 +852,45 @@ export const api = {
   deleteServer: (token: string, serverId: string, password: string) =>
     request<void>(`/servers/${serverId}`, { method: "DELETE", body: JSON.stringify({ password }) }, token),
 
-  banMember: (token: string, serverId: string, userId: string) =>
-    request<void>(`/servers/${serverId}/bans/${userId}`, { method: "POST" }, token),
+  /** Ban a member, with an optional reason, taking their messages from the last
+   *  `deleteMessageSeconds` with them (0: none). */
+  banMember: (
+    token: string,
+    serverId: string,
+    userId: string,
+    opts: { reason?: string; deleteMessageSeconds?: number } = {},
+  ) =>
+    request<void>(`/servers/${serverId}/bans/${userId}`, {
+      method: "POST",
+      body: JSON.stringify({ reason: opts.reason || null, delete_message_seconds: opts.deleteMessageSeconds ?? 0 }),
+    }, token),
+
+  unbanMember: (token: string, serverId: string, userId: string) =>
+    request<void>(`/servers/${serverId}/bans/${userId}`, { method: "DELETE" }, token),
+
+  listBans: (token: string, serverId: string) => request<BanEntry[]>(`/servers/${serverId}/bans`, {}, token),
+
+  // ── Time outs and slowmode ────────────────────────────────────────────────
+  timeoutMember: (token: string, serverId: string, userId: string, seconds: number, reason?: string) =>
+    request<MemberTimeout>(`/servers/${serverId}/members/${userId}/timeout`, {
+      method: "PUT",
+      body: JSON.stringify({ seconds, reason: reason || null }),
+    }, token),
+
+  removeTimeout: (token: string, serverId: string, userId: string) =>
+    request<void>(`/servers/${serverId}/members/${userId}/timeout`, { method: "DELETE" }, token),
+
+  listTimeouts: (token: string, serverId: string) =>
+    request<MemberTimeout[]>(`/servers/${serverId}/timeouts`, {}, token),
+
+  setSlowmode: (token: string, channelId: string, seconds: number) =>
+    request<void>(`/channels/${channelId}/slowmode`, { method: "PUT", body: JSON.stringify({ seconds }) }, token),
 
   // ── Roles & permissions ───────────────────────────────────────────────────
+  /** Your permissions in a space, and when your time out there ends (unix seconds), if
+   *  you're timed out. */
   getMyPermissions: (token: string, serverId: string) =>
-    request<{ permissions: number }>(`/servers/${serverId}/me/permissions`, {}, token),
+    request<{ permissions: number; timed_out_until?: number | null }>(`/servers/${serverId}/me/permissions`, {}, token),
 
   listRoles: (token: string, serverId: string) =>
     request<Role[]>(`/servers/${serverId}/roles`, {}, token),
@@ -1188,6 +1273,17 @@ export const api = {
         expires_in_secs: opts?.expiresInSecs ?? null,
       }),
     }, token),
+
+  listInvites: (token: string, serverId: string) => request<InviteRow[]>(`/servers/${serverId}/invites`, {}, token),
+
+  revokeInvite: (token: string, code: string) =>
+    request<void>(`/invites/${encodeURIComponent(code)}`, { method: "DELETE" }, token),
+
+  getInviteSettings: (token: string, serverId: string) =>
+    request<InviteSettings>(`/servers/${serverId}/invite-settings`, {}, token),
+
+  updateInviteSettings: (token: string, serverId: string, patch: Partial<InviteSettings>) =>
+    request<InviteSettings>(`/servers/${serverId}/invite-settings`, { method: "PATCH", body: JSON.stringify(patch) }, token),
 
   getInvite: (token: string, code: string) =>
     request<InvitePreview>(`/invites/${encodeURIComponent(code)}`, {}, token),

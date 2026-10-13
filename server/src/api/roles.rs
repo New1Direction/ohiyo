@@ -23,9 +23,13 @@ pub mod perm {
     pub const VIEW_CHANNEL: i64 = 1 << 6;
     pub const SEND_MESSAGES: i64 = 1 << 7;
     pub const ADMINISTRATOR: i64 = 1 << 8;
+    /// Time members out (they can read, but not post, react or join voice).
+    pub const MODERATE_MEMBERS: i64 = 1 << 9;
+    /// Make invite links. On for everyone by default; a space can take it away.
+    pub const CREATE_INVITE: i64 = 1 << 10;
     pub const LEGACY_MANAGE_ALL: i64 = (1 << 6) - 1;
-    pub const ALL: i64 = (1 << 9) - 1;
-    pub const DEFAULT_MEMBER: i64 = VIEW_CHANNEL | SEND_MESSAGES;
+    pub const ALL: i64 = (1 << 11) - 1;
+    pub const DEFAULT_MEMBER: i64 = VIEW_CHANNEL | SEND_MESSAGES | CREATE_INVITE;
 }
 
 /// Effective server-level permission bitfield for a member. The owner implicitly has
@@ -377,6 +381,9 @@ async fn is_member(state: &AppState, server_id: &str, user_id: &str) -> bool {
 #[derive(Serialize)]
 pub struct MyPermissions {
     pub permissions: i64,
+    /// When the caller's time out in this space ends (unix seconds); None when they aren't
+    /// timed out.
+    pub timed_out_until: Option<i64>,
 }
 
 /// GET /servers/{server_id}/me/permissions — the caller's effective permissions.
@@ -387,7 +394,14 @@ pub async fn my_permissions(
 ) -> Result<Json<MyPermissions>, (StatusCode, String)> {
     Ok(Json(MyPermissions {
         permissions: member_permissions(&state, &server_id, &auth.0).await,
+        timed_out_until: crate::api::moderation::active_timeout(&state, &server_id, &auth.0).await,
     }))
+}
+
+/// The @everyone permissions of a space: its @everyone role's, or the default for a space
+/// that has none (every space not imported from Discord).
+pub async fn everyone_permissions_of(state: &AppState, server_id: &str) -> i64 {
+    everyone_permissions(state, server_id).await
 }
 
 /// GET /servers/{server_id}/roles — list a server's roles (members only).

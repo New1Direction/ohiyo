@@ -149,9 +149,11 @@ jobs:
             /tmp/kikka-shots-${{ matrix.client_mode }}/48-message-formatting-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/49-user-bar-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/50-notif-*.png
+            /tmp/kikka-shots-${{ matrix.client_mode }}/53-voice-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/51-threads-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/52-webhooks-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/54-search-*.png
+            /tmp/kikka-shots-${{ matrix.client_mode }}/55-moderation-*.png
             /tmp/kikka-shots-${{ matrix.client_mode }}/58-help-*.png
 
       - name: Upload E2E artifacts on failure

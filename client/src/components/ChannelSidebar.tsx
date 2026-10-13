@@ -21,6 +21,7 @@ type VoiceSidebarParticipant = {
   video: boolean;
   screen: boolean;
   listenOnly: boolean;
+  deafened?: boolean;
   isSelf?: boolean;
 };
 
@@ -62,6 +63,12 @@ type Props = {
   onOpenEvents?: () => void;
   onReportServer?: () => void;
   onOpenModQueue?: () => void;
+  /** The space's invite links (and, for its managers, pausing them). */
+  onOpenInvites?: () => void;
+  /** Who is banned, and lifting bans (people who can ban). */
+  onOpenBans?: () => void;
+  /** The open channel's slowmode (people who manage channels). */
+  onOpenSlowmode?: () => void;
   /** Leave the space shown (a member). */
   onLeaveServer?: (serverId: string) => Promise<void>;
   /** Delete the space shown, with the password (its owner). */
@@ -136,6 +143,9 @@ export function ChannelSidebar({
   onOpenEvents,
   onReportServer,
   onOpenModQueue,
+  onOpenInvites,
+  onOpenBans,
+  onOpenSlowmode,
   onLeaveServer,
   onDeleteServer,
   activationState,
@@ -161,12 +171,15 @@ export function ChannelSidebar({
   const spaceMenuItems: SpaceMenuItem[] = [];
   if (server) {
     if (onInvite) spaceMenuItems.push({ label: "Invite people", icon: "userPlus", onSelect: onInvite });
+    if (onOpenInvites) spaceMenuItems.push({ label: "Invites", icon: "history", onSelect: onOpenInvites });
     if (canSetLogo) {
       spaceMenuItems.push({ label: "Change space logo", icon: "edit", onSelect: () => serverIconInputRef.current?.click() });
     }
     if (canManageChannels) spaceMenuItems.push({ label: "Create channel", icon: "plus", onSelect: () => setShowNewChannel(true) });
+    if (onOpenSlowmode) spaceMenuItems.push({ label: "Slowmode", icon: "hourglass", onSelect: onOpenSlowmode });
     if (onOpenEvents) spaceMenuItems.push({ label: "Events", icon: "calendar", onSelect: onOpenEvents });
-    if (onOpenModQueue) spaceMenuItems.push({ label: "Moderation queue", icon: "history", onSelect: onOpenModQueue });
+    if (onOpenModQueue) spaceMenuItems.push({ label: "Moderation queue", icon: "shield", onSelect: onOpenModQueue });
+    if (onOpenBans) spaceMenuItems.push({ label: "Bans", icon: "flag", onSelect: onOpenBans });
     if (canManageChannels && onOpenWebhooks) spaceMenuItems.push({ label: "Webhooks", icon: "webhook", onSelect: onOpenWebhooks });
     if (onOpenNotificationSettings) {
       spaceMenuItems.push({ label: "Notification settings", icon: "bell", onSelect: onOpenNotificationSettings });
@@ -632,6 +645,20 @@ export function ChannelSidebar({
   );
 }
 
+/** Crossed-out headphones: this person in a voice channel is deafened. */
+function DeafenedMark() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ verticalAlign: "-1px" }}>
+      <path d="M3 3l18 18" />
+      <path d="M4 15v-3a8 8 0 0 1 2.3-5.6" />
+      <path d="M9.2 4.6A8 8 0 0 1 20 12v3" />
+      <path d="M4 15h3v5H5a1 1 0 0 1-1-1v-4z" />
+      <path d="M20 15h-3v5h2a1 1 0 0 0 .7-.3" />
+    </svg>
+  );
+}
+
 /** A small crossed-out bell: this chat is muted. */
 function MutedMark() {
   return (
@@ -792,7 +819,7 @@ function VoiceChannelRow({
         <div className="kc-voice-participants mx-3 mb-1 mt-0.5" aria-label={`People in ${displayName}`}>
           {participants.slice(0, 6).map((p) => {
             const label = p.user.display_name || p.user.username;
-            const status = p.screen ? "sharing screen" : p.video ? "camera on" : p.listenOnly ? "listening" : p.muted ? "muted" : "in call";
+            const status = p.screen ? "sharing screen" : p.video ? "camera on" : p.listenOnly ? "listening" : p.deafened ? "deafened" : p.muted ? "muted" : "in call";
             return (
               <div key={p.user_id} data-testid="voice-channel-participant" className="kc-voice-participant">
                 <div
@@ -806,7 +833,7 @@ function VoiceChannelRow({
                 </div>
                 <span className="kc-voice-participant-name">{label}{p.isSelf ? " (you)" : ""}</span>
                 <span className="kc-voice-participant-status" title={status} aria-label={status}>
-                  {p.screen ? "▣" : p.video ? "◉" : p.listenOnly ? "♪" : p.muted ? "⌁" : "●"}
+                  {p.screen ? "▣" : p.video ? "◉" : p.listenOnly ? "♪" : p.deafened ? <DeafenedMark /> : p.muted ? "⌁" : "●"}
                 </span>
               </div>
             );

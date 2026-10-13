@@ -26,6 +26,10 @@ pub struct Server {
     pub owner_id: String,
     pub icon_url: Option<String>,
     pub created_at: i64,
+    /// Every invite link turns newcomers away while this is set.
+    #[serde(default)]
+    #[sqlx(default)]
+    pub invites_paused: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -62,6 +66,10 @@ pub struct Channel {
     #[serde(default)]
     #[sqlx(default)]
     pub thread_message_id: Option<String>,
+    /// Seconds one person must wait between messages here (0 = no slowmode).
+    #[serde(default)]
+    #[sqlx(default)]
+    pub slowmode_seconds: i64,
 }
 
 /// A thread as the app lists it: its channel, how many messages it holds, when the last
@@ -350,6 +358,11 @@ pub enum GatewayEvent {
         channel_id: String,
         seconds: Option<i64>,
     },
+    /// A channel's slowmode changed (0 turns it off).
+    SlowmodeUpdate {
+        channel_id: String,
+        seconds: i64,
+    },
     /// A group member's encrypted Sender Key Distribution Message (group E2E bootstrap).
     /// `envelope` is a pairwise-encrypted SKDM only this recipient device can open.
     SenderKeyDistribution {
@@ -459,6 +472,9 @@ pub enum GatewayEvent {
         /// True when the participant joined with no microphone (receive-only).
         #[serde(rename = "listenOnly", default)]
         listen_only: bool,
+        /// True when the participant hears nobody (deafened). A deafened person is always muted.
+        #[serde(default)]
+        deafened: bool,
     },
     /// Sent to a user when they join a voice channel: the peers already present.
     /// The joiner initiates WebRTC offers to each of these peers.
@@ -505,6 +521,9 @@ pub struct VoicePeer {
     /// True when the peer joined with no microphone (receive-only).
     #[serde(rename = "listenOnly", default)]
     pub listen_only: bool,
+    /// True when the peer hears nobody (deafened). A deafened peer is always muted.
+    #[serde(default)]
+    pub deafened: bool,
 }
 
 // ── Client → server events (parsed in the gateway inbound loop) ────────────────
@@ -522,6 +541,9 @@ pub enum ClientEvent {
         /// True when the client has no microphone and joins receive-only.
         #[serde(default)]
         listen_only: bool,
+        /// True when the client joins deafened. Apps that don't know about deafen leave it out.
+        #[serde(default)]
+        deafened: bool,
     },
     /// Leave a voice channel.
     LeaveVoice { channel_id: String },
@@ -534,6 +556,10 @@ pub enum ClientEvent {
         /// True when the client is participating receive-only (no microphone).
         #[serde(default)]
         listen_only: bool,
+        /// True when the client hears nobody (deafened). Apps that don't know about deafen
+        /// leave it out.
+        #[serde(default)]
+        deafened: bool,
     },
     /// Relay a WebRTC offer/answer/ICE candidate to another peer.
     Signal {

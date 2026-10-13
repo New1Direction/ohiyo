@@ -373,6 +373,7 @@ async fn open_or_create_dm_in_tx(
         owner_id: None,
         parent_id: None,
         thread_message_id: None,
+        slowmode_seconds: 0,
     })
 }
 

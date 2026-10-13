@@ -3,6 +3,10 @@ import type { PublicUser } from "../api";
 import type { Activity } from "../gateway";
 import { ModalShell } from "./ModalShell";
 import { AvatarMark } from "./BirdMark";
+import { TimeoutDialog } from "./moderation/TimeoutDialog";
+import { BanDialog } from "./moderation/BanDialog";
+import { timeoutEnds } from "../lib/moderation";
+import "./moderation/moderation.css";
 
 type Props = {
   members: PublicUser[];
@@ -16,12 +20,22 @@ type Props = {
   onOpenDm?: (user: PublicUser) => void | Promise<void>;
   canKick: boolean;
   canBan: boolean;
+  /** May time members out (Time out members). */
+  canTimeout?: boolean;
+  /** Members timed out right now: when each time out ends (unix seconds). */
+  timeouts?: ReadonlyMap<string, number>;
   canManageRoles: boolean;
   onManageRoles: () => void;
   onKick: (userId: string) => void;
-  onBan: (userId: string) => void;
+  /** Ban, with the choices from the ban dialog; throws to keep the dialog open with why. */
+  onBan: (userId: string, choice: { reason: string; deleteMessageSeconds: number }) => Promise<void>;
+  /** Time a member out; throws to keep the dialog open with why. */
+  onTimeout?: (userId: string, seconds: number, reason: string) => Promise<void>;
+  onRemoveTimeout?: (userId: string) => Promise<void>;
   onClose: () => void;
 };
+
+type Pending = { kind: "timeout" | "ban"; member: PublicUser };
 
 export const ACTIVITY_ICON: Record<string, string> = {
   playing: "🎮", watching: "📺", working: "💼", listening: "🎧",
@@ -44,16 +58,53 @@ export function ActivityLine({ activity }: { activity: Activity }) {
 
 /** Server member list. Moderation actions appear per your permissions. */
 export function MembersModal({
-  members, ownerId, currentUserId, onlineUsers, idleUsers, activities, voiceMembers, onJoinVoice, onOpenDm, canKick, canBan, canManageRoles, onManageRoles, onKick, onBan, onClose,
+  members, ownerId, currentUserId, onlineUsers, idleUsers, activities, voiceMembers, onJoinVoice, onOpenDm, canKick, canBan,
+  canTimeout = false, timeouts, canManageRoles, onManageRoles, onKick, onBan, onTimeout, onRemoveTimeout, onClose,
 }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [dmBusyId, setDmBusyId] = useState<string | null>(null);
+  // A time out or ban being decided: its dialog takes the list's place until it's done.
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [liftingId, setLiftingId] = useState<string | null>(null);
   const canModerate = canKick || canBan;
   const sorted = [...members].sort((a, b) => {
     if (a.id === ownerId) return -1;
     if (b.id === ownerId) return 1;
     return a.display_name.localeCompare(b.display_name);
   });
+
+  if (pending?.kind === "timeout" && onTimeout) {
+    const { member } = pending;
+    return (
+      <TimeoutDialog
+        name={member.display_name}
+        onConfirm={async (seconds, reason) => {
+          await onTimeout(member.id, seconds, reason);
+          setPending(null);
+        }}
+        onClose={() => setPending(null)}
+      />
+    );
+  }
+  if (pending?.kind === "ban") {
+    const { member } = pending;
+    return (
+      <BanDialog
+        name={member.display_name}
+        onConfirm={async (choice) => {
+          await onBan(member.id, choice);
+          setPending(null);
+        }}
+        onClose={() => setPending(null)}
+      />
+    );
+  }
+
+  const now = Date.now();
+  const timedOutUntil = (id: string) => {
+    const until = timeouts?.get(id);
+    return until !== undefined && until * 1000 > now ? until : null;
+  };
 
   return (
     <ModalShell onClose={onClose} labelledBy="kc-members-title" maxWidthClass="max-w-2xl">
@@ -122,7 +173,50 @@ export function MembersModal({
               ) : (
                 <div className="truncate text-xs" style={{ color: "var(--text-muted)" }}>@{m.username}</div>
               )}
+              {timedOutUntil(m.id) !== null && (
+                <span className="kc-mod-pill">Timed out until {timeoutEnds(timedOutUntil(m.id)!, now)}</span>
+              )}
             </div>
+
+            {canTimeout && m.id !== ownerId && m.id !== currentUserId && (
+              timedOutUntil(m.id) !== null ? (
+                onRemoveTimeout && (
+                  <button
+                    type="button"
+                    aria-label={`Remove time out for ${m.display_name}`}
+                    disabled={liftingId === m.id}
+                    onClick={async () => {
+                      setLiftingId(m.id);
+                      try {
+                        await onRemoveTimeout(m.id);
+                      } finally {
+                        setLiftingId(null);
+                      }
+                    }}
+                    className="kc-interactive kc-polish-button flex-shrink-0 px-2 py-1 text-xs font-semibold"
+                    style={{ borderRadius: "var(--radius-md)", color: "var(--text-primary)", cursor: "pointer" }}
+                  >
+                    End time out
+                  </button>
+                )
+              ) : (
+                onTimeout && (
+                  <button
+                    type="button"
+                    aria-label={`Time out ${m.display_name}`}
+                    onClick={() => {
+                      setConfirmId(null);
+                      setPending({ kind: "timeout", member: m });
+                    }}
+                    className="kc-interactive kc-polish-button flex-shrink-0 px-2 py-1 text-xs font-semibold"
+                    style={{ borderRadius: "var(--radius-md)", color: "var(--text-secondary)", cursor: "pointer" }}
+                    title="They can read, but can't post, react or join voice for a while"
+                  >
+                    Time out
+                  </button>
+                )
+              )
+            )}
 
             {onOpenDm && m.id !== currentUserId && (
               <button
@@ -174,7 +268,7 @@ export function MembersModal({
                   {canBan && (
                     <button
                       type="button"
-                      onClick={() => { onBan(m.id); setConfirmId(null); }}
+                      onClick={() => { setConfirmId(null); setPending({ kind: "ban", member: m }); }}
                       className="px-2 py-1 text-xs font-semibold"
                       style={{ borderRadius: "var(--radius-md)", background: "var(--danger-fill)", color: "#fff", border: "none", cursor: "pointer" }}
                       title="Ban — removed and blocked from rejoining"

@@ -55,10 +55,11 @@ import { DesktopAppCard } from "./DesktopAppCard";
 import { HelpTab, type ServiceStatus } from "./HelpTab";
 import { SoundSettings } from "./SoundSettings";
 import { APP_VERSION } from "../../lib/appVersion";
+import { VoiceTab } from "./VoiceTab";
 import type { PrivacyPrefs } from "../../lib/privacyPrefs";
 import { AvatarMark } from "../BirdMark";
 
-export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security" | "notifications" | "help";
+export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security" | "notifications" | "voice" | "help";
 
 /** This home's live status for Settings → Help & feedback (a stable function for its effect). */
 async function fetchServiceStatus(): Promise<ServiceStatus> {
@@ -73,6 +74,7 @@ const SETTINGS_TABS: Array<{ id: Tab; label: string; description: string }> = [
   { id: "social", label: "Social links", description: "Your places online" },
   { id: "security", label: "Privacy & security", description: "Keys and safety" },
   { id: "notifications", label: "Notifications", description: "Alerts on your devices" },
+  { id: "voice", label: "Voice & video", description: "Mic and push to talk" },
   { id: "appearance", label: "Appearance", description: "Colors and comfort" },
   { id: "plugins", label: "Plugins", description: "Extra powers" },
   { id: "emoji", label: "Custom emoji", description: "For your spaces" },
@@ -239,6 +241,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
           {tab === "security" && <SecurityTab token={token} userId={currentUser?.id} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} onSignOutEverywhere={onSignOutEverywhere} />}
           {tab === "notifications" && <NotificationsTab token={token} onToast={onToast} />}
+          {tab === "voice" && <VoiceTab />}
           {tab === "help" && (
             <HelpTab version={APP_VERSION} desktop={isDesktop()} home={getApiBase()} userAgent={navigator.userAgent} loadStatus={fetchServiceStatus} />
           )}

@@ -12,6 +12,8 @@ export type VoicePeer = {
   video: boolean;
   screen: boolean;
   listenOnly?: boolean;
+  /** Hears nobody. A deafened peer is always muted. Older servers leave it out. */
+  deafened?: boolean;
 };
 
 // ── Server → client events ─────────────────────────────────────────────────────
@@ -36,6 +38,8 @@ export type GatewayEvent =
   | { t: "MessageUpdate"; d: Message }
   | { t: "MessageDelete"; d: { id: string; channel_id: string } }
   | { t: "DisappearingUpdate"; d: { channel_id: string; seconds: number | null } }
+  /** A channel's slowmode changed (0 turns it off). */
+  | { t: "SlowmodeUpdate"; d: { channel_id: string; seconds: number } }
   | { t: "SenderKeyDistribution"; d: { channel_id: string; from_user_id: string; envelope: string } }
   | { t: "GroupMembersUpdate"; d: { channel_id: string; epoch: number; participants: PublicUser[] } }
   | { t: "VoiceKeyDistribution"; d: { channel_id: string; from_user_id: string; envelope: string } }
@@ -57,7 +61,7 @@ export type GatewayEvent =
   | { t: "ReadReceipt"; d: { channel_id: string; user_id: string; last_read_message_id: string; last_read_at: number } }
   | { t: "PresenceUpdate"; d: { user_id: string; online: boolean; status?: string; activity?: Activity | null } }
   | { t: "TypingStart"; d: { channel_id: string; user_id: string; user: PublicUser } }
-  | { t: "VoiceState"; d: { channel_id: string; user_id: string; user: PublicUser; joined: boolean; muted: boolean; video: boolean; screen: boolean; listenOnly: boolean } }
+  | { t: "VoiceState"; d: { channel_id: string; user_id: string; user: PublicUser; joined: boolean; muted: boolean; video: boolean; screen: boolean; listenOnly: boolean; deafened?: boolean } }
   | { t: "VoiceRoster"; d: { channel_id: string; peers: VoicePeer[] } }
   | { t: "VoiceSignal"; d: { from: string; to: string; channel_id: string; kind: string; payload: string } }
   | { t: "WatchUpdate"; d: { channel_id: string; session: WatchSession | null } }
@@ -70,9 +74,9 @@ export type GatewayEvent =
 
 // ── Client → server events (mirror the server's ClientEvent enum) ──────────────
 export type ClientEvent =
-  | { t: "JoinVoice"; d: { channel_id: string; muted: boolean; video: boolean; listen_only: boolean } }
+  | { t: "JoinVoice"; d: { channel_id: string; muted: boolean; video: boolean; listen_only: boolean; deafened?: boolean } }
   | { t: "LeaveVoice"; d: { channel_id: string } }
-  | { t: "VoiceMeta"; d: { channel_id: string; muted: boolean; video: boolean; screen: boolean; listen_only: boolean } }
+  | { t: "VoiceMeta"; d: { channel_id: string; muted: boolean; video: boolean; screen: boolean; listen_only: boolean; deafened: boolean } }
   | { t: "Signal"; d: { to: string; channel_id: string; kind: string; payload: string } }
   | { t: "Typing"; d: { channel_id: string } }
   | { t: "Ack"; d: { channel_id: string; message_id: string } }
@@ -108,7 +112,7 @@ const EVENT_TAGS: Record<GatewayEvent["t"], true> = {
   EventsChanged: true, ReactionUpdate: true, ReadReceipt: true, PresenceUpdate: true, TypingStart: true,
   VoiceState: true, VoiceRoster: true, VoiceSignal: true, WatchUpdate: true, HeartbeatAck: true,
   DeviceAdded: true, UserDeleted: true, NotificationSettingsUpdate: true, ThreadUpdate: true,
-  ThreadDelete: true, ThreadFollowUpdate: true,
+  ThreadDelete: true, ThreadFollowUpdate: true, SlowmodeUpdate: true,
 };
 const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set(Object.keys(EVENT_TAGS));
 

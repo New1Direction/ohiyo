@@ -113,13 +113,23 @@ export function InviteAccept({ token, code, onJoin, onDismiss }: Props) {
               {preview.member_count} {preview.member_count === 1 ? "member" : "members"}
             </div>
 
+            {preview.paused && !preview.already_member && (
+              <p
+                role="status"
+                className="mt-4 rounded-lg px-3 py-2 text-sm"
+                style={{ background: "color-mix(in oklch, var(--warning) 14%, var(--bg-input))", color: "var(--text-primary)" }}
+              >
+                This space isn&apos;t taking new members right now. Try the link again later.
+              </p>
+            )}
+
             <button
               type="button"
               onClick={join}
-              disabled={joining}
+              disabled={joining || (preview.paused === true && !preview.already_member)}
               aria-label={joining ? "Joining…" : undefined}
               className="kc-cta mt-6 flex w-full items-center justify-center gap-2 py-3 text-sm"
-              style={{ opacity: joining ? 0.7 : 1 }}
+              style={{ opacity: joining || (preview.paused && !preview.already_member) ? 0.6 : 1 }}
             >
               {joining ? (
                 <span className="kc-spinner" style={{ width: 16, height: 16, borderColor: "rgba(255,255,255,0.35)", borderTopColor: "#fff" }} />

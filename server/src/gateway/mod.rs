@@ -259,6 +259,8 @@ pub struct VoiceMember {
     pub screen: bool,
     /// True when the participant joined with no microphone (receive-only).
     pub listen_only: bool,
+    /// True when the participant hears nobody. A deafened participant is always muted.
+    pub deafened: bool,
     /// The gateway connection that joined. Only that connection closing takes the user
     /// out of the room, so another of their devices disconnecting leaves the call alone.
     pub conn_id: u64,
@@ -693,13 +695,23 @@ async fn handle_client_event(
             muted,
             video,
             listen_only,
+            deafened,
         } => {
             let Some(me) = me else { return };
+            // Someone who hears nobody isn't heard either: deafened always means muted.
+            let muted = muted || deafened;
 
             // Authorize before touching the roster: the user must be able to see this
             // channel. An unauthorized join adds nothing, announces nothing, and never
             // receives the roster / key distribution — it returns silently.
             if !crate::api::messages::user_can_access(state, &channel_id, user_id).await {
+                return;
+            }
+            // Someone timed out in the space can't join its calls (their app says why).
+            if crate::api::moderation::timeout_in_channel(state, &channel_id, user_id)
+                .await
+                .is_some()
+            {
                 return;
             }
 
@@ -725,6 +737,7 @@ async fn handle_client_event(
                             video: m.video,
                             screen: m.screen,
                             listen_only: m.listen_only,
+                            deafened: m.deafened,
                         })
                         .collect();
                     room.insert(
@@ -735,6 +748,7 @@ async fn handle_client_event(
                             video,
                             screen: false,
                             listen_only,
+                            deafened,
                             conn_id,
                         },
                     );
@@ -769,6 +783,7 @@ async fn handle_client_event(
                     video,
                     screen: false,
                     listen_only,
+                    deafened,
                 },
             )
             .await;
@@ -784,8 +799,10 @@ async fn handle_client_event(
             video,
             screen,
             listen_only,
+            deafened,
         } => {
             let Some(me) = me else { return };
+            let muted = muted || deafened;
             if !within_fanout_budget(state, user_id, "voice-meta", VOICE_META_PER_WINDOW) {
                 return;
             }
@@ -804,6 +821,7 @@ async fn handle_client_event(
                         m.video = video;
                         m.screen = screen;
                         m.listen_only = listen_only;
+                        m.deafened = deafened;
                     }
                 }
             }
@@ -819,6 +837,7 @@ async fn handle_client_event(
                     video,
                     screen,
                     listen_only,
+                    deafened,
                 },
             )
             .await;
@@ -1153,6 +1172,7 @@ async fn announce_voice_leave(
                 video: false,
                 screen: false,
                 listen_only: false,
+                deafened: false,
             },
         )
         .await;
@@ -1366,6 +1386,7 @@ async fn send_voice_snapshot(
                 video: m.video,
                 screen: m.screen,
                 listen_only: m.listen_only,
+                deafened: m.deafened,
             });
         }
     }
@@ -1686,6 +1707,7 @@ mod tests {
             video: false,
             screen: false,
             listen_only: false,
+            deafened: false,
             conn_id,
         }
     }

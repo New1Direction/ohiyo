@@ -20,6 +20,7 @@ pub async fn toggle_reaction(
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
+    crate::api::moderation::ensure_not_timed_out_in_channel(&state, &channel_id, &auth.0).await?;
     // Count chars, not bytes, so multi-codepoint emoji (family, skin tone) aren't rejected.
     if emoji.is_empty() || emoji.chars().count() > 8 {
         return Err((StatusCode::BAD_REQUEST, "invalid emoji".into()));

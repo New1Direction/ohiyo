@@ -177,6 +177,7 @@ pub async fn create_thread(
     if !crate::api::messages::user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
+    crate::api::moderation::ensure_not_timed_out_in_channel(&state, &channel_id, &auth.0).await?;
     let Some(server_id) = parent.server_id.clone() else {
         return Err((
             StatusCode::BAD_REQUEST,

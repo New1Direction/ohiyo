@@ -11,7 +11,7 @@ import { bundleEntry, fixtures, type Bundle } from "./fixtures/bundle.ts";
 
 type Mod = {
   act: (callback: () => void) => void;
-  mountChannelSidebar: (el: unknown, opts: { owner: boolean; manage: boolean }) => { calls: string[]; unmount: () => void };
+  mountChannelSidebar: (el: unknown, opts: { owner: boolean; manage: boolean; invites?: boolean; bans?: boolean }) => { calls: string[]; unmount: () => void };
 };
 
 let bundle: Bundle<Mod>;
@@ -48,7 +48,7 @@ after(async () => {
 
 type El = { textContent: string | null; getAttribute(name: string): string | null; click(): void; focus(): void };
 
-function mount(opts: { owner: boolean; manage: boolean }) {
+function mount(opts: { owner: boolean; manage: boolean; invites?: boolean; bans?: boolean }) {
   const container = document.createElement("div");
   document.body.append(container);
   const f = bundle.mod.mountChannelSidebar(container, opts);
@@ -119,6 +119,29 @@ test("an owner who manages the space: logo, channels and the moderation queue, a
   try {
     bundle.mod.act(() => f.nameButton()!.click());
     assert.deepEqual(f.items(), ["Invite people", "Change space logo", "Create channel", "Events", "Moderation queue", "Delete space"]);
+  } finally {
+    f.done();
+  }
+});
+
+test("moderators also get the invite list after Invite people, and the ban list after the moderation queue", () => {
+  const f = mount({ owner: true, manage: true, invites: true, bans: true });
+  try {
+    bundle.mod.act(() => f.nameButton()!.click());
+    assert.deepEqual(f.items(), [
+      "Invite people",
+      "Invites",
+      "Change space logo",
+      "Create channel",
+      "Events",
+      "Moderation queue",
+      "Bans",
+      "Delete space",
+    ]);
+    bundle.mod.act(() => f.item("Bans")!.click());
+    bundle.mod.act(() => f.nameButton()!.click());
+    bundle.mod.act(() => f.item("Invites")!.click());
+    assert.deepEqual(f.calls, ["bans", "invites"]);
   } finally {
     f.done();
   }

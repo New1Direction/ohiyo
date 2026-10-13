@@ -32,6 +32,8 @@ type Props = {
   onRename?: () => void;
   onDelete?: () => void;
   archived?: boolean;
+  /** When your time out in the space ends (unix seconds): you can read the thread but not reply. */
+  timedOutUntil?: number | null;
   /** The newest message you've now seen in the open thread (to mark it read). */
   onRead?: (lastMessageId: string) => void;
 };
@@ -86,6 +88,7 @@ export function ThreadPanel({
   onRename,
   onDelete,
   archived,
+  timedOutUntil = null,
   onRead,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -215,6 +218,7 @@ export function ThreadPanel({
         onReportUser={onReportUser}
         mentionables={mentionables}
         onlineUserIds={onlineUserIds}
+        moderation={{ timedOutUntil, bypassSlowmode: false }}
         threadView={{
           parentName,
           starterDeleted: thread.starter_deleted,
