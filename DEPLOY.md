@@ -77,6 +77,11 @@ fly volumes create ohiyo_data --region iad --size 3   # 3 GB
 fly secrets set JWT_SECRET="$(openssl rand -base64 48)"
 fly secrets set PUBLIC_BASE_URL="https://ohiyo-<you>.fly.dev"
 
+# Recommended: the key two-factor sign-in secrets are encrypted under. Without it they're
+# encrypted under a key derived from JWT_SECRET, and rotating JWT_SECRET breaks everyone's
+# authenticator codes (recovery codes keep working).
+fly secrets set OHIYO_TOTP_KEY="$(openssl rand -base64 48)"
+
 # Operator accounts: a comma-separated list of user ids. Only these accounts can run
 # Discord imports or change an Instant Server's tier. Unset means nobody can.
 fly secrets set OHIYO_OPERATOR_USER_IDS="<your-user-id>"

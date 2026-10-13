@@ -552,6 +552,11 @@ pub enum GatewayEvent {
     /// One of the account's notification settings changed. Sent to all of its sessions, so
     /// every device mutes (or stops muting) together.
     NotificationSettingsUpdate(NotificationSetting),
+    /// Two-factor sign-in was turned on or off. Sent to all of the account's sessions, so
+    /// its other devices know (a change they didn't make is worth a word).
+    TwoFactorUpdate {
+        enabled: bool,
+    },
 }
 
 /// A participant already present in a voice channel.

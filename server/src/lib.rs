@@ -74,6 +74,9 @@ pub struct AppState {
     /// same volume always has room to write; 0 turns the guard off. Read once at startup
     /// from `MIN_FREE_DISK_BYTES`.
     pub min_free_disk_bytes: u64,
+    /// Encrypts two-factor secrets; `None` when the server has no key to do it with, and
+    /// then two-factor sign-in can't be turned on (auth::two_factor).
+    pub two_factor: Option<auth::two_factor::SecretBox>,
     /// How long a DM call rings before it counts as missed. Tests shorten it.
     pub call_ring_secs: u64,
     /// Most people in one DM or group-chat call (the voice is peer-to-peer).
@@ -113,6 +116,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         login_limit_per_username_per_minute: api::auth::login_limit_from_env(),
         cloudflare_turn: api::ice::CloudflareTurn::from_env(),
         min_free_disk_bytes: api::files::min_free_disk_from_env(),
+        two_factor: auth::two_factor::SecretBox::from_env(),
         call_ring_secs: 40,
         dm_call_cap: 10,
         calls: api::calls::new_call_sessions(),
@@ -221,6 +225,8 @@ pub fn validate_config() -> anyhow::Result<()> {
             .map(char::from)
             .collect();
         std::env::set_var("JWT_SECRET", generated);
+        // A key derived from this one would be gone after a restart (auth::two_factor).
+        std::env::set_var(auth::two_factor::JWT_GENERATED_ENV, "1");
         tracing::warn!(
             "JWT_SECRET not set — generated an ephemeral dev secret. Set JWT_SECRET \
              for stable sessions across restarts."
