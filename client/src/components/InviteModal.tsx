@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, inviteUrl, type InviteInfo } from "../api";
 import { ModalShell } from "./ModalShell";
+import { INVITE_EXPIRY_CHOICES, INVITE_MAX_USES_CHOICES, inviteSummary } from "../lib/moderation";
 
 type Props = {
   token: string;
@@ -9,22 +10,37 @@ type Props = {
   serverIconUrl?: string | null;
   onClose: () => void;
   onInviteCreated?: () => void;
+  /** Open the space's list of invite links. */
+  onManageInvites?: () => void;
 };
 
+type LinkOptions = { expiresInSecs: number | null; maxUses: number | null };
+
+// Today's links never expire and have no limit; changing either makes a new link.
+const DEFAULT_OPTIONS: LinkOptions = { expiresInSecs: null, maxUses: null };
+
 /** Generates a shareable invite link for a server and makes it one tap to copy. */
-export function InviteModal({ token, serverId, serverName, serverIconUrl, onClose, onInviteCreated }: Props) {
+export function InviteModal({ token, serverId, serverName, serverIconUrl, onClose, onInviteCreated, onManageInvites }: Props) {
   const [info, setInfo] = useState<InviteInfo | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [options, setOptions] = useState<LinkOptions>(DEFAULT_OPTIONS);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onInviteCreatedRef = useRef(onInviteCreated);
   onInviteCreatedRef.current = onInviteCreated;
+  // The link this dialog made last: a new choice replaces it, so it isn't left lying around.
+  const madeRef = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
+    setInfo(null);
+    setError("");
     api
-      .createInvite(token, serverId)
+      .createInvite(token, serverId, options)
       .then((i) => {
+        const replaced = madeRef.current;
+        madeRef.current = i.code;
+        if (replaced) void api.revokeInvite(token, replaced).catch(() => {});
         if (!alive) return;
         setInfo(i);
         onInviteCreatedRef.current?.();
@@ -32,9 +48,15 @@ export function InviteModal({ token, serverId, serverName, serverIconUrl, onClos
       .catch((e) => alive && setError(e instanceof Error ? e.message : "Couldn't create an invite link."));
     return () => {
       alive = false;
-      if (copyTimer.current) clearTimeout(copyTimer.current);
     };
-  }, [token, serverId]);
+  }, [token, serverId, options]);
+
+  useEffect(
+    () => () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    },
+    [],
+  );
 
   const url = info ? inviteUrl(info.code) : "";
 
@@ -73,7 +95,7 @@ export function InviteModal({ token, serverId, serverName, serverIconUrl, onClos
           Invite people
         </h2>
         <p className="kc-polish-copy mt-1 text-sm" style={{ maxWidth: 320 }}>
-          Share this link and anyone can join <strong>{serverName}</strong>. It never expires.
+          Share this link and anyone can join <strong>{serverName}</strong>.
         </p>
       </div>
 
@@ -112,6 +134,61 @@ export function InviteModal({ token, serverId, serverName, serverIconUrl, onClos
           </div>
         )}
       </div>
+
+      {info && (
+        <p className="mt-2 text-center text-xs" style={{ color: "var(--text-muted)" }} aria-live="polite">
+          {inviteSummary(info, Date.now())}
+        </p>
+      )}
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+          Expire after
+          <select
+            aria-label="Expire after"
+            className="kc-field px-2 py-2 text-sm"
+            value={String(options.expiresInSecs)}
+            onChange={(e) =>
+              setOptions((o) => ({ ...o, expiresInSecs: e.target.value === "null" ? null : Number(e.target.value) }))
+            }
+          >
+            {INVITE_EXPIRY_CHOICES.map((c) => (
+              <option key={String(c.seconds)} value={String(c.seconds)}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+          Max uses
+          <select
+            aria-label="Max uses"
+            className="kc-field px-2 py-2 text-sm"
+            value={String(options.maxUses)}
+            onChange={(e) => setOptions((o) => ({ ...o, maxUses: e.target.value === "null" ? null : Number(e.target.value) }))}
+          >
+            {INVITE_MAX_USES_CHOICES.map((c) => (
+              <option key={String(c.uses)} value={String(c.uses)}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
+        Changing these makes a new link; the one above stops working.
+      </p>
+
+      {onManageInvites && (
+        <button
+          type="button"
+          onClick={onManageInvites}
+          className="kc-interactive mt-3 w-full text-center text-xs font-semibold"
+          style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", minHeight: 32 }}
+        >
+          See all invite links
+        </button>
+      )}
 
       <button
         type="button"

@@ -17,6 +17,7 @@ import {
   timeoutNotice,
 } from "../src/lib/moderation.ts";
 import { PERM, PERM_LABELS } from "../src/permissions.ts";
+import { moderationRefusal } from "../src/lib/apiErrors.ts";
 
 test("time outs come in the six lengths the server accepts", () => {
   assert.deepEqual(
@@ -106,4 +107,16 @@ test("the two new permissions exist and have plain labels", () => {
   const labels = new Map(PERM_LABELS.map((p) => [p.flag, p.label]));
   assert.equal(labels.get(PERM.MODERATE_MEMBERS), "Time out members");
   assert.equal(labels.get(PERM.CREATE_INVITE), "Create invites");
+});
+
+test("a message refused by slowmode or a time out says why", () => {
+  const refusal = (status: number, message: string) => Object.assign(new Error(message), { status });
+  assert.equal(
+    moderationRefusal(refusal(429, "slowmode: you can send again in 8s")),
+    "slowmode is on here. You can send again in 8s.",
+  );
+  assert.equal(moderationRefusal(refusal(403, "you're timed out in this space")), "you're timed out in this space.");
+  assert.equal(moderationRefusal(refusal(429, "you're sending messages too fast")), null, "the ordinary rate limit isn't slowmode");
+  assert.equal(moderationRefusal(refusal(403, "no access to this channel")), null);
+  assert.equal(moderationRefusal("nope"), null);
 });
