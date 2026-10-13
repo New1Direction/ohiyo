@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -90,8 +91,11 @@ export default defineConfig(async ({ mode }) => {
   // Load VITE_* env vars for this mode (does not mutate process.env).
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const csp = buildCsp(env.VITE_SERVER_URL);
+  // The app shows its version in Settings → Help & feedback and in bug reports.
+  const version = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version as string;
   return {
   plugins: [tailwindcss(), react(), cspPlugin(csp)],
+  define: { __OHIYO_VERSION__: JSON.stringify(version) },
   clearScreen: false,
   build: {
     // LiveKit is isolated into its own lazy vendor chunk and lands just above Vite's
