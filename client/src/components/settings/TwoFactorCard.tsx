@@ -206,7 +206,7 @@ export function TwoFactorCard({ twoFactorApi, username, onToast, onStatus }: Pro
   const field = "w-full rounded px-3 py-2 text-sm outline-none";
   const fieldStyle = { background: "var(--bg-input)", color: "var(--text-primary)" };
   const primary = { background: "var(--accent)", color: "#fff" };
-  const quiet = { background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-subtle)" };
+  const quiet = { background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--bg-hover)" };
   const errorLine = error && (
     <p className="mt-2 text-xs" role="alert" style={{ color: "var(--danger)" }}>
       {error}
