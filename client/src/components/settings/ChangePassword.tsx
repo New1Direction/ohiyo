@@ -8,6 +8,8 @@ type Props = {
   onToast: (t: string, type?: "info" | "success" | "error") => void;
   /** The server ended every session and gave this one a fresh token. */
   onChanged: (token: string) => void;
+  /** Two-factor sign-in is on, so the change needs a code too. */
+  needsCode?: boolean;
 };
 
 /** Change the password. Every other session ends, so whoever had the old password, or a

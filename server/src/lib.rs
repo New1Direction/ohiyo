@@ -74,6 +74,9 @@ pub struct AppState {
     /// same volume always has room to write; 0 turns the guard off. Read once at startup
     /// from `MIN_FREE_DISK_BYTES`.
     pub min_free_disk_bytes: u64,
+    /// Encrypts two-factor secrets; `None` when the server has no key to do it with, and
+    /// then two-factor sign-in can't be turned on (auth::two_factor).
+    pub two_factor: Option<auth::two_factor::SecretBox>,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
@@ -107,6 +110,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         login_limit_per_username_per_minute: api::auth::login_limit_from_env(),
         cloudflare_turn: api::ice::CloudflareTurn::from_env(),
         min_free_disk_bytes: api::files::min_free_disk_from_env(),
+        two_factor: auth::two_factor::SecretBox::from_env(),
     }
 }
 
