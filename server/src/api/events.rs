@@ -112,6 +112,23 @@ fn location_of(row: &EventRow) -> Option<EventLocation> {
     })
 }
 
+/// Whether `user_id` can see the channel an event is in. An event with no channel (or
+/// whose channel was deleted) is for the whole space.
+pub(crate) async fn can_see(state: &AppState, channel_id: Option<&str>, user_id: &str) -> bool {
+    match channel_id {
+        Some(id) => {
+            crate::api::roles::has_channel_perm(
+                state,
+                id,
+                user_id,
+                crate::api::roles::perm::VIEW_CHANNEL,
+            )
+            .await
+        }
+        None => true,
+    }
+}
+
 async fn require_member(state: &AppState, server_id: &str, user_id: &str) -> Result<(), ApiError> {
     if crate::api::servers::is_member(state, server_id, user_id).await {
         Ok(())
@@ -163,8 +180,27 @@ pub async fn list_events(
     .await
     .map_err(crate::api::error::internal)?;
 
+    // An event in a channel the caller can't see isn't on their calendar.
+    let mut seen: std::collections::HashMap<String, bool> = Default::default();
+    let mut visible = Vec::with_capacity(rows.len());
+    for row in rows {
+        if let Some(channel_id) = &row.location_channel_id {
+            let ok = match seen.get(channel_id) {
+                Some(ok) => *ok,
+                None => {
+                    let ok = can_see(&state, Some(channel_id), &auth.0).await;
+                    seen.insert(channel_id.clone(), ok);
+                    ok
+                }
+            };
+            if !ok {
+                continue;
+            }
+        }
+        visible.push(row);
+    }
     let mut going = going_preview(&state, &server_id).await?;
-    let out = rows
+    let out = visible
         .into_iter()
         .map(|row| EventInfo {
             server_id: server_id.clone(),
@@ -634,6 +670,7 @@ pub async fn cancel_event(
     .fetch_all(&state.db)
     .await
     .map_err(crate::api::error::internal)?;
+    let channel_id = stored.location_channel_id.clone();
     let event = GatewayEvent::EventReminder {
         server_id: server_id.clone(),
         event_id,
@@ -643,7 +680,15 @@ pub async fn cancel_event(
         location_kind: stored.location_kind,
         location_channel_id: stored.location_channel_id,
     };
-    notify_answered(&state, &server_id, &answered, &event, now).await;
+    notify_answered(
+        &state,
+        &server_id,
+        channel_id.as_deref(),
+        &answered,
+        &event,
+        now,
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -664,18 +709,23 @@ pub async fn rsvp_event(
     body: axum::body::Bytes,
 ) -> Result<StatusCode, ApiError> {
     require_member(&state, &server_id, &auth.0).await?;
-    // The event must belong to the space in the path: membership alone doesn't scope it.
-    let cancelled: Option<Option<i64>> =
-        sqlx::query_scalar("SELECT cancelled_at FROM events WHERE id = ? AND server_id = ?")
-            .bind(&event_id)
-            .bind(&server_id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(crate::api::error::internal)?;
-    match cancelled {
-        None => return Err((StatusCode::NOT_FOUND, "event not found".into())),
-        Some(Some(_)) => return Err((StatusCode::CONFLICT, "this event was cancelled".into())),
-        Some(None) => {}
+    // The event must belong to the space in the path (membership alone doesn't scope it),
+    // and be in a channel the caller can see.
+    let found: Option<(Option<i64>, Option<String>)> = sqlx::query_as(
+        "SELECT cancelled_at, location_channel_id FROM events WHERE id = ? AND server_id = ?",
+    )
+    .bind(&event_id)
+    .bind(&server_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+    let not_found = || (StatusCode::NOT_FOUND, "event not found".to_owned());
+    let (cancelled_at, channel_id) = found.ok_or_else(not_found)?;
+    if !can_see(&state, channel_id.as_deref(), &auth.0).await {
+        return Err(not_found());
+    }
+    if cancelled_at.is_some() {
+        return Err((StatusCode::CONFLICT, "this event was cancelled".into()));
     }
     // Older apps send no body, some with a JSON content type: read it by hand.
     let body: Option<RsvpBody> = if body.iter().all(u8::is_ascii_whitespace) {

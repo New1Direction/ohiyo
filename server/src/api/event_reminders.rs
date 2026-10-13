@@ -1,10 +1,12 @@
 //! Event reminders: 15 minutes before an event and at its start, to each person who said
 //! Interested or Going. Run from the background loop; each answer carries a flag per
 //! reminder, claimed before sending, so a reminder goes to a person once even across
-//! restarts. A space set to Nothing or muted stays silent. A start reminder that an outage
+//! restarts. A space set to Nothing or muted stays silent, and an event in a channel only
+//! goes to people who can see that channel. A start reminder that an outage
 //! held back by more than ten minutes is dropped rather than sent late.
 
 use crate::{
+    api::events::can_see,
     gateway::broadcast_to_user,
     types::{GatewayEvent, NotificationSetting},
     AppState,
@@ -112,7 +114,10 @@ async fn remind(state: &AppState, now: i64, phase: Phase) -> Result<(), sqlx::Er
             .await?
             .rows_affected()
             == 1;
-        if !claimed || silenced(state, &row.user_id, &row.server_id, now).await? {
+        if !claimed
+            || silenced(state, &row.user_id, &row.server_id, now).await?
+            || !can_see(state, row.location_channel_id.as_deref(), &row.user_id).await
+        {
             continue;
         }
         broadcast_to_user(
@@ -154,10 +159,11 @@ async fn silenced(
 }
 
 /// Tell people who answered about an event (its cancellation), in the app and on offline
-/// phones, minus anyone who silenced the space.
+/// phones, minus anyone who silenced the space or can't see the event's channel.
 pub async fn notify_answered(
     state: &AppState,
     server_id: &str,
+    channel_id: Option<&str>,
     user_ids: &[String],
     event: &GatewayEvent,
     now: i64,
@@ -171,6 +177,9 @@ pub async fn notify_answered(
                 tracing::warn!("event notice: reading notification settings failed: {e}");
                 continue;
             }
+        }
+        if !can_see(state, channel_id, user_id).await {
+            continue;
         }
         broadcast_to_user(&state.sessions, user_id, event);
         push.push(user_id.clone());
