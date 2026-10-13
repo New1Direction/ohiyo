@@ -1,5 +1,5 @@
 // Calls in DMs and group chats: the rings waiting for an answer, and what a call log in the
-// chat says. (Stub: the real rules come with the feature.)
+// chat says to each person.
 
 export type CallLogState = "ringing" | "ongoing" | "ended" | "missed" | "declined";
 
@@ -30,26 +30,67 @@ export type RingEvent =
   | { type: "stop"; channelId: string }
   | { type: "tick"; now: number };
 
-export function nextRings(rings: readonly IncomingRing[], _event: RingEvent): IncomingRing[] {
-  return [...rings];
+/**
+ * The rings still waiting after `event`. One ring per chat (a repeat replaces it), a stop
+ * ends that chat's ring, and a tick drops rings whose time is up. Returns the same array
+ * when nothing changes.
+ */
+export function nextRings(rings: readonly IncomingRing[], event: RingEvent): IncomingRing[] {
+  switch (event.type) {
+    case "ring": {
+      const others = rings.filter((r) => r.channelId !== event.ring.channelId);
+      return [...others, event.ring];
+    }
+    case "stop": {
+      if (!rings.some((r) => r.channelId === event.channelId)) return rings as IncomingRing[];
+      return rings.filter((r) => r.channelId !== event.channelId);
+    }
+    case "tick": {
+      if (!rings.some((r) => r.ringUntil < event.now)) return rings as IncomingRing[];
+      return rings.filter((r) => r.ringUntil >= event.now);
+    }
+  }
 }
 
-export function formatCallDuration(_secs: number): string {
-  return "";
+/** "45s", "12m 03s", "1h 02m": like Discord's call log. */
+export function formatCallDuration(secs: number): string {
+  const s = Math.max(0, Math.floor(secs));
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const seconds = s % 60;
+  const two = (n: number) => String(n).padStart(2, "0");
+  if (hours > 0) return `${hours}h ${two(minutes)}m`;
+  if (minutes > 0) return `${minutes}m ${two(seconds)}s`;
+  return `${seconds}s`;
 }
 
 export type CallLogContext = {
   viewerId: string;
   callerId: string;
   callerName: string;
+  /** The name of whoever declined, for a declined call. */
   declinerName?: string;
 };
 
-export function callLogText(_call: CallLog, _ctx: CallLogContext): string {
-  return "";
+/** What a call log says to the person reading it. */
+export function callLogText(call: CallLog, ctx: CallLogContext): string {
+  const youCalled = ctx.viewerId === ctx.callerId;
+  switch (call.state) {
+    case "ringing":
+      return youCalled ? "Calling…" : `${ctx.callerName} is calling…`;
+    case "ongoing":
+      return youCalled ? "You started a call" : `${ctx.callerName} started a call`;
+    case "ended":
+      return `Call ended · ${formatCallDuration(call.duration_secs ?? 0)}`;
+    case "missed":
+      return youCalled ? "No answer" : `Missed call from ${ctx.callerName}`;
+    case "declined":
+      if (call.declined_by && call.declined_by === ctx.viewerId) return "You declined";
+      return `${ctx.declinerName ?? "They"} declined`;
+  }
 }
 
-/** True for a call message that should count as unread (only a call you missed). */
-export function callCountsAsUnread(_call: CallLog, _viewerId: string, _callerId: string): boolean {
-  return true;
+/** True for a call message that should count as unread: only a call you missed. */
+export function callCountsAsUnread(call: CallLog, viewerId: string, callerId: string): boolean {
+  return call.state === "missed" && viewerId !== callerId;
 }

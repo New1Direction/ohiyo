@@ -604,6 +604,7 @@ async fn handle_socket(
     // (and their activity) so presence shows immediately, not just on the next change.
     send_presence_snapshot(&state, &user_id, &tx).await;
     send_voice_snapshot(&state, &user_id, &tx).await;
+    crate::api::calls::replay_rings(&state, &user_id, &tx).await;
     // From here the session map holds the only sender, so removing it closes the socket.
     drop(tx);
 
@@ -707,6 +708,9 @@ async fn handle_client_event(
             if !crate::api::messages::user_can_access(state, &channel_id, user_id).await {
                 return;
             }
+            // A DM or group-chat call has a seat limit (its voice is peer-to-peer).
+            let cap = crate::api::calls::seat_cap(state, &channel_id).await;
+            let mut full = false;
 
             // Build the roster of peers already present (before adding ourselves),
             // then register ourselves. Single lock, no await inside. Returns None
@@ -719,6 +723,9 @@ async fn handle_client_event(
                 let room = rooms.entry(channel_id.clone()).or_default();
                 if let Some(seat) = room.get_mut(user_id) {
                     seat.conn_id = conn_id;
+                    None
+                } else if cap.is_some_and(|cap| room.len() >= cap) {
+                    full = true;
                     None
                 } else {
                     let peers = room
@@ -748,6 +755,17 @@ async fn handle_client_event(
                     Some(peers)
                 }
             };
+            if full {
+                broadcast_to_user(
+                    &state.sessions,
+                    user_id,
+                    &GatewayEvent::VoiceRefused {
+                        channel_id: channel_id.clone(),
+                        reason: "full".into(),
+                    },
+                );
+                return;
+            }
             let Some(roster) = roster else { return };
 
             // Tell the joiner who is already here (they will initiate offers).
@@ -780,6 +798,8 @@ async fn handle_client_event(
                 },
             )
             .await;
+            // Joining a DM's ringing call answers it.
+            crate::api::calls::on_join(state, &channel_id, user_id).await;
         }
 
         ClientEvent::LeaveVoice { channel_id } => {
@@ -1142,6 +1162,7 @@ async fn leave_voice(state: &AppState, user_id: &str, me: Option<&PublicUser>, c
     };
     if removed {
         announce_voice_leave(state, user_id, me, channel_id).await;
+        crate::api::calls::on_leave(state, channel_id).await;
     }
 }
 
@@ -1235,6 +1256,7 @@ async fn cleanup_voice(state: &AppState, user_id: &str, conn_id: u64, me: Option
     };
     for cid in left {
         announce_voice_leave(state, user_id, me, &cid).await;
+        crate::api::calls::on_leave(state, &cid).await;
     }
 }
 
@@ -1555,7 +1577,8 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
 
     // Per-channel unread counts (one query): messages newer than the user's read cursor,
     // excluding their own and expired ones, across every channel they can see. Seeds the
-    // client's unread badges on connect so they no longer wipe to zero on reload.
+    // client's unread badges on connect so they no longer wipe to zero on reload. A call
+    // log only counts when it is a call you missed.
     let now = crate::types::now_unix();
     let unread_rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT m.channel_id, COUNT(*) AS cnt
@@ -1564,6 +1587,7 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
          WHERE m.author_id != ?
            AND m.created_at > COALESCE(cr.last_read_at, 0)
            AND (m.expires_at IS NULL OR m.expires_at > ?)
+           AND (m.call_log IS NULL OR json_extract(m.call_log, '$.state') = 'missed')
            AND m.channel_id IN (
              SELECT c.id FROM channels c
                JOIN server_members sm ON sm.server_id = c.server_id WHERE sm.user_id = ?

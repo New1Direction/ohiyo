@@ -39,6 +39,8 @@ import { threadChipLabel, type ThreadSummary } from "../lib/threads";
 import { ThreadOptionsMenu } from "./ThreadOptionsMenu";
 import { avatarStyle } from "../lib/avatarStyle";
 import { fileUrlOn } from "../lib/fileUrl";
+import { callLogText } from "../lib/dmCall";
+import { CallLogLine } from "./CallLogLine";
 
 const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
 function hiddenMessagesKey(channelId: string, userId: string): string {
@@ -272,6 +274,12 @@ type Props = {
   onStartThread?: (msg: Message) => void;
   /** Open this channel's list of threads. */
   onOpenThreads?: () => void;
+  /** Start a call in this DM or group chat (voice, or with video). */
+  onStartCall?: (video: boolean) => void;
+  /** Join the call going on in this chat. */
+  onJoinCall?: () => void;
+  /** The call in this chat right now: how many are in it, and whether you are. */
+  dmCall?: { participants: number; inCall: boolean } | null;
   /** Shown as a thread: the channel it hangs off and how to go back to it, whether you
    *  follow it, and (for whoever may) renaming or deleting it. */
   threadView?: {
@@ -387,6 +395,19 @@ async function decryptAttachmentBytes(att: EncryptedAttachmentMeta, encryptedByt
   return new Blob([plain], { type: safeAttachmentBlobType(att.content_type) });
 }
 
+/** The name of whoever declined a call in this chat, for its call log. */
+function callDeclinerName(
+  declinedBy: string | null | undefined,
+  channel: Channel,
+  dmUsers: Record<string, PublicUser> | undefined,
+  groupMembers: PublicUser[] | undefined,
+): string | undefined {
+  if (!declinedBy) return undefined;
+  const other = dmUsers?.[channel.id];
+  const user = other?.id === declinedBy ? other : groupMembers?.find((m) => m.id === declinedBy);
+  return user ? user.display_name || user.username : undefined;
+}
+
 export function ChatPane({
   channel,
   messages,
@@ -443,6 +464,9 @@ export function ChatPane({
   onOpenThread,
   onStartThread,
   onOpenThreads,
+  onStartCall,
+  onJoinCall,
+  dmCall,
   threadView,
 }: Props) {
   // Initialize from the persisted draft so a reload (which mounts straight into the
@@ -1419,6 +1443,34 @@ export function ChatPane({
             <span>{memberSummary}</span>
           </button>
         )}
+        {isDirectChat && dmCall && dmCall.participants > 0 && !dmCall.inCall && onJoinCall && (
+          <button type="button" className="kc-join-call-btn flex-shrink-0" onClick={onJoinCall}>
+            <Icon name={"phone"} size={15} />
+            <span>{`Join call · ${dmCall.participants} in call`}</span>
+          </button>
+        )}
+        {isDirectChat && onStartCall && !(dmCall && dmCall.participants > 0) && (
+          <>
+            <button
+              type="button"
+              onClick={() => onStartCall(false)}
+              aria-label="Start a voice call"
+              title="Start a voice call"
+              className="kc-icon-btn flex-shrink-0 text-base"
+            >
+              <Icon name="phone" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onStartCall(true)}
+              aria-label="Start a video call"
+              title="Start a video call"
+              className="kc-icon-btn flex-shrink-0 text-base"
+            >
+              <Icon name="video" />
+            </button>
+          </>
+        )}
         {onOpenThreads && (
           <button
             type="button"
@@ -1940,6 +1992,16 @@ export function ChatPane({
                               }}
                               onCancel={() => setEditingId(null)}
                             />
+                          ) : msg.call ? (
+                            <CallLogLine
+                              call={msg.call}
+                              text={callLogText(msg.call, {
+                                viewerId: currentUserId,
+                                callerId: msg.author.id,
+                                callerName: msg.author.display_name || msg.author.username,
+                                declinerName: callDeclinerName(msg.call.declined_by, channel, dmUsers, groupMembers),
+                              })}
+                            />
                           ) : msg.poll ? (
                             <PollWidget poll={msg.poll} onVote={(optId) => handleVotePoll(msg.id, optId)} />
                           ) : msg._decryptState ? (
@@ -2012,8 +2074,8 @@ export function ChatPane({
                               </button>
                             );
                           })()}
-                          {/* Floating action toolbar — appears on hover, top-right */}
-                          {editingId !== msg.id && (confirmDeleteId === msg.id ? (
+                          {/* Floating action toolbar — appears on hover, top-right. A call log has none. */}
+                          {editingId !== msg.id && !msg.call && (confirmDeleteId === msg.id ? (
                             <div className="kc-msg-actions" data-confirm="1">
                               <button
                                 type="button"
@@ -2098,7 +2160,7 @@ export function ChatPane({
                             </div>
                           ))}
                           {/* Touch: explicit ⋯ trigger → action sheet (hover toolbar is unreachable on touch) */}
-                          {editingId !== msg.id && confirmDeleteId !== msg.id && !msg.id.startsWith("temp-") && (
+                          {editingId !== msg.id && confirmDeleteId !== msg.id && !msg.id.startsWith("temp-") && !msg.call && (
                             <button
                               type="button"
                               className="kc-msg-more"

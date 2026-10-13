@@ -225,6 +225,7 @@ fn content_free_payload(kind: &str) -> serde_json::Value {
         "title": CONTENT_FREE_TITLE,
         "body": match kind {
             "test" => "This is a test Ohiyo notification.",
+                    "call" => CALL_BODY,
             _ => CONTENT_FREE_BODY,
         },
         "tag": "ohiyo-activity",
@@ -631,6 +632,20 @@ pub async fn enqueue_message_pushes(
     }
 }
 
+/// What a push for a ringing call says. Content-free like every push: no caller, no chat.
+const CALL_BODY: &str = "Incoming call on Ohiyo.";
+
+/// Wake the offline devices of people a DM call is ringing for. Online devices already ring
+/// over the gateway.
+pub async fn queue_call_pushes(state: &AppState, recipient_ids: &[String]) {
+    if recipient_ids.is_empty() {
+        return;
+    }
+    if let Err(e) = queue_for_users(state, recipient_ids, "call", true).await {
+        tracing::warn!("call push enqueue failed: {e}");
+    }
+}
+
 pub async fn dispatch_queued(state: &AppState, limit: i64) -> Result<DispatchResult, sqlx::Error> {
     let now = now_unix();
     let rows: Vec<DeliveryJob> = sqlx::query_as(
@@ -938,6 +953,7 @@ fn apns_payload(kind: &str) -> serde_json::Value {
                 "title": CONTENT_FREE_TITLE,
                 "body": match kind {
                     "test" => "This is a test Ohiyo notification.",
+                    "call" => CALL_BODY,
                     _ => CONTENT_FREE_BODY,
                 }
             },
@@ -1092,6 +1108,7 @@ fn fcm_payload(token: &str, kind: &str) -> serde_json::Value {
                 "title": CONTENT_FREE_TITLE,
                 "body": match kind {
                     "test" => "This is a test Ohiyo notification.",
+                    "call" => CALL_BODY,
                     _ => CONTENT_FREE_BODY,
                 }
             },
