@@ -120,6 +120,8 @@ try {
     const vh = innerHeight;
     const nav = document.querySelector(".kc-nav").getBoundingClientRect();
     const rail = document.querySelector(".kc-nav .server-sidebar > div").getBoundingClientRect();
+    // The drawer's tab bar (Home, Messages, Mentions, You) sits along its foot.
+    const tabs = document.querySelector('.kc-nav nav[aria-label="Main"]')?.getBoundingClientRect();
     const inView = (el) => !!el && el.getBoundingClientRect().top >= 0 && el.getBoundingClientRect().bottom <= vh;
     const buttons = [...document.querySelectorAll(".kc-nav button")];
     const byLabel = (start) => buttons.find((b) => (b.getAttribute("aria-label") ?? "").startsWith(start));
@@ -129,6 +131,9 @@ try {
       width: Math.round(nav.width),
       scrim: Math.round(innerWidth - nav.right),
       railHeight: Math.round(rail.height),
+      railBottom: Math.round(rail.bottom),
+      tabsTop: tabs ? Math.round(tabs.top) : null,
+      tabsBottom: tabs ? Math.round(tabs.bottom) : null,
       vh,
       generalInView: inView(buttons.find((b) => b.textContent.trim() === "general")),
       voiceInView: inView(byLabel("Voice")),
@@ -140,7 +145,10 @@ try {
   });
   if (drawer.width < 300) throw new Error(`the drawer is only ${drawer.width}px wide on a 390px phone`);
   if (drawer.scrim < 44) throw new Error(`only ${drawer.scrim}px left to tap outside the drawer`);
-  if (drawer.railHeight < drawer.vh - 2) throw new Error(`the server rail stops at ${drawer.railHeight}px of ${drawer.vh}`);
+  // The rail runs down to the tab bar, and the tab bar to the foot of the screen: no gap.
+  if (drawer.tabsTop === null) throw new Error("the drawer has no tab bar");
+  if (drawer.railBottom < drawer.tabsTop - 2) throw new Error(`the server rail stops at ${drawer.railBottom}px, above the tab bar at ${drawer.tabsTop}`);
+  if (drawer.tabsBottom < drawer.vh - 2) throw new Error(`the tab bar stops at ${drawer.tabsBottom}px of ${drawer.vh}`);
   if (!drawer.generalInView || !drawer.voiceInView) throw new Error(`channels are below the fold when the drawer opens: ${JSON.stringify(drawer)}`);
   if (drawer.inviteCut) throw new Error("the Invite people button is cut off");
   for (const [name, value] of [["Create channel", drawer.createChannel], ["Manage categories", drawer.manageCategories]]) {
