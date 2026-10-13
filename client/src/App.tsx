@@ -1555,14 +1555,27 @@ function MainApp({
         break;
       }
 
-      case "ServerCreate":
+      case "ServerCreate": {
         // Upsert: also used as a "server changed" signal (categories, channel moves).
         setServers((prev) =>
           prev.some((s) => s.id === event.d.id)
             ? prev.map((s) => (s.id === event.d.id ? event.d : s))
             : [...prev, event.d]
         );
+        // The open channel was made private to us, or deleted: step out of it.
+        const open = selectedChannelRef.current;
+        if (open && open.server_id === event.d.id && !open.parent_id && !event.d.channels.some((c) => c.id === open.id)) {
+          const next = event.d.channels.find((c) => c.channel_type === "text");
+          if (next) handleSelectChannelRef.current(next);
+          else {
+            setSelectedChannel(null);
+            selectedChannelRef.current = null;
+            setMessages([]);
+          }
+          toast(`#${open.name} isn't open to you any more.`);
+        }
         break;
+      }
 
       case "ServerDelete":
         setServers((prev) => prev.filter((s) => s.id !== event.d.id));
