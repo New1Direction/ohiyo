@@ -26,3 +26,14 @@ export function loadDraft(channelId: string): string {
 export function dropDraftsEnteringEncryptedMode(prev: ReadonlySet<string>, next: ReadonlySet<string>) {
   for (const id of next) if (!prev.has(id)) persistDraft(id, "", true);
 }
+
+// Placeholders: which chats have a draft (the sidebar's pencil).
+export function getDraftIds(): ReadonlySet<string> {
+  return new Set();
+}
+
+export function subscribeDraftIds(_listener: () => void): () => void {
+  return () => {};
+}
+
+export function forgetAllDrafts(_opts?: { keepStored?: boolean }): void {}

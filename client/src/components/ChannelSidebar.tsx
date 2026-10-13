@@ -44,6 +44,10 @@ type Props = {
   onOpenNotificationSettings?: () => void;
   /** Open the space's webhooks (offered to people who manage channels). */
   onOpenWebhooks?: () => void;
+  /** Mark these chats read (a channel's or DM's own menu). */
+  onMarkRead?: (channelIds: string[]) => void;
+  /** Mark every chat in this space read (the space menu). */
+  onMarkSpaceRead?: () => void;
   myStatus?: string | null;
   onSetStatus?: (status: string) => void;
   myActivity?: Activity | null;
