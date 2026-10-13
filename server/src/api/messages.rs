@@ -866,61 +866,6 @@ pub async fn unpin_message(
     set_pin(&state, &channel_id, &id, &auth.0, false).await
 }
 
-#[derive(Deserialize)]
-pub struct SearchQuery {
-    pub q: String,
-}
-
-/// GET /servers/{server_id}/search?q=… — full-text-ish search across a server's
-/// channels (members only). Returns newest-first matches with author + channel.
-pub async fn search_messages(
-    auth: AuthUser,
-    Path(server_id): Path<String>,
-    Query(query): Query<SearchQuery>,
-    State(state): State<AppState>,
-) -> Result<Json<Vec<MessageWithAuthor>>, (StatusCode, String)> {
-    let member: Option<(i64,)> =
-        sqlx::query_as("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
-            .bind(&server_id)
-            .bind(&auth.0)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(crate::api::error::internal)?;
-    if member.is_none() {
-        return Err((StatusCode::FORBIDDEN, "not a member of this server".into()));
-    }
-
-    let term = query.q.trim();
-    if term.is_empty() {
-        return Ok(Json(vec![]));
-    }
-    let escaped = term
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_");
-    let pattern = format!("%{escaped}%");
-
-    let messages: Vec<Message> = sqlx::query_as(
-        "SELECT m.* FROM messages m
-         JOIN channels c ON c.id = m.channel_id
-         WHERE c.server_id = ? AND m.content LIKE ? ESCAPE '\\'
-         ORDER BY m.created_at DESC LIMIT 50",
-    )
-    .bind(&server_id)
-    .bind(&pattern)
-    .fetch_all(&state.db)
-    .await
-    .map_err(crate::api::error::internal)?;
-
-    let mut out = Vec::with_capacity(messages.len());
-    for msg in messages {
-        if user_can_access(&state, &msg.channel_id, &auth.0).await {
-            out.push(build_full(&state, msg, &auth.0).await?);
-        }
-    }
-    Ok(Json(out))
-}
-
 /// GET /channels/{channel_id}/pins — pinned messages, newest first.
 pub async fn list_pins(
     auth: AuthUser,
