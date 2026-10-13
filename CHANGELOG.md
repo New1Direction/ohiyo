@@ -12,6 +12,14 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ## [Unreleased]
 
 ### Added
+- **Help & feedback,** at the foot of Settings and in the command palette: this home's live
+  status ("All systems normal", or which parts aren't working), what's new, a bug report
+  prefilled with your app version and system (and nothing private), questions and ideas,
+  private security reports, the Terms and Privacy pages, and an honest note on getting back
+  into an account. The sign-up form links the Terms and the Privacy Policy.
+- **Notification sounds you can choose,** in Settings → Notifications: on or off, five short
+  sounds, a volume, and whether only DMs and @mentions make one (the default) or everything
+  you'd be notified about.
 - **Incoming webhooks, like Discord's.** People who manage a space's channels can make a
   webhook for a text channel (Space menu → Webhooks): a secret URL that another service posts
   `{"content": "…"}` to, and the message appears in the channel under the webhook's name and
@@ -28,6 +36,12 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
   someone replies.
 
 ### Fixed
+- **The GIF picker works again.** It searched Tenor from the browser, and Google shut Tenor's
+  API down on 30 June 2026. GIF search now goes through your home's server to KLIPY
+  (`KLIPY_API_KEY`), so your searches don't carry your IP address to it; a home without a key
+  shows no GIFs tab, and encrypted chats show none either.
+- **Sounds stop ticking on every message.** The old "Message sound" plugin played for your own
+  messages, muted chats and busy spaces; sounds now follow the notification rules.
 - **@mentions work for every username,** including ones with dots and dashes (`@alice.b`,
   `@bob-c`): they're highlighted, offered in the mention picker, and count as mentioning you.
   A full stop after a name ("thanks @alice.") isn't part of it, an email address is no longer

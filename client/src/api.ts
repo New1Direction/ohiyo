@@ -538,6 +538,14 @@ class ApiError extends Error {
   }
 }
 
+/** A page of GIF search results; links are on KLIPY's media hosts. */
+export type GifPage = {
+  available: boolean;
+  results: { id: string; title: string; url: string; preview: string; width: number; height: number }[];
+  page: number;
+  has_next: boolean;
+};
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -1082,6 +1090,11 @@ export const api = {
       { method: "POST", body: JSON.stringify({ envelopes }) },
       token
     ),
+
+  /** GIF search through this home's server to KLIPY; `available` is false without a key. */
+  searchGifs: (token: string, q: string, page = 1) =>
+    request<GifPage>(`/gifs/search?q=${encodeURIComponent(q)}&page=${page}`, {}, token),
+  trendingGifs: (token: string, page = 1) => request<GifPage>(`/gifs/trending?page=${page}`, {}, token),
 
   /** Fetch STUN + time-limited TURN ICE servers for WebRTC. */
   getIceServers: (token: string) =>

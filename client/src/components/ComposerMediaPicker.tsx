@@ -29,10 +29,12 @@ export function ComposerMediaPicker({
   serverEmojis,
   onPickEmoji,
   onPickCustomEmoji,
+  gifsAvailable,
   gifQuery,
   onGifQuery,
   gifResults,
   gifLoading,
+  gifError,
   gifUrl,
   onGifUrl,
   onSendGif,
@@ -44,14 +46,20 @@ export function ComposerMediaPicker({
   serverEmojis: ServerEmoji[];
   onPickEmoji: (emoji: string) => void;
   onPickCustomEmoji: (emoji: ServerEmoji) => void;
+  /** This home can search GIFs (a KLIPY key) and the chat can show them (not encrypted). */
+  gifsAvailable: boolean;
   gifQuery: string;
   onGifQuery: (q: string) => void;
   gifResults: GifResult[];
   gifLoading: boolean;
+  /** The last search failed. */
+  gifError: boolean;
   gifUrl: string;
   onGifUrl: (url: string) => void;
   onSendGif: (url: string) => void;
 }) {
+  // A home without GIF search has no GIFs tab, so the picker can't be left on it.
+  const shown = gifsAvailable ? tab : "emoji";
   const q = emojiQuery.trim().toLowerCase();
   const unicode = EMOJI_CATALOG.filter(([emoji, tags]) => !q || emoji.includes(q) || tags.includes(q)).slice(0, 96);
   const custom = serverEmojis.filter((e) => !q || e.name.toLowerCase().includes(q)).slice(0, 48);
@@ -73,15 +81,17 @@ export function ComposerMediaPicker({
     >
       <div className="flex items-center justify-between gap-2 border-b p-2" style={{ borderColor: "var(--bg-hover)" }}>
         <div className="flex gap-2">
-          <button type="button" onClick={() => onTab("emoji")} style={pill(tab === "emoji")}>Emoji</button>
-          <button type="button" onClick={() => onTab("gif")} style={pill(tab === "gif")}>GIFs</button>
+          <button type="button" onClick={() => onTab("emoji")} style={pill(shown === "emoji")}>Emoji</button>
+          {gifsAvailable && (
+            <button type="button" onClick={() => onTab("gif")} style={pill(shown === "gif")}>GIFs</button>
+          )}
         </div>
         <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-          {tab === "emoji" ? "Unicode + server emoji" : "Powered by Tenor · paste links too"}
+          {shown === "emoji" ? "Unicode + server emoji" : "Powered by KLIPY"}
         </div>
       </div>
 
-      {tab === "emoji" ? (
+      {shown === "emoji" ? (
         <div className="p-3">
           <input
             value={emojiQuery}
@@ -130,10 +140,10 @@ export function ComposerMediaPicker({
             <input
               value={gifQuery}
               onChange={(e) => onGifQuery(e.target.value)}
-              placeholder="Search GIFs…"
+              placeholder="Search KLIPY"
+              aria-label="Search GIFs"
               className="kc-field min-w-0 flex-1 px-3 py-2 text-sm outline-none"
             />
-            <button type="button" onClick={() => onGifQuery(gifQuery || "excited")} className="kc-cta px-3 py-2 text-sm">Search</button>
           </div>
           <div className="mb-3 flex gap-2">
             <input
@@ -165,7 +175,7 @@ export function ComposerMediaPicker({
             </div>
           ) : (
             <div className="rounded-xl p-4 text-center text-sm" style={{ background: "var(--bg-input)", color: "var(--text-muted)" }}>
-              No GIFs loaded. Try another search or paste a GIF link.
+              {gifError ? "GIF search isn't answering right now. Try again in a moment." : "No GIFs found. Try another search."}
             </div>
           )}
         </div>

@@ -51,19 +51,6 @@ const mentionHighlightPlugin: OhiyoPlugin = {
   },
 };
 
-const messageSoundPlugin: OhiyoPlugin = {
-  id: "message-sound",
-  name: "Message sound",
-  description: "Plays a soft tick when a new message arrives.",
-  version: "1.0.0",
-  author: "Ohiyo",
-  onLoad: (api) => {
-    api.on("message", () => {
-      playTick();
-    });
-  },
-};
-
 const keyboardNavPlugin: OhiyoPlugin = {
   id: "keyboard-nav",
   name: "Space shortcuts",
@@ -169,7 +156,6 @@ const timestampPlugin: OhiyoPlugin = {
 export const BUILTIN_PLUGINS: OhiyoPlugin[] = [
   compactModePlugin,
   mentionHighlightPlugin,
-  messageSoundPlugin,
   keyboardNavPlugin,
   zenModePlugin,
   chatCommandsPlugin,
@@ -491,23 +477,6 @@ function injectStyle(id: string, css: string): HTMLStyleElement {
   el.textContent = css;
   document.head.appendChild(el);
   return el;
-}
-
-function playTick() {
-  try {
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.1, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.08);
-  } catch {
-    // audio not available
-  }
 }
 
 function handleKeyNav(e: KeyboardEvent) {

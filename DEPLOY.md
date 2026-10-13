@@ -278,6 +278,21 @@ fly secrets set \
 
 The server mints short-lived coturn credentials from that secret on each call.
 
+### GIF search (KLIPY, optional)
+
+The composer's GIF tab searches [KLIPY](https://docs.klipy.com) through your server (Tenor's API,
+which the app used to call, was shut down on 30 June 2026). Create an API key on KLIPY's
+partner site and set it on the server:
+
+```bash
+KLIPY_API_KEY=your-klipy-key
+```
+
+Without it the app shows no GIFs tab. With it, searches go from your server to KLIPY (not from
+people's browsers), and the GIF images load from KLIPY's media hosts in the browser: KLIPY's
+integration rules don't allow re-hosting or caching their media. The search box says "Search
+KLIPY", as their attribution rules require.
+
 ---
 
 ## 3. Build the desktop app

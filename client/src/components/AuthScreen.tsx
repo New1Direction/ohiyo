@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { PRIVACY_URL, TERMS_URL } from "../lib/helpLinks";
 import sunriseUrl from "../assets/door/sunrise.webp";
 import morningUrl from "../assets/door/morning.webp";
 import meadowUrl from "../assets/door/meadow.webp";
@@ -364,6 +365,14 @@ export function AuthScreen({ home, onAuth }: Props) {
               "Create my account"
             )}
           </button>
+          {mode === "register" && (
+            <p className="ohiyo-auth-terms text-xs" style={{ color: "var(--text-muted)" }}>
+              By creating an account you agree to the{" "}
+              <a href={TERMS_URL} target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-secondary)" }}>Terms</a>
+              {" "}and the{" "}
+              <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-secondary)" }}>Privacy Policy</a>.
+            </p>
+          )}
         </form>
         )}
 

@@ -101,11 +101,10 @@ const OgAuthTokenContext = createContext<string>("");
 const MessageIdContext = createContext<string>("");
 
 const QUICK_EMOJI = ["👍", "❤️", "😂", "😮", "😢", "🔥", "✅", "🎉", "👀", "🚀", "💯", "🙏", "😍", "😎", "🤔"];
-// Tenor API key. Prefer VITE_TENOR_KEY (set per-deployment); the public sample key
-// from Tenor's docs is a rate-limited DEV-ONLY fallback so the GIF picker still works
-// locally without setup. Production deployments should set VITE_TENOR_KEY.
-const TENOR_SAMPLE_KEY = "LIVDSRZULELA";
-const TENOR_KEY = import.meta.env.VITE_TENOR_KEY || TENOR_SAMPLE_KEY;
+
+// Whether each home can search GIFs, learned once per session from its trending page (which
+// the picker shows first anyway). Keyed by API base, since each home has its own server.
+const gifAvailability = new Map<string, boolean>();
 
 export type ChatActivityNotice = {
   id: string;
@@ -482,7 +481,9 @@ export function ChatPane({
   const [composerPickerOpen, setComposerPickerOpen] = useState(false);
   const [composerPickerTab, setComposerPickerTab] = useState<"emoji" | "gif">("emoji");
   const [emojiQuery, setEmojiQuery] = useState("");
-  const [gifQuery, setGifQuery] = useState("excited");
+  const [gifQuery, setGifQuery] = useState("");
+  const [gifsAvailable, setGifsAvailable] = useState<boolean>(() => gifAvailability.get(getApiBase()) ?? false);
+  const [gifError, setGifError] = useState(false);
   const [gifResults, setGifResults] = useState<GifResult[]>([]);
   const [gifLoading, setGifLoading] = useState(false);
   const [gifUrl, setGifUrl] = useState("");
@@ -828,41 +829,53 @@ export function ChatPane({
     return () => window.removeEventListener("click", close);
   }, [emojiPickerFor]);
 
-  // GIF search: uses Tenor's public sample API key from their docs. If it fails,
-  // the picker still supports pasting any GIF URL.
+  // Does this home search GIFs? Asked once per session: its server answers available:false
+  // without a KLIPY key, and then the picker shows no GIFs tab.
   useEffect(() => {
-    if (!composerPickerOpen || composerPickerTab !== "gif") return;
+    const base = getApiBase();
+    if (gifAvailability.has(base)) return;
+    let alive = true;
+    api.trendingGifs(token).then(
+      (page) => {
+        gifAvailability.set(base, page.available);
+        if (!alive) return;
+        setGifsAvailable(page.available);
+        if (page.available) setGifResults(page.results);
+      },
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
+  }, [token]);
+
+  // GIF search goes through this home's server to KLIPY (api::gifs): the search never carries
+  // this device's address to KLIPY. With nothing typed, the picker shows what's trending.
+  useEffect(() => {
+    if (!composerPickerOpen || composerPickerTab !== "gif" || !gifsAvailable) return;
     const q = gifQuery.trim();
-    if (!q) {
-      setGifResults([]);
-      return;
-    }
-    const controller = new AbortController();
+    let alive = true;
     const timer = window.setTimeout(() => {
       setGifLoading(true);
-      fetch(`https://g.tenor.com/v1/search?q=${encodeURIComponent(q)}&key=${TENOR_KEY}&limit=18&media_filter=minimal`, { signal: controller.signal })
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error("gif search failed"))))
-        .then((data: { results?: Array<{ id: string; title?: string; media?: Array<{ gif?: { url: string }; tinygif?: { url: string } }> }> }) => {
-          const results = (data.results ?? [])
-            .map((g) => {
-              const media = g.media?.[0];
-              const url = media?.gif?.url;
-              const preview = media?.tinygif?.url ?? url;
-              return url && preview ? { id: g.id, title: g.title || "GIF", url, preview } : null;
-            })
-            .filter((g): g is GifResult => Boolean(g));
-          setGifResults(results);
+      setGifError(false);
+      (q ? api.searchGifs(token, q) : api.trendingGifs(token))
+        .then((page) => {
+          if (alive) setGifResults(page.results);
         })
-        .catch((err) => {
-          if (err.name !== "AbortError") setGifResults([]);
+        .catch(() => {
+          if (!alive) return;
+          setGifResults([]);
+          setGifError(true);
         })
-        .finally(() => setGifLoading(false));
-    }, 250);
+        .finally(() => {
+          if (alive) setGifLoading(false);
+        });
+    }, q ? 300 : 0);
     return () => {
+      alive = false;
       window.clearTimeout(timer);
-      controller.abort();
     };
-  }, [composerPickerOpen, composerPickerTab, gifQuery]);
+  }, [composerPickerOpen, composerPickerTab, gifQuery, gifsAvailable, token]);
 
   // Apply plugin message transforms. Memoized so react-window's VariableSizeList
   // doesn't get fresh array identities (and discard its measured-height cache) on
@@ -2189,10 +2202,12 @@ export function ChatPane({
           serverEmojis={serverEmojis}
           onPickEmoji={(em) => insertComposerText(em)}
           onPickCustomEmoji={(em) => insertComposerText(`:${em.name}:`)}
+          gifsAvailable={gifsAvailable && !e2eEnabled}
           gifQuery={gifQuery}
           onGifQuery={setGifQuery}
           gifResults={gifResults}
           gifLoading={gifLoading}
+          gifError={gifError}
           gifUrl={gifUrl}
           onGifUrl={setGifUrl}
           onSendGif={sendGif}
