@@ -622,3 +622,109 @@ async fn a_start_reminder_missed_by_a_long_outage_is_dropped() {
         "no reminder for an event long started"
     );
 }
+
+#[tokio::test]
+async fn an_event_in_a_private_channel_stays_with_the_people_who_can_see_it() {
+    const VIEW_CHANNEL: i64 = 1 << 6;
+    let srv = TestServer::start().await;
+    let a = srv.register("evprivowner", PASS).await;
+    let b = srv.register("evprivin", PASS).await;
+    let c = srv.register("evprivout", PASS).await;
+    let s = space(&srv, &a, "Backstage").await;
+    join(&srv, &a, &s.id, &b).await;
+    join(&srv, &a, &s.id, &c).await;
+    push_device(&srv, &b, "priv-b").await;
+    push_device(&srv, &c, "priv-c").await;
+    let backstage: Value = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{}/channels", s.id),
+            &a.token,
+            json!({ "name": "backstage", "channel_type": "voice" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let backstage = backstage["id"].as_str().unwrap().to_owned();
+    let now = now_unix();
+    let res = create(
+        &srv,
+        &a,
+        &s.id,
+        json!({ "title": "Soundcheck", "starts_at": now + 600,
+                "location": { "kind": "voice", "channel_id": backstage } }),
+    )
+    .await;
+    assert!(res.status().is_success(), "create: {}", res.status());
+    let id = only_event(&srv, &a, &s.id).await["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(rsvp(&srv, &b, &s.id, &id, json!("going")).await, 204);
+    assert_eq!(rsvp(&srv, &c, &s.id, &id, json!("going")).await, 204);
+
+    // Backstage goes private: hidden from @everyone, open to B.
+    let base = format!(
+        "/api/v1/servers/{}/permission-overwrites/channel/{backstage}",
+        s.id
+    );
+    let res = srv
+        .put_json_auth(
+            &format!("{base}/everyone/everyone"),
+            &a.token,
+            json!({ "allow": 0, "deny": VIEW_CHANNEL }),
+        )
+        .await;
+    assert_eq!(res.status(), 204);
+    let res = srv
+        .put_json_auth(
+            &format!("{base}/member/{}", b.id),
+            &a.token,
+            json!({ "allow": VIEW_CHANNEL, "deny": 0 }),
+        )
+        .await;
+    assert_eq!(res.status(), 204);
+
+    assert_eq!(list(&srv, &b, &s.id).await.len(), 1, "B can see backstage");
+    assert!(
+        list(&srv, &c, &s.id).await.is_empty(),
+        "C can't, so the event isn't on C's calendar"
+    );
+    assert_eq!(
+        rsvp(&srv, &c, &s.id, &id, json!("interested")).await,
+        404,
+        "nor can C answer it"
+    );
+    let res = create(
+        &srv,
+        &c,
+        &s.id,
+        json!({ "title": "Sneaky", "starts_at": now + 3600,
+                "location": { "kind": "voice", "channel_id": backstage } }),
+    )
+    .await;
+    assert_eq!(
+        res.status(),
+        400,
+        "C can't plan an event in a channel C can't see"
+    );
+
+    server::api::events::send_due_reminders(&srv.state, now).await;
+    assert_eq!(event_pushes(&srv, &b).await, 1, "B is reminded");
+    assert_eq!(event_pushes(&srv, &c).await, 0, "C is not");
+
+    sqlx::query("UPDATE push_deliveries SET status = 'delivered'")
+        .execute(&srv.state.db)
+        .await
+        .unwrap();
+    let res = srv
+        .post_json_auth(
+            &format!("/api/v1/servers/{}/events/{id}/cancel", s.id),
+            &a.token,
+            json!({}),
+        )
+        .await;
+    assert!(res.status().is_success());
+    assert_eq!(event_pushes(&srv, &b).await, 2, "B hears it's off");
+    assert_eq!(event_pushes(&srv, &c).await, 0, "C still hears nothing");
+}
