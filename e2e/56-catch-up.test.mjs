@@ -191,6 +191,9 @@ try {
     };
   });
   if (!look.bar) throw new Error("the bar isn't shown on a phone");
+  // The whole line fits (wrapped if need be): "1 new message since 3:12 AM", not "since …".
+  const cut = await bar(pageA).locator(".kc-unread-bar__text").evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+  if (cut) throw new Error("the bar's words are cut off on a phone");
   // The "Jump to present" pill is for reading history; a chat that fits the screen has none.
   if (look.pill && look.scroll && look.scroll[1] <= look.scroll[2]) {
     throw new Error(`the jump pill shows though the whole chat fits the screen: ${JSON.stringify(look)}`);

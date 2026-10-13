@@ -5315,6 +5315,10 @@ ol.kc-md-list { list-style: decimal; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A phone has no room for the whole line beside the buttons: it wraps rather than lose the time. */
+@media (max-width: 640px) {
+  .kc-unread-bar__text { white-space: normal; line-height: 1.25; }
+}
 .kc-unread-bar button {
   flex-shrink: 0;
   min-height: 32px;
