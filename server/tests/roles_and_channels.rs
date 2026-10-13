@@ -508,6 +508,34 @@ async fn channel_permissions_never_grant_what_the_editor_lacks() {
         403,
         "needs Manage roles"
     );
+    // Lifting a deny is changing it too: the moderator can't undo one they couldn't set.
+    assert_eq!(
+        put(
+            format!("{base}/role/{low}"),
+            owner.token.clone(),
+            json!({ "allow": VIEW_CHANNEL, "deny": MANAGE_MESSAGES })
+        )
+        .await,
+        204,
+        "the owner denies Manage messages"
+    );
+    assert_eq!(
+        put(
+            format!("{base}/role/{low}"),
+            moderator.token.clone(),
+            json!({ "allow": VIEW_CHANNEL, "deny": 0 })
+        )
+        .await,
+        403,
+        "can't lift a deny of what they lack"
+    );
+    assert_eq!(
+        srv.delete_auth(&format!("{base}/role/{low}"), &moderator.token)
+            .await
+            .status(),
+        403,
+        "nor remove it whole"
+    );
     let _ = MANAGE_SERVER;
 }
 
