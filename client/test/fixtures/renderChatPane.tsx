@@ -16,3 +16,9 @@ export function renderPollComposerSlot(props: ComponentProps<typeof chatPane.Pol
   if (typeof Slot !== "function") throw new Error("ChatPane has no PollComposerSlot export");
   return renderToStaticMarkup(<Slot {...props} />);
 }
+
+import * as incomingCall from "../../src/components/IncomingCallCard";
+
+export function renderIncomingCallCard(props: ComponentProps<typeof incomingCall.IncomingCallCard>): string {
+  return renderToStaticMarkup(<incomingCall.IncomingCallCard {...props} />);
+}

@@ -23,6 +23,7 @@ const clientRoot = join(fixtures, "..", "..");
 type Props = Record<string, unknown>;
 let renderChatPane: (props: Props) => string;
 let renderPollComposerSlot: (props: Props) => string;
+let renderIncomingCallCard: (props: Props) => string;
 let outDir = "";
 
 // Just enough of the browser for ChatPane's render-time reads (drafts, prefs, metrics).
@@ -80,6 +81,7 @@ before(async () => {
   const mod = await import(pathToFileURL(join(outDir, entry.fileName)).href);
   renderChatPane = mod.renderChatPane;
   renderPollComposerSlot = mod.renderPollComposerSlot;
+  renderIncomingCallCard = mod.renderIncomingCallCard;
 });
 
 after(async () => {
@@ -688,4 +690,88 @@ test("catching up: nothing unread, no line and no bar", () => {
   const html = catchUp(null);
   assert.doesNotMatch(html, /New messages/);
   assert.doesNotMatch(html, /new messages/);
+
+// ── Calls in DMs ─────────────────────────────────────────────────────────────
+
+function dmWith(extra: Props = {}, messages: unknown[] = []): string {
+  return renderChatPane({
+    channel: { id: "dm1", server_id: null, name: "dm", channel_type: "dm", position: 0, topic: null, created_at: 0 },
+    dmUsers: { dm1: peer },
+    messages,
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s },
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    ...extra,
+  });
+}
+
+const callLog = (id: string, call: Record<string, unknown>, author = peer) => ({
+  id,
+  channel_id: "dm1",
+  author,
+  content: "",
+  created_at: 1,
+  edited_at: null,
+  reactions: [],
+  call,
+});
+
+test("calls: a DM's header offers a voice call and a video call", () => {
+  const html = dmWith({ onStartCall() {} });
+  assert.ok(html.includes('aria-label="Start a voice call"'), "voice call button");
+  assert.ok(html.includes('aria-label="Start a video call"'), "video call button");
+});
+
+test("calls: a space channel offers no call buttons; voice channels are for that", () => {
+  const html = renderChatPane({
+    channel: { id: "c9", server_id: "s1", name: "general", channel_type: "text", position: 0, topic: null, created_at: 0 },
+    messages: [],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: { applyMessageTransforms: (m: unknown) => m, applyTransformSend: (s: string) => s },
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    onStartCall() {},
+  });
+  assert.equal(html.includes('aria-label="Start a voice call"'), false);
+});
+
+test("calls: a call going on that you're not in offers Join call, with how many are in it", () => {
+  const html = dmWith({ onStartCall() {}, onJoinCall() {}, dmCall: { participants: 2, inCall: false } });
+  assert.ok(html.includes("Join call · 2 in call"), "join button with the count");
+  const inIt = dmWith({ onStartCall() {}, onJoinCall() {}, dmCall: { participants: 2, inCall: true } });
+  assert.equal(inIt.includes("Join call"), false, "no join button while you're in the call");
+});
+
+test("calls: a call log says how it went, and has no Reply or reactions on it", () => {
+  const html = dmWith({}, [callLog("call1", { state: "ended", duration_secs: 723 })]);
+  assert.ok(html.includes("Call ended · 12m 03s"), "the length of the call");
+  assert.equal(html.includes('aria-label="Reply"'), false, "no reply on a call log");
+  assert.equal(html.includes('aria-label="Add reaction"'), false, "no reactions on a call log");
+});
+
+test("calls: a missed call names the caller; a declined one names who declined", () => {
+  assert.ok(dmWith({}, [callLog("c1", { state: "missed" })]).includes("Missed call from Bea"));
+  const me = { id: "u1", username: "ann", display_name: "Ann", avatar_url: null };
+  assert.ok(dmWith({}, [callLog("c2", { state: "declined", declined_by: "u2" }, me)]).includes("Bea declined"));
+});
+
+test("calls: the incoming call card says who is calling and offers Accept, Accept with video and Decline", () => {
+  const ringFrom = (video: boolean) => ({
+    ring: { channelId: "dm1", messageId: "m1", callerId: "u2", callerName: "Bea", video, ringUntil: 9_999_999_999 },
+    onAccept() {},
+    onDecline() {},
+  });
+  const html = renderIncomingCallCard(ringFrom(false));
+  assert.ok(html.includes("Bea is calling"), "who is calling");
+  assert.ok(html.includes('aria-label="Accept"'), "accept");
+  assert.ok(html.includes('aria-label="Accept with video"'), "accept with video");
+  assert.ok(html.includes('aria-label="Decline"'), "decline");
+  assert.ok(renderIncomingCallCard(ringFrom(true)).includes("Video call"), "a video call says so");
 });

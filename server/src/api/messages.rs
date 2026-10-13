@@ -171,6 +171,7 @@ pub async fn list_messages(
             reply_to,
             poll,
             expires_at: msg.expires_at,
+            call: parse_call_log(&msg.call_log),
         });
     }
 
@@ -458,16 +459,23 @@ async fn send_checked(
 
     let content = body.content.trim().to_owned();
 
-    // Only honour a reply target that actually exists in this channel.
+    // Only honour a reply target that actually exists in this channel. A call log isn't
+    // something to reply to.
     let reply_to: Option<String> = match body.reply_to.filter(|s| !s.is_empty()) {
         Some(rid) => {
-            let exists: Option<(String,)> =
-                sqlx::query_as("SELECT id FROM messages WHERE id = ? AND channel_id = ?")
+            let exists: Option<(String, Option<String>)> =
+                sqlx::query_as("SELECT id, call_log FROM messages WHERE id = ? AND channel_id = ?")
                     .bind(&rid)
                     .bind(&channel_id)
                     .fetch_optional(&state.db)
                     .await
                     .map_err(crate::api::error::internal)?;
+            if exists.as_ref().is_some_and(|(_, call)| call.is_some()) {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "you can't reply to a call log".into(),
+                ));
+            }
             exists.map(|_| rid)
         }
         None => None,
@@ -538,6 +546,7 @@ pub(crate) async fn deliver_message(
         poll: None,
         embeds: None,
         expires_at,
+        call: None,
     };
 
     // A reply in a thread: its channel's people hear the new count first, so the app
@@ -621,7 +630,13 @@ pub async fn build_full(
         reply_to,
         poll,
         expires_at: msg.expires_at,
+        call: parse_call_log(&msg.call_log),
     })
+}
+
+/// A call log as JSON for the app; a column that doesn't parse is shown as no call log.
+pub(crate) fn parse_call_log(raw: &Option<String>) -> Option<serde_json::Value> {
+    raw.as_deref().and_then(|s| serde_json::from_str(s).ok())
 }
 
 /// True if the user can see a channel.
@@ -756,6 +771,9 @@ pub async fn edit_message(
             .map_err(crate::api::error::internal)?;
     let msg = msg.ok_or((StatusCode::NOT_FOUND, "message not found".into()))?;
 
+    if msg.call_log.is_some() {
+        return Err((StatusCode::BAD_REQUEST, "a call log can't be edited".into()));
+    }
     if msg.author_id != auth.0 {
         return Err((StatusCode::FORBIDDEN, "not your message".into()));
     }
