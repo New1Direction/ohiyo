@@ -67,6 +67,8 @@ type Props = {
   onOpenInvites?: () => void;
   /** Who is banned, and lifting bans (people who can ban). */
   onOpenBans?: () => void;
+  /** The open channel's slowmode (people who manage channels). */
+  onOpenSlowmode?: () => void;
   /** Leave the space shown (a member). */
   onLeaveServer?: (serverId: string) => Promise<void>;
   /** Delete the space shown, with the password (its owner). */
@@ -143,6 +145,7 @@ export function ChannelSidebar({
   onOpenModQueue,
   onOpenInvites,
   onOpenBans,
+  onOpenSlowmode,
   onLeaveServer,
   onDeleteServer,
   activationState,
@@ -173,6 +176,7 @@ export function ChannelSidebar({
       spaceMenuItems.push({ label: "Change space logo", icon: "edit", onSelect: () => serverIconInputRef.current?.click() });
     }
     if (canManageChannels) spaceMenuItems.push({ label: "Create channel", icon: "plus", onSelect: () => setShowNewChannel(true) });
+    if (onOpenSlowmode) spaceMenuItems.push({ label: "Slowmode", icon: "hourglass", onSelect: onOpenSlowmode });
     if (onOpenEvents) spaceMenuItems.push({ label: "Events", icon: "calendar", onSelect: onOpenEvents });
     if (onOpenModQueue) spaceMenuItems.push({ label: "Moderation queue", icon: "shield", onSelect: onOpenModQueue });
     if (onOpenBans) spaceMenuItems.push({ label: "Bans", icon: "flag", onSelect: onOpenBans });

@@ -38,10 +38,14 @@ export function InviteModal({ token, serverId, serverName, serverIconUrl, onClos
     api
       .createInvite(token, serverId, options)
       .then((i) => {
+        // Made for options that have since changed (or a closed dialog): nobody saw it.
+        if (!alive) {
+          void api.revokeInvite(token, i.code).catch(() => {});
+          return;
+        }
         const replaced = madeRef.current;
         madeRef.current = i.code;
         if (replaced) void api.revokeInvite(token, replaced).catch(() => {});
-        if (!alive) return;
         setInfo(i);
         onInviteCreatedRef.current?.();
       })

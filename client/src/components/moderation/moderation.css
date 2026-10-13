@@ -228,6 +228,12 @@
 .kc-composer-mod svg { flex-shrink: 0; color: var(--accent); }
 .kc-composer-mod[data-kind="timeout"] svg { color: var(--warning); }
 
+/* A phone's chat header has no room for it: there it shows only while slowmode is on, and
+   the space menu sets it. */
+@media (max-width: 640px) {
+  .kc-chat-header .kc-slowmode-button:not(.active) { display: none !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kc-mod-choice span { transition: none; }
   .kc-mod-choice input:active + span { transform: none; }

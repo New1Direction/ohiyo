@@ -2991,6 +2991,11 @@ function MainApp({
   const visibleMessages = messages.filter((m) => !blockedUserIds.has(m.author.id));
   // Spaces can stop members making invite links (Create invites); the owner and managers can.
   const canInvite = can(myPerms, PERM.CREATE_INVITE) || can(myPerms, PERM.MANAGE_SERVER);
+  // The open text channel's slowmode, for people who manage channels.
+  const openSlowmode =
+    selectedServer && selectedChannel?.channel_type === "text" && selectedChannel.server_id === selectedServer.id && can(myPerms, PERM.MANAGE_CHANNELS)
+      ? () => setSlowmodeFor(selectedChannel)
+      : undefined;
   const canModerateSelectedServer = selectedServer
     ? can(myPerms, PERM.MANAGE_MESSAGES) ||
       can(myPerms, PERM.BAN_MEMBERS) ||
@@ -3087,6 +3092,7 @@ function MainApp({
                 : undefined
             }
             onOpenBans={selectedServer && can(myPerms, PERM.BAN_MEMBERS) ? () => { setMobileNavOpen(false); setShowBans(true); } : undefined}
+            onOpenSlowmode={openSlowmode ? () => { setMobileNavOpen(false); openSlowmode(); } : undefined}
             onLeaveServer={async (id) => {
               const name = servers.find((s) => s.id === id)?.name ?? "the space";
               await api.leaveServer(token, id);
@@ -3234,11 +3240,7 @@ function MainApp({
               }
             : undefined
         }
-        onOpenSlowmode={
-          selectedServer && selectedChannel?.channel_type === "text" && can(myPerms, PERM.MANAGE_CHANNELS)
-            ? () => setSlowmodeFor(selectedChannel)
-            : undefined
-        }
+        onOpenSlowmode={openSlowmode}
       />
       )}
 

@@ -49,6 +49,7 @@ try {
   const invite = json(await api(tokenA, `/servers/${space.id}/invites`, { method: "POST", body: "{}" }));
   if ((await api(tokenB, `/invites/${invite.code}`, { method: "POST", body: "{}" })).status !== 200) throw new Error("B couldn't join");
   await pageB.click('button[aria-label="Mo HQ"]', { timeout: 15000 });
+  await pageB.click('.channel-sidebar button:has-text("general")', { timeout: 8000 });
   await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("Tilly joined Mo HQ");
 

@@ -1464,7 +1464,7 @@ export function ChatPane({
             onClick={onOpenSlowmode}
             aria-label="Slowmode"
             title={channel?.slowmode_seconds ? `Slowmode: ${slowmodeLabel(channel.slowmode_seconds)}` : "Slowmode"}
-            className={`kc-icon-btn flex-shrink-0 text-base${channel?.slowmode_seconds ? " active" : ""}`}
+            className={`kc-icon-btn kc-slowmode-button flex-shrink-0 text-base${channel?.slowmode_seconds ? " active" : ""}`}
             style={channel?.slowmode_seconds ? { color: "var(--accent)" } : undefined}
           >
             <Icon name="hourglass" />
