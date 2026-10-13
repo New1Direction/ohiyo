@@ -148,10 +148,7 @@ async fn search_with(w: &World, who: &AuthOk, query: &str, extra: &str) -> Value
     let res = w
         .srv
         .get_auth(
-            &format!(
-                "/api/v1/servers/{}/search?q={q}&envelope=1&limit=50{extra}",
-                w.space
-            ),
+            &format!("/api/v1/servers/{}/search?q={q}&envelope=1{extra}", w.space),
             &who.token,
         )
         .await;

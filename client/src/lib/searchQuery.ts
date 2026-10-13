@@ -181,12 +181,15 @@ function localDay(now: number, daysAgo: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** Matches first by how the text starts, then anywhere in it. */
+/** Matches whose name starts with the query first, then those with a later word that does
+ *  ("doe" finds "Alice Doe", "k" finds "albert.k"). Letters in the middle of a word don't
+ *  count: "ra" offers #random, not #general. */
 function ranked<T>(list: T[], keysOf: (item: T) => string[], query: string): T[] {
   const q = query.toLowerCase();
+  const words = (k: string) => k.toLowerCase().split(/[\s._-]+/).slice(1);
   const starts = list.filter((x) => keysOf(x).some((k) => k.toLowerCase().startsWith(q)));
-  const within = list.filter((x) => !starts.includes(x) && keysOf(x).some((k) => k.toLowerCase().includes(q)));
-  return [...starts, ...within].slice(0, MAX_OFFERED);
+  const wordStarts = list.filter((x) => !starts.includes(x) && keysOf(x).some((k) => words(k).some((w) => w.startsWith(q))));
+  return [...starts, ...wordStarts].slice(0, MAX_OFFERED);
 }
 
 /** What to offer for the word under the caret. Null when there's nothing to suggest. */
