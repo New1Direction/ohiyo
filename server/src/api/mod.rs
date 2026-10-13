@@ -26,6 +26,7 @@ pub mod reliability;
 pub mod roles;
 pub mod saved;
 pub mod search;
+pub mod search_query;
 pub mod server_pack;
 pub mod servers;
 pub mod signal;
