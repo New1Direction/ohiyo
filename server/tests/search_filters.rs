@@ -542,3 +542,69 @@ async fn outsiders_and_overlong_searches_are_refused() {
     let long = "a".repeat(501);
     assert_eq!(search_raw(&w, &w.member, &long).await.status(), 400);
 }
+
+#[tokio::test]
+async fn an_archived_thread_is_still_searched_and_a_hidden_channels_thread_never_is() {
+    let w = world().await;
+    let pool = db(&w).await;
+    // A thread in #general nobody has written in for a month (the app calls it archived).
+    let started = say(&w, &w.owner, &w.general, "old topic").await;
+    let old: Value = w
+        .srv
+        .post_json_auth(
+            &format!("/api/v1/channels/{}/threads", w.general),
+            &w.owner.token,
+            json!({ "message_id": started, "name": "Old thread" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let old_id = old["id"].as_str().unwrap().to_owned();
+    let reply = say(&w, &w.member, &old_id, "archived needle").await;
+    sqlx::query("UPDATE messages SET created_at = created_at - 30 * 86400 WHERE id = ?")
+        .bind(&reply)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        contents(&search(&w, &w.member, "needle in:general").await),
+        ["archived needle"]
+    );
+
+    // A thread under #random, which the member then can't see.
+    let started = say(&w, &w.owner, &w.random, "hidden topic").await;
+    let hidden: Value = w
+        .srv
+        .post_json_auth(
+            &format!("/api/v1/channels/{}/threads", w.random),
+            &w.owner.token,
+            json!({ "message_id": started, "name": "Hidden thread" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let hidden_id = hidden["id"].as_str().unwrap().to_owned();
+    say(&w, &w.owner, &hidden_id, "hidden needle").await;
+    sqlx::query(
+        "INSERT INTO permission_overwrites
+         (id, server_id, scope_type, scope_id, target_type, target_id, allow_permissions, deny_permissions, source, created_at)
+         VALUES ('ow_hide_random_threads', ?, 'channel', ?, 'everyone', NULL, 0, ?, 'test', 1)",
+    )
+    .bind(&w.space)
+    .bind(&w.random)
+    .bind(VIEW_CHANNEL)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        contents(&search(&w, &w.member, "needle").await),
+        ["archived needle"],
+        "the hidden channel's thread never shows up"
+    );
+    assert_eq!(
+        contents(&search(&w, &w.owner, "needle").await),
+        ["hidden needle", "archived needle"]
+    );
+}
