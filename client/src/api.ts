@@ -50,6 +50,19 @@ export type Server = {
   created_at: number;
 };
 
+/** A channel a search page's messages are in; a thread names its parent channel. */
+export type SearchChannel = { id: string; name: string; parent_id: string | null; parent_name: string | null };
+
+/** One page of a message search. `total` stops counting at 100 (`total_capped`). */
+export type SearchPage = {
+  messages: Message[];
+  total: number;
+  total_capped: boolean;
+  offset: number;
+  limit: number;
+  channels: SearchChannel[];
+};
+
 export type Channel = {
   id: string;
   server_id: string | null;
@@ -807,8 +820,14 @@ export const api = {
   unassignRole: (token: string, serverId: string, userId: string, roleId: string) =>
     request<void>(`/servers/${serverId}/members/${userId}/roles/${roleId}`, { method: "DELETE" }, token),
 
-  searchMessages: (token: string, serverId: string, q: string) =>
-    request<Message[]>(`/servers/${serverId}/search?q=${encodeURIComponent(q)}`, {}, token),
+  /** A page of a space's message search, read like Discord's (from:, in:, has:, dates…).
+   *  Days in before:/after:/during: are this device's own (its time zone goes along). */
+  searchMessages: (token: string, serverId: string, q: string, page: { offset?: number; limit?: number } = {}) =>
+    request<SearchPage>(
+      `/servers/${serverId}/search?q=${encodeURIComponent(q)}&envelope=1&offset=${page.offset ?? 0}&limit=${page.limit ?? 25}&tz=${new Date().getTimezoneOffset()}`,
+      {},
+      token,
+    ),
 
   // ── Scheduled events ──────────────────────────────────────────────────────
   listEvents: (token: string, serverId: string) =>
@@ -858,8 +877,14 @@ export const api = {
       body: JSON.stringify({ category_id: categoryId }),
     }, token),
 
-  listMessages: (token: string, channelId: string, limit?: number) =>
-    request<Message[]>(`/channels/${channelId}/messages${limit ? `?limit=${limit}` : ""}`, {}, token),
+  /** The latest messages of a channel, oldest first; with `before`, the ones before that message. */
+  listMessages: (token: string, channelId: string, limit?: number, before?: string) => {
+    const query = new URLSearchParams();
+    if (limit) query.set("limit", String(limit));
+    if (before) query.set("before", before);
+    const qs = query.toString();
+    return request<Message[]>(`/channels/${channelId}/messages${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   /** Read cursors for a channel — hydrates Delivered/Seen receipts on open. */
   listReads: (token: string, channelId: string) =>

@@ -220,6 +220,8 @@ type Props = {
   /** Opens the current space's invite link (the welcome checklist offers it in an empty channel). */
   onInvite?: () => void;
   onOpenSearch?: () => void;
+  /** A message to scroll to and mark (a search result's Jump); `seq` makes a repeat jump count. */
+  focusMessage?: { id: string; seq: number } | null;
   onOpenMembers?: () => void;
   /** Open/start a direct message from a user's profile card. */
   onOpenDm?: (user: PublicUser) => void | Promise<void>;
@@ -400,6 +402,7 @@ export function ChatPane({
   onSaveRecovery,
   onInvite,
   onOpenSearch,
+  focusMessage,
   onOpenMembers,
   onOpenDm,
   onBlockUser,
@@ -557,6 +560,9 @@ export function ChatPane({
   const atBottomRef = useRef(true);
   const forceBottomRef = useRef(true);
   const [showJump, setShowJump] = useState(false);
+  // The message a search result jumped to, marked for a moment; and the jump last handled.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const handledFocusRef = useRef<number | null>(null);
   // Per-channel reading position. scrollMapRef is the live (in-session) map; a switch
   // (or reload) persists it. pendingRestoreRef carries an offset to re-apply after the
   // incoming channel's rows have rendered.
@@ -893,6 +899,39 @@ export function ChatPane({
     ],
     [groups, activityNotices]
   );
+
+  // A search result's Jump: once its message is among the rows, scroll it to the middle and
+  // mark it. Declared after the auto-scroll effect above, so on the render that loads the
+  // older history this runs last and wins over "open at the bottom". The list sizes rows from
+  // estimates, so the next frame centres the message by where it really is.
+  useEffect(() => {
+    if (!focusMessage || handledFocusRef.current === focusMessage.seq) return;
+    const index = rows.findIndex((r) => r.kind === "messages" && r.group.msgs.some((m) => m.id === focusMessage.id));
+    if (index < 0) return;
+    handledFocusRef.current = focusMessage.seq;
+    pendingRestoreRef.current = null;
+    forceBottomRef.current = false;
+    atBottomRef.current = false;
+    listRef.current?.scrollToItem(index, "center");
+    setShowJump(true);
+    setFlashId(focusMessage.id);
+    const id = focusMessage.id;
+    const frame = window.requestAnimationFrame(() => {
+      const outer = listOuterRef.current;
+      const el = outer?.querySelector<HTMLElement>(`[data-message-id="${id}"]`);
+      if (!outer || !el) return;
+      const box = el.getBoundingClientRect();
+      const view = outer.getBoundingClientRect();
+      outer.scrollTop += box.top - view.top - (outer.clientHeight - box.height) / 2;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [rows, focusMessage]);
+
+  useEffect(() => {
+    if (!flashId) return;
+    const t = setTimeout(() => setFlashId(null), 2600);
+    return () => clearTimeout(t);
+  }, [flashId]);
 
   // A boolean, not the callback: App passes a fresh function every render.
   const canOpenRecovery = onSaveRecovery !== undefined;
@@ -1845,7 +1884,7 @@ export function ChatPane({
                         <MessageTime unix={g.msgs[0].created_at} className="text-xs" style={{ color: "var(--text-secondary)" }} />
                       </div>
                       {g.msgs.map((msg, mi) => (
-                        <div key={msg.id} data-message-id={msg.id} className="kc-msg">
+                        <div key={msg.id} data-message-id={msg.id} className={msg.id === flashId ? "kc-msg kc-msg-flash" : "kc-msg"}>
                           {mi > 0 && (
                             <MessageTime unix={msg.created_at} short className="kc-msg-time" />
                           )}

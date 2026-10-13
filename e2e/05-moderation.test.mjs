@@ -54,7 +54,7 @@ try {
   await pageA.waitForSelector("text=find this needle in general", { timeout: 6000 });
   log("search returned the message ✓");
   await shot(pageA, "24-search");
-  await pageA.click('button:has-text("find this needle in general")');
+  await pageA.locator(".kc-search-result", { hasText: "find this needle in general" }).locator('button:has-text("Jump")').click();
   // jumped to #general
   await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 6000 });
   log("clicking a result jumps to its channel ✓");

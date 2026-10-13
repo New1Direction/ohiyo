@@ -23,7 +23,7 @@ import { PrivateDmLinkAccept } from "./components/PrivateDmLinkAccept";
 import { PrivateDmLinkModal } from "./components/PrivateDmLinkModal";
 import { InstantServersModal } from "./components/InstantServersModal";
 import { FindPeopleModal } from "./components/FindPeopleModal";
-import { SearchModal } from "./components/SearchModal";
+import { SearchModal, type SearchHit } from "./components/SearchModal";
 import { MembersModal } from "./components/MembersModal";
 import { RolesModal } from "./components/RolesModal";
 import { EventsModal } from "./components/EventsModal";
@@ -154,6 +154,9 @@ applyActiveAppearance();
 
 /** One stable empty thread list, so a channel without threads doesn't re-render its rows. */
 const NO_THREADS: ThreadSummary[] = [];
+/** Jumping to an older message pages back this many messages at a time, at most this often. */
+const JUMP_PAGE = 100;
+const JUMP_PAGES = 10;
 
 // On logout: drop decrypted plaintext, the outbox and every draft from localStorage and
 // (desktop) the vault. Identity and session keys stay.
@@ -552,6 +555,8 @@ function MainApp({
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  // A message to scroll to and mark once it is loaded (from a search result's Jump).
+  const [focusMessage, setFocusMessage] = useState<{ id: string; seq: number; channelId: string } | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [serverEmojis, setServerEmojis] = useState<ServerEmoji[]>([]);
   // Threads: each channel's list (busiest first), the one open beside the channel, the
@@ -2385,6 +2390,49 @@ function MainApp({
     });
   }
 
+  // Go to a search result. Open its channel, then page back through its history until the
+  // message is there (a channel opens on its latest page), and have the chat scroll to it and
+  // mark it. A result in a thread opens that thread beside its channel.
+  async function jumpToMessage(hit: SearchHit) {
+    const channelId = hit.thread_parent_id ?? hit.channel_id;
+    let channel: Channel | undefined;
+    for (const s of serversRef.current) {
+      channel = s.channels.find((c) => c.id === channelId);
+      if (channel) {
+        setSelectedServerId(s.id);
+        break;
+      }
+    }
+    if (!channel) return;
+    if (selectedChannelRef.current?.id !== channel.id) await handleSelectChannel(channel);
+    if (selectedChannelRef.current?.id !== channel.id) return;
+    if (hit.thread_parent_id) {
+      const threads = await api.listThreads(token, hit.thread_parent_id).catch(() => []);
+      const thread = threads.find((t) => t.id === hit.channel_id);
+      if (thread && selectedChannelRef.current?.id === channel.id) setOpenThread(thread);
+      return;
+    }
+    try {
+      let history = await api.listMessages(token, channel.id, JUMP_PAGE);
+      for (let page = 1; page < JUMP_PAGES && !history.some((m) => m.id === hit.id) && history.length > 0; page += 1) {
+        const older = await api.listMessages(token, channel.id, JUMP_PAGE, history[0].id);
+        if (!older.length) break;
+        history = [...older, ...history];
+      }
+      if (selectedChannelRef.current?.id !== channel.id) return;
+      const found = history.some((m) => m.id === hit.id);
+      // Keep what arrived meanwhile (newer messages, unsent drafts) after the loaded history.
+      setMessages((prev) => {
+        const loaded = new Set(history.map((m) => m.id));
+        return [...history, ...prev.filter((m) => !loaded.has(m.id))];
+      });
+      if (found) setFocusMessage({ id: hit.id, seq: Date.now(), channelId: channel.id });
+      else toast("That message is too far back to jump to.", "info");
+    } catch {
+      toast("Couldn't open that message. Check your connection and try again.", "error");
+    }
+  }
+
   // Jump to a channel from search results (find it across loaded servers).
   function jumpToChannel(channelId: string) {
     for (const s of serversRef.current) {
@@ -2894,6 +2942,7 @@ function MainApp({
         />
       ) : (
       <ChatPane
+        focusMessage={focusMessage && focusMessage.channelId === selectedChannel?.id ? focusMessage : null}
         peerGone={selectedChannel?.channel_type === "dm" && goneDms.has(selectedChannel.id)}
         channel={selectedChannel}
         messages={visibleMessages}
@@ -3183,10 +3232,11 @@ function MainApp({
       {/* Message search across the current server */}
       {showSearch && selectedServer && (
         <SearchModal
-          token={token}
-          serverId={selectedServer.id}
           channels={selectedServer.channels}
-          onJump={jumpToChannel}
+          members={selectedServer.members}
+          search={(q, page) => api.searchMessages(token, selectedServer.id, q, page)}
+          assetUrl={(stored) => fileUrlOn(getFileBase(), stored)}
+          onJumpToMessage={(hit) => void jumpToMessage(hit)}
           onClose={() => setShowSearch(false)}
         />
       )}

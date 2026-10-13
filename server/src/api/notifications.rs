@@ -221,7 +221,8 @@ pub fn mentions(content: &str, username: &str) -> bool {
         .any(|name| mentions_name(content, name))
 }
 
-fn mentions_name(content: &str, name: &str) -> bool {
+/// True if `content` mentions `name` by the rule above (not counting @everyone or @here).
+pub(crate) fn mentions_name(content: &str, name: &str) -> bool {
     let name = name.to_lowercase();
     content.match_indices('@').any(|(at, _)| {
         let starts_word = content[..at]

@@ -45,12 +45,144 @@ impl ParsedQuery {
     }
 }
 
-/// Read a search box's text.
-pub fn parse(q: &str) -> ParsedQuery {
-    ParsedQuery {
-        text: q.split_whitespace().map(str::to_owned).collect(),
-        ..ParsedQuery::default()
+/// Longest `from:`/`mentions:` value (a webhook's name can be 64 characters).
+const MAX_NAME_CHARS: usize = 64;
+/// Longest `in:` value (a channel or thread name).
+const MAX_CHANNEL_CHARS: usize = 100;
+
+/// One word of the box: its text with the quotes taken out, and whether it began with a
+/// quote (a quoted word is always text, never a filter).
+struct Token {
+    text: String,
+    quoted: bool,
+}
+
+/// Split the box into words. Whitespace separates words outside quotes; a `"` opens or
+/// closes a quoted run inside a word, so `in:"release notes"` is one word; an unclosed quote
+/// runs to the end. Whitespace is Rust's [`char::is_whitespace`]; the app uses the same set.
+fn tokens(q: &str) -> Vec<Token> {
+    let mut out = Vec::new();
+    let mut chars = q.chars().peekable();
+    loop {
+        while chars.peek().is_some_and(|c| c.is_whitespace()) {
+            chars.next();
+        }
+        let Some(&first) = chars.peek() else {
+            break;
+        };
+        let mut text = String::new();
+        let mut in_quote = false;
+        while let Some(&c) = chars.peek() {
+            if c == '"' {
+                in_quote = !in_quote;
+            } else if !in_quote && c.is_whitespace() {
+                break;
+            } else {
+                text.push(c);
+            }
+            chars.next();
+        }
+        if !text.is_empty() {
+            out.push(Token {
+                text,
+                quoted: first == '"',
+            });
+        }
     }
+    out
+}
+
+/// `YYYY-MM-DD` naming a day that exists.
+fn is_day(value: &str) -> bool {
+    let b = value.as_bytes();
+    b.len() == 10
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && b.iter()
+            .enumerate()
+            .all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+        && chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok()
+}
+
+fn push_once(list: &mut Vec<String>, value: String) {
+    if !list.contains(&value) {
+        list.push(value);
+    }
+}
+
+/// Read a search box's text. A word `key:value` with a known key and a value that fits is a
+/// filter; anything else (an unknown key, an empty or impossible value, a quoted word) is
+/// text. `from:`, `mentions:`, `in:` and `has:` add up (each value once); for the dates and
+/// `pinned:` the last one wins.
+pub fn parse(q: &str) -> ParsedQuery {
+    let mut out = ParsedQuery::default();
+    for Token { text, quoted } in tokens(q) {
+        let filter = if quoted { None } else { text.split_once(':') };
+        let Some((key, value)) = filter else {
+            out.text.push(text);
+            continue;
+        };
+        let value = value.trim();
+        let used = match key.to_lowercase().as_str() {
+            "from" | "mentions" => {
+                let name = value.strip_prefix('@').unwrap_or(value).to_lowercase();
+                let fits = !name.is_empty() && name.chars().count() <= MAX_NAME_CHARS;
+                if fits {
+                    let list = if key.eq_ignore_ascii_case("from") {
+                        &mut out.from
+                    } else {
+                        &mut out.mentions
+                    };
+                    push_once(list, name);
+                }
+                fits
+            }
+            "in" => {
+                let name = value.strip_prefix('#').unwrap_or(value).to_lowercase();
+                let fits = !name.is_empty() && name.chars().count() <= MAX_CHANNEL_CHARS;
+                if fits {
+                    push_once(&mut out.in_channels, name);
+                }
+                fits
+            }
+            "has" => {
+                let kind = value.to_lowercase();
+                let fits = HAS_KINDS.contains(&kind.as_str());
+                if fits {
+                    push_once(&mut out.has, kind);
+                }
+                fits
+            }
+            day @ ("before" | "after" | "during") => {
+                let fits = is_day(value);
+                if fits {
+                    let slot = match day {
+                        "before" => &mut out.before,
+                        "after" => &mut out.after,
+                        _ => &mut out.during,
+                    };
+                    *slot = Some(value.to_owned());
+                }
+                fits
+            }
+            "pinned" => match value.to_lowercase().as_str() {
+                "true" => {
+                    out.pinned = Some(true);
+                    true
+                }
+                "false" => {
+                    out.pinned = Some(false);
+                    true
+                }
+                _ => false,
+            },
+            _ => false,
+        };
+        if !used {
+            out.text.push(text);
+        }
+    }
+    out
 }
 
 #[cfg(test)]

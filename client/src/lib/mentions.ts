@@ -11,8 +11,11 @@
 // client/test/fixtures/mention-cases.json holds the cases both sides are tested against.
 import { MAX_USERNAME, MIN_USERNAME, USERNAME_CHAR } from "./usernames.ts";
 
+/** Whitespace as Rust counts it (char::is_whitespace), as a regular-expression character class. */
+export const RUST_WHITESPACE = "[\\t\\n\\v\\f\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
+
 /** What may come right before a mention's "@": the start, or whitespace as Rust counts it. */
-const BOUNDARY = "^|[\\t\\n\\v\\f\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
+const BOUNDARY = `^|${RUST_WHITESPACE}`;
 
 /** A mention: start of text or whitespace, the "@", and its run of username characters. */
 const MENTION = new RegExp(`(${BOUNDARY})@(${USERNAME_CHAR}+)`, "g");
