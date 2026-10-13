@@ -9,6 +9,8 @@ import type { ConnectionStatus, Activity } from "../gateway";
 import { AvatarMark } from "./BirdMark";
 import { OnlineDot, STATUS_META } from "./presence";
 import { UserPanel } from "./UserPanel";
+import { ChatRowMenu, useLongPress } from "./ChatRowMenu";
+import { useDraftIds } from "../hooks/useDraftIds";
 
 // Set through backgroundImage (not the `background` shorthand): React clears backgroundImage
 // to "" when there is no picture, which would wipe a gradient set by the shorthand.
@@ -122,6 +124,8 @@ export function ChannelSidebar({
   mutedChannelIds,
   onOpenNotificationSettings,
   onOpenWebhooks,
+  onMarkRead,
+  onMarkSpaceRead,
   myStatus,
   onSetStatus,
   myActivity,
@@ -155,6 +159,13 @@ export function ChannelSidebar({
   const [optionsFor, setOptionsFor] = useState<string | null>(null);
   const optionsOpen = server !== null && optionsFor === server.id;
   const optionsButtonRef = useRef<HTMLButtonElement>(null);
+  // A channel's or DM's own menu (right-click or long-press): which chat, and where.
+  const [rowMenu, setRowMenu] = useState<{ channelId: string; name: string; x: number; y: number; returnTo: HTMLElement | null } | null>(null);
+  const draftIds = useDraftIds();
+  const openRowMenu = onMarkRead
+    ? (channelId: string, name: string) => (x: number, y: number, returnTo: HTMLElement | null) =>
+        setRowMenu({ channelId, name, x, y, returnTo })
+    : undefined;
   const isOwner = Boolean(server && currentUser && server.owner_id === currentUser.id);
   const closeOptions = () => {
     setOptionsFor(null);
@@ -165,6 +176,7 @@ export function ChannelSidebar({
   const spaceMenuItems: SpaceMenuItem[] = [];
   if (server) {
     if (onInvite) spaceMenuItems.push({ label: "Invite people", icon: "userPlus", onSelect: onInvite });
+    if (onMarkSpaceRead) spaceMenuItems.push({ label: "Mark space as read", icon: "check", onSelect: onMarkSpaceRead });
     if (canSetLogo) {
       spaceMenuItems.push({ label: "Change space logo", icon: "edit", onSelect: () => serverIconInputRef.current?.click() });
     }
@@ -244,6 +256,8 @@ export function ChannelSidebar({
       hasMention={mentionChannels?.has(ch.id) ?? false}
       muted={mutedChannelIds?.has(ch.id) ?? false}
       imported={Boolean(ch.imported)}
+      hasDraft={draftIds.has(ch.id)}
+      onMenu={openRowMenu?.(ch.id, ch.name)}
       onClick={() => onSelectChannel(ch)}
     />
   );
@@ -268,10 +282,10 @@ export function ChannelSidebar({
           boxShadow: isSel ? "inset 3px 0 0 var(--accent)" : undefined,
         }}
       >
-        <button
-          type="button"
+        <RowButton
+          onMenu={openRowMenu?.(dm.id, label)}
           onClick={() => onSelectChannel(dm)}
-          className="kc-interactive flex min-w-0 flex-1 items-center gap-2 px-2 py-1 text-left"
+          className="kc-interactive kc-dm-row-button flex min-w-0 flex-1 items-center gap-2 px-2 py-1 text-left"
           style={{
             border: "none",
             borderRadius: "var(--radius-md)",
@@ -299,6 +313,7 @@ export function ChannelSidebar({
             )}
           </div>
           <span className="min-w-0 flex-1 truncate text-sm" style={muted ? { opacity: 0.6 } : undefined}>{label}</span>
+          {draftIds.has(dm.id) && !isSel && <DraftMark />}
           {muted && <MutedMark />}
           {showMention ? (
             <span
@@ -317,7 +332,7 @@ export function ChannelSidebar({
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           ) : null}
-        </button>
+        </RowButton>
         <button
           type="button"
           onClick={() => togglePinDm(dm.id)}
@@ -618,6 +633,19 @@ export function ChannelSidebar({
         )}
       </div>
 
+      {rowMenu && onMarkRead && (
+        <ChatRowMenu
+          name={rowMenu.name}
+          x={rowMenu.x}
+          y={rowMenu.y}
+          items={[{ label: "Mark as read", icon: "check", onSelect: () => onMarkRead([rowMenu.channelId]) }]}
+          onClose={() => {
+            rowMenu.returnTo?.focus();
+            setRowMenu(null);
+          }}
+        />
+      )}
+
       {/* User info bar */}
       {currentUser && (
         <UserPanel
@@ -645,8 +673,57 @@ function MutedMark() {
   );
 }
 
+/** A row's menu opener: where (x, y) and which element to hand focus back to. */
+type OpenRowMenu = (x: number, y: number, returnTo: HTMLElement | null) => void;
+
+/** A chat row's button, which also opens the chat's own menu on a right-click, the keyboard's
+ *  menu key, or a long-press on a touch screen (whose ending tap then doesn't open the chat). */
+function RowButton({
+  onMenu, onClick, children, ...rest
+}: Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "type"> & { onMenu?: OpenRowMenu }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const press = useLongPress((x, y) => onMenu?.(x, y, ref.current));
+  return (
+    <button
+      ref={ref}
+      type="button"
+      {...rest}
+      onClick={(e) => {
+        if (press.consumeLongPress()) return;
+        onClick?.(e);
+      }}
+      onContextMenu={
+        onMenu
+          ? (e) => {
+              e.preventDefault();
+              const box = e.currentTarget.getBoundingClientRect();
+              // The keyboard's menu key reports no pointer position: open beside the row.
+              const fromKeys = e.clientX === 0 && e.clientY === 0;
+              onMenu(fromKeys ? box.left + 16 : e.clientX, fromKeys ? box.bottom : e.clientY, e.currentTarget);
+            }
+          : undefined
+      }
+      onPointerDown={onMenu ? press.onPointerDown : undefined}
+      onPointerMove={onMenu ? press.onPointerMove : undefined}
+      onPointerUp={onMenu ? press.onPointerUp : undefined}
+      onPointerCancel={onMenu ? press.onPointerCancel : undefined}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** A small pencil: there's an unsent draft in this chat. */
+function DraftMark() {
+  return (
+    <span className="kc-draft-mark flex-shrink-0" role="img" aria-label="Draft" title="Unsent draft">
+      <Icon name="edit" size={13} />
+    </span>
+  );
+}
+
 function ChannelRow({
-  icon, name, isSelected, unreadCount = 0, hasMention = false, muted = false, imported = false, onClick,
+  icon, name, isSelected, unreadCount = 0, hasMention = false, muted = false, imported = false, hasDraft = false, onMenu, onClick,
 }: {
   icon: React.ReactNode;
   name: string;
@@ -657,19 +734,24 @@ function ChannelRow({
    *  @mention still shows, as in Discord. */
   muted?: boolean;
   imported?: boolean;
+  /** An unsent draft waits here: a pencil, unless this is the open chat. */
+  hasDraft?: boolean;
+  /** Opens this channel's own menu (right-click, menu key, long-press). */
+  onMenu?: OpenRowMenu;
   onClick: () => void;
 }) {
   const hasUnread = !muted && unreadCount > 0 && !isSelected;
   const showMention = hasMention && !isSelected;
   return (
-    <button
-      type="button"
+    <RowButton
+      onMenu={onMenu}
       onClick={onClick}
       aria-current={isSelected ? "page" : undefined}
       className={`kc-channel-row kc-interactive mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 px-2 py-1 text-left text-sm${isSelected ? " is-selected" : ""}${hasUnread || showMention ? " has-unread" : ""}${muted ? " is-muted" : ""}`}
     >
       <span className="kc-channel-row__icon" aria-hidden="true">{icon}</span>
       <span className="truncate flex-1">{name}</span>
+      {hasDraft && !isSelected && <DraftMark />}
       {muted && <MutedMark />}
       {isSelected && <span className="kc-channel-row__active-dot" aria-hidden="true" />}
       {imported && (
@@ -699,7 +781,7 @@ function ChannelRow({
           {unreadCount > 99 ? "99+" : unreadCount}
         </span>
       ) : null}
-    </button>
+    </RowButton>
   );
 }
 
