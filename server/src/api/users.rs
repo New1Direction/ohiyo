@@ -461,6 +461,7 @@ pub async fn open_dm(
         owner_id: None,
         parent_id: None,
         thread_message_id: None,
+        slowmode_seconds: 0,
     };
 
     // Tell both people live, like a new group chat: the person being messaged lists it
@@ -583,6 +584,7 @@ pub async fn open_group_dm(
         owner_id: Some(auth.0.clone()),
         parent_id: None,
         thread_message_id: None,
+        slowmode_seconds: 0,
     };
 
     // Tell every participant about the new group live.

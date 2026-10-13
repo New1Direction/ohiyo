@@ -87,6 +87,7 @@ pub async fn create_poll(
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
     }
+    crate::api::moderation::ensure_not_timed_out_in_channel(&state, &channel_id, &auth.0).await?;
     let server_id: Option<String> =
         sqlx::query_scalar::<_, Option<String>>("SELECT server_id FROM channels WHERE id = ?")
             .bind(&channel_id)

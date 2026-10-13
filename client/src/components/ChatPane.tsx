@@ -38,6 +38,9 @@ import { MessageActionSheet } from "./MessageActionSheet";
 import { threadChipLabel, type ThreadSummary } from "../lib/threads";
 import { ThreadOptionsMenu } from "./ThreadOptionsMenu";
 import { avatarStyle } from "../lib/avatarStyle";
+import { slowmodeLabel, slowmodeWait } from "../lib/moderation";
+import { ComposerModerationNotice } from "./moderation/ComposerModerationNotice";
+import { useTimedOut } from "./moderation/useModerationClock";
 import { fileUrlOn } from "../lib/fileUrl";
 
 const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
@@ -272,6 +275,11 @@ type Props = {
   onStartThread?: (msg: Message) => void;
   /** Open this channel's list of threads. */
   onOpenThreads?: () => void;
+  /** Moderation where this chat is: your time out in its space (unix seconds) takes the
+   *  composer's place, and people who manage messages or channels skip slowmode. */
+  moderation?: { timedOutUntil: number | null; bypassSlowmode: boolean };
+  /** Open this channel's slowmode setting (people who manage the channel). */
+  onOpenSlowmode?: () => void;
   /** Shown as a thread: the channel it hangs off and how to go back to it, whether you
    *  follow it, and (for whoever may) renaming or deleting it. */
   threadView?: {
@@ -443,8 +451,14 @@ export function ChatPane({
   onOpenThread,
   onStartThread,
   onOpenThreads,
+  moderation,
+  onOpenSlowmode,
   threadView,
 }: Props) {
+  const timedOut = useTimedOut(moderation?.timedOutUntil);
+  const slowmodeSeconds = moderation?.bypassSlowmode ? 0 : (channel?.slowmode_seconds ?? 0);
+  // When you last posted in each channel under slowmode (ms), for the countdown.
+  const [slowSentAt, setSlowSentAt] = useState<Record<string, number>>({});
   // Initialize from the persisted draft so a reload (which mounts straight into the
   // restored channel, with prevChannelRef already equal) still shows it.
   const [input, setInput] = useState(() => (channel?.id ? loadDraft(channel.id) : ""));
@@ -637,6 +651,16 @@ export function ChatPane({
     });
   }
 
+  /** Whether you may post in `channelId` now under its slowmode; if so, the wait starts
+   *  over. While you must wait, the notice above the composer counts down. */
+  function claimSlowmodeSlot(channelId: string): boolean {
+    if (slowmodeSeconds <= 0) return true;
+    const now = Date.now();
+    if (slowmodeWait(slowSentAt[channelId] ?? null, slowmodeSeconds, now) > 0) return false;
+    setSlowSentAt((prev) => ({ ...prev, [channelId]: now }));
+    return true;
+  }
+
   function sendGif(url: string) {
     if (!channel) return;
     const trimmed = url.trim();
@@ -644,6 +668,7 @@ export function ChatPane({
       onToast("Paste a valid GIF link", "error");
       return;
     }
+    if (!claimSlowmodeSlot(channel.id)) return;
     forceBottomRef.current = true;
     onSend(trimmed, [], replyTarget?.id ?? null);
     setInput("");
@@ -1030,6 +1055,7 @@ export function ChatPane({
       const transformed = pluginManager.applyTransformSend(input.trim());
       if (!transformed && pendingFiles.length === 0) return;
       if (!channel) return;
+      if (!claimSlowmodeSlot(channel.id)) return;
       forceBottomRef.current = true; // always follow your own message to the bottom
       const encryptedAttachments = pendingFiles
         .filter((f): f is UploadedFile & { encrypted: EncryptedAttachmentMeta["encrypted"] } => Boolean(f.encrypted))
@@ -1050,7 +1076,9 @@ export function ChatPane({
       setPendingFiles([]);
       setReplyTarget(null);
     },
-    [input, pendingFiles, channel, pluginManager, onSend, replyTarget]
+    // claimSlowmodeSlot reads slowmodeSeconds and slowSentAt, listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [input, pendingFiles, channel, pluginManager, onSend, replyTarget, slowmodeSeconds, slowSentAt]
   );
 
   // Throttle "typing…" pings so we emit at most one every few seconds.
@@ -1428,6 +1456,18 @@ export function ChatPane({
             className="kc-icon-btn flex-shrink-0 text-base"
           >
             <Icon name="thread" />
+          </button>
+        )}
+        {onOpenSlowmode && (
+          <button
+            type="button"
+            onClick={onOpenSlowmode}
+            aria-label="Slowmode"
+            title={channel?.slowmode_seconds ? `Slowmode: ${slowmodeLabel(channel.slowmode_seconds)}` : "Slowmode"}
+            className={`kc-icon-btn kc-slowmode-button flex-shrink-0 text-base${channel?.slowmode_seconds ? " active" : ""}`}
+            style={channel?.slowmode_seconds ? { color: "var(--accent)" } : undefined}
+          >
+            <Icon name="hourglass" />
           </button>
         )}
         {onOpenNotificationSettings && (
@@ -2224,7 +2264,17 @@ export function ChatPane({
         </p>
       )}
 
+      {/* Timed out: a notice instead of the composer. Slowmode: a countdown above it. */}
+      {channel && !peerGone && (timedOut || slowmodeSeconds > 0) && (
+        <ComposerModerationNotice
+          timedOutUntil={timedOut ? (moderation?.timedOutUntil ?? null) : null}
+          slowmodeSeconds={slowmodeSeconds}
+          lastSentAt={slowSentAt[channel.id] ?? null}
+        />
+      )}
+
       {/* Input */}
+      {!timedOut && (
       <form
         onSubmit={handleSend}
         className="kc-composer-shell mx-4 mb-4"
@@ -2333,6 +2383,7 @@ export function ChatPane({
           </button>
         </div>
       </form>
+      )}
 
       {actionSheetMsg && (
         <MessageActionSheet

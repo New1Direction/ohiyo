@@ -33,6 +33,10 @@ import { ForwardModal } from "./components/ForwardModal";
 import { PERM, can } from "./permissions";
 import { NotificationSettingsDialog, type NotificationSettingsTarget } from "./components/NotificationSettingsDialog";
 import { WebhooksDialog, type WebhookApi } from "./components/WebhooksDialog";
+import { ModerationQueueModal } from "./components/moderation/ModerationQueueModal";
+import { SlowmodeDialog } from "./components/moderation/SlowmodeDialog";
+import { InvitesDialog } from "./components/moderation/InvitesDialog";
+import { BansDialog } from "./components/moderation/BansDialog";
 import { mentionsMe, notificationTitle } from "./lib/messageNotify";
 import { fileUrlOn } from "./lib/fileUrl";
 import {
@@ -78,6 +82,7 @@ import {
   setGroupEpoch,
 } from "./lib/senderKeys";
 import { formatDuration, messageExpiry } from "./lib/disappearing";
+import { slowmodeLabel } from "./lib/moderation";
 import { packEncryptedMessagePlaintext, unpackEncryptedMessagePlaintext, type EncryptedAttachmentMeta } from "./lib/encryptedPayload";
 import { createDistributionTracker, editBlockReason, encryptOutgoing, EncryptedSendError, forwardBlockReason, outgoingWire } from "./lib/encryptedSend";
 import { isWellFormedEnvelope, resolveDmPeer, shouldEnterEncryptedMode, shouldRecordRecoveryInventory, withoutServerChannels } from "./lib/e2eMode";
@@ -96,7 +101,7 @@ import { clearDeletedAccountData, clearLocalMessageData } from "./lib/logoutClea
 import { onPlaintextCacheEvicted, saveEncryptedChannels } from "./lib/storageQuota";
 import { uploadOne } from "./lib/uploadOne";
 import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
-import { apiStatus, badRequestMessage, deviceLimitMessage } from "./lib/apiErrors";
+import { apiStatus, badRequestMessage, deviceLimitMessage, moderationRefusal } from "./lib/apiErrors";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
 import { PluginManager } from "./plugins/registry";
@@ -148,7 +153,7 @@ import {
   type OhiyoHome,
   takeRetiredHomeDropped,
 } from "./lib/homes";
-import type { AbuseReport, Channel, Message, ModerationAction, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
+import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
 import type { GatewayEvent, ConnectionStatus, Activity, WatchSession } from "./gateway";
 
@@ -621,6 +626,12 @@ function MainApp({
   const [showSaved, setShowSaved] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [showModQueue, setShowModQueue] = useState(false);
+  const [showInvites, setShowInvites] = useState(false);
+  const [showBans, setShowBans] = useState(false);
+  // The channel whose slowmode is being set.
+  const [slowmodeFor, setSlowmodeFor] = useState<Channel | null>(null);
+  // Members timed out in the selected space (for those who can time out): user → until.
+  const [memberTimeouts, setMemberTimeouts] = useState<ReadonlyMap<string, number>>(new Map());
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   // maybeNotify runs from the gateway handler registered once per token, so it reads the
   // current blocked list through this ref, not the first render's.
@@ -629,6 +640,8 @@ function MainApp({
   const [forwarding, setForwarding] = useState<Message | null>(null);
   const [eventsRefresh, setEventsRefresh] = useState(0);
   const [myPerms, setMyPerms] = useState(0);
+  // When your time out in the selected space ends (unix seconds), if you're timed out.
+  const [myTimeoutUntil, setMyTimeoutUntil] = useState<number | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dmUsers, setDmUsers] = useState<Record<string, PublicUser>>({});
   const [inviteCode, setInviteCode] = useState<string | null>(
@@ -1125,14 +1138,37 @@ function MainApp({
   // My effective permissions for the selected server (gates moderation UI).
   useEffect(() => {
     selectedServerIdRef.current = selectedServerId;
-    if (!selectedServerId) { setMyPerms(0); return; }
+    if (!selectedServerId) { setMyPerms(0); setMyTimeoutUntil(null); return; }
     let alive = true;
     api.getMyPermissions(token, selectedServerId)
-      .then((p) => alive && setMyPerms(p.permissions))
-      .catch(() => alive && setMyPerms(0));
+      .then((p) => {
+        if (!alive) return;
+        setMyPerms(p.permissions);
+        setMyTimeoutUntil(p.timed_out_until ?? null);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setMyPerms(0);
+        setMyTimeoutUntil(null);
+      });
     return () => { alive = false; };
   }, [selectedServerId, token]);
   useEffect(() => { serversRef.current = servers; }, [servers]);
+
+  // Who is timed out, for the member list of someone who can time people out.
+  const canTimeoutMembers = can(myPerms, PERM.MODERATE_MEMBERS);
+  useEffect(() => {
+    setMemberTimeouts(new Map());
+    if (!showMembers || !selectedServerId || !canTimeoutMembers) return;
+    let alive = true;
+    api
+      .listTimeouts(token, selectedServerId)
+      .then((rows) => alive && setMemberTimeouts(new Map(rows.map((t): [string, number] => [t.user_id, t.until]))))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [showMembers, selectedServerId, canTimeoutMembers, token]);
 
   // Build plugin API (stable ref).
   const pluginApiRef = useRef<PluginAPI>({
@@ -1419,6 +1455,14 @@ function MainApp({
         break;
       }
 
+      case "SlowmodeUpdate": {
+        const { channel_id, seconds } = event.d;
+        const patch = (c: Channel): Channel => (c.id === channel_id ? { ...c, slowmode_seconds: seconds } : c);
+        setServers((prev) => prev.map((s) => ({ ...s, channels: s.channels.map(patch) })));
+        setSelectedChannel((prev) => (prev ? patch(prev) : prev));
+        break;
+      }
+
       case "SenderKeyDistribution": {
         // A group member handed us their sender key (group E2E bootstrap). Decrypt the
         // pairwise envelope and install it so we can read their group messages.
@@ -1692,10 +1736,13 @@ function MainApp({
         break;
 
       case "PermissionsUpdate":
-        // Our roles changed — refresh effective permissions live, no reload needed.
+        // Our roles changed, or we were timed out or let off — refresh live, no reload needed.
         if (event.d.server_id === selectedServerIdRef.current) {
           api.getMyPermissions(token, event.d.server_id)
-            .then((p) => setMyPerms(p.permissions))
+            .then((p) => {
+              setMyPerms(p.permissions);
+              setMyTimeoutUntil(p.timed_out_until ?? null);
+            })
             .catch(() => {});
         }
         break;
@@ -2247,7 +2294,8 @@ function MainApp({
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         removeFromOutbox(tempId);
       } catch (err) {
-        const refused = badRequestMessage(err); // e.g. more attachments than the server allows
+        // e.g. more attachments than the server allows, slowmode, or a time out
+        const refused = badRequestMessage(err) ?? moderationRefusal(err);
         if (err instanceof EncryptedSendError && err.reason === "unencrypted-attachment") toast(err.message, "error");
         else if (refused) toast(`Couldn't send: ${refused}`, "error");
         // Keep the message visible in a failed state (persisted) so it can be retried.
@@ -2280,7 +2328,8 @@ function MainApp({
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
         removeFromOutbox(msg.id);
       } catch (err) {
-        const refused = badRequestMessage(err); // e.g. more attachments than the server allows
+        // e.g. more attachments than the server allows, slowmode, or a time out
+        const refused = badRequestMessage(err) ?? moderationRefusal(err);
         if (err instanceof EncryptedSendError && err.reason === "unencrypted-attachment") toast(err.message, "error");
         else if (refused) toast(`Couldn't send: ${refused}`, "error");
         setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, _state: "failed" } : m)));
@@ -2555,14 +2604,32 @@ function MainApp({
     }
   }
 
-  // Owner bans a member — removed and blocked from rejoining.
-  async function handleBan(userId: string) {
+  // Ban a member (removed and blocked from rejoining), from the ban dialog. Throws, so the
+  // dialog stays open saying why.
+  async function handleBan(userId: string, choice: { reason: string; deleteMessageSeconds: number }) {
+    if (!selectedServerId) return;
+    await api.banMember(token, selectedServerId, userId, choice);
+    toast("Member banned", "success");
+  }
+
+  // Time a member out, from the time out dialog (throws, so it stays open saying why).
+  async function handleTimeout(userId: string, seconds: number, reason: string) {
+    if (!selectedServerId) return;
+    const timeout = await api.timeoutMember(token, selectedServerId, userId, seconds, reason);
+    setMemberTimeouts((prev) => new Map(prev).set(userId, timeout.until));
+  }
+
+  async function handleRemoveTimeout(userId: string) {
     if (!selectedServerId) return;
     try {
-      await api.banMember(token, selectedServerId, userId);
-      toast("Member banned", "success");
+      await api.removeTimeout(token, selectedServerId, userId);
+      setMemberTimeouts((prev) => {
+        const next = new Map(prev);
+        next.delete(userId);
+        return next;
+      });
     } catch (err) {
-      toast(`Couldn't ban: ${err instanceof Error ? err.message : err}`, "error");
+      toast(`Couldn't end the time out: ${err instanceof Error ? err.message : err}`, "error");
     }
   }
 
@@ -2922,8 +2989,18 @@ function MainApp({
 
   const selectedServer = servers.find((s) => s.id === selectedServerId) ?? null;
   const visibleMessages = messages.filter((m) => !blockedUserIds.has(m.author.id));
+  // Spaces can stop members making invite links (Create invites); the owner and managers can.
+  const canInvite = can(myPerms, PERM.CREATE_INVITE) || can(myPerms, PERM.MANAGE_SERVER);
+  // The open text channel's slowmode, for people who manage channels.
+  const openSlowmode =
+    selectedServer && selectedChannel?.channel_type === "text" && selectedChannel.server_id === selectedServer.id && can(myPerms, PERM.MANAGE_CHANNELS)
+      ? () => setSlowmodeFor(selectedChannel)
+      : undefined;
   const canModerateSelectedServer = selectedServer
-    ? can(myPerms, PERM.MANAGE_MESSAGES) || can(myPerms, PERM.BAN_MEMBERS) || can(myPerms, PERM.MANAGE_SERVER)
+    ? can(myPerms, PERM.MANAGE_MESSAGES) ||
+      can(myPerms, PERM.BAN_MEMBERS) ||
+      can(myPerms, PERM.MANAGE_SERVER) ||
+      can(myPerms, PERM.MODERATE_MEMBERS)
     : false;
   const voiceChannel =
     servers.flatMap((s) => s.channels).find((c) => c.id === webrtc.channelId) ?? null;
@@ -3003,12 +3080,19 @@ function MainApp({
             onJoinVoice={handleJoinVoice}
             onCreateChannel={handleCreateChannel}
             onSetServerIcon={handleSetServerIcon}
-            onInvite={() => { setMobileNavOpen(false); setShowInvite(true); }}
+            onInvite={canInvite ? () => { setMobileNavOpen(false); setShowInvite(true); } : undefined}
             onCreatePrivateDmLink={() => { setMobileNavOpen(false); setShowPrivateDmLink(true); }}
             onFindPeople={() => { setMobileNavOpen(false); setShowFindPeople(true); }}
             onOpenEvents={() => { setMobileNavOpen(false); setShowEvents(true); }}
             onReportServer={selectedServer ? () => void reportTarget("server", selectedServer.id, "server") : undefined}
             onOpenModQueue={canModerateSelectedServer ? () => setShowModQueue(true) : undefined}
+            onOpenInvites={
+              selectedServer && (can(myPerms, PERM.CREATE_INVITE) || can(myPerms, PERM.MANAGE_SERVER))
+                ? () => { setMobileNavOpen(false); setShowInvites(true); }
+                : undefined
+            }
+            onOpenBans={selectedServer && can(myPerms, PERM.BAN_MEMBERS) ? () => { setMobileNavOpen(false); setShowBans(true); } : undefined}
+            onOpenSlowmode={openSlowmode ? () => { setMobileNavOpen(false); openSlowmode(); } : undefined}
             onLeaveServer={async (id) => {
               const name = servers.find((s) => s.id === id)?.name ?? "the space";
               await api.leaveServer(token, id);
@@ -3062,7 +3146,7 @@ function MainApp({
         isLoading={isLoadingMessages}
         onOpenNav={() => setMobileNavOpen(true)}
         onSaveRecovery={() => { setSettingsTab("security"); setShowSettings(true); }}
-        onInvite={selectedServer ? () => setShowInvite(true) : undefined}
+        onInvite={selectedServer && canInvite ? () => setShowInvite(true) : undefined}
         typingUsers={privacyMode ? [] : typing.typingIn(selectedChannel?.id ?? "")}
         onTyping={privacyMode ? undefined : sendTyping}
         onEditMessage={handleEditMessage}
@@ -3148,6 +3232,15 @@ function MainApp({
         onOpenThread={setOpenThread}
         onStartThread={selectedChannelThreadable ? setThreadFromMessage : undefined}
         onOpenThreads={selectedChannelThreadable ? () => setShowThreadList(true) : undefined}
+        moderation={
+          selectedServer
+            ? {
+                timedOutUntil: myTimeoutUntil,
+                bypassSlowmode: can(myPerms, PERM.MANAGE_MESSAGES) || can(myPerms, PERM.MANAGE_CHANNELS),
+              }
+            : undefined
+        }
+        onOpenSlowmode={openSlowmode}
       />
       )}
 
@@ -3177,6 +3270,7 @@ function MainApp({
           onRename={canManageThread(openThread, currentUser.id, myPerms) ? () => setRenamingThread(openThread) : undefined}
           onDelete={canManageThread(openThread, currentUser.id, myPerms) ? () => setDeletingThread(openThread) : undefined}
           archived={isArchived(openThread, nowSec)}
+          timedOutUntil={myTimeoutUntil}
           onRead={(lastId) => {
             if (windowHiddenRef.current) return;
             sendAck(openThread.id, lastId);
@@ -3356,6 +3450,7 @@ function MainApp({
           serverName={selectedServer.name}
           serverIconUrl={selectedServer.icon_url}
           onInviteCreated={() => completeActivation("invite")}
+          onManageInvites={() => { setShowInvite(false); setShowInvites(true); }}
           onClose={() => setShowInvite(false)}
         />
       )}
@@ -3405,6 +3500,10 @@ function MainApp({
           onOpenDm={openDmWith}
           canKick={can(myPerms, PERM.KICK_MEMBERS)}
           canBan={can(myPerms, PERM.BAN_MEMBERS)}
+          canTimeout={canTimeoutMembers}
+          timeouts={memberTimeouts}
+          onTimeout={handleTimeout}
+          onRemoveTimeout={handleRemoveTimeout}
           canManageRoles={can(myPerms, PERM.MANAGE_ROLES)}
           onManageRoles={() => { setShowMembers(false); setShowRoles(true); }}
           onKick={handleKick}
@@ -3460,8 +3559,48 @@ function MainApp({
         <ModerationQueueModal
           token={token}
           serverId={selectedServer.id}
+          channelName={(id) => selectedServer.channels.find((c) => c.id === id)?.name}
           onToast={toast}
           onClose={() => setShowModQueue(false)}
+        />
+      )}
+
+      {/* A channel's slowmode */}
+      {slowmodeFor && (
+        <SlowmodeDialog
+          channelName={slowmodeFor.name}
+          seconds={slowmodeFor.slowmode_seconds ?? 0}
+          onSave={async (seconds) => {
+            await api.setSlowmode(token, slowmodeFor.id, seconds);
+            setSlowmodeFor(null);
+            toast(seconds ? `Slowmode in #${slowmodeFor.name}: ${slowmodeLabel(seconds).toLowerCase()}` : `Slowmode off in #${slowmodeFor.name}`, "success");
+          }}
+          onClose={() => setSlowmodeFor(null)}
+        />
+      )}
+
+      {/* The space's invite links, and pausing them */}
+      {showInvites && selectedServer && (
+        <InvitesDialog
+          canManageServer={can(myPerms, PERM.MANAGE_SERVER)}
+          api={{
+            list: () => api.listInvites(token, selectedServer.id),
+            revoke: (code) => api.revokeInvite(token, code),
+            getSettings: () => api.getInviteSettings(token, selectedServer.id),
+            updateSettings: (patch) => api.updateInviteSettings(token, selectedServer.id, patch),
+          }}
+          onClose={() => setShowInvites(false)}
+        />
+      )}
+
+      {/* Who is banned, and lifting bans */}
+      {showBans && selectedServer && (
+        <BansDialog
+          api={{
+            list: () => api.listBans(token, selectedServer.id),
+            unban: (userId) => api.unbanMember(token, selectedServer.id, userId),
+          }}
+          onClose={() => setShowBans(false)}
         />
       )}
 
@@ -3495,104 +3634,5 @@ function MainApp({
         />
       )}
     </div>
-  );
-}
-
-function ModerationQueueModal({
-  token,
-  serverId,
-  onToast,
-  onClose,
-}: {
-  token: string;
-  serverId: string;
-  onToast: (message: string, type?: "success" | "error" | "info") => void;
-  onClose: () => void;
-}) {
-  const [reports, setReports] = useState<AbuseReport[]>([]);
-  const [actions, setActions] = useState<ModerationAction[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [queue, log] = await Promise.all([
-        api.listModQueue(token, serverId),
-        api.listModerationActions(token, serverId),
-      ]);
-      setReports(queue);
-      setActions(log);
-    } catch (err) {
-      onToast(`Couldn't load moderation queue: ${err instanceof Error ? err.message : err}`, "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [token, serverId, onToast]);
-
-  useEffect(() => { void refresh(); }, [refresh]);
-
-  async function resolve(report: AbuseReport, status: "resolved" | "dismissed") {
-    const note = window.prompt(status === "resolved" ? "Resolution note" : "Why dismiss this report?", "") ?? "";
-    try {
-      await api.resolveReport(token, serverId, report.id, status, note);
-      onToast(status === "resolved" ? "Report resolved" : "Report dismissed", "success");
-      void refresh();
-    } catch (err) {
-      onToast(`Couldn't update report: ${err instanceof Error ? err.message : err}`, "error");
-    }
-  }
-
-  return (
-    <ModalShell onClose={onClose} labelledBy="moderation-queue-title" maxWidthClass="max-w-2xl">
-      <div className="space-y-4 text-sm" style={{ color: "var(--text-secondary)" }}>
-        <div className="flex items-center justify-between gap-3">
-          <h2 id="moderation-queue-title" className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>Moderation queue</h2>
-          <button type="button" className="kc-icon-btn" onClick={onClose} aria-label="Close moderation queue">×</button>
-        </div>
-        <p>
-          Reports keep message text out of moderator metadata by default. Resolve what you reviewed, dismiss false alarms,
-          and use the audit log to see recent safety actions.
-        </p>
-        {loading ? (
-          <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-input)" }}>Loading…</div>
-        ) : reports.length === 0 ? (
-          <div className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-input)" }}>No open reports.</div>
-        ) : (
-          <div className="space-y-3">
-            {reports.map((report) => (
-              <div key={report.id} className="rounded-xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-input)" }}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong style={{ color: "var(--text-primary)" }}>{report.target_type} report</strong>
-                  <span className="text-xs uppercase tracking-wide" style={{ color: "var(--danger)" }}>{report.reason}</span>
-                </div>
-                <div className="mt-2 grid gap-1 text-xs">
-                  <span>Target: <code>{report.target_id}</code></span>
-                  {report.accused_user_id && <span>Accused user: <code>{report.accused_user_id}</code></span>}
-                  {report.channel_id && <span>Channel: <code>{report.channel_id}</code></span>}
-                  {report.details && <span>Details: {report.details}</span>}
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <button type="button" className="kc-button-primary" onClick={() => void resolve(report, "resolved")}>Resolve</button>
-                  <button type="button" className="kc-button-secondary" onClick={() => void resolve(report, "dismissed")}>Dismiss</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Recent audit log</h3>
-          <div className="max-h-48 overflow-auto rounded-xl border" style={{ borderColor: "var(--border-subtle)" }}>
-            {actions.length === 0 ? (
-              <div className="p-3 text-xs">No actions yet.</div>
-            ) : actions.map((action) => (
-              <div key={action.id} className="border-b p-3 text-xs last:border-b-0" style={{ borderColor: "var(--border-subtle)" }}>
-                <strong style={{ color: "var(--text-primary)" }}>{action.action}</strong> · {action.target_type}/{action.target_id}
-                {action.metadata && <div className="mt-1">{action.metadata}</div>}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </ModalShell>
   );
 }
