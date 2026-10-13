@@ -46,6 +46,15 @@ export function recoveryCodesText(codes: string[], username: string, when: Date)
   ].join("\n");
 }
 
+/** The server's word for the hourly limit on wrong codes (api/two_factor.rs). */
+const TOO_MANY_CODES = "Too many codes tried. Try again in a while.";
+
+/** The hourly limit, not the minute's: waiting a minute won't help. */
+function isHourlyLimit(err: unknown): boolean {
+  const m = err instanceof Error ? err.message.toLowerCase() : "";
+  return apiStatus(err) === 429 && m.includes("try again in a while");
+}
+
 function isNetworkError(err: unknown): boolean {
   const m = err instanceof Error ? err.message.toLowerCase() : "";
   return m.includes("failed to fetch") || m.includes("networkerror") || m.includes("load failed");
@@ -60,7 +69,7 @@ export function signInCodeMessage(err: unknown): string {
     case 401:
       return "That took too long. Go back and sign in again.";
     case 429:
-      return "Too many tries. Wait a minute, then try again.";
+      return isHourlyLimit(err) ? TOO_MANY_CODES : "Too many tries. Wait a minute, then try again.";
     case 503:
       return "Codes from your app can't be checked on this server right now. Use a recovery code.";
     default:
@@ -68,9 +77,10 @@ export function signInCodeMessage(err: unknown): string {
   }
 }
 
-/** What a settings form should say when the server wants a code, or the code was wrong.
- *  Null for any other refusal, which the form explains itself. */
+/** What a settings form should say when the server wants a code, the code was wrong, or too
+ *  many were tried this hour. Null for any other refusal, which the form explains itself. */
 export function stepUpCodeMessage(err: unknown): string | null {
+  if (isHourlyLimit(err)) return TOO_MANY_CODES;
   if (apiStatus(err) !== 403) return null;
   const m = err instanceof Error ? err.message.toLowerCase() : "";
   if (m.includes("enter the code")) return "Enter the code from your authenticator app, or a recovery code.";

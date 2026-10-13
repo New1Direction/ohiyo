@@ -75,7 +75,8 @@ step of clock drift either way, and a code is accepted once). The shared secret 
 AES-256-GCM encrypted, bound to its account, under a key derived with HKDF-SHA256 from
 `OHIYO_TOTP_KEY` (or `JWT_SECRET`). Recovery codes are 80 random bits, stored as SHA-256
 hashes, and work once each. The code step is a 5-minute, single-use challenge that gives up
-after 10 wrong codes, and code tries are rate-limited per account. It guards signing in
+after 10 wrong codes. An account gets 5 code tries a minute and at most 20 wrong codes an
+hour, counted across sign-ins and kept in the database, so a restart doesn't reset them. It guards signing in
 with a password, changing the password and deleting the account; linking a new device with
 a code shown on a device that's already signed in doesn't ask for it again.
 

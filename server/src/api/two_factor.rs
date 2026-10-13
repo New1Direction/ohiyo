@@ -26,9 +26,12 @@ use crate::{
 type ApiError = (StatusCode, String);
 
 /// Codes an account may try a minute, wherever they're typed (signing in, turning it on,
-/// the actions that ask for one). Each wrong guess is one in a million; five a minute keeps
-/// guessing hopeless.
+/// the actions that ask for one).
 const CODE_TRIES_PER_MIN: usize = 5;
+/// Wrong codes an account may have in an hour, however many sign-ins they're spread over.
+/// Five a minute alone would still allow thousands of guesses a day.
+const WRONG_CODES_PER_HOUR: i64 = 20;
+const HOUR_SECS: i64 = 3600;
 /// Turning it on or off and asking for new recovery codes, per account a minute.
 const CHANGES_PER_MIN: usize = 10;
 /// How long a sign-in that got the password right has to give a code.
@@ -42,6 +45,7 @@ const ISSUER: &str = "Ohiyo";
 const NEEDS_CODE: &str = "enter the code from your authenticator app";
 const WRONG_CODE: &str = "that code isn't right";
 const UNAVAILABLE: &str = "two-factor sign-in isn't available on this server";
+const TOO_MANY_CODES: &str = "Too many codes tried. Try again in a while.";
 
 fn too_many() -> ApiError {
     (
@@ -60,7 +64,19 @@ fn sha256_hex(input: &[u8]) -> String {
     hex
 }
 
-fn code_try(state: &AppState, user_id: &str) -> Result<(), ApiError> {
+/// Whether the account may try a code now: under 20 wrong ones in the last hour (checked
+/// first, so a refused try doesn't use up the minute), then 5 tries a minute.
+async fn code_try(state: &AppState, user_id: &str) -> Result<(), ApiError> {
+    let wrong_lately: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM two_factor_failures WHERE user_id = ? AND at > ?")
+            .bind(user_id)
+            .bind(now_unix() - HOUR_SECS)
+            .fetch_one(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    if wrong_lately >= WRONG_CODES_PER_HOUR {
+        return Err((StatusCode::TOO_MANY_REQUESTS, TOO_MANY_CODES.into()));
+    }
     if state.rate.check(
         &format!("two-factor-code:{user_id}"),
         CODE_TRIES_PER_MIN,
@@ -70,6 +86,24 @@ fn code_try(state: &AppState, user_id: &str) -> Result<(), ApiError> {
     } else {
         Err(too_many())
     }
+}
+
+/// Count a wrong code against the account's hour, clearing the ones older than that.
+async fn record_wrong_code(state: &AppState, user_id: &str) -> Result<(), ApiError> {
+    let now = now_unix();
+    sqlx::query("DELETE FROM two_factor_failures WHERE user_id = ? AND at <= ?")
+        .bind(user_id)
+        .bind(now - HOUR_SECS)
+        .execute(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    sqlx::query("INSERT INTO two_factor_failures (user_id, at) VALUES (?, ?)")
+        .bind(user_id)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    Ok(())
 }
 
 fn change_try(state: &AppState, user_id: &str) -> Result<(), ApiError> {
@@ -168,10 +202,11 @@ pub(crate) async fn require_second_factor(
     let Some(code) = code.filter(|c| !c.trim().is_empty()) else {
         return Err((StatusCode::FORBIDDEN, NEEDS_CODE.into()));
     };
-    code_try(state, user_id)?;
+    code_try(state, user_id).await?;
     if use_code(state, user_id, &code).await? {
         Ok(())
     } else {
+        record_wrong_code(state, user_id).await?;
         Err((StatusCode::FORBIDDEN, WRONG_CODE.into()))
     }
 }
@@ -320,7 +355,7 @@ pub async fn enable(
     let Some(secret_box) = state.two_factor.clone() else {
         return Err((StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE.into()));
     };
-    code_try(&state, &auth.0)?;
+    code_try(&state, &auth.0).await?;
     let pending: Option<Vec<u8>> = sqlx::query_scalar(
         "SELECT secret_enc FROM two_factor WHERE user_id = ? AND enabled_at IS NULL",
     )
@@ -339,6 +374,7 @@ pub async fn enable(
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE.into()))?;
     let code = body.code.unwrap_or_default();
     let Some(step) = tf::verify_code(&secret, &code, now_unix(), 0) else {
+        record_wrong_code(&state, &auth.0).await?;
         return Err((StatusCode::FORBIDDEN, WRONG_CODE.into()));
     };
 
@@ -520,8 +556,9 @@ pub async fn login_code(
             .map_err(crate::api::error::internal)?;
         return Err(gone());
     }
-    code_try(&state, &user_id)?;
+    code_try(&state, &user_id).await?;
     if !use_code(&state, &user_id, &body.code).await? {
+        record_wrong_code(&state, &user_id).await?;
         // None when another request used or gave up the challenge meanwhile.
         let failures: Option<i64> = sqlx::query_scalar(
             "UPDATE two_factor_challenges SET failures = failures + 1 WHERE token_hash = ? RETURNING failures",
