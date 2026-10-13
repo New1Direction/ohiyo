@@ -108,7 +108,7 @@ async fn push_device(srv: &TestServer, who: &AuthOk, tag: &str) {
 }
 
 async fn event_pushes(srv: &TestServer, who: &AuthOk) -> i64 {
-    sqlx::query_scalar("SELECT COUNT(*) FROM push_deliveries WHERE user_id = ? AND kind = 'event'")
+    sqlx::query_scalar("SELECT COUNT(*) FROM push_deliveries WHERE user_id = ?")
         .bind(&who.id)
         .fetch_one(&srv.state.db)
         .await

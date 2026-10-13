@@ -226,7 +226,6 @@ fn content_free_payload(kind: &str) -> serde_json::Value {
         "body": match kind {
             "test" => "This is a test Ohiyo notification.",
                     "call" => CALL_BODY,
-                    "event" => EVENT_BODY,
             _ => CONTENT_FREE_BODY,
         },
         "tag": "ohiyo-activity",
@@ -635,17 +634,17 @@ pub async fn enqueue_message_pushes(
 
 /// What a push for a ringing call says. Content-free like every push: no caller, no chat.
 const CALL_BODY: &str = "Incoming call on Ohiyo.";
-/// An event someone said Interested or Going to is about to start, or was cancelled.
-const EVENT_BODY: &str = "An event you're in has an update.";
 
 /// Wake the offline devices of people a DM call is ringing for. Online devices already ring
 /// over the gateway.
 /// Wake the phones of people an event reminder or cancellation is for, if they're offline.
+/// It's the same content-free nudge as a new message: push_deliveries only takes the kinds
+/// "message" and "test".
 pub async fn queue_event_pushes(state: &AppState, recipient_ids: &[String]) {
     if recipient_ids.is_empty() {
         return;
     }
-    if let Err(e) = queue_for_users(state, recipient_ids, "event", true).await {
+    if let Err(e) = queue_for_users(state, recipient_ids, "message", true).await {
         tracing::warn!("event push enqueue failed: {e}");
     }
 }
@@ -967,7 +966,6 @@ fn apns_payload(kind: &str) -> serde_json::Value {
                 "body": match kind {
                     "test" => "This is a test Ohiyo notification.",
                     "call" => CALL_BODY,
-                    "event" => EVENT_BODY,
                     _ => CONTENT_FREE_BODY,
                 }
             },
@@ -1123,7 +1121,6 @@ fn fcm_payload(token: &str, kind: &str) -> serde_json::Value {
                 "body": match kind {
                     "test" => "This is a test Ohiyo notification.",
                     "call" => CALL_BODY,
-                    "event" => EVENT_BODY,
                     _ => CONTENT_FREE_BODY,
                 }
             },
