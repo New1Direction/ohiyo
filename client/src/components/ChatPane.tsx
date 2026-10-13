@@ -1897,15 +1897,17 @@ export function ChatPane({
         <p className="kc-thread-starter-gone">The first message of this thread was deleted.</p>
       )}
 
+      {/* The catch-up bar sits above the list, not over it, so it never hides a message. */}
+      {unreadMarker && unreadMarker.count > 0 && !isLoading && (
+        <div className="kc-unread-bar" role="status">
+          <span className="kc-unread-bar__text">{unreadBar}</span>
+          <button type="button" onClick={jumpToFirstUnread}>Jump</button>
+          <button type="button" onClick={onDismissUnreadMarker}>Mark as read</button>
+        </div>
+      )}
+
       {/* Messages — virtualized */}
       <div ref={setListBox} className={`flex-1 overflow-hidden relative${e2eEnabled ? " kc-e2e" : ""}`}>
-        {unreadMarker && unreadMarker.count > 0 && !isLoading && (
-          <div className="kc-unread-bar" role="status">
-            <span className="kc-unread-bar__text">{unreadBar}</span>
-            <button type="button" onClick={jumpToFirstUnread}>Jump</button>
-            <button type="button" onClick={onDismissUnreadMarker}>Mark as read</button>
-          </div>
-        )}
         {/* Screen-reader announcement of the latest message (the list is virtualized). */}
         <div className="sr-only" role="log" aria-live="polite" aria-relevant="additions">
           {displayMessages.length > 0

@@ -42,7 +42,7 @@ async function openChannel(page, name) {
   await page.waitForSelector(`textarea[placeholder*="Say something to #${name}"]`, { timeout: 10000 });
 }
 
-// The line is on screen inside the message list (not just in the page).
+// The line is on screen inside the message list, and nothing (the bar) covers it.
 async function lineInView(page) {
   return page.evaluate(() => {
     const el = document.querySelector('[role="separator"][aria-label="New messages"]');
@@ -50,7 +50,9 @@ async function lineInView(page) {
     if (!el || !list) return false;
     const a = el.getBoundingClientRect();
     const b = list.getBoundingClientRect();
-    return a.bottom > b.top && a.top < b.bottom;
+    if (!(a.top >= b.top && a.bottom <= b.bottom)) return false;
+    const onTop = document.elementFromPoint(a.left + a.width / 2, a.top + a.height / 2);
+    return Boolean(onTop && el.contains(onTop));
   });
 }
 
@@ -106,7 +108,7 @@ try {
   await bar(pageA).locator('button:has-text("Jump")').click();
   await line(pageA).waitFor({ timeout: 6000 });
   await settle(pageA, 400);
-  if (!(await lineInView(pageA))) throw new Error("Jump didn't bring the New messages line into view");
+  if (!(await lineInView(pageA))) throw new Error("Jump didn't bring the New messages line into view, uncovered");
   const order = await pageA.evaluate(({ first, mine }) => {
     const sep = document.querySelector('[role="separator"][aria-label="New messages"]');
     const find = (text) => [...document.querySelectorAll("[data-message-id]")].find((el) => el.textContent?.includes(text));
