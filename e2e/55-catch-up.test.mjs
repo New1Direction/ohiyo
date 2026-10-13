@@ -164,8 +164,11 @@ try {
   await pageA.keyboard.press("Escape");
   await settle(pageA, 300);
   await openChannel(pageA, "random");
+  await bar(pageA).locator('button:has-text("Jump")').click();
   await line(pageA).waitFor({ timeout: 6000 });
-  await settle(pageA, 300);
+  await settle(pageA, 400);
+  if (!(await lineInView(pageA))) throw new Error("light theme: Jump didn't bring the line into view, uncovered");
+  await pageA.waitForSelector(".ohiyo-toast", { state: "detached", timeout: 12000 }).catch(() => {});
   await shot(pageA, "55-catch-up-desktop-light");
 
   await say(tokenB, general.id, `phone-${u}`);
@@ -176,7 +179,18 @@ try {
   await pageA.locator(".kc-nav .kc-channel-row", { hasText: "general" }).first().click();
   await pageA.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 10000 });
   await line(pageA).waitFor({ timeout: 6000 });
+  await pageA.waitForSelector(".ohiyo-toast", { state: "detached", timeout: 12000 }).catch(() => {});
+  await pageA.mouse.move(380, 600); // no message's hover toolbar in the picture
   await settle(pageA, 300);
+  const look = await pageA.evaluate(() => {
+    const list = document.querySelector(".kc-touch-scroll");
+    return {
+      pill: Boolean(document.querySelector(".kc-jump-bottom")),
+      bar: Boolean(document.querySelector(".kc-unread-bar")),
+      scroll: list ? [list.scrollTop, list.scrollHeight, list.clientHeight] : null,
+    };
+  });
+  log(`phone: ${JSON.stringify(look)}`);
   const overflow = await pageA.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   if (overflow) throw new Error("the page scrolls sideways on a phone");
   await shot(pageA, "55-catch-up-phone");
