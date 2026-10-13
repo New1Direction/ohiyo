@@ -116,6 +116,25 @@ test("while deafened the buttons say Undeafen and Unmute, and the call's sound i
   }
 });
 
+test("only the hang-up button is captioned Leave; red Mute and Deafen keep their own captions", () => {
+  const f = call({ self: { muted: true, deafened: true }, peers: [{ user_id: "b", name: "Ben", muted: false }] });
+  try {
+    const captions = [...document.body.querySelectorAll(".kc-call-controls button")].map((b) => ({
+      label: b.getAttribute("aria-label"),
+      caption: (b.parentElement?.querySelector("span")?.textContent ?? "").trim(),
+    }));
+    const leave = captions.filter((c) => c.caption === "Leave").map((c) => c.label);
+    assert.deepEqual(leave, ["Leave call"], `captioned Leave: ${JSON.stringify(captions)}`);
+    assert.equal(captions.find((c) => c.label === "Unmute")?.caption, "Unmute");
+    assert.equal(captions.find((c) => c.label === "Undeafen")?.caption, "Undeafen");
+    for (const c of captions) {
+      assert.ok(c.caption === "" || /^[A-Z]/.test(c.caption), `captions start with a capital: ${JSON.stringify(c)}`);
+    }
+  } finally {
+    f.done();
+  }
+});
+
 test("people who are deafened show as Deafened, not just muted", () => {
   const f = call({
     self: { muted: true, deafened: true },
