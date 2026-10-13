@@ -161,6 +161,8 @@ pub fn spawn_sweeper(state: AppState, period: std::time::Duration) -> tokio::tas
             api::push::sweep_stale_push_rows(&state).await;
             // Webhook accounts left with no webhook and no messages.
             api::webhooks::sweep_orphan_accounts(&state).await;
+            // Call logs left ringing or ongoing by a restart.
+            api::calls::sweep_stale_logs(&state).await;
         }
     })
 }

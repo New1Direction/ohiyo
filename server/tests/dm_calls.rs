@@ -392,3 +392,57 @@ async fn late_ring() {
     let ring = next(&mut bob_gw, ring_in(&dm)).await;
     assert_eq!(ring["d"]["caller"]["id"], alice.id.as_str(), "{ring}");
 }
+
+async fn last_message(srv: &TestServer, who: &AuthOk, channel: &str) -> Value {
+    let history: Value = srv
+        .get_auth(&format!("/api/v1/channels/{channel}/messages"), &who.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    history.as_array().unwrap().last().unwrap().clone()
+}
+
+#[tokio::test]
+async fn a_restart_in_the_middle_of_a_call_does_not_leave_its_log_open() {
+    let srv = TestServer::start().await;
+    let alice = srv.register("restartalice", "password123").await;
+    let bob = srv.register("restartbob", "password123").await;
+    let carol = srv.register("restartcarol", "password123").await;
+    let dave = srv.register("restartdave", "password123").await;
+    let ringing = open_dm(&srv, &alice, &bob).await;
+    let answered = open_dm(&srv, &alice, &carol).await;
+    let live = open_dm(&srv, &alice, &dave).await;
+    for dm in [&ringing, &answered, &live] {
+        assert_eq!(start_call(&srv, &alice, dm).await.status(), 200);
+    }
+    // Carol had answered hers.
+    sqlx::query(
+        "UPDATE messages SET call_log = json_set(call_log, '$.state', 'ongoing', '$.answered_at', created_at)
+          WHERE channel_id = ?",
+    )
+    .bind(&answered)
+    .execute(&srv.state.db)
+    .await
+    .unwrap();
+
+    // The server restarted: those two calls are gone from memory (Dave's is still ringing),
+    // and by the time the sweeper runs their logs are a minute old.
+    {
+        let mut calls = srv.state.calls.lock().unwrap();
+        calls.remove(&ringing);
+        calls.remove(&answered);
+    }
+    sqlx::query("UPDATE messages SET created_at = created_at - 60 WHERE call_log IS NOT NULL")
+        .execute(&srv.state.db)
+        .await
+        .unwrap();
+    server::api::calls::sweep_stale_logs(&srv.state).await;
+
+    let log = last_message(&srv, &alice, &ringing).await;
+    assert_eq!(log["call"]["state"], "missed", "{log}");
+    let log = last_message(&srv, &alice, &answered).await;
+    assert_eq!(log["call"]["state"], "ended", "{log}");
+    let log = last_message(&srv, &alice, &live).await;
+    assert_eq!(log["call"]["state"], "ringing", "{log}");
+}

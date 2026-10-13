@@ -73,6 +73,10 @@ test("an ended call says how long it lasted", () => {
   );
 });
 
+test("an ended call whose length isn't known just says it ended", () => {
+  assert.equal(callLogText({ state: "ended" }, { viewerId: "bea", ...ann }), "Call ended");
+});
+
 test("a missed call reads from each side", () => {
   assert.equal(callLogText({ state: "missed" }, { viewerId: "bea", ...ann }), "Missed call from Ann");
   assert.equal(callLogText({ state: "missed" }, { viewerId: "ann", ...ann }), "No answer");

@@ -81,7 +81,8 @@ export function callLogText(call: CallLog, ctx: CallLogContext): string {
     case "ongoing":
       return youCalled ? "You started a call" : `${ctx.callerName} started a call`;
     case "ended":
-      return `Call ended · ${formatCallDuration(call.duration_secs ?? 0)}`;
+      // A call the server closed after a restart has no known length.
+      return call.duration_secs == null ? "Call ended" : `Call ended · ${formatCallDuration(call.duration_secs)}`;
     case "missed":
       return youCalled ? "No answer" : `Missed call from ${ctx.callerName}`;
     case "declined":

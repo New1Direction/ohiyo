@@ -13,7 +13,8 @@
 //!   call when the last person leaves; a call nobody answers is missed after
 //!   `AppState::call_ring_secs`, and the caller hanging up first makes it missed too.
 //!
-//! Sessions live in memory, like voice rooms: a restart ends every call anyway.
+//! Sessions live in memory, like voice rooms: a restart ends every call, and the sweeper then
+//! closes the logs those calls left open (`sweep_stale_logs`).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -158,6 +159,11 @@ async fn publish_log(state: &AppState, channel_id: &str, message_id: &str, log: 
         tracing::warn!("call log update failed for {message_id}: {e}");
         return;
     }
+    broadcast_log(state, channel_id, message_id).await;
+}
+
+/// Show everyone in the chat a call log message as it is now.
+async fn broadcast_log(state: &AppState, channel_id: &str, message_id: &str) {
     let msg: Option<Message> = sqlx::query_as("SELECT * FROM messages WHERE id = ?")
         .bind(message_id)
         .fetch_optional(&state.db)
@@ -331,14 +337,14 @@ pub async fn decline_call(
     chat_people(&state, &channel_id, &auth.0).await?;
     let outcome = {
         let mut calls = state.calls.lock().unwrap_or_else(|e| e.into_inner());
-        match calls.get_mut(&channel_id) {
-            Some(s) if s.ringing.remove(&auth.0) => {
-                s.declined_by = Some(auth.0.clone());
-                let over = s.answered_at.is_none() && s.ringing.is_empty();
-                Some((s.message_id.clone(), s.id, over))
+        calls.get_mut(&channel_id).and_then(|s| {
+            if !s.ringing.remove(&auth.0) {
+                return None;
             }
-            _ => None,
-        }
+            s.declined_by = Some(auth.0.clone());
+            let over = s.answered_at.is_none() && s.ringing.is_empty();
+            Some((s.message_id.clone(), s.id, over))
+        })
     };
     let Some((message_id, session_id, over)) = outcome else {
         return Ok(StatusCode::NO_CONTENT);
@@ -522,6 +528,59 @@ async fn finish(
     )
     .await;
     publish_log(state, channel_id, &s.message_id, log).await;
+}
+
+/// How old a call log must be before the sweep may close it: a new call writes its log a
+/// moment before the call itself is registered.
+const STALE_LOG_AFTER_SECS: i64 = 30;
+
+/// Close the logs of calls that aren't going on any more. Calls live in memory, so a restart
+/// in the middle of one leaves its log saying ringing or ongoing: a ringing call becomes
+/// missed, an answered one ended (how long it lasted isn't known).
+pub async fn sweep_stale_logs(state: &AppState) {
+    let open: Vec<(String, String, String)> = match sqlx::query_as(
+        "SELECT id, channel_id, call_log FROM messages
+          WHERE call_log IS NOT NULL AND created_at < ?
+            AND json_extract(call_log, '$.state') IN ('ringing', 'ongoing')",
+    )
+    .bind(now_unix() - STALE_LOG_AFTER_SECS)
+    .fetch_all(&state.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!("call log sweep failed: {e}");
+            return;
+        }
+    };
+    if open.is_empty() {
+        return;
+    }
+    let live: HashSet<String> = {
+        let calls = state.calls.lock().unwrap_or_else(|e| e.into_inner());
+        calls.values().map(|s| s.message_id.clone()).collect()
+    };
+    for (message_id, channel_id, raw) in open {
+        if live.contains(&message_id) {
+            continue;
+        }
+        let Ok(mut log) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            continue;
+        };
+        let answered = log.get("answered_at").is_some_and(|v| v.is_i64());
+        log["state"] = json!(if answered { "ended" } else { "missed" });
+        // Only if nothing wrote it in the meantime (a call that was just finishing).
+        let closed = sqlx::query("UPDATE messages SET call_log = ? WHERE id = ? AND call_log = ?")
+            .bind(log.to_string())
+            .bind(&message_id)
+            .bind(&raw)
+            .execute(&state.db)
+            .await
+            .is_ok_and(|r| r.rows_affected() == 1);
+        if closed {
+            broadcast_log(state, &channel_id, &message_id).await;
+        }
+    }
 }
 
 /// A device that connects while a call rings for its person rings too.
