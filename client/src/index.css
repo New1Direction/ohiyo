@@ -5269,8 +5269,9 @@ ol.kc-md-list { list-style: decimal; }
 }
 
 /* ─── Calls in DMs and group chats ───────────────────────────────────────────── */
-/* The card that rings: top right on a big screen, across the top on a phone, above the call
-   screen (a call can ring while you're in another one). */
+/* The card that rings: top right on a big screen, along the bottom on a phone (within reach of
+   a thumb, and clear of toasts, which sit at the top there), above the call screen (a call can
+   ring while you're in another one). */
 .kc-incoming-calls {
   position: fixed;
   top: calc(var(--space-4) + env(safe-area-inset-top));
@@ -5349,7 +5350,7 @@ ol.kc-md-list { list-style: decimal; }
 .kc-incoming-call-video { background: var(--bg-input); color: var(--text-primary); }
 .kc-incoming-call-accept { background: var(--green); }
 @media (max-width: 640px) {
-  .kc-incoming-calls { left: var(--space-3); right: var(--space-3); width: auto; top: calc(var(--space-3) + env(safe-area-inset-top)); }
+  .kc-incoming-calls { left: var(--space-3); right: var(--space-3); width: auto; top: auto; bottom: calc(var(--space-3) + env(safe-area-inset-bottom)); }
   .kc-incoming-call-btn { width: 52px; height: 52px; }
 }
 
