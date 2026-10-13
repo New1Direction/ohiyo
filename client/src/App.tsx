@@ -145,6 +145,7 @@ import {
 } from "./lib/threads";
 import { DeleteThreadDialog } from "./components/DeleteThreadDialog";
 import { setSignInNotice } from "./lib/sessionNotice";
+import { TWO_FACTOR_EVENT, shouldAnnounceTwoFactorChange, twoFactorChangedHereAt } from "./lib/twoFactor";
 import {
   loadActiveHomeId,
   loadHomes,
@@ -1774,6 +1775,20 @@ function MainApp({
       case "NotificationSettingsUpdate":
         // Changed on this device or another: every device follows.
         setNotifSettings((prev) => withSetting(prev, event.d));
+        break;
+
+      case "TwoFactorUpdate":
+        // An open Settings card reloads; a change made elsewhere is worth a word, since
+        // nobody should be surprised by a new step when signing in.
+        window.dispatchEvent(new Event(TWO_FACTOR_EVENT));
+        if (shouldAnnounceTwoFactorChange(twoFactorChangedHereAt(), Date.now())) {
+          toast(
+            event.d.enabled
+              ? "Two-factor sign-in was turned on from another device."
+              : "Two-factor sign-in was turned off from another device.",
+            "info",
+          );
+        }
         break;
 
       case "DeviceAdded": {

@@ -16,6 +16,8 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use crate::types::Claims;
 use crate::AppState;
 
+pub mod two_factor;
+
 pub const JWT_EXPIRY_SECS: usize = 60 * 60 * 24 * 30; // 30 days
 
 /// The JWT signing secret. `main()` guarantees `JWT_SECRET` is present (it
