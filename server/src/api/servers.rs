@@ -496,6 +496,54 @@ pub async fn delete_server(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+pub struct UpdateServerBody {
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// PATCH /servers/{id} — rename a space (Manage server). Everyone in it sees the new name live.
+pub async fn update_server(
+    auth: AuthUser,
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    Json(body): Json<UpdateServerBody>,
+) -> Result<Json<ServerWithChannels>, (StatusCode, String)> {
+    if !crate::api::roles::has_perm(&state, &id, &auth.0, crate::api::roles::perm::MANAGE_SERVER)
+        .await
+    {
+        return Err((StatusCode::FORBIDDEN, "you can't manage this space".into()));
+    }
+    if let Some(name) = body.name.as_deref() {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err((StatusCode::BAD_REQUEST, "a space needs a name".into()));
+        }
+        crate::api::limits::check_len("server name", name, crate::api::limits::SERVER_NAME)?;
+        sqlx::query("UPDATE servers SET name = ? WHERE id = ?")
+            .bind(name)
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+        crate::api::abuse::log_action(
+            &state,
+            crate::api::abuse::ActionLog {
+                server_id: Some(&id),
+                actor_id: &auth.0,
+                action: "rename_space",
+                target_type: "server",
+                target_id: &id,
+                report_id: None,
+                metadata: Some(&serde_json::json!({ "name": name }).to_string()),
+            },
+        )
+        .await?;
+    }
+    broadcast_full_server_to_members(&state, &id).await;
+    Ok(Json(fetch_full_for_user(&id, &state, &auth.0).await?))
+}
+
 // ── Internal helper ───────────────────────────────────────────────────────────
 
 pub(crate) async fn broadcast_full_server_to_members(state: &AppState, server_id: &str) {
@@ -572,10 +620,25 @@ async fn fetch_full_inner(
             .await
             .map_err(crate::api::error::internal)?;
 
+    let roles: Vec<crate::types::Role> =
+        sqlx::query_as("SELECT * FROM roles WHERE server_id = ? ORDER BY position, created_at")
+            .bind(server_id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    let member_roles: Vec<crate::types::MemberRole> =
+        sqlx::query_as("SELECT user_id, role_id FROM member_roles WHERE server_id = ?")
+            .bind(server_id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+
     Ok(ServerWithChannels {
         server,
         channels,
         members: members.into_iter().map(PublicUser::from).collect(),
         categories,
+        roles,
+        member_roles,
     })
 }

@@ -69,6 +69,12 @@ type Props = {
   onOpenBans?: () => void;
   /** The open channel's slowmode (people who manage channels). */
   onOpenSlowmode?: () => void;
+  /** "Rename space" in the space menu (people who manage the space). */
+  onRenameSpace?: () => void;
+  /** "Roles" in the space menu: create, edit, colour and reorder roles (people who manage roles). */
+  onOpenRoles?: () => void;
+  /** "Channel settings" for the open channel: name, topic, permissions (people who manage channels). */
+  onOpenChannelSettings?: () => void;
   /** Leave the space shown (a member). */
   onLeaveServer?: (serverId: string) => Promise<void>;
   /** Delete the space shown, with the password (its owner). */
@@ -133,6 +139,9 @@ export function ChannelSidebar({
   canManageChannels,
   canManageServer,
   onOpenCategories,
+  onRenameSpace,
+  onOpenRoles,
+  onOpenChannelSettings,
   onSelectChannel,
   onJoinVoice,
   onCreateChannel,
@@ -175,7 +184,10 @@ export function ChannelSidebar({
     if (canSetLogo) {
       spaceMenuItems.push({ label: "Change space logo", icon: "edit", onSelect: () => serverIconInputRef.current?.click() });
     }
+    if (onRenameSpace) spaceMenuItems.push({ label: "Rename space", icon: "edit", onSelect: onRenameSpace });
+    if (onOpenRoles) spaceMenuItems.push({ label: "Roles", icon: "members", onSelect: onOpenRoles });
     if (canManageChannels) spaceMenuItems.push({ label: "Create channel", icon: "plus", onSelect: () => setShowNewChannel(true) });
+    if (onOpenChannelSettings) spaceMenuItems.push({ label: "Channel settings", icon: "settings", onSelect: onOpenChannelSettings });
     if (onOpenSlowmode) spaceMenuItems.push({ label: "Slowmode", icon: "hourglass", onSelect: onOpenSlowmode });
     if (onOpenEvents) spaceMenuItems.push({ label: "Events", icon: "calendar", onSelect: onOpenEvents });
     if (onOpenModQueue) spaceMenuItems.push({ label: "Moderation queue", icon: "shield", onSelect: onOpenModQueue });

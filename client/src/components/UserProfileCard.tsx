@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { FriendshipStatus, PublicUser, UserProfile } from "../api";
 import { api } from "../api";
 import { ProfileCardView } from "./ProfileCardView";
+import "./roles.css";
 
 type Props = {
   userId: string;
@@ -12,10 +13,12 @@ type Props = {
   onOpenDm?: (user: PublicUser) => void | Promise<void>;
   onBlockUser?: (user: PublicUser) => void | Promise<void>;
   onReportUser?: (user: PublicUser) => void | Promise<void>;
+  /** Their roles in the space the card was opened from, highest first. */
+  roles?: { id: string; name: string; color: string | null }[];
   onClose: () => void;
 };
 
-export function UserProfileCard({ userId, token, anchorRef, currentUserId, onOpenDm, onBlockUser, onReportUser, onClose }: Props) {
+export function UserProfileCard({ userId, token, anchorRef, currentUserId, onOpenDm, onBlockUser, onReportUser, roles, onClose }: Props) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -131,6 +134,19 @@ export function UserProfileCard({ userId, token, anchorRef, currentUserId, onOpe
       ) : profile ? (
         <>
           <ProfileCardView data={profile} />
+          {roles && roles.length > 0 && (
+            <section className="kc-profile-roles" aria-label="Roles">
+              <h3 className="kc-profile-roles__title">Roles</h3>
+              <ul className="kc-profile-roles__list">
+                {roles.map((r) => (
+                  <li key={r.id} className="kc-profile-role">
+                    <span className="kc-role-dot" style={{ background: r.color ?? "var(--text-muted)" }} aria-hidden />
+                    {r.name}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {profile.id !== currentUserId && (
             <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
               {friendship === "pending_incoming" ? (

@@ -429,6 +429,24 @@ pub struct CreateRoleBody {
     pub color: Option<String>,
     #[serde(default)]
     pub permissions: i64,
+    #[serde(default)]
+    pub hoist: bool,
+}
+
+/// A role colour is `#rrggbb`.
+pub fn valid_color(color: &str) -> bool {
+    color.len() == 7 && color.starts_with('#') && color[1..].chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Permissions a member can hand out: everything for the owner or an administrator,
+/// otherwise exactly what they hold.
+async fn grantable(state: &AppState, server_id: &str, user_id: &str) -> i64 {
+    let mine = member_permissions(state, server_id, user_id).await;
+    if has_admin_override(mine) {
+        perm::ALL
+    } else {
+        mine
+    }
 }
 
 /// POST /servers/{server_id}/roles — create a role (needs MANAGE_ROLES).
@@ -446,6 +464,12 @@ pub async fn create_role(
         return Err((StatusCode::BAD_REQUEST, "role name required".into()));
     }
     crate::api::limits::check_len("role name", name, crate::api::limits::ROLE_NAME)?;
+    if body.color.as_deref().is_some_and(|c| !valid_color(c)) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "a role colour looks like #3fa7ff".into(),
+        ));
+    }
     // A non-owner can never grant permissions they don't themselves hold.
     let mine = member_permissions(&state, &server_id, &auth.0).await;
     let granted = body.permissions & mine & perm::ALL;
@@ -496,9 +520,10 @@ pub async fn create_role(
         position,
         created_at: now_unix(),
         is_everyone: false,
+        hoist: body.hoist,
     };
     sqlx::query(
-        "INSERT INTO roles (id, server_id, name, color, permissions, position, created_at, is_everyone) VALUES (?,?,?,?,?,?,?,0)",
+        "INSERT INTO roles (id, server_id, name, color, permissions, position, created_at, is_everyone, hoist) VALUES (?,?,?,?,?,?,?,0,?)",
     )
     .bind(&role.id)
     .bind(&role.server_id)
@@ -507,10 +532,12 @@ pub async fn create_role(
     .bind(role.permissions)
     .bind(role.position)
     .bind(role.created_at)
+    .bind(role.hoist)
     .execute(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
     tx.commit().await.map_err(crate::api::error::internal)?;
+    crate::api::servers::broadcast_full_server_to_members(&state, &server_id).await;
 
     Ok(Json(role))
 }
@@ -554,6 +581,7 @@ pub async fn delete_role(
         .await
         .map_err(crate::api::error::internal)?;
     // Anyone who held this role just lost permissions — refresh the whole server.
+    crate::api::servers::broadcast_full_server_to_members(&state, &server_id).await;
     broadcast_to_server(
         &state,
         &server_id,
@@ -621,6 +649,8 @@ pub async fn assign_role(
         .execute(&state.db)
         .await
         .map_err(crate::api::error::internal)?;
+    // Name colours and member-list groups follow who holds what, for everyone in the space.
+    crate::api::servers::broadcast_full_server_to_members(&state, &server_id).await;
     // Push the affected member a live permissions refresh.
     broadcast_to_user(
         &state.sessions,
@@ -670,6 +700,7 @@ pub async fn unassign_role(
         .execute(&state.db)
         .await
         .map_err(crate::api::error::internal)?;
+    crate::api::servers::broadcast_full_server_to_members(&state, &server_id).await;
     broadcast_to_user(
         &state.sessions,
         &user_id,
@@ -677,6 +708,201 @@ pub async fn unassign_role(
             server_id: server_id.clone(),
         },
     );
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct UpdateRoleBody {
+    #[serde(default)]
+    pub name: Option<String>,
+    /// `null` clears the colour; absent leaves it.
+    #[serde(default, deserialize_with = "double_option")]
+    pub color: Option<Option<String>>,
+    #[serde(default)]
+    pub permissions: Option<i64>,
+    #[serde(default)]
+    pub hoist: Option<bool>,
+}
+
+fn double_option<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer).map(Some)
+}
+
+/// PATCH /servers/{server_id}/roles/{role_id} — edit a role's name, colour, permissions or
+/// "show members separately". Needs Manage roles, only for roles ranked below your own, and
+/// a change to its permissions may only touch permissions you hold yourself.
+pub async fn update_role(
+    auth: AuthUser,
+    Path((server_id, role_id)): Path<(String, String)>,
+    State(state): State<AppState>,
+    Json(body): Json<UpdateRoleBody>,
+) -> Result<Json<Role>, (StatusCode, String)> {
+    if !has_perm(&state, &server_id, &auth.0, perm::MANAGE_ROLES).await {
+        return Err((StatusCode::FORBIDDEN, "you can't manage roles".into()));
+    }
+    let role: Option<Role> = sqlx::query_as("SELECT * FROM roles WHERE id = ? AND server_id = ?")
+        .bind(&role_id)
+        .bind(&server_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    let Some(mut role) = role else {
+        return Err((StatusCode::NOT_FOUND, "role not found".into()));
+    };
+    if !role.is_everyone && role.position >= member_top_position(&state, &server_id, &auth.0).await
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't edit a role ranked at or above your own".into(),
+        ));
+    }
+    if let Some(name) = body.name.as_deref() {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err((StatusCode::BAD_REQUEST, "role name required".into()));
+        }
+        if role.is_everyone && name != role.name {
+            return Err((StatusCode::BAD_REQUEST, "@everyone keeps its name".into()));
+        }
+        crate::api::limits::check_len("role name", name, crate::api::limits::ROLE_NAME)?;
+        role.name = name.to_owned();
+    }
+    if let Some(color) = body.color {
+        if color.as_deref().is_some_and(|c| !valid_color(c)) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "a role colour looks like #3fa7ff".into(),
+            ));
+        }
+        role.color = color.map(|c| c.to_ascii_lowercase());
+    }
+    if let Some(permissions) = body.permissions {
+        let permissions = permissions & perm::ALL;
+        let changed = permissions ^ role.permissions;
+        if changed & !grantable(&state, &server_id, &auth.0).await != 0 {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "you can't change permissions you don't have".into(),
+            ));
+        }
+        role.permissions = permissions;
+    }
+    if let Some(hoist) = body.hoist {
+        role.hoist = hoist && !role.is_everyone;
+    }
+    sqlx::query("UPDATE roles SET name = ?, color = ?, permissions = ?, hoist = ? WHERE id = ?")
+        .bind(&role.name)
+        .bind(&role.color)
+        .bind(role.permissions)
+        .bind(role.hoist)
+        .bind(&role.id)
+        .execute(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    crate::api::abuse::log_action(
+        &state,
+        crate::api::abuse::ActionLog {
+            server_id: Some(&server_id),
+            actor_id: &auth.0,
+            action: "update_role",
+            target_type: "role",
+            target_id: &role.id,
+            report_id: None,
+            metadata: Some(&serde_json::json!({ "name": role.name }).to_string()),
+        },
+    )
+    .await?;
+    crate::api::servers::broadcast_full_server_to_members(&state, &server_id).await;
+    broadcast_to_server(
+        &state,
+        &server_id,
+        &GatewayEvent::PermissionsUpdate {
+            server_id: server_id.clone(),
+        },
+    )
+    .await;
+    Ok(Json(role))
+}
+
+#[derive(Deserialize)]
+pub struct RoleOrderBody {
+    /// The roles you may move, highest first.
+    pub role_ids: Vec<String>,
+}
+
+/// PUT /servers/{server_id}/role-order — reorder the roles ranked below your own. The
+/// list must name exactly those roles, highest first; they take the same rank slots in the
+/// new order, so every role at or above yours keeps its place.
+pub async fn reorder_roles(
+    auth: AuthUser,
+    Path(server_id): Path<String>,
+    State(state): State<AppState>,
+    Json(body): Json<RoleOrderBody>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if !has_perm(&state, &server_id, &auth.0, perm::MANAGE_ROLES).await {
+        return Err((StatusCode::FORBIDDEN, "you can't manage roles".into()));
+    }
+    let top = member_top_position(&state, &server_id, &auth.0).await;
+    let movable: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT id, position FROM roles WHERE server_id = ? AND is_everyone = 0 AND position < ?
+         ORDER BY position DESC, created_at DESC",
+    )
+    .bind(&server_id)
+    .bind(top)
+    .fetch_all(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+    let mut wanted: Vec<&String> = body.role_ids.iter().collect();
+    let mut have: Vec<&String> = movable.iter().map(|(id, _)| id).collect();
+    wanted.sort();
+    have.sort();
+    if wanted != have {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can only reorder the roles ranked below your own, all of them".into(),
+        ));
+    }
+    let slots: Vec<i64> = movable.iter().map(|(_, position)| *position).collect();
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(crate::api::error::internal)?;
+    for (role_id, position) in body.role_ids.iter().zip(slots) {
+        sqlx::query("UPDATE roles SET position = ? WHERE id = ? AND server_id = ?")
+            .bind(position)
+            .bind(role_id)
+            .bind(&server_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(crate::api::error::internal)?;
+    }
+    tx.commit().await.map_err(crate::api::error::internal)?;
+    crate::api::abuse::log_action(
+        &state,
+        crate::api::abuse::ActionLog {
+            server_id: Some(&server_id),
+            actor_id: &auth.0,
+            action: "reorder_roles",
+            target_type: "server",
+            target_id: &server_id,
+            report_id: None,
+            metadata: None,
+        },
+    )
+    .await?;
+    crate::api::servers::broadcast_full_server_to_members(&state, &server_id).await;
+    broadcast_to_server(
+        &state,
+        &server_id,
+        &GatewayEvent::PermissionsUpdate {
+            server_id: server_id.clone(),
+        },
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 

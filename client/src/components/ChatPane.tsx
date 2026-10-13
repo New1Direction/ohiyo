@@ -44,6 +44,7 @@ import { useTimedOut } from "./moderation/useModerationClock";
 import { fileUrlOn } from "../lib/fileUrl";
 import { callLogText } from "../lib/dmCall";
 import { CallLogLine } from "./CallLogLine";
+import { paintRoleColor } from "../lib/roleColors";
 
 const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
 function hiddenMessagesKey(channelId: string, userId: string): string {
@@ -239,6 +240,10 @@ type Props = {
   channelMembers?: PublicUser[];
   /** User ids currently online. */
   onlineUserIds?: Set<string>;
+  /** Each member's role colour in this space (their highest coloured role), for their name. */
+  nameColors?: ReadonlyMap<string, string>;
+  /** A member's roles in this space, highest first, for their profile card. */
+  rolesOf?: (userId: string) => { id: string; name: string; color: string | null }[];
   /** Soft local activity notes like "Mina joined". These are not persisted to message history. */
   activityNotices?: ChatActivityNotice[];
   /** Current user's username, for highlighting mentions of you. */
@@ -452,6 +457,8 @@ export function ChatPane({
   mentionables = [],
   channelMembers = [],
   onlineUserIds = new Set<string>(),
+  nameColors,
+  rolesOf,
   activityNotices = [],
   currentUsername = "",
   receipts,
@@ -1994,7 +2001,13 @@ export function ChatPane({
                         ) : (
                           <button
                             className="text-sm font-semibold"
-                            style={{ color: "var(--text-primary)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                            style={{
+                              color: nameColors?.has(g.author.id) ? paintRoleColor(nameColors.get(g.author.id)!) : "var(--text-primary)",
+                              cursor: "pointer",
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                            }}
                             onClick={(e) => {
                               profileAnchorRef.current = e.currentTarget as HTMLElement;
                               setProfileUserId(g.author.id);
@@ -2265,7 +2278,9 @@ export function ChatPane({
               <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: "var(--accent)", color: "#fff" }}>
                 {(m.display_name[0] ?? "?").toUpperCase()}
               </span>
-              <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{m.display_name}</span>
+              <span style={{ color: nameColors?.has(m.id) ? paintRoleColor(nameColors.get(m.id)!) : "var(--text-primary)", fontWeight: 600 }}>
+                {m.display_name}
+              </span>
               <span style={{ color: "var(--text-muted)" }}>@{m.username}</span>
             </button>
           ))}
@@ -2526,6 +2541,7 @@ export function ChatPane({
           token={token}
           anchorRef={profileAnchorRef}
           currentUserId={currentUserId}
+          roles={rolesOf?.(profileUserId)}
           onOpenDm={onOpenDm}
           onBlockUser={onBlockUser}
           onReportUser={onReportUser}

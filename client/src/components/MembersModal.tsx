@@ -6,6 +6,8 @@ import { AvatarMark } from "./BirdMark";
 import { TimeoutDialog } from "./moderation/TimeoutDialog";
 import { BanDialog } from "./moderation/BanDialog";
 import { timeoutEnds } from "../lib/moderation";
+import { hoistGroups, nameColors, paintRoleColor, type SpaceRoles } from "../lib/roleColors";
+import "./roles.css";
 import "./moderation/moderation.css";
 
 type Props = {
@@ -26,6 +28,9 @@ type Props = {
   timeouts?: ReadonlyMap<string, number>;
   canManageRoles: boolean;
   onManageRoles: () => void;
+  /** The space's roles and who holds them: names take role colours, and "show separately"
+   *  roles get their own sections. */
+  space?: SpaceRoles;
   onKick: (userId: string) => void;
   /** Ban, with the choices from the ban dialog; throws to keep the dialog open with why. */
   onBan: (userId: string, choice: { reason: string; deleteMessageSeconds: number }) => Promise<void>;
@@ -59,7 +64,7 @@ export function ActivityLine({ activity }: { activity: Activity }) {
 /** Server member list. Moderation actions appear per your permissions. */
 export function MembersModal({
   members, ownerId, currentUserId, onlineUsers, idleUsers, activities, voiceMembers, onJoinVoice, onOpenDm, canKick, canBan,
-  canTimeout = false, timeouts, canManageRoles, onManageRoles, onKick, onBan, onTimeout, onRemoveTimeout, onClose,
+  canTimeout = false, timeouts, canManageRoles, onManageRoles, space, onKick, onBan, onTimeout, onRemoveTimeout, onClose,
 }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [dmBusyId, setDmBusyId] = useState<string | null>(null);
@@ -100,6 +105,10 @@ export function MembersModal({
     );
   }
 
+  const colors = space ? nameColors(space) : new Map<string, string>();
+  const groups: { label: string; roleId?: string; members: PublicUser[] }[] = space
+    ? hoistGroups(sorted, space, onlineUsers)
+    : [{ label: "", members: sorted }];
   const now = Date.now();
   const timedOutUntil = (id: string) => {
     const until = timeouts?.get(id);
@@ -132,7 +141,14 @@ export function MembersModal({
       </div>
 
       <div className="mt-4 flex flex-col gap-1" style={{ maxHeight: 380, overflowY: "auto" }}>
-        {sorted.map((m) => (
+        {groups.map((group) => (
+          <section key={group.roleId ?? (group.label || "all")} aria-label={group.label ? `${group.label} — ${group.members.length}` : undefined} className="flex flex-col gap-1">
+            {group.label && (
+              <h3 className="kc-members-group">
+                {group.label} — {group.members.length}
+              </h3>
+            )}
+        {group.members.map((m) => (
           <div
             key={m.id}
             className="kc-polish-row flex items-center gap-3 px-2.5 py-2"
@@ -161,7 +177,7 @@ export function MembersModal({
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <span className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                <span className="truncate text-sm font-semibold" style={{ color: colors.has(m.id) ? paintRoleColor(colors.get(m.id)!) : "var(--text-primary)" }}>
                   {m.display_name}
                 </span>
                 {m.id === ownerId && (
@@ -298,6 +314,8 @@ export function MembersModal({
               )
             )}
           </div>
+        ))}
+          </section>
         ))}
       </div>
     </ModalShell>

@@ -246,6 +246,87 @@ pub async fn set_channel_category(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+pub struct UpdateChannelBody {
+    #[serde(default)]
+    pub name: Option<String>,
+    /// An empty topic clears it.
+    #[serde(default)]
+    pub topic: Option<String>,
+}
+
+/// PATCH /channels/{id} — rename a space's channel or change its topic (Manage channels on
+/// that channel). Threads are renamed from their own menu; DMs have no name to edit.
+pub async fn update_channel(
+    auth: AuthUser,
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    Json(body): Json<UpdateChannelBody>,
+) -> Result<Json<Channel>, (StatusCode, String)> {
+    let channel: Option<Channel> = sqlx::query_as("SELECT * FROM channels WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    let Some(mut channel) = channel else {
+        return Err((StatusCode::NOT_FOUND, "channel not found".into()));
+    };
+    let Some(server_id) = channel.server_id.clone() else {
+        return Err((StatusCode::FORBIDDEN, "you can't manage channels".into()));
+    };
+    if !crate::api::roles::has_channel_perm(
+        &state,
+        &id,
+        &auth.0,
+        crate::api::roles::perm::MANAGE_CHANNELS,
+    )
+    .await
+    {
+        return Err((StatusCode::FORBIDDEN, "you can't manage channels".into()));
+    }
+    if channel.channel_type == "thread" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "rename a thread from its own menu".into(),
+        ));
+    }
+    if let Some(name) = body.name.as_deref() {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err((StatusCode::BAD_REQUEST, "a channel needs a name".into()));
+        }
+        crate::api::limits::check_len("channel name", name, crate::api::limits::CHANNEL_NAME)?;
+        channel.name = name.to_owned();
+    }
+    if let Some(topic) = body.topic.as_deref() {
+        let topic = topic.trim();
+        crate::api::limits::check_len("topic", topic, crate::api::limits::CHANNEL_TOPIC)?;
+        channel.topic = (!topic.is_empty()).then(|| topic.to_owned());
+    }
+    sqlx::query("UPDATE channels SET name = ?, topic = ? WHERE id = ?")
+        .bind(&channel.name)
+        .bind(&channel.topic)
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(crate::api::error::internal)?;
+    crate::api::abuse::log_action(
+        &state,
+        crate::api::abuse::ActionLog {
+            server_id: Some(&server_id),
+            actor_id: &auth.0,
+            action: "update_channel",
+            target_type: "channel",
+            target_id: &id,
+            report_id: None,
+            metadata: Some(&serde_json::json!({ "name": channel.name }).to_string()),
+        },
+    )
+    .await?;
+    broadcast_server(&state, &server_id).await;
+    Ok(Json(channel))
+}
+
 pub async fn delete_channel(
     auth: AuthUser,
     Path(id): Path<String>,
