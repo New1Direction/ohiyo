@@ -5,13 +5,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ARCHIVE_AFTER_SECONDS,
+  canManageThread,
   canStartThread,
   defaultThreadName,
+  isArchived,
+  removeThread,
+  splitThreads,
+  threadAlert,
   threadChipLabel,
   threadsByMessage,
   upsertThread,
+  withFollow,
   type ThreadSummary,
 } from "../src/lib/threads.ts";
+import { settingsFromList } from "../src/lib/notificationSettings.ts";
+import { PERM } from "../src/permissions.ts";
 
 const NOW = 1_800_000_000; // seconds
 
@@ -89,4 +98,67 @@ test("only a space's text channels can have threads", () => {
     false,
     "no thread inside a thread"
   );
+});
+
+// ── Rename, delete, follow, unread and archive ──
+
+test("a thread nobody wrote in for a week is archived; a reply brings it back", () => {
+  assert.equal(ARCHIVE_AFTER_SECONDS, 7 * 24 * 60 * 60);
+  const fresh = thread("fresh", { created_at: NOW - 100 });
+  const old = thread("old", { created_at: NOW - ARCHIVE_AFTER_SECONDS - 60 });
+  const revived = thread("revived", { created_at: NOW - 30 * 86400, last_message_at: NOW - 60 });
+  const quiet = thread("quiet", { created_at: NOW - 30 * 86400, last_message_at: NOW - ARCHIVE_AFTER_SECONDS - 1 });
+  assert.equal(isArchived(fresh, NOW), false);
+  assert.equal(isArchived(old, NOW), true, "no replies for over a week");
+  assert.equal(isArchived(revived, NOW), false, "a recent reply un-archives it");
+  assert.equal(isArchived(quiet, NOW), true);
+  const { active, older } = splitThreads([revived, quiet, fresh, old], NOW);
+  assert.deepEqual(active.map((t) => t.id), ["revived", "fresh"]);
+  assert.deepEqual(older.map((t) => t.id), ["quiet", "old"]);
+});
+
+test("a deleted thread leaves its channel's list", () => {
+  const list = [thread("a"), thread("b")];
+  assert.deepEqual(removeThread(list, "a").map((t) => t.id), ["b"]);
+  assert.equal(removeThread(list, "zzz"), list, "nothing to remove keeps the same list");
+});
+
+test("following is per thread, and the set comes back new", () => {
+  const none: ReadonlySet<string> = new Set();
+  const one = withFollow(none, "t1", true);
+  assert.equal(one.has("t1"), true);
+  assert.equal(none.has("t1"), false, "the old set is left alone");
+  assert.equal(withFollow(one, "t1", false).has("t1"), false);
+});
+
+test("the starter, or someone who manages messages or channels, may rename or delete a thread", () => {
+  const t = thread("t", { owner_id: "ann" });
+  assert.equal(canManageThread(t, "ann", 0), true, "the starter");
+  assert.equal(canManageThread(t, "bo", PERM.SEND_MESSAGES | PERM.VIEW_CHANNEL), false, "another member");
+  assert.equal(canManageThread(t, "bo", PERM.MANAGE_MESSAGES), true);
+  assert.equal(canManageThread(t, "bo", PERM.MANAGE_CHANNELS), true);
+  assert.equal(canManageThread(t, "bo", PERM.ADMINISTRATOR), true);
+  assert.equal(canManageThread(thread("t2", { owner_id: null }), "ann", 0), false, "a starter who left");
+});
+
+test("a followed thread counts and notifies like its channel; an unfollowed one only for an @mention", () => {
+  const ctx = { parentId: "c1", serverId: "s1" };
+  const none = settingsFromList([]);
+  assert.deepEqual(threadAlert(none, ctx, true, false, NOW), { notify: true, count: true, show: true });
+  assert.deepEqual(threadAlert(none, ctx, false, false, NOW), { notify: false, count: false, show: false });
+  assert.deepEqual(threadAlert(none, ctx, false, true, NOW), { notify: true, count: true, show: true });
+
+  // A muted channel mutes its threads; an @mention still gets through, as in the channel.
+  const mutedChannel = settingsFromList([
+    { target_type: "channel", target_id: "c1", level: null, muted: true, muted_until: null },
+  ]);
+  assert.deepEqual(threadAlert(mutedChannel, ctx, true, false, NOW), { notify: false, count: false, show: false });
+  assert.equal(threadAlert(mutedChannel, ctx, true, true, NOW).notify, true);
+
+  // A space set to Nothing silences its threads entirely.
+  const nothing = settingsFromList([
+    { target_type: "server", target_id: "s1", level: "nothing", muted: false, muted_until: null },
+  ]);
+  assert.equal(threadAlert(nothing, ctx, true, true, NOW).notify, false);
+  assert.equal(threadAlert(nothing, ctx, true, true, NOW).count, false);
 });

@@ -837,6 +837,18 @@ export const api = {
       body: JSON.stringify({ message_id: messageId, name }),
     }, token),
 
+  /** Rename a thread (whoever started it, or someone who manages the channel). */
+  renameThread: (token: string, threadId: string, name: string) =>
+    request<ThreadSummary>(`/threads/${threadId}`, { method: "PATCH", body: JSON.stringify({ name }) }, token),
+
+  /** Delete a thread and its replies. */
+  deleteThread: (token: string, threadId: string) =>
+    request<void>(`/threads/${threadId}`, { method: "DELETE" }, token),
+
+  /** Follow a thread (it counts as unread and notifies like its channel) or stop following. */
+  setThreadFollow: (token: string, threadId: string, following: boolean) =>
+    request<void>(`/threads/${threadId}/follow`, { method: following ? "PUT" : "DELETE" }, token),
+
   createChannel: (token: string, serverId: string, name: string, categoryId?: string | null) =>
     request<Channel>(`/servers/${serverId}/channels`, {
       method: "POST",

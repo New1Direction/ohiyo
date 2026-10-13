@@ -31,7 +31,7 @@ export type WatchSession = {
 };
 
 export type GatewayEvent =
-  | { t: "Ready"; d: { user: PublicUser; servers: ServerWithChannels[]; dms: Channel[]; dm_peers?: Record<string, PublicUser>; unread?: Record<string, number>; notification_settings?: NotificationSetting[] } }
+  | { t: "Ready"; d: { user: PublicUser; servers: ServerWithChannels[]; dms: Channel[]; dm_peers?: Record<string, PublicUser>; unread?: Record<string, number>; notification_settings?: NotificationSetting[]; followed_threads?: ThreadSummary[] } }
   | { t: "MessageCreate"; d: Message }
   | { t: "MessageUpdate"; d: Message }
   | { t: "MessageDelete"; d: { id: string; channel_id: string } }
@@ -44,6 +44,10 @@ export type GatewayEvent =
   | { t: "ChannelCreate"; d: Channel }
   /** A thread started, or its message count changed, or its first message was deleted. */
   | { t: "ThreadUpdate"; d: ThreadSummary }
+  /** A thread was deleted with its replies. */
+  | { t: "ThreadDelete"; d: { id: string; parent_id: string; thread_message_id: string | null } }
+  /** You followed or unfollowed a thread (on this device or another of yours). */
+  | { t: "ThreadFollowUpdate"; d: { thread: ThreadSummary; following: boolean } }
   | { t: "MemberJoin"; d: { server_id: string; user: PublicUser } }
   | { t: "MemberLeave"; d: { server_id: string; user_id: string } }
   | { t: "UserDeleted"; d: { user_id: string } }
@@ -104,6 +108,7 @@ const EVENT_TAGS: Record<GatewayEvent["t"], true> = {
   EventsChanged: true, ReactionUpdate: true, ReadReceipt: true, PresenceUpdate: true, TypingStart: true,
   VoiceState: true, VoiceRoster: true, VoiceSignal: true, WatchUpdate: true, HeartbeatAck: true,
   DeviceAdded: true, UserDeleted: true, NotificationSettingsUpdate: true, ThreadUpdate: true,
+  ThreadDelete: true, ThreadFollowUpdate: true,
 };
 const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set(Object.keys(EVENT_TAGS));
 

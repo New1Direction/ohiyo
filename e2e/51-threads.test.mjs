@@ -1,7 +1,8 @@
 import { currentToken, launchBrowser, register, log, settle, shot, uniq } from "./harness.mjs";
 
 // Threads. B writes in #general; A starts a thread from B's message and it opens beside the
-// channel. B sees "No replies yet" appear under the message without reloading, opens the
+// channel. A renames it and B sees the new name; a reply while A has it closed shows as new
+// under the message (A follows what they start), and B unfollows from the thread's header. B sees "No replies yet" appear under the message without reloading, opens the
 // thread from there and replies; A sees the reply in the open thread and the count under the
 // message. The thread never shows up as a channel in the sidebar. On a phone the thread takes
 // the whole screen and a back button returns to the channel. Screenshots (desktop dark and
@@ -134,6 +135,39 @@ try {
   await pageA.waitForSelector('[role="dialog"] button:has-text("Pizza")', { timeout: 5000 });
   await pageA.keyboard.press("Escape");
   log("the Threads button lists it ✓");
+
+  // ── A (who started it) renames it; B sees the new name under the message live ──
+  await pageA.click(`${PANEL} button[aria-label="Thread options"]`);
+  await pageA.click('[role="menuitem"]:has-text("Rename thread")');
+  await pageA.waitForSelector(nameField, { timeout: 5000 });
+  await pageA.fill(nameField, "Pizza night");
+  await pageA.click('[role="dialog"] button:has-text("Save")');
+  await message(pageB, text).locator('button[aria-label^="Open thread Pizza night"]').waitFor({ timeout: 8000 });
+  await pageA.waitForSelector(`${PANEL} .kc-chat-title:has-text("Pizza night")`, { timeout: 5000 });
+  log("A renamed the thread and B sees the new name ✓");
+
+  // ── A follows it (they started it): a reply while it's closed shows as new under the message ──
+  const followA = pageA.locator(`${PANEL} button[aria-pressed]`, { hasText: "Following" });
+  if ((await followA.count()) !== 1) throw new Error("starting a thread didn't follow it");
+  await pageA.click(`${PANEL} button[aria-label="Back to the channel"]`);
+  await pageA.waitForSelector(PANEL, { state: "detached", timeout: 5000 });
+  await pageB.fill(`${PANEL} ${REPLY_BOX}`, "Count me in");
+  await pageB.keyboard.press("Enter");
+  const newCount = message(pageA, text).locator(".kc-thread-chip-unread");
+  await newCount.waitFor({ timeout: 8000 });
+  if ((await newCount.innerText()).trim() !== "1") throw new Error(`A's chip shows "${await newCount.innerText()}" new`);
+  log("a reply in a followed thread shows as 1 new under the message ✓");
+  await message(pageA, text).locator('button[aria-label^="Open thread Pizza night"]').click();
+  await pageA.waitForSelector(`${PANEL} .msg-content:has-text("Count me in")`, { timeout: 8000 });
+  await newCount.waitFor({ state: "detached", timeout: 5000 });
+  log("opening it clears the count ✓");
+
+  // ── B (who replied, so follows) unfollows from the header ──
+  const followB = pageB.locator(`${PANEL} button[aria-pressed="true"]`, { hasText: "Following" });
+  await followB.waitFor({ timeout: 5000 });
+  await followB.click();
+  await pageB.waitForSelector(`${PANEL} button[aria-pressed="false"]:has-text("Follow")`, { timeout: 5000 });
+  log("B unfollowed the thread ✓");
   await settle(pageA, 300);
   await shot(pageA, "51-threads-desktop-dark");
   await defaultAvatarsShow(pageA, "dark theme");

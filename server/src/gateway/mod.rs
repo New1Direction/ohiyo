@@ -1572,9 +1572,27 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
         .chain(dms.iter())
         .map(|c| c.id.as_str())
         .collect();
+    // The threads the account follows, in channels it can see; they count as unread too.
+    let followed_threads: Vec<crate::types::ThreadSummary> =
+        crate::api::threads::followed_by(state, user_id)
+            .await?
+            .into_iter()
+            .filter(|t| {
+                t.channel
+                    .parent_id
+                    .as_deref()
+                    .is_some_and(|parent| visible.contains(parent))
+            })
+            .collect();
+    let followed: HashSet<&str> = followed_threads
+        .iter()
+        .map(|t| t.channel.id.as_str())
+        .collect();
     let unread: std::collections::HashMap<String, i64> = unread_rows
         .into_iter()
-        .filter(|(channel_id, _)| visible.contains(channel_id.as_str()))
+        .filter(|(channel_id, _)| {
+            visible.contains(channel_id.as_str()) || followed.contains(channel_id.as_str())
+        })
         .collect();
 
     // The account's notification settings, for the spaces and chats listed above only.
@@ -1595,6 +1613,7 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
         dm_peers,
         unread,
         notification_settings,
+        followed_threads,
     })
 }
 
