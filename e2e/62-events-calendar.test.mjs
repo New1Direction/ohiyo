@@ -97,7 +97,8 @@ try {
   const banner = pageB.locator('[role="status"]:has-text("Voice hangout")');
   await banner.waitFor({ timeout: 50_000 });
   const bannerText = await banner.innerText();
-  if (!/Starting soon|Event starting/.test(bannerText)) throw new Error(`banner says: ${bannerText}`);
+  // innerText follows the kicker's text-transform (upper case).
+  if (!/starting soon|event starting/i.test(bannerText)) throw new Error(`banner says: ${bannerText}`);
   if ((await banner.locator('button:has-text("Join voice")').count()) !== 1) throw new Error("no Join voice on the banner");
   log("B got the reminder banner with Join voice ✓");
   await shot(pageB, "62-events-reminder");
