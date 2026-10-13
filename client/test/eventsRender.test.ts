@@ -73,7 +73,7 @@ const all = (root: { querySelectorAll(s: string): Iterable<unknown> }, sel: stri
   [...root.querySelectorAll(sel)] as unknown as El[];
 const text = (el: El | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
 const button = (root: { querySelectorAll(s: string): Iterable<unknown> }, label: string) =>
-  all(root, "button").find((b) => text(b).startsWith(label) || b.getAttribute("aria-label") === label);
+  all(root, "button").find((b) => text(b).includes(label) || b.getAttribute("aria-label") === label);
 
 function press(key: string) {
   const target = document.activeElement ?? document.body;

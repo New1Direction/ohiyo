@@ -405,10 +405,12 @@ async fn a_cover_is_an_image_you_uploaded() {
 /// A real 1×1 PNG, uploaded by `who`; returns the file id.
 async fn upload_png(srv: &TestServer, who: &AuthOk) -> String {
     const PNG: &str = "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082";
-    let bytes: Vec<u8> = (0..PNG.len())
+    let mut bytes: Vec<u8> = (0..PNG.len())
         .step_by(2)
         .map(|i| u8::from_str_radix(&PNG[i..i + 2], 16).unwrap())
         .collect();
+    // Identical uploads share one file: make each person's picture their own.
+    bytes.extend_from_slice(who.id.as_bytes());
     let (content_type, body) = common::multipart_file("file", "cover.png", "image/png", &bytes);
     let res = srv
         .post_raw_auth("/api/v1/upload", &who.token, &content_type, body)

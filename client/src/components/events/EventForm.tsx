@@ -75,13 +75,14 @@ export function EventForm({ channels, initial, busy, onSubmit }: Props) {
   function check(): EventDraft | string {
     const name = title.trim();
     if (!name) return "Give your event a name.";
-    const startsAt = fromInput(starts);
+    // An untouched time keeps its exact value (the input only shows minutes).
+    const startsAt = initial && starts === toInput(initial.starts_at) ? initial.starts_at : fromInput(starts);
     if (startsAt === null) return "Pick when it starts.";
     const now = Math.floor(Date.now() / 1000);
     const moved = !initial || startsAt !== initial.starts_at;
     if (moved && startsAt < now - 60) return "That time has already passed.";
     if (startsAt > now + TWO_YEARS_SECS) return "Events can be planned up to two years ahead.";
-    const endsAt = fromInput(ends);
+    const endsAt = initial?.ends_at && ends === toInput(initial.ends_at) ? initial.ends_at : fromInput(ends);
     if (endsAt !== null && endsAt <= startsAt) return "It has to end after it starts.";
     let location: EventDraft["location"] = null;
     if (where === "place") {

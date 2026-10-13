@@ -164,16 +164,13 @@ pub async fn list_events(
     .map_err(crate::api::error::internal)?;
 
     let mut going = going_preview(&state, &server_id).await?;
-    let base = crate::public_base_url();
     let out = rows
         .into_iter()
         .map(|row| EventInfo {
             server_id: server_id.clone(),
             location: location_of(&row),
-            cover_url: row
-                .cover_file_id
-                .as_deref()
-                .map(|id| crate::signed_file_url(&base, id)),
+            // Relative and signed, like attachments: the app reads it against its file server.
+            cover_url: row.cover_file_id.as_deref().map(crate::signed_file_path),
             cancelled: row.cancelled_at.is_some(),
             rsvp_count: row.going,
             me_rsvp: row.me_status.as_deref() == Some("going"),

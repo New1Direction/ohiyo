@@ -102,6 +102,10 @@ try {
   log("B got the reminder banner with Join voice ✓");
   await shot(pageB, "62-events-reminder");
   await banner.locator('button[aria-label="Dismiss"]').click();
+  // A is going too, so A got the same reminder in the same sweep: put it away.
+  const bannerA = pageA.locator('[role="status"]:has-text("Voice hangout") button[aria-label="Dismiss"]');
+  await bannerA.waitFor({ timeout: 5000 }).catch(() => {});
+  if (await bannerA.count()) await bannerA.click();
 
   // ── A edits the title; B sees it ──
   await pageA.click('article[aria-label="Voice hangout"] button:has-text("Edit")');

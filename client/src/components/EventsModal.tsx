@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, getApiBase, type EventDraft, type EventInfo, type EventRsvpStatus } from "../api";
+import { api, getApiBase, getFileBase, type EventDraft, type EventInfo, type EventRsvpStatus } from "../api";
 import { errorMessage } from "../lib/errorMessage";
 import { eventToIcs, icsFileName } from "../lib/eventIcs";
+import { fileUrlOn } from "../lib/fileUrl";
 import { uploadOne } from "../lib/uploadOne";
 import { EventCalendar, type CalendarView } from "./events/EventCalendar";
 import { EventCard } from "./events/EventCard";
@@ -80,7 +81,10 @@ export function EventsModal(props: Props) {
 
   const refresh = useCallback(async () => {
     try {
-      const list = await api.listEvents(token, serverId);
+      // Covers arrive as paths on the home's file server.
+      const list = (await api.listEvents(token, serverId)).map((ev) =>
+        ev.cover_url ? { ...ev, cover_url: fileUrlOn(getFileBase(), ev.cover_url) } : ev,
+      );
       setEvents(list);
       return list;
     } catch {
