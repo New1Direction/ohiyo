@@ -30,3 +30,13 @@ CREATE TABLE two_factor_challenges (
 );
 
 CREATE INDEX idx_two_factor_challenges_user ON two_factor_challenges(user_id);
+
+-- One row per wrong code (signing in, or an action that asks for one), so an account gets at
+-- most 20 an hour however many sign-ins they're spread over, and a restart doesn't reset that.
+-- Rows over an hour old are cleared as new ones come in.
+CREATE TABLE two_factor_failures (
+    user_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    at       INTEGER NOT NULL
+);
+
+CREATE INDEX idx_two_factor_failures_user_at ON two_factor_failures(user_id, at);

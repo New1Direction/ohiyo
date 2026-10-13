@@ -1,8 +1,9 @@
 //! Two-factor sign-in with an authenticator app. Turning it on needs the password and a
 //! working code; then signing in needs a code (or a single-use recovery code) after the
 //! password, a code works once, and turning it off, changing the password or deleting the
-//! account need a code too. The secret is stored encrypted, and a server with no key to
-//! encrypt it with doesn't offer two-factor sign-in at all.
+//! account need a code too. Wrong codes are held to 5 a minute and 20 an hour per account,
+//! however many sign-ins they're spread over. The secret is stored encrypted, and a server with
+//! no key to encrypt it with doesn't offer two-factor sign-in at all.
 
 mod common;
 
@@ -508,4 +509,62 @@ async fn other_devices_hear_when_it_is_turned_on_and_off() {
     assert_eq!(res.status(), 204);
     let off = other_ws.wait_for(|e| e["t"] == "TwoFactorUpdate").await;
     assert_eq!(off["d"]["enabled"], false);
+}
+
+#[tokio::test]
+async fn twenty_wrong_codes_an_hour_then_no_more_even_on_a_fresh_sign_in() {
+    let srv = TestServer::start().await;
+    let (me, secret, codes) = turn_on(&srv, "tfa_hourly").await;
+    // Nineteen wrong codes over the last hour, as the server recorded them (five a minute keeps
+    // them spread out, so they can't be typed here in a test's time).
+    let pool = sqlx::SqlitePool::connect(srv.db_url()).await.unwrap();
+    for i in 0..19 {
+        sqlx::query("INSERT INTO two_factor_failures (user_id, at) VALUES (?, ?)")
+            .bind(&me.id)
+            .bind(now() - 60 - 170 * i)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    // The twentieth is just wrong.
+    let first = challenge_of(&password_login(&srv, "tfa_hourly").await);
+    let twentieth = second_step(&srv, &first, &code_for_step(&secret, step_at(now()) + 7)).await;
+    assert_eq!(twentieth.status(), 403);
+
+    // After that nothing is tried for the rest of the hour: not on a fresh sign-in, not the
+    // right code, not a recovery code, not a code asked for by turning it off.
+    let fresh = challenge_of(&password_login(&srv, "tfa_hourly").await);
+    let right = second_step(&srv, &fresh, &next_code(&secret)).await;
+    assert_eq!(right.status(), 429);
+    let said = right.text().await.unwrap();
+    assert!(
+        said.contains("Too many codes tried. Try again in a while."),
+        "{said}"
+    );
+    assert_eq!(
+        second_step(&srv, &fresh, &codes[0]).await.status(),
+        429,
+        "recovery code"
+    );
+    let off = srv
+        .post_json_auth(
+            "/api/v1/users/@me/two-factor/disable",
+            &me.token,
+            json!({ "password": PASS, "code": next_code(&secret) }),
+        )
+        .await;
+    assert_eq!(off.status(), 429, "turning it off");
+
+    // An hour on, they no longer count, and the same sign-in goes through.
+    sqlx::query("UPDATE two_factor_failures SET at = at - 3600 WHERE user_id = ?")
+        .bind(&me.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        second_step(&srv, &fresh, &next_code(&secret))
+            .await
+            .status(),
+        200
+    );
 }

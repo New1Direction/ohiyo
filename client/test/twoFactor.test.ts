@@ -52,6 +52,11 @@ test("the sign-in step says plainly what went wrong", () => {
   assert.match(signInCodeMessage(apiError(403, "that code isn't right")), /isn't right/);
   assert.match(signInCodeMessage(apiError(401, "sign in again")), /sign in again/i);
   assert.match(signInCodeMessage(apiError(429, "too many attempts")), /wait a minute/i);
+  assert.equal(
+    signInCodeMessage(apiError(429, "Too many codes tried. Try again in a while.")),
+    "Too many codes tried. Try again in a while.",
+    "the hourly limit isn't a minute's wait",
+  );
   assert.match(signInCodeMessage(new TypeError("Failed to fetch")), /can't reach/i);
 });
 
@@ -60,6 +65,10 @@ test("a settings form asking for a code says so, and leaves other refusals to th
   assert.match(stepUpCodeMessage(apiError(403, "that code isn't right")) ?? "", /isn't right/);
   assert.equal(stepUpCodeMessage(apiError(403, "that isn't your password")), null);
   assert.equal(stepUpCodeMessage(apiError(400, "password must be ≥8 chars")), null);
+  assert.equal(
+    stepUpCodeMessage(apiError(429, "Too many codes tried. Try again in a while.")),
+    "Too many codes tried. Try again in a while.",
+  );
 });
 
 test("another device's change is announced, this device's own change isn't", () => {
