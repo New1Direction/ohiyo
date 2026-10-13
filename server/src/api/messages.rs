@@ -529,6 +529,8 @@ pub(crate) async fn deliver_message(
         .await
         .is_some();
     if in_thread {
+        // Replying in a thread follows it.
+        crate::api::threads::follow_quietly(state, &author_id, &msg.channel_id).await;
         crate::api::threads::announce(state, &msg.channel_id).await;
     }
     broadcast_to_channel(
@@ -556,19 +558,16 @@ pub(crate) async fn deliver_message(
     );
     // Content-free push relay: queue a wake-up nudge for offline recipients only.
     // The relay stores no message text/channel names/E2E keys; online users already got
-    // the GatewayEvent above.
-    // Thread replies don't wake phones yet: a thread doesn't count as unread until there's
-    // a way to follow one.
-    if !in_thread {
-        crate::api::push::enqueue_message_pushes(
-            state,
-            &msg.channel_id,
-            &author_id,
-            &msg.content,
-            mentions_count,
-        )
-        .await;
-    }
+    // the GatewayEvent above. A thread wakes only the people who follow it and those it
+    // mentions (see enqueue_message_pushes).
+    crate::api::push::enqueue_message_pushes(
+        state,
+        &msg.channel_id,
+        &author_id,
+        &msg.content,
+        mentions_count,
+    )
+    .await;
     Ok(msg)
 }
 

@@ -25,6 +25,15 @@ type Props = {
   onBlockUser?: (user: PublicUser) => void | Promise<void>;
   onReportUser?: (user: PublicUser) => void | Promise<void>;
   onReportMessage?: (msg: Message) => void;
+  /** Whether you follow the thread, and how to follow or stop following it. */
+  following?: boolean;
+  onToggleFollow?: () => void;
+  /** For whoever started it or manages the channel. */
+  onRename?: () => void;
+  onDelete?: () => void;
+  archived?: boolean;
+  /** The newest message you've now seen in the open thread (to mark it read). */
+  onRead?: (lastMessageId: string) => void;
 };
 
 /** One reaction change applied to a message list (as the main chat does it). */
@@ -72,6 +81,12 @@ export function ThreadPanel({
   onBlockUser,
   onReportUser,
   onReportMessage,
+  following,
+  onToggleFollow,
+  onRename,
+  onDelete,
+  archived,
+  onRead,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,6 +149,14 @@ export function ThreadPanel({
     [subscribe, threadId, currentUserId]
   );
 
+  // An open thread is read: tell the app the newest message you can see.
+  const newest = [...messages].reverse().find((m) => !m.id.startsWith("temp-"))?.id;
+  useEffect(() => {
+    if (newest) onRead?.(newest);
+    // onRead is a fresh function on every App render; what matters is the newest message.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newest]);
+
   const handleSend = useCallback(
     async (content: string, attachmentIds?: string[], replyTo?: string | null) => {
       const tempId = `temp-${Date.now()}`;
@@ -192,7 +215,16 @@ export function ThreadPanel({
         onReportUser={onReportUser}
         mentionables={mentionables}
         onlineUserIds={onlineUserIds}
-        threadView={{ parentName, starterDeleted: thread.starter_deleted, onClose }}
+        threadView={{
+          parentName,
+          starterDeleted: thread.starter_deleted,
+          onClose,
+          following,
+          onToggleFollow,
+          onRename,
+          onDelete,
+          archived,
+        }}
       />
     </section>
   );

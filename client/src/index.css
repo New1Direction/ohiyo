@@ -4791,6 +4791,91 @@ ol.kc-md-list { list-style: decimal; }
 }
 .kc-thread-chip-meta { color: var(--text-muted); white-space: nowrap; }
 
+/* New replies in a thread you follow: the same pill as a channel's unread number. */
+.kc-thread-chip-unread {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg-base);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.kc-thread-list-item .kc-thread-chip-unread { margin-left: auto; flex-shrink: 0; }
+
+/* A thread's header: Follow / Following, and the ⋯ menu for whoever may rename or delete it. */
+.kc-thread-follow {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in oklch, var(--text-primary) 14%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--dur-tap) var(--ease-snap), color var(--dur-tap) var(--ease-snap);
+}
+.kc-thread-follow[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--accent) 30%, transparent);
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+.kc-thread-follow:focus-visible,
+.kc-thread-header-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.kc-thread-header-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.kc-thread-header-button[aria-expanded="true"] { background: color-mix(in oklch, var(--text-primary) 8%, transparent); }
+@media (hover: hover) and (pointer: fine) {
+  .kc-thread-follow:hover { background: color-mix(in oklch, var(--text-primary) 8%, transparent); }
+  .kc-thread-follow[aria-pressed="true"]:hover { background: color-mix(in oklch, var(--accent) 18%, transparent); }
+  .kc-thread-header-button:hover { background: color-mix(in oklch, var(--text-primary) 8%, transparent); }
+}
+.kc-thread-options { flex-shrink: 0; }
+@media (max-width: 480px) {
+  /* Narrow headers: Follow shows as its bell (aria-pressed and the label still say which). */
+  .kc-thread-follow { width: 44px; justify-content: center; padding: 0; }
+  .kc-thread-follow span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .kc-thread-archived { display: none; }
+}
+.kc-thread-options-menu { left: auto; right: 0; transform-origin: top right; }
+.kc-thread-archived {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .kc-thread-parent { color: var(--text-muted); }
 .kc-thread-back { color: var(--text-secondary); border-radius: var(--radius-sm, 8px); }
 .kc-thread-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -4816,7 +4901,19 @@ ol.kc-md-list { list-style: decimal; }
 .kc-thread-empty-title { color: var(--text-primary); font-weight: 700; font-size: 15px; }
 .kc-thread-empty-copy { font-size: 13px; }
 
-.kc-thread-list { display: flex; flex-direction: column; gap: 4px; max-height: min(60vh, 480px); overflow-y: auto; }
+.kc-thread-list-scroll { max-height: min(60vh, 480px); overflow-y: auto; }
+.kc-thread-list { display: flex; flex-direction: column; gap: 4px; }
+.kc-thread-list-older { margin-top: 14px; }
+.kc-thread-list-older .kc-thread-list-item { opacity: 0.72; }
+.kc-thread-list-section {
+  margin: 0 0 2px 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide, 0.04em);
+  text-transform: uppercase;
+}
+.kc-thread-list-section-note { margin: 0 0 6px 12px; color: var(--text-muted); font-size: 12px; }
 .kc-thread-list-item {
   display: flex;
   width: 100%;
@@ -4839,6 +4936,8 @@ ol.kc-md-list { list-style: decimal; }
   .kc-thread-chip { height: 44px; }
   .kc-thread-list-item { min-height: 44px; }
   .kc-thread-back { min-width: 44px; min-height: 44px; }
+  .kc-thread-follow { height: 44px; }
+  .kc-thread-header-button { width: 44px; height: 44px; }
 }
 
 /* ── Message search (SearchModal) ─────────────────────────────────────────── */

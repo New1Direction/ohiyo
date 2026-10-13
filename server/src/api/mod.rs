@@ -311,6 +311,14 @@ pub fn router() -> Router<AppState> {
             "/channels/{channel_id}/threads",
             get(threads::list_threads).post(threads::create_thread),
         )
+        .route(
+            "/threads/{id}",
+            patch(threads::rename_thread).delete(threads::delete_thread),
+        )
+        .route(
+            "/threads/{id}/follow",
+            put(threads::follow_thread).delete(threads::unfollow_thread),
+        )
         // Messages
         .route(
             "/channels/{channel_id}/messages",

@@ -87,12 +87,20 @@ export function unreadFor(
   settings: NotificationSettings,
   serverOf: (channelId: string) => string | null | undefined,
   nowSec: number,
+  /** A thread's channel: a thread's unread follows the settings of the channel it hangs off. */
+  parentOf: (channelId: string) => string | undefined = () => undefined,
 ): { shown: Record<string, number>; counted: Record<string, number> } {
   const shown: Record<string, number> = {};
   const counted: Record<string, number> = {};
   for (const [channelId, count] of Object.entries(unread)) {
     if (!count) continue;
-    const alert = messageAlert(settings, { channelId, serverId: serverOf(channelId) ?? null }, mentions.has(channelId), nowSec);
+    const settingsChannel = parentOf(channelId) ?? channelId;
+    const alert = messageAlert(
+      settings,
+      { channelId: settingsChannel, serverId: serverOf(settingsChannel) ?? null },
+      mentions.has(channelId),
+      nowSec,
+    );
     if (alert.show) shown[channelId] = count;
     if (alert.count) counted[channelId] = count;
   }
