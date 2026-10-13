@@ -5,8 +5,8 @@ import { launchBrowser, register, log, settle, shot, uniq, PASS, ORIGIN } from "
 // then the setup key (read off the page, the way an authenticator app would), a code worked
 // out here from that key, then the recovery codes to save. Signing in again then stops after
 // the password and asks for a code; the code signs in. The password alone gets no session.
-// Screenshots (the setup step, the recovery codes, the card when it's on, the sign-in step on
-// a computer in dark and light and on a phone) are kept on every run.
+// Screenshots (the setup step, the recovery codes, the card when it's on in dark and light, the
+// sign-in step on a computer by night and by day and on a phone) are kept on every run.
 const API = process.env.E2E_API || "http://localhost:3000/api/v1";
 const u = uniq();
 const A = `tfa_${u}`;
@@ -106,7 +106,6 @@ try {
   const page2 = await ctx2.newPage();
   page2.on("pageerror", (e) => console.error("  ERR2:", e.message));
   await signInUpToTheCode(page2);
-  await shot(page2, "59-two-factor-signin-dark");
   // The code that turned it on can't be used again; the next one can (the server allows a
   // phone's clock to run one step ahead).
   await page2.fill('input[aria-label="Code from your authenticator app"]', totp(secret, Math.max(stepNow(), enableStep) + 1));
@@ -114,19 +113,26 @@ try {
   await page2.waitForSelector('button[aria-label="Direct Messages"]', { timeout: 12000 });
   log("signing in again asked for a code after the password, and the code signed in ✓");
 
-  // ── The sign-in step in a light theme and on a phone, to look at ──
-  await page.locator('.kc-settings-nav button', { hasText: "Appearance" }).click();
+  // ── The card in the light theme, to look at ──
+  await page.locator(".kc-settings-nav button", { hasText: "Appearance" }).click();
   await page.click('button[aria-label="Use theme: Ohiyo Light"]');
-  const themed = await page.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
-  const ctx3 = await browser.newContext({ viewport: { width: 1280, height: 860 } });
-  const page3 = await ctx3.newPage();
-  await page3.goto(ORIGIN, { waitUntil: "domcontentloaded" });
-  await page3.evaluate((entries) => {
-    for (const [k, v] of Object.entries(entries)) if (k.startsWith("kikkacord:") || k.startsWith("ohiyo:theme")) localStorage.setItem(k, v);
-  }, themed);
-  await signInUpToTheCode(page3);
-  await settle(page3, 200);
-  await shot(page3, "59-two-factor-signin-light");
+  await page.locator(".kc-settings-nav button", { hasText: "Account" }).click();
+  await page.locator(".kc-two-factor").scrollIntoViewIfNeeded();
+  await shot(page, "59-two-factor-on-light");
+
+  // ── The sign-in step by night and by day, and on a phone, to look at ──
+  // The door follows the hour, not the theme: a dark painting by night, a light one by day.
+  for (const [hour, tone] of [[23, "dark"], [14, "light"]]) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, timezoneId: "UTC" });
+    const door = await ctx.newPage();
+    await door.clock.setFixedTime(new Date(`2026-10-12T${hour}:00:00Z`));
+    await signInUpToTheCode(door);
+    const seen = await door.getAttribute("main.ohiyo-door", "data-tone");
+    if (seen !== tone) throw new Error(`expected the ${tone} door at ${hour}:00, saw data-tone=${seen}`);
+    await settle(door, 200);
+    await shot(door, `59-two-factor-signin-${tone}`);
+    await ctx.close();
+  }
 
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page4 = await phone.newPage();
@@ -135,7 +141,7 @@ try {
   await shot(page4, "59-two-factor-signin-phone");
   const mode = await page4.getAttribute('input[aria-label="Code from your authenticator app"]', "inputmode");
   if (mode !== "numeric") throw new Error(`the code field doesn't bring up a number pad: inputmode=${mode}`);
-  log("the sign-in step in light and on a phone (number pad) ✓");
+  log("the card in the light theme; the sign-in step by night, by day and on a phone (number pad) ✓");
 } catch (e) {
   console.error("✗", e.message);
   failed = true;
