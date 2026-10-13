@@ -126,8 +126,10 @@ test("a webhook's picture loads from the home's file server, like a person's ava
     const avatar = f.container.querySelector(".kc-webhooks__avatar") as unknown as HTMLElement;
     assert.ok(avatar, "the row has an avatar");
     assert.match(avatar.style.backgroundImage, /https:\/\/files\.test\/files\/f1\?s=sig/);
-    assert.notEqual(avatar.style.backgroundColor, "", "a solid colour sits under the picture");
+    // Styled by avatarStyle, like a person's. (Its solid oklch() colour under the picture is
+    // checked in avatarStyle.test.ts: this test DOM drops oklch() colours it can't parse.)
     assert.equal(avatar.style.backgroundSize, "cover");
+    assert.match(avatar.style.backgroundPosition, /center/);
   } finally {
     f.done();
   }
