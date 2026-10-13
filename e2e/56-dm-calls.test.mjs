@@ -53,7 +53,7 @@ try {
   await card.waitFor({ state: "visible", timeout: 12000 });
   await pageB.waitForSelector("text=Ann is calling", { timeout: 8000 });
   log("A sees Ringing…, and B's screen rings with who is calling ✓");
-  await shot(pageB, "55-dm-calls-incoming-dark");
+  await shot(pageB, "56-dm-calls-incoming-dark");
 
   // ── B accepts; both are in the call ──
   await pageB.click('button[aria-label="Accept"]');
@@ -63,7 +63,7 @@ try {
   await pageB.locator(".kc-call-live-pill").waitFor({ state: "visible", timeout: 12000 });
   await pageA.waitForSelector("text=Bea", { timeout: 10000 });
   log("B accepted: the ring stopped and both are in the call ✓");
-  await shot(pageA, "55-dm-calls-in-call-dark");
+  await shot(pageA, "56-dm-calls-in-call-dark");
 
   // ── A hangs up: a one-to-one call ends for both, and the chat logs it ──
   await pageA.click('button[aria-label="Leave call"]');
@@ -73,14 +73,14 @@ try {
   await pageB.waitForSelector("text=/Call ended · /", { timeout: 12000 });
   log("A hung up: the call ended for both, and both chats say Call ended ✓");
   await settle(pageB, 300);
-  await shot(pageB, "55-dm-calls-log-dark");
+  await shot(pageB, "56-dm-calls-log-dark");
 
   // ── A calls again and hangs up before B answers: a missed call ──
   await pageA.click('button[aria-label="Start a voice call"]');
   await card.waitFor({ state: "visible", timeout: 12000 });
   await pageB.setViewportSize({ width: 390, height: 844 });
   await settle(pageB, 400);
-  await shot(pageB, "55-dm-calls-incoming-phone");
+  await shot(pageB, "56-dm-calls-incoming-phone");
   await pageB.setViewportSize({ width: 1280, height: 860 });
   await pageA.click('button[aria-label="Leave call"]');
   await card.waitFor({ state: "detached", timeout: 12000 });
@@ -93,7 +93,7 @@ try {
   await pageB.click('button[aria-label="Use theme: Ohiyo Light"]');
   await pageB.keyboard.press("Escape");
   await settle(pageB, 300);
-  await shot(pageB, "55-dm-calls-log-light");
+  await shot(pageB, "56-dm-calls-log-light");
 
   console.log("\n✅ DM CALLS PASSED");
 } catch (err) {
