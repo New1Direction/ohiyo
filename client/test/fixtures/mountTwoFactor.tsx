@@ -96,17 +96,19 @@ export function mountTwoFactorCard(element: HTMLElement, start: TwoFactorStatus)
   return { calls, changes, codes, changeElsewhere, unmount: () => act(() => root.unmount()) };
 }
 
-/** The Change password card for an account with two-factor sign-in on. */
-export function mountChangePasswordWithCode(element: HTMLElement) {
+/** The Change password card for an account with two-factor sign-in on. `known: false` is
+ *  the card before Settings learned that: the server asks for the code instead. */
+export function mountChangePasswordWithCode(element: HTMLElement, { known = true }: { known?: boolean } = {}) {
   const sent: unknown[][] = [];
   (api as { changePassword: unknown }).changePassword = async (...args: unknown[]) => {
     sent.push(args);
+    if (!args[3]) throw refused(403, "enter the code from your authenticator app");
     return { token: "fresh-token", user: SESSION_USER };
   };
   const root = createRoot(element);
   act(() =>
     root.render(
-      <ChangePassword token="t" username="alice" needsCode onToast={() => {}} onChanged={() => {}} />,
+      <ChangePassword token="t" username="alice" needsCode={known} onToast={() => {}} onChanged={() => {}} />,
     ),
   );
   return { sent, unmount: () => act(() => root.unmount()) };

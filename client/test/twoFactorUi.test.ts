@@ -20,7 +20,7 @@ type Mod = {
     el: unknown,
     start: Status,
   ) => { calls: string[]; changes: boolean[]; codes: string[]; changeElsewhere: (enabled: boolean) => void; unmount: () => void };
-  mountChangePasswordWithCode: (el: unknown) => { sent: unknown[][]; unmount: () => void };
+  mountChangePasswordWithCode: (el: unknown, opts?: { known?: boolean }) => { sent: unknown[][]; unmount: () => void };
 };
 
 let bundle: Bundle<Mod>;
@@ -204,7 +204,7 @@ test("turning it on: password, then the QR code and setup key, then a code, then
 
     card.ui.click("I've saved them");
     await settle();
-    assert.match(card.ui.text(), /\bOn\b/);
+    assert.ok(card.ui.button("Turn off"), "it's on, so it can be turned off");
     assert.match(card.ui.text(), /10 recovery codes left/);
     assert.ok(!card.ui.text().includes(card.codes[0]), "the codes aren't shown again");
   } finally {
@@ -218,11 +218,11 @@ test("a change on another device shows up, and this device's own change doesn't 
   const announce = () => window.dispatchEvent(new window.Event("ohiyo:two-factor"));
   try {
     await settle();
-    assert.match(card.ui.text(), /\bOff\b/);
+    assert.ok(card.ui.button("Turn on two-factor sign-in"), "off to start with");
     card.changeElsewhere(true);
     announce();
     await settle();
-    assert.match(card.ui.text(), /\bOn\b/, "the card reads the status again");
+    assert.ok(card.ui.button("Turn off"), "the card reads the status again: it's on");
     assert.deepEqual(card.changes.at(-1), true, "and the tab hears it");
 
     card.changeElsewhere(false);
@@ -286,6 +286,27 @@ test("with two-factor on, changing the password asks for a code too", async () =
     await settle();
     assert.equal(form.sent.length, 1);
     assert.deepEqual(form.sent[0].slice(1), ["old-password-1", "new-password-2", "123456"]);
+  } finally {
+    form.cleanup();
+  }
+});
+
+test("if the server asks for a code the form didn't know it needed, the code field appears", async () => {
+  const form = mount((el) => bundle.mod.mountChangePasswordWithCode(el, { known: false }));
+  try {
+    form.ui.type("Current password", "old-password-1");
+    form.ui.type("New password", "new-password-2");
+    form.ui.type("New password again", "new-password-2");
+    assert.equal(form.ui.input("Code from your authenticator app"), null, "no code field yet");
+    form.ui.submit("Change password");
+    await settle();
+    assert.match(form.ui.text(), /Enter the code from your authenticator app/);
+    assert.ok(form.ui.input("Code from your authenticator app"), "now a code field");
+    form.ui.type("Code from your authenticator app", "123 456");
+    form.ui.submit("Change password");
+    await settle();
+    assert.equal(form.sent.length, 2);
+    assert.deepEqual(form.sent[1].slice(1), ["old-password-1", "new-password-2", "123456"]);
   } finally {
     form.cleanup();
   }

@@ -76,7 +76,7 @@ try {
   const secret = base32Decode(key);
   if (secret.length !== 20) throw new Error(`the setup key isn't a 160-bit secret: ${key}`);
   await page.locator('[aria-label="QR code for your authenticator app"]').scrollIntoViewIfNeeded();
-  await shot(page, "58-two-factor-setup-dark");
+  await shot(page, "59-two-factor-setup-dark");
 
   await awayFromStepEdge();
   const enableStep = stepNow();
@@ -85,10 +85,10 @@ try {
   await page.waitForSelector('button:has-text("Download")', { timeout: 8000 });
   const shown = await page.locator(".kc-recovery-codes li").allInnerTexts();
   if (shown.length !== 10) throw new Error(`expected 10 recovery codes, saw ${shown.length}`);
-  await shot(page, "58-two-factor-codes-dark");
+  await shot(page, "59-two-factor-codes-dark");
   await page.click('button:has-text("I\'ve saved them")');
   await page.waitForSelector("text=10 recovery codes left", { timeout: 8000 });
-  await shot(page, "58-two-factor-on-dark");
+  await shot(page, "59-two-factor-on-dark");
   log("turned on with a code worked out from the setup key; 10 recovery codes shown once ✓");
 
   // ── The password alone gets no session ──
@@ -106,7 +106,7 @@ try {
   const page2 = await ctx2.newPage();
   page2.on("pageerror", (e) => console.error("  ERR2:", e.message));
   await signInUpToTheCode(page2);
-  await shot(page2, "58-two-factor-signin-dark");
+  await shot(page2, "59-two-factor-signin-dark");
   // The code that turned it on can't be used again; the next one can (the server allows a
   // phone's clock to run one step ahead).
   await page2.fill('input[aria-label="Code from your authenticator app"]', totp(secret, Math.max(stepNow(), enableStep) + 1));
@@ -126,13 +126,13 @@ try {
   }, themed);
   await signInUpToTheCode(page3);
   await settle(page3, 200);
-  await shot(page3, "58-two-factor-signin-light");
+  await shot(page3, "59-two-factor-signin-light");
 
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page4 = await phone.newPage();
   await signInUpToTheCode(page4);
   await settle(page4, 200);
-  await shot(page4, "58-two-factor-signin-phone");
+  await shot(page4, "59-two-factor-signin-phone");
   const mode = await page4.getAttribute('input[aria-label="Code from your authenticator app"]', "inputmode");
   if (mode !== "numeric") throw new Error(`the code field doesn't bring up a number pad: inputmode=${mode}`);
   log("the sign-in step in light and on a phone (number pad) ✓");

@@ -47,7 +47,7 @@ box; server channels are stored like any chat server's.
   `37-change-password`, `38-contact-new-device`, `39-delete-account`.)*
 - **Two-factor sign-in** — an authenticator app's code after your password, with single-use
   recovery codes for a lost phone. It also guards changing the password and deleting the
-  account. *(e2e suite `58-two-factor`.)*
+  account. *(e2e suite `59-two-factor`.)*
 - **Instant Servers** — launch your own community server in **one tap**. We host it
   (Minecraft-Realms-style): encrypted DMs and group chats are ciphertext on the box,
   while server channels are stored in the clear like any chat server's. Export anytime,
