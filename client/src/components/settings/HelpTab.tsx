@@ -126,6 +126,10 @@ export function HelpTab({ version, desktop, home, userAgent, loadStatus }: HelpT
             Signed in on another device? Choose <b>Link a device</b> on the sign-in screen here, and approve it from that device.
           </li>
           <li>
+            Two-factor sign-in on and your authenticator app lost? Type one of the recovery codes you saved when you turned it on,
+            where the sign-in screen asks for the code.
+          </li>
+          <li>
             Your encrypted chats come back with your recovery code, if you saved one (Settings → Privacy &amp; security).
           </li>
           <li>Signed out everywhere and the password forgotten? That account can&apos;t be recovered; you can make a new one.</li>

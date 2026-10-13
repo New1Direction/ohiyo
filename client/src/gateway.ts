@@ -52,6 +52,14 @@ export type GatewayEvent =
   | { t: "ThreadDelete"; d: { id: string; parent_id: string; thread_message_id: string | null } }
   /** You followed or unfollowed a thread (on this device or another of yours). */
   | { t: "ThreadFollowUpdate"; d: { thread: ThreadSummary; following: boolean } }
+  /** A call is ringing for you in a DM or group chat (on every device you're signed in on). */
+  | { t: "CallRing"; d: { channel_id: string; message_id: string; caller: PublicUser; video: boolean; ring_until: number } }
+  /** Stop ringing for this chat's call: answered (here or elsewhere), declined, cancelled or missed. */
+  | { t: "CallRingStop"; d: { channel_id: string; message_id: string; reason: string } }
+  /** A DM call is over (ended, missed or declined): anyone still in it hangs up. */
+  | { t: "CallEnded"; d: { channel_id: string; message_id: string; outcome: string } }
+  /** You couldn't join this voice room (`reason`: "full"). */
+  | { t: "VoiceRefused"; d: { channel_id: string; reason: string } }
   | { t: "MemberJoin"; d: { server_id: string; user: PublicUser } }
   | { t: "MemberLeave"; d: { server_id: string; user_id: string } }
   | { t: "UserDeleted"; d: { user_id: string } }
@@ -68,6 +76,8 @@ export type GatewayEvent =
   // A device registered its keys on this account for the first time (see deviceWatch).
   | { t: "DeviceAdded"; d: { device_id: number } }
   | { t: "NotificationSettingsUpdate"; d: NotificationSetting }
+  // Two-factor sign-in was turned on or off for this account (on this device or another).
+  | { t: "TwoFactorUpdate"; d: { enabled: boolean } }
   // The server's answer to each Heartbeat. Needs no handler: any inbound frame counts as
   // alive (lastFrameAt).
   | { t: "HeartbeatAck" };
@@ -112,7 +122,8 @@ const EVENT_TAGS: Record<GatewayEvent["t"], true> = {
   EventsChanged: true, ReactionUpdate: true, ReadReceipt: true, PresenceUpdate: true, TypingStart: true,
   VoiceState: true, VoiceRoster: true, VoiceSignal: true, WatchUpdate: true, HeartbeatAck: true,
   DeviceAdded: true, UserDeleted: true, NotificationSettingsUpdate: true, ThreadUpdate: true,
-  ThreadDelete: true, ThreadFollowUpdate: true, SlowmodeUpdate: true,
+  ThreadDelete: true, ThreadFollowUpdate: true, SlowmodeUpdate: true, CallRing: true, CallRingStop: true,
+  CallEnded: true, VoiceRefused: true, TwoFactorUpdate: true,
 };
 const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set(Object.keys(EVENT_TAGS));
 

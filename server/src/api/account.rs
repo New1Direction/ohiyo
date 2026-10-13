@@ -42,6 +42,9 @@ pub struct DeleteAccountBody {
     pub password: String,
     /// Typed by hand, so a slip of the mouse can't delete an account.
     pub username: String,
+    /// With two-factor sign-in on: a code from the app, or a recovery code.
+    #[serde(default)]
+    pub two_factor_code: Option<String>,
 }
 
 /// DELETE /users/@me — delete the caller's account. Needs the password and the username.
@@ -77,6 +80,7 @@ pub async fn delete_account(
         // 403, not 401: the session is fine, the password isn't.
         return Err((StatusCode::FORBIDDEN, "password is wrong".into()));
     }
+    crate::api::two_factor::require_second_factor(&state, &auth.0, body.two_factor_code).await?;
     let me = auth.0;
 
     // Instant Servers run on real machines: destroy them first. If the cloud refuses,

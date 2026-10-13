@@ -1,7 +1,9 @@
+import type { CallLog } from "./lib/dmCall";
 import { DEFAULT_HOME_URL, normalizeHomeUrl } from "./lib/homes";
 import type { NotificationLevel, NotificationSetting, NotificationTarget } from "./lib/notificationSettings";
 import type { WebhookCreated, WebhookSummary } from "./components/WebhooksDialog";
 import type { ThreadSummary } from "./lib/threads";
+import type { RecoveryCodes, TwoFactorChallenge, TwoFactorSetup, TwoFactorStatus } from "./lib/twoFactor";
 
 // ── Runtime endpoint config ──────────────────────────────────────────────────
 // The packaged app has a default home baked in, but the active home can switch at
@@ -179,6 +181,8 @@ export type Message = {
   embeds?: Embed[] | null;
   /** Unix time this message self-destructs (disappearing messages); null = never. */
   expires_at?: number | null;
+  /** The call log on the message a DM or group-chat call left in the chat. */
+  call?: CallLog | null;
   /** Client-only optimistic-send lifecycle (never returned by the server). */
   _state?: "pending" | "failed";
   /** Client-only: this message was decrypted from an E2E ciphertext for display. */
@@ -621,11 +625,35 @@ export const api = {
       body: JSON.stringify({ username, password, display_name: displayName }),
     }),
 
+  // With two-factor sign-in on, the answer is a challenge (no session yet): answer it with
+  // loginTwoFactor.
   login: (username: string, password: string) =>
-    request<AuthResponse>("/auth/login", {
+    request<AuthResponse | TwoFactorChallenge>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
+
+  // The code step of signing in: a code from the authenticator app, or a recovery code.
+  loginTwoFactor: (challenge: string, code: string) =>
+    request<AuthResponse>("/auth/login/two-factor", {
+      method: "POST",
+      body: JSON.stringify({ challenge, code }),
+    }),
+
+  // ── Two-factor sign-in (Settings) ──
+  twoFactorStatus: (token: string) => request<TwoFactorStatus>("/users/@me/two-factor", {}, token),
+  twoFactorSetup: (token: string, password: string) =>
+    request<TwoFactorSetup>("/users/@me/two-factor/setup", { method: "POST", body: JSON.stringify({ password }) }, token),
+  twoFactorEnable: (token: string, code: string) =>
+    request<RecoveryCodes>("/users/@me/two-factor/enable", { method: "POST", body: JSON.stringify({ code }) }, token),
+  twoFactorDisable: (token: string, password: string, code: string) =>
+    request<void>("/users/@me/two-factor/disable", { method: "POST", body: JSON.stringify({ password, code }) }, token),
+  twoFactorRecoveryCodes: (token: string, password: string, code: string) =>
+    request<RecoveryCodes>(
+      "/users/@me/two-factor/recovery-codes",
+      { method: "POST", body: JSON.stringify({ password, code }) },
+      token
+    ),
 
   // Device linking (QR / one-time code). The primary mints a code; a new device redeems
   // it for a session token without the password.
@@ -957,6 +985,18 @@ export const api = {
   deleteThread: (token: string, threadId: string) =>
     request<void>(`/threads/${threadId}`, { method: "DELETE" }, token),
 
+  /** Start a call in a DM or group chat: rings the others. Answers with the call log's
+   *  message and who is being rung (an existing call's, if one is already going). */
+  startCall: (token: string, channelId: string, video: boolean) =>
+    request<{ message_id: string; ringing: string[] }>(`/channels/${channelId}/call`, {
+      method: "POST",
+      body: JSON.stringify({ video }),
+    }, token),
+
+  /** Decline a call ringing for you in this chat (stops the ring on all your devices). */
+  declineCall: (token: string, channelId: string) =>
+    request<void>(`/channels/${channelId}/call/decline`, { method: "POST" }, token),
+
   /** Follow a thread (it counts as unread and notifies like its channel) or stop following. */
   setThreadFollow: (token: string, threadId: string, following: boolean) =>
     request<void>(`/threads/${threadId}/follow`, { method: following ? "PUT" : "DELETE" }, token),
@@ -1250,13 +1290,26 @@ export const api = {
   // stops working. The caller signs this device out after.
   logoutEverywhere: (token: string) => request<void>("/auth/logout-everywhere", { method: "POST" }, token),
   // Deletes the account for good, at once. Needs the password and the typed username.
-  deleteAccount: (token: string, password: string, username: string) =>
-    request<void>("/users/@me", { method: "DELETE", body: JSON.stringify({ password, username }) }, token),
-  // Needs the current password. Ends every session and returns a token for this one.
-  changePassword: (token: string, currentPassword: string, newPassword: string) =>
+  // With two-factor sign-in on, it needs a code too.
+  deleteAccount: (token: string, password: string, username: string, twoFactorCode?: string) =>
+    request<void>(
+      "/users/@me",
+      { method: "DELETE", body: JSON.stringify({ password, username, two_factor_code: twoFactorCode || undefined }) },
+      token
+    ),
+  // Needs the current password (and, with two-factor sign-in on, a code). Ends every session
+  // and returns a token for this one.
+  changePassword: (token: string, currentPassword: string, newPassword: string, twoFactorCode?: string) =>
     request<AuthResponse>(
       "/auth/password",
-      { method: "POST", body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+          two_factor_code: twoFactorCode || undefined,
+        }),
+      },
       token
     ),
 

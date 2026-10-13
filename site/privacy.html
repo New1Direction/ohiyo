@@ -36,7 +36,7 @@
 
   <h2>What we collect</h2>
   <ul>
-    <li><b>Account data:</b> username, display name, password hash, avatar/profile details, linked-device records, sessions, roles, server membership, invites, preferences, and similar app state.</li>
+    <li><b>Account data:</b> username, display name, password hash, two-factor sign-in settings if you turn it on (the authenticator secret, stored encrypted, and hashes of your recovery codes), avatar/profile details, linked-device records, sessions, roles, server membership, invites, preferences, and similar app state.</li>
     <li><b>Content:</b> messages (as ciphertext for end-to-end encrypted DMs and group chats; as readable text for server channels and for conversations where encryption is off), encrypted group/key-backup blobs, file metadata, uploaded files/attachments, emoji, server icons, and other content needed to deliver the service.</li>
     <li><b>Operational data:</b> IP-derived rate-limit keys, request metadata, logs, crash/error details, abuse-prevention signals, and infrastructure metrics needed to run and secure the service.</li>
     <li><b>Push notification data:</b> if you enable push, the relay stores device endpoints/tokens, recipient ids, platform type, and delivery timestamps. Push payloads are content-free: they should say only that activity exists, not message text, filenames, channel names, invite codes, or E2E keys.</li>
@@ -62,6 +62,7 @@
     <li>You can use the web app, desktop app, or self-host your own Ohiyo server.</li>
     <li>You can delete your account in the app, under Settings → Account. It happens at once. Every message you sent is deleted from the server, for everyone. A space you own passes to its longest-standing member, or is deleted if nobody else is in it. Your encryption keys and recovery backup are deleted. Emoji you added to someone else's space, and pictures other people still use, stay. People you wrote to may still have copies on their own devices, and your username becomes free for someone else to take.</li>
     <li>You can change your password under Settings → Account, which signs you out on every other device.</li>
+    <li>You can turn on two-factor sign-in under Settings → Account, so signing in also needs a code from an authenticator app or one of your recovery codes.</li>
     <li>You can use built-in security features such as linked-device management, logout everywhere, local key vault controls, recovery-key backup deletion, disappearing messages, and the dead-man switch where available.</li>
     <li>For hosted-service data questions or deletion requests that are not exposed in the app, open a private security/contact thread through the GitHub repository.</li>
   </ul>

@@ -2585,6 +2585,7 @@ dependencies = [
 name = "server"
 version = "0.2.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "argon2",
  "async-trait",
@@ -2595,6 +2596,7 @@ dependencies = [
  "dotenvy",
  "flate2",
  "futures-util",
+ "hkdf",
  "hmac",
  "imagesize",
  "jsonwebtoken",

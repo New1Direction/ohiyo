@@ -2,6 +2,7 @@ pub mod abuse;
 pub mod account;
 pub mod auth;
 pub mod bans;
+pub mod calls;
 pub mod channels;
 pub mod discord_import;
 pub mod dm_links;
@@ -35,6 +36,7 @@ pub mod server_pack;
 pub mod servers;
 pub mod signal;
 pub mod threads;
+pub mod two_factor;
 pub mod users;
 pub mod watch;
 pub mod webhooks;
@@ -52,6 +54,8 @@ pub fn router() -> Router<AppState> {
         // Auth
         .route("/auth/register", post(auth::register))
         .route("/auth/login", post(auth::login))
+        // The code step of signing in, when two-factor sign-in is on (api::two_factor).
+        .route("/auth/login/two-factor", post(two_factor::login_code))
         // Revoke every token minted before now (bumps users.token_version).
         .route("/auth/logout-everywhere", post(auth::logout_everywhere))
         // Change the password; ends every other session and returns a token for this one.
@@ -115,6 +119,15 @@ pub fn router() -> Router<AppState> {
         .route(
             "/users/@me/notification-settings/{target_type}/{target_id}",
             put(notifications::set),
+        )
+        // Two-factor sign-in with an authenticator app (api::two_factor).
+        .route("/users/@me/two-factor", get(two_factor::status))
+        .route("/users/@me/two-factor/setup", post(two_factor::setup))
+        .route("/users/@me/two-factor/enable", post(two_factor::enable))
+        .route("/users/@me/two-factor/disable", post(two_factor::disable))
+        .route(
+            "/users/@me/two-factor/recovery-codes",
+            post(two_factor::new_recovery_codes),
         )
         // Encrypted E2E key backup (recovery-code model; server stores ciphertext only)
         .route("/users/@me/key-backup", get(profile::get_key_backup))
@@ -330,6 +343,12 @@ pub fn router() -> Router<AppState> {
         .route(
             "/webhooks/{id}/{token}",
             post(webhooks::post_message).layer(DefaultBodyLimit::max(webhooks::MAX_BODY_BYTES)),
+        )
+        // Calls in DMs and group chats: ring the others, or decline a ring (see api::calls).
+        .route("/channels/{channel_id}/call", post(calls::start_call))
+        .route(
+            "/channels/{channel_id}/call/decline",
+            post(calls::decline_call),
         )
         // Threads: started from a message in a space's text channel, listed per channel.
         .route(

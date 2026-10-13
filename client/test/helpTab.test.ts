@@ -123,6 +123,7 @@ test("no contact email shows while none is set, and getting back in is explained
     assert.ok(text.includes("Link a device"), "the way back in that exists today");
     assert.ok(/recovery code/i.test(text), "the recovery code for encryption keys");
     assert.ok(/can't reset/i.test(text), "no email reset, said plainly");
+    assert.ok(/two-factor/i.test(text) && /recovery codes you saved/i.test(text), "two-factor recovery codes, now that 2FA exists");
   } finally {
     f.done();
   }
