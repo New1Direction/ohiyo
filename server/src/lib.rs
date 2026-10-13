@@ -214,6 +214,8 @@ pub fn validate_config() -> anyhow::Result<()> {
             .map(char::from)
             .collect();
         std::env::set_var("JWT_SECRET", generated);
+        // A key derived from this one would be gone after a restart (auth::two_factor).
+        std::env::set_var(auth::two_factor::JWT_GENERATED_ENV, "1");
         tracing::warn!(
             "JWT_SECRET not set — generated an ephemeral dev secret. Set JWT_SECRET \
              for stable sessions across restarts."
