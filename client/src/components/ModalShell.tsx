@@ -6,6 +6,8 @@ type Props = {
   /** id of the heading element inside, for aria-labelledby */
   labelledBy: string;
   maxWidthClass?: string;
+  /** "side": a panel from the right on phones (the member list); centred everywhere else. */
+  placement?: "center" | "side";
   children: React.ReactNode;
 };
 
@@ -13,7 +15,8 @@ const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), textarea, [href], [tabindex]:not([tabindex="-1"])';
 
 /** Accessible modal chrome: portal + blurred backdrop + Escape + focus trap. */
-export function ModalShell({ onClose, labelledBy, maxWidthClass = "max-w-md", children }: Props) {
+export function ModalShell({ onClose, labelledBy, maxWidthClass = "max-w-md", placement = "center", children }: Props) {
+  const side = placement === "side";
   const ref = useRef<HTMLDivElement>(null);
   // Keep onClose current without re-running the open/teardown effect.
   const onCloseRef = useRef(onClose);
@@ -51,14 +54,14 @@ export function ModalShell({ onClose, labelledBy, maxWidthClass = "max-w-md", ch
 
   return createPortal(
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- dismiss scrim; Escape closes (see effect above)
-    <div className="kc-backdrop" onMouseDown={onClose}>
+    <div className={side ? "kc-backdrop kc-backdrop--side" : "kc-backdrop"} onMouseDown={onClose}>
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- focus-trap dialog container; keyboard handled via onKeyDown */}
       <div
         ref={ref}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
-        className={`kc-modal ${maxWidthClass}`}
+        className={`kc-modal ${maxWidthClass}${side ? " kc-modal--side" : ""}`}
         style={{ padding: "var(--space-8)" }}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={trapTab}

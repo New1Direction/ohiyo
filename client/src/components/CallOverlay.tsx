@@ -503,6 +503,22 @@ function AudioOutputSheet({
   );
 }
 
+// On a phone a minimised call is a slim bar under the chat header, not a floating card.
+const PHONE_CALL_QUERY = "(max-width: 760px)";
+function usePhoneCallLayout(): boolean {
+  const [phone, setPhone] = useState(
+    () => typeof window !== "undefined" && window.matchMedia?.(PHONE_CALL_QUERY).matches === true,
+  );
+  useEffect(() => {
+    const mq = typeof window !== "undefined" ? window.matchMedia?.(PHONE_CALL_QUERY) : undefined;
+    if (!mq?.addEventListener) return;
+    const on = () => setPhone(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return phone;
+}
+
 // ── Control button ──────────────────────────────────────────────────────────────
 function ControlBtn({
   d, label, onClick, active, danger, compact = false,
@@ -668,6 +684,8 @@ export function CallOverlay({ webrtc, currentUser, channelName, callKind = "voic
   const { localStream, remoteStreams, participants, self, callState, quality } = webrtc;
   const heading = callHeading(callKind, channelName);
   const [minimized, setMinimized] = useState(false);
+  const phoneLayout = usePhoneCallLayout();
+  const callBar = minimized && phoneLayout;
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [showAudioSheet, setShowAudioSheet] = useState(false);
   const [volumeByUser, setVolumeByUser] = useState<Record<string, number>>(() => loadCallVolumes());
@@ -826,21 +844,23 @@ export function CallOverlay({ webrtc, currentUser, channelName, callKind = "voic
 
   const overlay = (
     <div
-      className={`kc-call-overlay${hasScreenShare ? " kc-call-overlay--screen" : ""}`}
+      className={`kc-call-overlay${hasScreenShare ? " kc-call-overlay--screen" : ""}${callBar ? " kc-call-overlay--bar" : ""}`}
       style={{
         position: "fixed", zIndex: 9000,
-        ...(minimized
-          ? { right: 18, bottom: 18, width: "min(390px, calc(100vw - 32px))" }
-          : { inset: 0 }),
+        ...(callBar
+          ? { top: "calc(env(safe-area-inset-top, 0px) + 3.25rem + 6px)", left: 8, right: 8 }
+          : minimized
+            ? { right: 18, bottom: 18, width: "min(390px, calc(100vw - 32px))" }
+            : { inset: 0 }),
         background: minimized
           ? "linear-gradient(145deg, color-mix(in oklch, var(--bg-channel) 94%, var(--accent)), var(--bg-base))"
           : "radial-gradient(920px 540px at 50% 38%, color-mix(in oklch, var(--accent) 13%, transparent), transparent 68%), linear-gradient(180deg, color-mix(in oklch, var(--bg-base) 94%, black), var(--bg-base))",
         backdropFilter: minimized ? "blur(16px)" : "blur(12px)",
-        borderRadius: minimized ? 28 : 0,
+        borderRadius: callBar ? 18 : minimized ? 28 : 0,
         border: minimized ? "1px solid color-mix(in oklch, var(--text-primary) 10%, transparent)" : "none",
         boxShadow: minimized ? "0 28px 80px -48px #000" : "none",
         display: "flex", flexDirection: "column",
-        padding: minimized ? 14 : "clamp(14px, 2.6vw, 28px)",
+        padding: callBar ? "6px 8px" : minimized ? 14 : "clamp(14px, 2.6vw, 28px)",
         transition: "all var(--dur-base) var(--ease-out)",
       }}
     >
@@ -853,7 +873,20 @@ export function CallOverlay({ webrtc, currentUser, channelName, callKind = "voic
           deafened={self.deafened}
         />
       ))}
-      {minimized ? (
+      {callBar ? (
+        <div className="kc-call-bar">
+          <button type="button" className="kc-call-bar-open kc-interactive" aria-label="Open call" onClick={() => setMinimized(false)}>
+            <LivePill />
+            <span className="kc-call-bar-name">{channelName}</span>
+            <span className="kc-call-bar-count">{total}</span>
+          </button>
+          <ControlBtn compact d={self.muted ? Icon.micOff : Icon.mic} label={self.listenOnly ? "Try microphone" : self.muted ? "Unmute" : "Mute"}
+            onClick={() => { void webrtc.toggleAudio(); }} active={false} danger={self.muted && !self.listenOnly} />
+          <ControlBtn compact d={self.deafened ? Icon.headphonesOff : Icon.headphones} label={self.deafened ? "Undeafen" : "Deafen"}
+            onClick={() => { void webrtc.toggleDeafen(); }} active={false} danger={self.deafened} />
+          <ControlBtn compact d={Icon.hangup} label="Leave call" onClick={webrtc.hangUp} danger />
+        </div>
+      ) : minimized ? (
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <AvatarOrb avatarUrl={selfAvatar} size={46} />

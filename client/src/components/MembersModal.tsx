@@ -109,7 +109,7 @@ export function MembersModal({
   };
 
   return (
-    <ModalShell onClose={onClose} labelledBy="kc-members-title" maxWidthClass="max-w-2xl">
+    <ModalShell onClose={onClose} labelledBy="kc-members-title" maxWidthClass="max-w-2xl" placement="side">
       <div className="kc-polish-hero flex items-center justify-between gap-2">
         <div>
           <div className="kc-polish-kicker">Space roster</div>
@@ -133,7 +133,7 @@ export function MembersModal({
         )}
       </div>
 
-      <div className="mt-4 flex flex-col gap-1" style={{ maxHeight: 380, overflowY: "auto" }}>
+      <div className="kc-members-list mt-4 flex flex-col gap-1" style={{ maxHeight: 380, overflowY: "auto" }}>
         {sorted.map((m) => (
           <div
             key={m.id}

@@ -159,6 +159,8 @@ import {
   type OhiyoHome,
   takeRetiredHomeDropped,
 } from "./lib/homes";
+import { MentionsInbox, PhoneTabBar, type PhoneTab } from "./components/PhoneTabBar";
+import { useSwipeNav } from "./hooks/useSwipeNav";
 import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
 import type { GatewayEvent, ConnectionStatus, Activity, WatchSession } from "./gateway";
@@ -658,6 +660,21 @@ function MainApp({
   // When your time out in the selected space ends (unix seconds), if you're timed out.
   const [myTimeoutUntil, setMyTimeoutUntil] = useState<number | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Phones: the Mentions tab of the drawer's tab bar, and the space the Home tab goes back to.
+  const [showMentionsInbox, setShowMentionsInbox] = useState(false);
+  const lastSpaceIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedServerId) lastSpaceIdRef.current = selectedServerId;
+  }, [selectedServerId]);
+  // Phones: swipe right for the drawer, left for the member list (hooks/useSwipeNav.ts).
+  useSwipeNav({
+    open: mobileNavOpen ? "nav" : showMembers ? "members" : "none",
+    canOpenMembers: selectedServerId !== null,
+    onChange: (panel) => {
+      setMobileNavOpen(panel === "nav");
+      setShowMembers(panel === "members");
+    },
+  });
   const [dmUsers, setDmUsers] = useState<Record<string, PublicUser>>({});
   const [inviteCode, setInviteCode] = useState<string | null>(
     () => new URLSearchParams(window.location.search).get("invite")
@@ -3361,6 +3378,39 @@ function MainApp({
   }
 
 
+  const selectSpace = (id: string) => {
+    setSelectedServerId(id || null);
+    setSelectedChannel(null);
+    setMessages([]);
+    if (id) pluginManagerRef.current.emit("server-select", id);
+  };
+  // Phones: the drawer's tab bar. Home and Messages swap the drawer between your spaces and
+  // your direct messages; Mentions lists chats that @mention you; You opens settings.
+  const dmUnreadCount = dms.reduce((n, d) => n + (shownUnread[d.id] ?? 0), 0);
+  const phoneTab: PhoneTab = showMentionsInbox ? "mentions" : selectedServerId ? "home" : "messages";
+  const handlePhoneTab = (tab: PhoneTab) => {
+    if (tab === "you") {
+      setShowSettings(true);
+      return;
+    }
+    setShowMentionsInbox(tab === "mentions");
+    if (tab === "messages" && selectedServerId) selectSpace("");
+    if (tab === "home" && !selectedServerId) {
+      const last = lastSpaceIdRef.current;
+      const id = last && servers.some((sv) => sv.id === last) ? last : servers[0]?.id;
+      if (id) selectSpace(id);
+    }
+  };
+  const mentionItems = [...mentions].flatMap((channelId) => {
+    for (const sv of servers) {
+      const ch = sv.channels.find((c) => c.id === channelId);
+      if (ch) return [{ channel: ch, label: `#${ch.name}`, where: sv.name, count: shownUnread[ch.id] ?? 0 }];
+    }
+    const dm = dms.find((d) => d.id === channelId);
+    if (dm) return [{ channel: dm, label: dm.name || dmUsers[dm.id]?.display_name || "Direct message", where: "Direct message", count: shownUnread[dm.id] ?? 0 }];
+    return [];
+  });
+
   return (
     <div className="kc-screen flex w-screen overflow-hidden">
       {/* Server + channel rails — a slide-in drawer on phones, fixed panes on desktop */}
@@ -3370,10 +3420,8 @@ function MainApp({
             servers={servers}
             selectedId={selectedServerId}
             onSelect={(id) => {
-              setSelectedServerId(id || null);
-              setSelectedChannel(null);
-              setMessages([]);
-              if (id) pluginManagerRef.current.emit("server-select", id);
+              setShowMentionsInbox(false);
+              selectSpace(id);
             }}
             onCreateServer={() => setShowCreateServer(true)}
             onOpenSettings={() => setShowSettings(true)}
@@ -3387,6 +3435,15 @@ function MainApp({
         </div>
 
         <div className="channel-sidebar">
+          {showMentionsInbox && (
+            <MentionsInbox
+              items={mentionItems}
+              onOpen={(channel) => {
+                setShowMentionsInbox(false);
+                void handleSelectChannel(channel);
+              }}
+            />
+          )}
           <ChannelSidebar
             server={selectedServer}
             dms={dms}
@@ -3464,6 +3521,8 @@ function MainApp({
             onOpenSettings={() => setShowSettings(true)}
           />
         </div>
+        {/* Phones only (index.css): spaces, messages, mentions and you, one tap apart. */}
+        <PhoneTabBar active={phoneTab} dmUnread={dmUnreadCount} mentionCount={mentions.size} onSelect={handlePhoneTab} />
       </div>
 
       {/* Tap-away scrim, only present while the mobile drawer is open */}
