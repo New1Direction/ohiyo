@@ -1,6 +1,8 @@
 import { flushSync as act } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { ChannelSidebar } from "../../src/components/ChannelSidebar";
+// The same drafts module the sidebar reads, so a test can write a draft it will see.
+export { persistDraft, forgetAllDrafts } from "../../src/lib/drafts";
 export { act };
 
 type Options = {
@@ -19,12 +21,14 @@ type Options = {
   /** Offer "Invites" (the space's links) and "Bans" (people who can ban) in the space menu. */
   invites?: boolean;
   bans?: boolean;
+  /** Offer Mark as read (a channel's menu) and Mark space as read (the space menu). */
+  markRead?: boolean;
 };
 
 /** The channel sidebar for one space, with every header action recorded by name. */
 export function mountChannelSidebar(
   element: HTMLElement,
-  { owner, manage, notificationSettings, webhooks, mutedChannelIds, unread, invites, bans }: Options,
+  { owner, manage, notificationSettings, webhooks, mutedChannelIds, unread, invites, bans, markRead }: Options,
 ) {
   const calls: string[] = [];
   const me = { id: "me", username: "me", display_name: "Me", avatar_url: null };
@@ -56,6 +60,8 @@ export function mountChannelSidebar(
         mutedChannelIds={mutedChannelIds ? new Set(mutedChannelIds) : undefined}
         onOpenNotificationSettings={notificationSettings ? record("notification settings") : undefined}
         onOpenWebhooks={webhooks ? record("webhooks") : undefined}
+        onMarkRead={markRead ? (ids: string[]) => void calls.push(`mark read ${ids.join(",")}`) : undefined}
+        onMarkSpaceRead={markRead ? record("mark space read") : undefined}
         currentUser={me as never}
         connStatus="connected"
         onlineUsers={new Set()}

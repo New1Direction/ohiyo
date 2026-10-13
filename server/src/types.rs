@@ -72,6 +72,15 @@ pub struct Channel {
     pub slowmode_seconds: i64,
 }
 
+/// A chat marked read up to its newest message: your own read mark, which every one of your
+/// devices follows.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadMark {
+    pub channel_id: String,
+    pub last_read_message_id: String,
+    pub last_read_at: i64,
+}
+
 /// A thread as the app lists it: its channel, how many messages it holds, when the last
 /// one came, and whether the message it started from has been deleted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -468,6 +477,11 @@ pub enum GatewayEvent {
         emoji: String,
         user_id: String,
         added: bool,
+    },
+    /// You read chats, on this device or another (sent to your own devices only), so their
+    /// unread numbers clear everywhere.
+    ReadStateUpdate {
+        reads: Vec<ReadMark>,
     },
     /// A user's read cursor advanced in a DM (drives Delivered/Seen receipts).
     /// Only fanned out for DM channels — never for server channels, to avoid

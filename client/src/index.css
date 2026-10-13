@@ -5538,4 +5538,83 @@ ol.kc-md-list { list-style: decimal; }
 @media (max-width: 760px) {
   /* Keep the newest messages clear of the bar. */
   body:has(.kc-call-overlay--bar) .kc-chat-header { margin-bottom: 62px; }
+
+/* ── Catching up (like Discord) ──
+   The red "New messages" line above the first unread message; the bar at the top of the chat
+   ("12 new messages since 3:12 PM", Jump, Mark as read); the pencil beside a chat with an
+   unsent draft; a channel's or DM's own menu (right-click or long-press). */
+.kc-new-messages-line {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+}
+.kc-new-messages-line::before {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--danger);
+}
+.kc-new-messages-line__label {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: var(--danger-fill);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.kc-unread-bar {
+  flex-shrink: 0;
+  margin: 8px 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 14px;
+  border-radius: 12px;
+  background: var(--danger-fill);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  box-shadow: 0 10px 24px -14px rgb(0 0 0 / 60%);
+}
+.kc-unread-bar__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A phone has no room for the whole line beside the buttons: it wraps rather than lose the time. */
+@media (max-width: 640px) {
+  .kc-unread-bar__text { white-space: normal; line-height: 1.25; }
+}
+.kc-unread-bar button {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 16%);
+  color: #fff;
+  font-weight: 650;
+  cursor: pointer;
+}
+.kc-unread-bar button:hover { background: rgb(255 255 255 / 26%); }
+.kc-unread-bar button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media (pointer: coarse) {
+  .kc-unread-bar button { min-height: 44px; }
+}
+.kc-draft-mark {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+.kc-row-menu {
+  position: fixed;
+  z-index: 70;
+}
+.kc-channel-row,
+.kc-dm-row-button {
+  -webkit-touch-callout: none;
 }

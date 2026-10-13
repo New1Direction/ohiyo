@@ -1099,34 +1099,52 @@ async fn handle_ack(state: &AppState, user_id: &str, channel_id: &str, message_i
             .flatten();
     let Some(watermark) = watermark else { return };
 
-    // Only ever advance forward. Re-acking an already-read message is a no-op,
-    // which also throttles a misbehaving client (no redundant broadcast).
-    let prev: Option<i64> = sqlx::query_scalar(
-        "SELECT last_read_at FROM channel_reads WHERE channel_id = ? AND user_id = ?",
-    )
-    .bind(channel_id)
-    .bind(user_id)
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
-    if prev.is_some_and(|p| p >= watermark) {
-        return;
+    // Re-acking an already-read message is a no-op, which also throttles a misbehaving
+    // client (no redundant broadcast). Otherwise your other devices clear it too.
+    if record_read(state, user_id, channel_id, message_id, watermark).await {
+        broadcast_to_user(
+            &state.sessions,
+            user_id,
+            &GatewayEvent::ReadStateUpdate {
+                reads: vec![crate::types::ReadMark {
+                    channel_id: channel_id.to_string(),
+                    last_read_message_id: message_id.to_string(),
+                    last_read_at: watermark,
+                }],
+            },
+        );
     }
+}
 
-    let _ = sqlx::query(
+/// Move `user_id`'s read mark in `channel_id` forward to `message_id` (sent at `watermark`),
+/// never back. One statement, so two reads arriving together can't move it backwards. In a
+/// DM the other people see it as Delivered/Seen, unless Privacy Mode is on. True when it moved.
+pub(crate) async fn record_read(
+    state: &AppState,
+    user_id: &str,
+    channel_id: &str,
+    message_id: &str,
+    watermark: i64,
+) -> bool {
+    let moved = sqlx::query(
         "INSERT INTO channel_reads (channel_id, user_id, last_read_message_id, last_read_at)
          VALUES (?,?,?,?)
          ON CONFLICT(channel_id, user_id) DO UPDATE SET
             last_read_message_id = excluded.last_read_message_id,
-            last_read_at = excluded.last_read_at",
+            last_read_at = excluded.last_read_at
+         WHERE excluded.last_read_at > channel_reads.last_read_at",
     )
     .bind(channel_id)
     .bind(user_id)
     .bind(message_id)
     .bind(watermark)
     .execute(&state.db)
-    .await;
+    .await
+    .map(|r| r.rows_affected() > 0)
+    .unwrap_or(false);
+    if !moved {
+        return false;
+    }
 
     // Receipts are a DM-only affordance: a channel with NULL server_id is a DM.
     // Decode as Option<String> so NULL → None (a bare String coerces NULL to "").
@@ -1151,6 +1169,7 @@ async fn handle_ack(state: &AppState, user_id: &str, channel_id: &str, message_i
         )
         .await;
     }
+    true
 }
 
 /// Remove a user from one voice channel and notify everyone who can see that channel.

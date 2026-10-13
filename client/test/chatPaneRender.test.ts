@@ -650,6 +650,48 @@ test("a reply to a webhook's message marks the webhook as an app", () => {
   assert.match(html, /Deploy bot<\/span><span[^>]*class="[^"]*kc-app-badge[^"]*"[^>]*>APP<\/span>/);
 });
 
+// ── Catching up ──
+// Opening a chat with unread messages draws a red "New messages" line above the first of
+// them (like Discord), even inside one person's run of messages, and a bar at the top says how
+// many arrived and since when, with Jump and Mark as read.
+const me = { id: "u1", username: "me", display_name: "Me", avatar_url: null };
+const catchUpMessages = [
+  { ...threadBase, id: "m1", channel_id: "c9", created_at: 1_790_000_000, content: "READ-ONE" },
+  { ...threadBase, id: "m2", channel_id: "c9", created_at: 1_790_000_060, content: "UNREAD-ONE" },
+  { ...threadBase, author: me, id: "m3", channel_id: "c9", created_at: 1_790_000_120, content: "MY-REPLY" },
+  { ...threadBase, id: "m4", channel_id: "c9", created_at: 1_790_000_180, content: "UNREAD-TWO" },
+];
+const catchUp = (marker: Props | null) =>
+  spaceChat({ messages: catchUpMessages, unreadMarker: marker, onJumpToFirstUnread() {}, onDismissUnreadMarker() {} });
+
+test("catching up: a New messages line sits above the first unread message, inside a run", () => {
+  const html = catchUp({ count: 2 });
+  const line = html.search(/role="separator"[^>]*aria-label="New messages"/);
+  assert.ok(line > 0, "there's a New messages line");
+  assert.ok(html.indexOf("READ-ONE") < line, "the read message comes before the line");
+  assert.ok(line < html.indexOf("UNREAD-ONE"), "the first unread message comes after it");
+});
+
+test("catching up: the bar counts the new messages, says since when, and offers Jump and Mark as read", () => {
+  const html = catchUp({ count: 2 });
+  assert.match(html, /2 new messages since /);
+  assert.match(html, />Jump</);
+  assert.match(html, />Mark as read</);
+});
+
+test("catching up: with the first unread message not loaded yet, the bar still counts and offers Jump", () => {
+  const html = catchUp({ count: 9 });
+  assert.doesNotMatch(html, /aria-label="New messages"/);
+  assert.match(html, /9 new messages(?! since)/);
+  assert.match(html, />Jump</);
+});
+
+test("catching up: nothing unread, no line and no bar", () => {
+  const html = catchUp(null);
+  assert.doesNotMatch(html, /New messages/);
+  assert.doesNotMatch(html, /new messages/);
+});
+
 // ── Calls in DMs ─────────────────────────────────────────────────────────────
 
 function dmWith(extra: Props = {}, messages: unknown[] = []): string {

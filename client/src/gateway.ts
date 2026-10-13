@@ -1,4 +1,4 @@
-import type { PublicUser, ServerWithChannels, Channel, Message } from "./api";
+import type { PublicUser, ServerWithChannels, Channel, Message, ReadMark } from "./api";
 import { gatewayUrl, api } from "./api";
 import { apiStatus } from "./lib/apiErrors";
 import type { NotificationSetting } from "./lib/notificationSettings";
@@ -67,6 +67,8 @@ export type GatewayEvent =
   | { t: "EventsChanged"; d: { server_id: string } }
   | { t: "ReactionUpdate"; d: { message_id: string; channel_id: string; emoji: string; user_id: string; added: boolean } }
   | { t: "ReadReceipt"; d: { channel_id: string; user_id: string; last_read_message_id: string; last_read_at: number } }
+  // You read chats (here or on another device): their unread numbers clear everywhere.
+  | { t: "ReadStateUpdate"; d: { reads: ReadMark[] } }
   | { t: "PresenceUpdate"; d: { user_id: string; online: boolean; status?: string; activity?: Activity | null } }
   | { t: "TypingStart"; d: { channel_id: string; user_id: string; user: PublicUser } }
   | { t: "VoiceState"; d: { channel_id: string; user_id: string; user: PublicUser; joined: boolean; muted: boolean; video: boolean; screen: boolean; listenOnly: boolean; deafened?: boolean } }
@@ -123,7 +125,7 @@ const EVENT_TAGS: Record<GatewayEvent["t"], true> = {
   VoiceState: true, VoiceRoster: true, VoiceSignal: true, WatchUpdate: true, HeartbeatAck: true,
   DeviceAdded: true, UserDeleted: true, NotificationSettingsUpdate: true, ThreadUpdate: true,
   ThreadDelete: true, ThreadFollowUpdate: true, SlowmodeUpdate: true, CallRing: true, CallRingStop: true,
-  CallEnded: true, VoiceRefused: true, TwoFactorUpdate: true,
+  CallEnded: true, VoiceRefused: true, TwoFactorUpdate: true, ReadStateUpdate: true,
 };
 const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set(Object.keys(EVENT_TAGS));
 
