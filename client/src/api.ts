@@ -1,3 +1,4 @@
+import type { CallLog } from "./lib/dmCall";
 import { DEFAULT_HOME_URL, normalizeHomeUrl } from "./lib/homes";
 import type { NotificationLevel, NotificationSetting, NotificationTarget } from "./lib/notificationSettings";
 import type { WebhookCreated, WebhookSummary } from "./components/WebhooksDialog";
@@ -180,6 +181,8 @@ export type Message = {
   embeds?: Embed[] | null;
   /** Unix time this message self-destructs (disappearing messages); null = never. */
   expires_at?: number | null;
+  /** The call log on the message a DM or group-chat call left in the chat. */
+  call?: CallLog | null;
   /** Client-only optimistic-send lifecycle (never returned by the server). */
   _state?: "pending" | "failed";
   /** Client-only: this message was decrypted from an E2E ciphertext for display. */
@@ -973,6 +976,18 @@ export const api = {
   /** Delete a thread and its replies. */
   deleteThread: (token: string, threadId: string) =>
     request<void>(`/threads/${threadId}`, { method: "DELETE" }, token),
+
+  /** Start a call in a DM or group chat: rings the others. Answers with the call log's
+   *  message and who is being rung (an existing call's, if one is already going). */
+  startCall: (token: string, channelId: string, video: boolean) =>
+    request<{ message_id: string; ringing: string[] }>(`/channels/${channelId}/call`, {
+      method: "POST",
+      body: JSON.stringify({ video }),
+    }, token),
+
+  /** Decline a call ringing for you in this chat (stops the ring on all your devices). */
+  declineCall: (token: string, channelId: string) =>
+    request<void>(`/channels/${channelId}/call/decline`, { method: "POST" }, token),
 
   /** Follow a thread (it counts as unread and notifies like its channel) or stop following. */
   setThreadFollow: (token: string, threadId: string, following: boolean) =>

@@ -2,6 +2,7 @@ pub mod abuse;
 pub mod account;
 pub mod auth;
 pub mod bans;
+pub mod calls;
 pub mod channels;
 pub mod discord_import;
 pub mod dm_links;
@@ -341,6 +342,12 @@ pub fn router() -> Router<AppState> {
         .route(
             "/webhooks/{id}/{token}",
             post(webhooks::post_message).layer(DefaultBodyLimit::max(webhooks::MAX_BODY_BYTES)),
+        )
+        // Calls in DMs and group chats: ring the others, or decline a ring (see api::calls).
+        .route("/channels/{channel_id}/call", post(calls::start_call))
+        .route(
+            "/channels/{channel_id}/call/decline",
+            post(calls::decline_call),
         )
         // Threads: started from a message in a space's text channel, listed per channel.
         .route(
