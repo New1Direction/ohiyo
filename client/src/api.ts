@@ -364,6 +364,8 @@ export type Role = {
   position: number;
   created_at: number;
   is_everyone?: boolean;
+  /** Members holding it are listed under it in the member list. */
+  hoist?: boolean;
 };
 
 export type InviteInfo = {
