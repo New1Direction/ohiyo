@@ -1,25 +1,32 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import { deleteAccountMessage } from "../../lib/apiErrors";
+import { codeKind, stepUpCodeMessage } from "../../lib/twoFactor";
 
 type Props = {
   token: string;
   username: string;
   /** The account is gone on the server: sign this device out and clear what's left. */
   onDeleted: () => void;
+  /** Two-factor sign-in is on, so deleting needs a code too. */
+  needsCode?: boolean;
 };
 
 /** Delete the account, for good and at once. Closed until asked for; then it says what
  *  happens, and needs the password and the username typed out. */
-export function DeleteAccount({ token, username, onDeleted }: Props) {
+export function DeleteAccount({ token, username, onDeleted, needsCode = false }: Props) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [typed, setTyped] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Typing the name is a deliberate step, not a password: a phone's capital first letter
   // or trailing space shouldn't block it. The server is sent the account's own username.
-  const ready = password.length > 0 && typed.trim().toLowerCase() === username.toLowerCase();
+  const ready =
+    password.length > 0 &&
+    typed.trim().toLowerCase() === username.toLowerCase() &&
+    (!needsCode || codeKind(code) !== null);
   // Opening the form removes the button that opened it: the cursor goes to the first field.
   const passwordField = useRef<HTMLInputElement>(null);
   useLayoutEffect(() => {
@@ -32,10 +39,12 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await api.deleteAccount(token, password, username);
+      const sentCode = codeKind(code) === "totp" ? code.replace(/[\s-]/g, "") : code.trim();
+      await api.deleteAccount(token, password, username, needsCode ? sentCode : undefined);
       onDeleted();
     } catch (err) {
-      setError(deleteAccountMessage(err));
+      const codeProblem = stepUpCodeMessage(err);
+      setError(codeProblem ? `${codeProblem} Nothing was deleted.` : deleteAccountMessage(err));
       setBusy(false);
     }
   }
@@ -109,6 +118,19 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
             style={fieldStyle}
           />
         </label>
+        {needsCode && (
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            aria-label="Code from your authenticator app"
+            placeholder="Code from your authenticator app"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className={`${field} font-mono`}
+            style={fieldStyle}
+          />
+        )}
       </div>
       {error && (
         <p className="mt-2 text-xs" role="alert" style={{ color: "var(--danger)" }}>
@@ -131,6 +153,7 @@ export function DeleteAccount({ token, username, onDeleted }: Props) {
             setOpen(false);
             setPassword("");
             setTyped("");
+            setCode("");
             setError(null);
           }}
           className="rounded px-3 py-1.5 text-sm"

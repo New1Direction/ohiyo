@@ -45,6 +45,9 @@ box; server channels are stored like any chat server's.
   suites `19-e2e-dm`, `20-disappearing`, `21-multidevice`, `22-group-e2e`,
   `26-privacy-mode`, `27-private-dm-links`, `35-recovery-restore`, `36-new-device-alert`,
   `37-change-password`, `38-contact-new-device`, `39-delete-account`.)*
+- **Two-factor sign-in** — an authenticator app's code after your password, with single-use
+  recovery codes for a lost phone. It also guards changing the password and deleting the
+  account. *(e2e suite `58-two-factor`.)*
 - **Instant Servers** — launch your own community server in **one tap**. We host it
   (Minecraft-Realms-style): encrypted DMs and group chats are ciphertext on the box,
   while server channels are stored in the clear like any chat server's. Export anytime,

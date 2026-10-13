@@ -1,8 +1,9 @@
 // Two-factor sign-in on screen. Signing in asks for a code after the password, takes a
 // recovery code instead, and says plainly when a code is wrong. In Settings, turning it on
 // goes password, QR code and setup key, a code, then recovery codes to save; turning it off
-// needs the password and a code; a server that can't do it says so. With it on, changing
-// the password asks for a code too.
+// needs the password and a code; a server that can't do it says so; a change on another
+// device shows up without hiding codes still being saved. With it on, changing the password
+// asks for a code too.
 //   node --experimental-strip-types --test test/twoFactorUi.test.ts
 
 import { after, before, test } from "node:test";
@@ -15,7 +16,10 @@ type Status = { enabled: boolean; available: boolean; recovery_codes_left: numbe
 type Mod = {
   act: (callback: () => void) => void;
   mountTwoFactorSignIn: (el: unknown) => { calls: string[]; signedIn: string[]; unmount: () => void };
-  mountTwoFactorCard: (el: unknown, start: Status) => { calls: string[]; changes: boolean[]; codes: string[]; unmount: () => void };
+  mountTwoFactorCard: (
+    el: unknown,
+    start: Status,
+  ) => { calls: string[]; changes: boolean[]; codes: string[]; changeElsewhere: (enabled: boolean) => void; unmount: () => void };
   mountChangePasswordWithCode: (el: unknown) => { sent: unknown[][]; unmount: () => void };
 };
 
@@ -203,6 +207,39 @@ test("turning it on: password, then the QR code and setup key, then a code, then
     assert.match(card.ui.text(), /\bOn\b/);
     assert.match(card.ui.text(), /10 recovery codes left/);
     assert.ok(!card.ui.text().includes(card.codes[0]), "the codes aren't shown again");
+  } finally {
+    card.cleanup();
+  }
+});
+
+test("a change on another device shows up, and this device's own change doesn't hide the recovery codes", async () => {
+  const card = mount((el) => bundle.mod.mountTwoFactorCard(el, { enabled: false, available: true, recovery_codes_left: 0 }));
+  // What App.tsx sends when the gateway says it changed (on any of the account's devices).
+  const announce = () => window.dispatchEvent(new window.Event("ohiyo:two-factor"));
+  try {
+    await settle();
+    assert.match(card.ui.text(), /\bOff\b/);
+    card.changeElsewhere(true);
+    announce();
+    await settle();
+    assert.match(card.ui.text(), /\bOn\b/, "the card reads the status again");
+    assert.deepEqual(card.changes.at(-1), true, "and the tab hears it");
+
+    card.changeElsewhere(false);
+    announce();
+    await settle();
+    card.ui.click("Turn on two-factor sign-in");
+    card.ui.type("Password", "right-password");
+    card.ui.submit("Confirm it's you");
+    await settle();
+    card.ui.type("6-digit code", "123456");
+    card.ui.submit("Turn on two-factor sign-in");
+    await settle();
+    // The server announces this change to every device, this one included.
+    announce();
+    await settle();
+    for (const code of card.codes) assert.ok(card.ui.text().includes(code), `recovery code ${code} still shown`);
+    assert.ok(card.ui.button("I've saved them"), "still waiting for the person to save them");
   } finally {
     card.cleanup();
   }

@@ -64,6 +64,8 @@ export type GatewayEvent =
   // A device registered its keys on this account for the first time (see deviceWatch).
   | { t: "DeviceAdded"; d: { device_id: number } }
   | { t: "NotificationSettingsUpdate"; d: NotificationSetting }
+  // Two-factor sign-in was turned on or off for this account (on this device or another).
+  | { t: "TwoFactorUpdate"; d: { enabled: boolean } }
   // The server's answer to each Heartbeat. Needs no handler: any inbound frame counts as
   // alive (lastFrameAt).
   | { t: "HeartbeatAck" };
@@ -108,7 +110,7 @@ const EVENT_TAGS: Record<GatewayEvent["t"], true> = {
   EventsChanged: true, ReactionUpdate: true, ReadReceipt: true, PresenceUpdate: true, TypingStart: true,
   VoiceState: true, VoiceRoster: true, VoiceSignal: true, WatchUpdate: true, HeartbeatAck: true,
   DeviceAdded: true, UserDeleted: true, NotificationSettingsUpdate: true, ThreadUpdate: true,
-  ThreadDelete: true, ThreadFollowUpdate: true,
+  ThreadDelete: true, ThreadFollowUpdate: true, TwoFactorUpdate: true,
 };
 const KNOWN_EVENT_TAGS: ReadonlySet<string> = new Set(Object.keys(EVENT_TAGS));
 

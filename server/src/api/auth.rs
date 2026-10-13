@@ -236,7 +236,7 @@ pub(crate) async fn run_argon2<T: Send + 'static>(
     .map_err(crate::api::error::internal)
 }
 
-fn check_auth_rate(
+pub(crate) fn check_auth_rate(
     state: &AppState,
     headers: &HeaderMap,
     addr: &SocketAddr,
@@ -314,6 +314,15 @@ pub struct RegisterBody {
 pub struct AuthResponse {
     pub token: String,
     pub user: PublicUser,
+}
+
+/// What the password step of signing in answers: a session, or, with two-factor sign-in
+/// on, a challenge to answer with a code at `/auth/login/two-factor`.
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum LoginResponse {
+    Session(AuthResponse),
+    TwoFactor(crate::api::two_factor::Challenge),
 }
 
 pub async fn register(
@@ -453,7 +462,7 @@ pub async fn login(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(body): Json<LoginBody>,
-) -> Result<Json<AuthResponse>, (StatusCode, String)> {
+) -> Result<Json<LoginResponse>, (StatusCode, String)> {
     check_auth_rate(&state, &headers, &addr)?;
     let user = login_account(&state.db, &body.username)
         .await
@@ -483,22 +492,28 @@ pub async fn login(
         return Err((StatusCode::UNAUTHORIZED, "invalid credentials".into()));
     }
 
+    // With two-factor sign-in on, the password alone gets no session: a challenge instead.
+    if crate::api::two_factor::is_enabled(&state, &user.id).await? {
+        let challenge = crate::api::two_factor::start_challenge(&state, &user.id).await?;
+        return Ok(Json(LoginResponse::TwoFactor(challenge)));
+    }
+
     let secret = jwt_secret();
     let token_version = current_token_version(&state, &user.id).await?;
     let token =
         create_token(&user.id, token_version, &secret).map_err(crate::api::error::internal)?;
 
-    Ok(Json(AuthResponse {
+    Ok(Json(LoginResponse::Session(AuthResponse {
         token,
         user: user.into(),
-    }))
+    })))
 }
 
 /// Read a user's current token generation counter (stamped into newly minted tokens).
 /// A DB error is propagated, NOT swallowed: silently returning 0 on a fault would mint a
 /// version-0 token that "log out everywhere" could never revoke. A missing row → 0 (the
 /// column default) is fine for an existing user.
-async fn current_token_version(
+pub(crate) async fn current_token_version(
     state: &AppState,
     user_id: &str,
 ) -> Result<i64, (StatusCode, String)> {
@@ -593,6 +608,9 @@ pub(crate) async fn require_password(
 pub struct ChangePasswordBody {
     pub current_password: String,
     pub new_password: String,
+    /// With two-factor sign-in on: a code from the app, or a recovery code.
+    #[serde(default)]
+    pub two_factor_code: Option<String>,
 }
 
 /// POST /auth/password — set a new password. The current one is required, so a stolen
@@ -629,6 +647,7 @@ pub async fn change_password(
         // 403, not 401: the session is fine, the password isn't. A 401 reads as "signed out".
         return Err((StatusCode::FORBIDDEN, "current password is wrong".into()));
     }
+    crate::api::two_factor::require_second_factor(&state, &auth.0, body.two_factor_code).await?;
     let new_password = body.new_password;
     let new_hash = run_argon2(move || hash_password(&new_password))
         .await?
@@ -679,6 +698,12 @@ async fn drop_link_codes(
     user_id: &str,
 ) -> Result<(), (StatusCode, String)> {
     sqlx::query("DELETE FROM device_link_tokens WHERE user_id = ?")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    // A sign-in waiting for its two-factor code got the old password right; it goes too.
+    sqlx::query("DELETE FROM two_factor_challenges WHERE user_id = ?")
         .bind(user_id)
         .execute(&mut **tx)
         .await

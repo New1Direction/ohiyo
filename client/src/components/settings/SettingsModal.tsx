@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Channel, Message, ProfileSong, ProfileTheme, PublicUser, PushDevice, ServerEmoji, ServerWithChannels } from "../../api";
 import { api, getApiBase, getFileBase } from "../../api";
 import { uploadOne } from "../../lib/uploadOne";
@@ -48,6 +48,7 @@ import { pushAppearance } from "../../lib/appearanceSync";
 import { LinkedDevices } from "./LinkedDevices";
 import { ChangePassword } from "./ChangePassword";
 import { DeleteAccount } from "./DeleteAccount";
+import { TwoFactorCard, type TwoFactorApi } from "./TwoFactorCard";
 import { ConfirmWithPassword } from "./ConfirmWithPassword";
 import { passwordStepMessage } from "../../lib/apiErrors";
 import { PluginsTab } from "./PluginsTab";
@@ -763,6 +764,18 @@ function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate, onTokenC
   const fileRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentUser?.avatar_url ?? null);
   const [idCopied, setIdCopied] = useState(false);
+  // Whether password changes and deleting the account also need a code; the card reports it.
+  const [twoFactorOn, setTwoFactorOn] = useState(false);
+  const twoFactorApi = useMemo<TwoFactorApi>(
+    () => ({
+      status: () => api.twoFactorStatus(token),
+      setup: (password) => api.twoFactorSetup(token, password),
+      enable: (code) => api.twoFactorEnable(token, code),
+      disable: (password, code) => api.twoFactorDisable(token, password, code),
+      newRecoveryCodes: (password, code) => api.twoFactorRecoveryCodes(token, password, code),
+    }),
+    [token],
+  );
 
   if (!currentUser) return null;
   const userId = currentUser.id;
@@ -843,9 +856,23 @@ function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate, onTokenC
         </p>
       </div>
       {onTokenChange && (
-        <ChangePassword token={token} username={currentUser.username} onToast={onToast} onChanged={onTokenChange} />
+        <ChangePassword
+          token={token}
+          username={currentUser.username}
+          onToast={onToast}
+          onChanged={onTokenChange}
+          needsCode={twoFactorOn}
+        />
       )}
-      {onAccountDeleted && <DeleteAccount token={token} username={currentUser.username} onDeleted={onAccountDeleted} />}
+      <TwoFactorCard
+        twoFactorApi={twoFactorApi}
+        username={currentUser.username}
+        onToast={onToast}
+        onStatus={(s) => setTwoFactorOn(s.enabled)}
+      />
+      {onAccountDeleted && (
+        <DeleteAccount token={token} username={currentUser.username} onDeleted={onAccountDeleted} needsCode={twoFactorOn} />
+      )}
     </div>
   );
 }

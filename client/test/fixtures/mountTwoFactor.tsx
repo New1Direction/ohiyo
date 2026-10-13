@@ -89,7 +89,11 @@ export function mountTwoFactorCard(element: HTMLElement, start: TwoFactorStatus)
       />,
     ),
   );
-  return { calls, changes, codes, unmount: () => act(() => root.unmount()) };
+  /** Another device turns it on or off: the server's answer changes, nothing on screen yet. */
+  const changeElsewhere = (enabled: boolean) => {
+    status = { ...status, enabled, recovery_codes_left: enabled ? 10 : 0 };
+  };
+  return { calls, changes, codes, changeElsewhere, unmount: () => act(() => root.unmount()) };
 }
 
 /** The Change password card for an account with two-factor sign-in on. */
