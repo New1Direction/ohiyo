@@ -9,6 +9,7 @@ pub mod emoji;
 pub mod error;
 pub mod events;
 pub mod files;
+pub mod gifs;
 pub mod ice;
 pub mod instances;
 pub mod invites;
@@ -418,6 +419,9 @@ pub fn router() -> Router<AppState> {
         )
         // WebRTC ICE config: STUN + time-limited TURN credentials
         .route("/ice-servers", get(ice::ice_servers))
+        // GIF search, through KLIPY with the server's key (api::gifs)
+        .route("/gifs/search", get(gifs::search))
+        .route("/gifs/trending", get(gifs::trending))
         // LiveKit SFU: feature-flagged config + room-scoped join tokens
         .route("/livekit/config", get(livekit::livekit_config))
         .route(
