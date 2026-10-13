@@ -502,6 +502,8 @@ pub async fn enqueue_message_pushes(
     channel_id: &str,
     author_id: &str,
     content: &str,
+    // False for a webhook's message: naming people doesn't count as mentioning them.
+    mentions_count: bool,
 ) {
     let rows: Result<Vec<(String, String)>, sqlx::Error> = sqlx::query_as(
         "SELECT sm.user_id, u.username
@@ -522,6 +524,24 @@ pub async fn enqueue_message_pushes(
     let Ok(rows) = rows else {
         return;
     };
+    // A thread follows the notification settings of the channel it hangs off, and wakes only
+    // the people who follow it (and anyone it mentions).
+    let parent = crate::api::roles::thread_parent(state, channel_id).await;
+    let settings_channel = parent.as_deref().unwrap_or(channel_id);
+    let followers: Option<std::collections::HashSet<String>> = match &parent {
+        Some(_) => Some(
+            sqlx::query_scalar::<_, String>(
+                "SELECT user_id FROM thread_follows WHERE thread_id = ?",
+            )
+            .bind(channel_id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
+        ),
+        None => None,
+    };
     let server_id: Option<String> =
         sqlx::query_scalar::<_, Option<String>>("SELECT server_id FROM channels WHERE id = ?")
             .bind(channel_id)
@@ -539,7 +559,7 @@ pub async fn enqueue_message_pushes(
           WHERE (target_type = 'channel' AND target_id = ?)
              OR (target_type = 'server' AND target_id = ?)",
         )
-        .bind(channel_id)
+        .bind(settings_channel)
         .bind(server_id.as_deref().unwrap_or(""))
         .fetch_all(&state.db)
         .await
@@ -570,8 +590,14 @@ pub async fn enqueue_message_pushes(
                 .find(|(user_id, s)| *user_id == id && s.target_type == target_type)
                 .map(|(_, s)| s)
         };
-        let mentioned =
-            is_server_channel && crate::api::notifications::mentions(content, &username);
+        let mentioned = mentions_count
+            && is_server_channel
+            && crate::api::notifications::mentions(content, &username);
+        if let Some(followers) = &followers {
+            if !mentioned && !followers.contains(&id) {
+                continue;
+            }
+        }
         if !crate::api::notifications::should_push(
             is_server_channel,
             mentioned,

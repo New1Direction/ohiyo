@@ -21,8 +21,8 @@ const REPLY_SNIPPET_LEN: usize = 120;
 
 /// Resolve a compact preview (author + truncated content) for a replied-to message.
 async fn fetch_reply_preview(db: &sqlx::SqlitePool, reply_id: &str) -> Option<ReplyPreview> {
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT u.display_name, m.content
+    let row: Option<(String, String, bool)> = sqlx::query_as(
+        "SELECT u.display_name, m.content, u.is_bot
          FROM messages m JOIN users u ON u.id = m.author_id
          WHERE m.id = ?",
     )
@@ -34,7 +34,7 @@ async fn fetch_reply_preview(db: &sqlx::SqlitePool, reply_id: &str) -> Option<Re
         None
     });
 
-    row.map(|(author, content)| {
+    row.map(|(author, content, bot)| {
         let snippet: String = content.chars().take(REPLY_SNIPPET_LEN).collect();
         let content = if snippet.chars().count() < content.chars().count() {
             format!("{snippet}…")
@@ -45,6 +45,7 @@ async fn fetch_reply_preview(db: &sqlx::SqlitePool, reply_id: &str) -> Option<Re
             id: reply_id.to_string(),
             author,
             content,
+            bot,
         }
     })
 }
@@ -438,11 +439,7 @@ pub async fn send_message(
         Some(serde_json::to_string(&metas).unwrap_or_default())
     };
 
-    let id = new_id();
-    let now = now_unix();
     let content = body.content.trim().to_owned();
-
-    let expires_at = disappearing_expiry(&state, &channel_id, now).await;
 
     // Only honour a reply target that actually exists in this channel.
     let reply_to: Option<String> = match body.reply_to.filter(|s| !s.is_empty()) {
@@ -459,12 +456,43 @@ pub async fn send_message(
         None => None,
     };
 
+    let msg = deliver_message(
+        &state,
+        author,
+        channel_id,
+        content,
+        attachments_json,
+        reply_to,
+    )
+    .await?;
+    Ok(Json(msg))
+}
+
+/// Store a message by `author` in `channel_id`, then tell everyone in the channel, build its
+/// link previews and search entry, and wake offline phones. The caller has checked who may
+/// post, the limits and the reply target. Shared by people and webhooks (api::webhooks).
+pub(crate) async fn deliver_message(
+    state: &AppState,
+    author: User,
+    channel_id: String,
+    content: String,
+    attachments_json: Option<String>,
+    reply_to: Option<String>,
+) -> Result<MessageWithAuthor, (StatusCode, String)> {
+    let id = new_id();
+    let now = now_unix();
+    let expires_at = disappearing_expiry(state, &channel_id, now).await;
+    let author_id = author.id.clone();
+    // A webhook (another service) naming people doesn't count as mentioning them, so it
+    // can't wake a phone through a mute; the names still show.
+    let mentions_count = !author.is_bot;
+
     sqlx::query(
         "INSERT INTO messages (id, channel_id, author_id, content, created_at, attachments, reply_to, expires_at) VALUES (?,?,?,?,?,?,?,?)",
     )
     .bind(&id)
     .bind(&channel_id)
-    .bind(&auth.0)
+    .bind(&author_id)
     .bind(&content)
     .bind(now)
     .bind(&attachments_json)
@@ -497,28 +525,30 @@ pub async fn send_message(
 
     // A reply in a thread: its channel's people hear the new count first, so the app
     // already knows this channel is a thread when the message itself arrives.
-    let in_thread = crate::api::roles::thread_parent(&state, &msg.channel_id)
+    let in_thread = crate::api::roles::thread_parent(state, &msg.channel_id)
         .await
         .is_some();
     if in_thread {
-        crate::api::threads::announce(&state, &msg.channel_id).await;
+        // Replying in a thread follows it.
+        crate::api::threads::follow_quietly(state, &author_id, &msg.channel_id).await;
+        crate::api::threads::announce(state, &msg.channel_id).await;
     }
     broadcast_to_channel(
-        &state,
+        state,
         &msg.channel_id,
         &GatewayEvent::MessageCreate(msg.clone()),
     )
     .await;
     // Resolve link-preview embeds off the hot path; a MessageUpdate follows when ready.
     spawn_embed_refresh(
-        &state,
+        state,
         msg.id.clone(),
         msg.channel_id.clone(),
         msg.content.clone(),
-        auth.0.clone(),
+        author_id.clone(),
     );
     spawn_index(
-        &state,
+        state,
         msg.id.clone(),
         msg.channel_id.clone(),
         msg.author.id.clone(),
@@ -528,14 +558,17 @@ pub async fn send_message(
     );
     // Content-free push relay: queue a wake-up nudge for offline recipients only.
     // The relay stores no message text/channel names/E2E keys; online users already got
-    // the GatewayEvent above.
-    // Thread replies don't wake phones yet: a thread doesn't count as unread until there's
-    // a way to follow one.
-    if !in_thread {
-        crate::api::push::enqueue_message_pushes(&state, &msg.channel_id, &auth.0, &msg.content)
-            .await;
-    }
-    Ok(Json(msg))
+    // the GatewayEvent above. A thread wakes only the people who follow it and those it
+    // mentions (see enqueue_message_pushes).
+    crate::api::push::enqueue_message_pushes(
+        state,
+        &msg.channel_id,
+        &author_id,
+        &msg.content,
+        mentions_count,
+    )
+    .await;
+    Ok(msg)
 }
 
 // ── Edit / pin ────────────────────────────────────────────────────────────────

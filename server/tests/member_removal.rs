@@ -121,6 +121,7 @@ fn seat_in_room(w: &World, channel_id: &str, user: &AuthOk, name: &str) {
             username: name.to_owned(),
             display_name: name.to_owned(),
             avatar_url: None,
+            bot: false,
         },
         muted: false,
         video: false,

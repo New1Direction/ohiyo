@@ -1,5 +1,6 @@
 import { DEFAULT_HOME_URL, normalizeHomeUrl } from "./lib/homes";
 import type { NotificationLevel, NotificationSetting, NotificationTarget } from "./lib/notificationSettings";
+import type { WebhookCreated, WebhookSummary } from "./components/WebhooksDialog";
 import type { ThreadSummary } from "./lib/threads";
 
 // ── Runtime endpoint config ──────────────────────────────────────────────────
@@ -36,6 +37,9 @@ export type PublicUser = {
   username: string;
   display_name: string;
   avatar_url: string | null;
+  /** A webhook (another service posting to a channel), not a person: shown with an APP badge
+   *  and no profile. Absent for people. */
+  bot?: boolean;
 };
 
 export type Server = {
@@ -118,6 +122,8 @@ export type ReplyPreview = {
   id: string;
   author: string;
   content: string;
+  /** The quoted message came from a webhook (another service): shown with an APP badge. */
+  bot?: boolean;
 };
 
 export type PollOption = { id: string; text: string; votes: number; me: boolean };
@@ -716,6 +722,23 @@ export const api = {
       token,
     ),
 
+  // Incoming webhooks, per text channel, for people who manage a space's channels. The
+  // token (and so the URL to post to) is only in the answer that issues it.
+  listWebhooks: (token: string, channelId: string) =>
+    request<WebhookSummary[]>(`/channels/${encodeURIComponent(channelId)}/webhooks`, {}, token),
+  createWebhook: (token: string, channelId: string, name: string) =>
+    request<WebhookCreated>(
+      `/channels/${encodeURIComponent(channelId)}/webhooks`,
+      { method: "POST", body: JSON.stringify({ name }) },
+      token,
+    ),
+  updateWebhook: (token: string, id: string, body: { name?: string; avatar_file_id?: string }) =>
+    request<WebhookSummary>(`/webhooks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }, token),
+  renewWebhook: (token: string, id: string) =>
+    request<WebhookCreated>(`/webhooks/${encodeURIComponent(id)}/token`, { method: "POST" }, token),
+  deleteWebhook: (token: string, id: string) =>
+    request<void>(`/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }, token),
+
   // Encrypted E2E key backup (recovery-code model). Server stores ciphertext only;
   // getKeyBackup rejects with a 404 when none exists.
   getKeyBackup: (token: string) => request<Record<string, unknown>>("/users/@me/key-backup", {}, token),
@@ -813,6 +836,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message_id: messageId, name }),
     }, token),
+
+  /** Rename a thread (whoever started it, or someone who manages the channel). */
+  renameThread: (token: string, threadId: string, name: string) =>
+    request<ThreadSummary>(`/threads/${threadId}`, { method: "PATCH", body: JSON.stringify({ name }) }, token),
+
+  /** Delete a thread and its replies. */
+  deleteThread: (token: string, threadId: string) =>
+    request<void>(`/threads/${threadId}`, { method: "DELETE" }, token),
+
+  /** Follow a thread (it counts as unread and notifies like its channel) or stop following. */
+  setThreadFollow: (token: string, threadId: string, following: boolean) =>
+    request<void>(`/threads/${threadId}/follow`, { method: following ? "PUT" : "DELETE" }, token),
 
   createChannel: (token: string, serverId: string, name: string, categoryId?: string | null) =>
     request<Channel>(`/servers/${serverId}/channels`, {

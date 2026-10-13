@@ -2,15 +2,20 @@
 //
 // The rule, the same as the server's push relay (server/src/api/notifications.rs):
 //   - a mention starts with "@" at the start of the text or after whitespace, so an email
-//     address is never one;
+//     address is never one. Whitespace as the server counts it (Rust's char::is_whitespace),
+//     which isn't JavaScript's \s: that also counts U+FEFF and leaves out U+0085, so an
+//     invisible character before @everyone once pinged the app while the server saw nothing;
 //   - its name is the run of username characters after the "@";
 //   - a "." or "-" at the end of that run is punctuation ("thanks @alice."), unless the whole
 //     run is the name being matched (a name may itself end in a dot).
 // client/test/fixtures/mention-cases.json holds the cases both sides are tested against.
 import { MAX_USERNAME, MIN_USERNAME, USERNAME_CHAR } from "./usernames.ts";
 
+/** What may come right before a mention's "@": the start, or whitespace as Rust counts it. */
+const BOUNDARY = "^|[\\t\\n\\v\\f\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
+
 /** A mention: start of text or whitespace, the "@", and its run of username characters. */
-const MENTION = new RegExp(`(^|\\s)@(${USERNAME_CHAR}+)`, "g");
+const MENTION = new RegExp(`(${BOUNDARY})@(${USERNAME_CHAR}+)`, "g");
 
 /** A run without the "." and "-" at its end, which read as punctuation after a name. */
 function withoutTrailingPunctuation(run: string): string {
@@ -26,7 +31,7 @@ export function activeMentionQuery(
   caret: number
 ): { query: string; at: number } | null {
   const before = value.slice(0, caret);
-  const m = before.match(new RegExp(`(?:^|\\s)@(${USERNAME_CHAR}{0,${MAX_USERNAME}})$`));
+  const m = before.match(new RegExp(`(?:${BOUNDARY})@(${USERNAME_CHAR}{0,${MAX_USERNAME}})$`));
   if (!m) return null;
   const query = m[1];
   return { query, at: caret - query.length - 1 };

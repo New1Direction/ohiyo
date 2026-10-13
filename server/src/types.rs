@@ -12,6 +12,11 @@ pub struct User {
     pub password_hash: String,
     pub avatar_url: Option<String>,
     pub created_at: i64,
+    /// The account a webhook posts as (api::webhooks), not a person: it can't sign in and
+    /// isn't found, messaged or befriended.
+    #[sqlx(default)]
+    #[serde(default)]
+    pub is_bot: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -68,6 +73,17 @@ pub struct ThreadSummary {
     pub message_count: i64,
     pub last_message_at: Option<i64>,
     pub starter_deleted: bool,
+    /// Who started it (they may rename or delete it); None for a thread started before that
+    /// was recorded, or once they've deleted their account.
+    #[serde(default)]
+    pub owner_id: Option<String>,
+    /// Nobody has written in it for a week (worked out when it was read).
+    #[serde(default)]
+    pub archived: bool,
+    /// Whether the person asking follows it: only in their own copy (their list, Ready, a
+    /// follow change), never in what everyone watching the channel hears.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub following: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -138,6 +154,9 @@ pub struct ReplyPreview {
     pub id: String,
     pub author: String,
     pub content: String,
+    /// The reply quotes a webhook (another service), shown with an APP badge.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bot: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +184,13 @@ pub struct PublicUser {
     pub username: String,
     pub display_name: String,
     pub avatar_url: Option<String>,
+    /// A webhook, not a person: the app shows an APP badge and no profile. Left out for people.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bot: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl From<User> for PublicUser {
@@ -174,6 +200,7 @@ impl From<User> for PublicUser {
             username: u.username,
             display_name: u.display_name,
             avatar_url: u.avatar_url,
+            bot: u.is_bot,
         }
     }
 }
@@ -306,6 +333,10 @@ pub enum GatewayEvent {
         /// The account's notification settings for the spaces and chats listed above.
         #[serde(default)]
         notification_settings: Vec<NotificationSetting>,
+        /// The threads the account follows (in channels it can see); their unread counts
+        /// are in `unread`.
+        #[serde(default)]
+        followed_threads: Vec<ThreadSummary>,
     },
     MessageCreate(MessageWithAuthor),
     /// A message's content/pinned state changed (edit or pin/unpin).
@@ -351,6 +382,17 @@ pub enum GatewayEvent {
     /// A thread started, or its message count changed (a reply, a deletion), or the message
     /// it started from was deleted. Sent to everyone who can see the thread's channel.
     ThreadUpdate(ThreadSummary),
+    /// A thread was deleted (with its messages); the line under its message goes.
+    ThreadDelete {
+        id: String,
+        parent_id: String,
+        thread_message_id: Option<String>,
+    },
+    /// You followed or unfollowed a thread (sent to your own devices only).
+    ThreadFollowUpdate {
+        thread: ThreadSummary,
+        following: bool,
+    },
     MemberJoin {
         server_id: String,
         user: PublicUser,

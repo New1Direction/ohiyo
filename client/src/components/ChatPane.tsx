@@ -36,7 +36,9 @@ import { filesThatFit, holdingSlots, TOO_MANY_ATTACHMENTS } from "../lib/attachm
 import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 import { threadChipLabel, type ThreadSummary } from "../lib/threads";
+import { ThreadOptionsMenu } from "./ThreadOptionsMenu";
 import { avatarStyle } from "../lib/avatarStyle";
+import { fileUrlOn } from "../lib/fileUrl";
 
 const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
 function hiddenMessagesKey(channelId: string, userId: string): string {
@@ -260,14 +262,26 @@ type Props = {
   chatMuted?: boolean;
   /** Threads started in this channel, by the message each started from. */
   threadByMessage?: ReadonlyMap<string, ThreadSummary>;
+  /** New replies in the threads you follow, by thread id (shown under their messages). */
+  threadUnread?: ReadonlyMap<string, number>;
   /** Open a thread (from the line under its message). */
   onOpenThread?: (thread: ThreadSummary) => void;
   /** Start a thread from a message (a space's text channels only). */
   onStartThread?: (msg: Message) => void;
   /** Open this channel's list of threads. */
   onOpenThreads?: () => void;
-  /** Shown as a thread: the channel it hangs off and how to go back to it. */
-  threadView?: { parentName: string; starterDeleted: boolean; onClose: () => void };
+  /** Shown as a thread: the channel it hangs off and how to go back to it, whether you
+   *  follow it, and (for whoever may) renaming or deleting it. */
+  threadView?: {
+    parentName: string;
+    starterDeleted: boolean;
+    onClose: () => void;
+    following?: boolean;
+    onToggleFollow?: () => void;
+    onRename?: () => void;
+    onDelete?: () => void;
+    archived?: boolean;
+  };
 };
 
 /** Delivered / Seen line under your latest sent message — DMs only (iMessage-style). */
@@ -422,6 +436,7 @@ export function ChatPane({
   onOpenNotificationSettings,
   chatMuted = false,
   threadByMessage,
+  threadUnread,
   onOpenThread,
   onStartThread,
   onOpenThreads,
@@ -1289,6 +1304,7 @@ export function ChatPane({
             </span>
             <span className="kc-chat-title">{channel.name}</span>
             <span className="kc-thread-parent truncate text-xs font-normal">in #{threadView.parentName}</span>
+            {threadView.archived && <span className="kc-thread-archived">Archived</span>}
           </>
         ) : (
           <>
@@ -1316,6 +1332,21 @@ export function ChatPane({
           </>
         )}
         <div className="flex-1" />
+        {threadView?.onToggleFollow && (
+          <button
+            type="button"
+            className="kc-thread-follow kc-interactive"
+            aria-pressed={Boolean(threadView.following)}
+            title={threadView.following ? "Stop following: only @mentions will notify you" : "Follow: new replies count as unread"}
+            onClick={threadView.onToggleFollow}
+          >
+            <Icon name="bell" size={15} />
+            <span>{threadView.following ? "Following" : "Follow"}</span>
+          </button>
+        )}
+        {threadView && (threadView.onRename || threadView.onDelete) && (
+          <ThreadOptionsMenu onRename={threadView.onRename} onDelete={threadView.onDelete} />
+        )}
         {peopleHere.length > 0 && onOpenMembers && (
           <button
             type="button"
@@ -1789,34 +1820,58 @@ export function ChatPane({
               return (
                 <div style={style} className="msg-group kc-message-row px-4 pt-2 hover:bg-white/[0.02]">
                   <div className="flex items-start gap-3">
-                    <button
-                      className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
-                      style={{
-                        ...avatarStyle(g.author.id, g.author.avatar_url ? assetUrl(g.author.avatar_url) : null),
-                        color: "#fff",
-                        cursor: "pointer",
-                        border: "none",
-                      }}
-                      onClick={(e) => {
-                        profileAnchorRef.current = e.currentTarget as HTMLElement;
-                        setProfileUserId(g.author.id);
-                      }}
-                      title={`View ${g.author.display_name}'s profile`}
-                    >
-                      {!g.author.avatar_url && <AvatarMark />}
-                    </button>
+                    {g.author.bot ? (
+                      // A webhook (another service posting here) has no profile to open. With a
+                      // picture its avatar is styled like a person's; without one it's the
+                      // theme's tint (kc-webhook-avatar) under the webhook icon.
+                      <span
+                        className="msg-avatar kc-webhook-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                        style={g.author.avatar_url ? avatarStyle(g.author.id, assetUrl(g.author.avatar_url)) : undefined}
+                        aria-hidden="true"
+                      >
+                        {!g.author.avatar_url && <Icon name="webhook" size={18} />}
+                      </span>
+                    ) : (
+                      <button
+                        className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                        style={{
+                          ...avatarStyle(g.author.id, g.author.avatar_url ? assetUrl(g.author.avatar_url) : null),
+                          color: "#fff",
+                          cursor: "pointer",
+                          border: "none",
+                        }}
+                        onClick={(e) => {
+                          profileAnchorRef.current = e.currentTarget as HTMLElement;
+                          setProfileUserId(g.author.id);
+                        }}
+                        title={`View ${g.author.display_name}'s profile`}
+                      >
+                        {!g.author.avatar_url && <AvatarMark />}
+                      </button>
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="msg-meta flex items-baseline gap-2">
-                        <button
-                          className="text-sm font-semibold"
-                          style={{ color: "var(--text-primary)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
-                          onClick={(e) => {
-                            profileAnchorRef.current = e.currentTarget as HTMLElement;
-                            setProfileUserId(g.author.id);
-                          }}
-                        >
-                          {g.author.display_name}
-                        </button>
+                        {g.author.bot ? (
+                          <span className="flex items-baseline gap-1.5">
+                            <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                              {g.author.display_name}
+                            </span>
+                            <span className="kc-app-badge" title="Posted by another app through a webhook">
+                              APP
+                            </span>
+                          </span>
+                        ) : (
+                          <button
+                            className="text-sm font-semibold"
+                            style={{ color: "var(--text-primary)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                            onClick={(e) => {
+                              profileAnchorRef.current = e.currentTarget as HTMLElement;
+                              setProfileUserId(g.author.id);
+                            }}
+                          >
+                            {g.author.display_name}
+                          </button>
+                        )}
                         <MessageTime unix={g.msgs[0].created_at} className="text-xs" style={{ color: "var(--text-secondary)" }} />
                       </div>
                       {g.msgs.map((msg, mi) => (
@@ -1903,16 +1958,18 @@ export function ChatPane({
                             const thread = threadByMessage?.get(msg.id);
                             if (!thread) return null;
                             const label = threadChipLabel(thread.message_count, thread.last_message_at, Math.floor(Date.now() / 1000));
+                            const fresh = threadUnread?.get(thread.id) ?? 0;
                             return (
                               <button
                                 type="button"
                                 className="kc-thread-chip"
-                                aria-label={`Open thread ${thread.name}: ${label}`}
+                                aria-label={`Open thread ${thread.name}: ${label}${fresh > 0 ? `, ${fresh} new` : ""}`}
                                 onClick={(e) => { e.stopPropagation(); onOpenThread?.(thread); }}
                               >
                                 <Icon name="thread" size={14} />
                                 <span className="kc-thread-chip-name">{thread.name}</span>
                                 <span className="kc-thread-chip-meta">{label}</span>
+                                {fresh > 0 && <span className="kc-thread-chip-unread" aria-hidden="true">{fresh > 99 ? "99+" : fresh}</span>}
                               </button>
                             );
                           })()}
@@ -2812,10 +2869,7 @@ function fitImg(w: number, h: number, maxW: number, maxH: number): { w: number; 
 }
 
 function assetUrl(url: string): string {
-  // Only http(s) absolute URLs pass through; data:/blob: are rejected so a
-  // crafted attachment URL can't smuggle an inline payload into <img>/<video>.
-  if (/^https?:/i.test(url)) return url;
-  return `${getFileBase()}${url.startsWith("/") ? url : `/${url}`}`;
+  return fileUrlOn(getFileBase(), url);
 }
 
 function VideoAttachmentPlayer({ url, filename, compact = false }: { url: string; filename: string; compact?: boolean }) {
@@ -3136,6 +3190,11 @@ function ReplyQuote({ reply }: { reply: NonNullable<Message["reply_to"]> }) {
     >
       <span style={{ color: "var(--accent)", flexShrink: 0 }}>↩</span>
       <span style={{ fontWeight: 600, color: "var(--text-secondary)", flexShrink: 0 }}>{reply.author}</span>
+      {reply.bot && (
+        <span className="kc-app-badge" style={{ flexShrink: 0 }}>
+          APP
+        </span>
+      )}
       <span className="truncate" style={{ opacity: 0.85 }}>{reply.content}</span>
     </div>
   );

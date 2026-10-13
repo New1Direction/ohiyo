@@ -571,3 +571,79 @@ test("threads: an empty thread says so, and so does one whose first message was 
   assert.match(html, /No replies yet/);
   assert.match(html, /The first message of this thread was deleted\./);
 });
+
+test("threads: a followed thread with new replies shows how many under its message", () => {
+  const html = spaceChat({
+    threadByMessage: new Map([["m1", pizzaThread()]]),
+    threadUnread: new Map([["t1", 3]]),
+    onOpenThread() {},
+  });
+  assert.match(html, /aria-label="Open thread Pizza: 2 replies · last reply 2m ago, 3 new"/);
+  assert.match(html, /class="kc-thread-chip-unread"[^>]*>3</);
+  const quiet = spaceChat({ threadByMessage: new Map([["m1", pizzaThread()]]), onOpenThread() {} });
+  assert.doesNotMatch(quiet, /kc-thread-chip-unread/, "nothing new, no count");
+});
+
+function threadHeader(view: Props): string {
+  return renderChatPane({
+    channel: pizzaThread(),
+    messages: [],
+    currentUserId: "u1",
+    token: "t",
+    pluginManager: quietPlugins,
+    serverEmojis: [],
+    onSend() {},
+    onToast() {},
+    isLoading: false,
+    threadView: { parentName: "general", starterDeleted: false, onClose() {}, ...view },
+  });
+}
+
+test("threads: the header follows or unfollows the thread", () => {
+  const off = threadHeader({ following: false, onToggleFollow() {} });
+  assert.match(off, /aria-pressed="false"/);
+  assert.match(off, />Follow</);
+  const on = threadHeader({ following: true, onToggleFollow() {} });
+  assert.match(on, /aria-pressed="true"/);
+  assert.match(on, />Following</);
+});
+
+test("threads: rename and delete are offered only to someone who may", () => {
+  const can = threadHeader({ following: true, onToggleFollow() {}, onRename() {}, onDelete() {} });
+  assert.match(can, /aria-label="Thread options"/);
+  const cannot = threadHeader({ following: true, onToggleFollow() {} });
+  assert.doesNotMatch(cannot, /aria-label="Thread options"/);
+});
+
+test("threads: an archived thread says so in its header", () => {
+  const html = threadHeader({ following: false, onToggleFollow() {}, archived: true });
+  assert.match(html, /Archived/);
+});
+
+// ── Webhooks ──
+// A message another service posted through a webhook shows the webhook's name with an APP
+// badge (like Discord), and its name and picture open no profile: there's no person to
+// message or add.
+test("a webhook's message shows its name with an APP badge and opens no profile", () => {
+  const hook = { id: "hook1", username: "~webhook-hook1", display_name: "Deploy bot", avatar_url: null, bot: true };
+  const html = spaceChat({
+    messages: [{ author: hook, created_at: 1, edited_at: null, reactions: [], id: "m7", channel_id: "c9", content: "Deploy finished" }],
+  });
+  assert.match(html, /Deploy bot/);
+  assert.match(html, /<span[^>]*class="[^"]*kc-app-badge[^"]*"[^>]*>APP<\/span>/);
+  assert.doesNotMatch(html, /View Deploy bot/, "no profile button for a webhook");
+});
+
+test("a person's message has no APP badge", () => {
+  const html = spaceChat({});
+  assert.doesNotMatch(html, /kc-app-badge/);
+});
+
+test("a reply to a webhook's message marks the webhook as an app", () => {
+  const html = spaceChat({
+    messages: [
+      { ...threadBase, id: "m8", channel_id: "c9", content: "nice", reply_to: { id: "m7", author: "Deploy bot", content: "Deploy finished", bot: true } },
+    ],
+  });
+  assert.match(html, /Deploy bot<\/span><span[^>]*class="[^"]*kc-app-badge[^"]*"[^>]*>APP<\/span>/);
+});

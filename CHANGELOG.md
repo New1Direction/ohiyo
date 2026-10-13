@@ -11,6 +11,22 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
 
+### Added
+- **Incoming webhooks, like Discord's.** People who manage a space's channels can make a
+  webhook for a text channel (Space menu → Webhooks): a secret URL that another service posts
+  `{"content": "…"}` to, and the message appears in the channel under the webhook's name and
+  picture, marked APP. The URL is shown once, can be renewed, and only a hash of its token is
+  kept. A post can't pose as a person or ping @everyone, and posting is rate-limited. Not in
+  DMs or group chats, which are end-to-end encrypted.
+- **Threads: rename, delete, follow, unread and archive.** Whoever started a thread, or anyone
+  who manages the channel's messages or channels, can rename or delete it (the thread's ⋯
+  menu). You follow a thread when you start it or reply in it, and can follow or unfollow it
+  from its header: a followed thread counts as unread ("3 new" under its message and in the
+  Threads list) and notifies like its channel, a push included, under the channel's
+  notification settings; any other thread only notifies when it @mentions you. A thread nobody
+  has written in for a week shows as archived, under "Older" in the Threads list, until
+  someone replies.
+
 ### Fixed
 - **@mentions work for every username,** including ones with dots and dashes (`@alice.b`,
   `@bob-c`): they're highlighted, offered in the mention picker, and count as mentioning you.

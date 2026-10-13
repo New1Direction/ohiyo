@@ -43,6 +43,8 @@ type Props = {
   mutedChannelIds?: ReadonlySet<string>;
   /** "Notification settings" in the space menu. */
   onOpenNotificationSettings?: () => void;
+  /** Open the space's webhooks (offered to people who manage channels). */
+  onOpenWebhooks?: () => void;
   myStatus?: string | null;
   onSetStatus?: (status: string) => void;
   myActivity?: Activity | null;
@@ -116,6 +118,7 @@ export function ChannelSidebar({
   mentionChannels,
   mutedChannelIds,
   onOpenNotificationSettings,
+  onOpenWebhooks,
   myStatus,
   onSetStatus,
   myActivity,
@@ -165,6 +168,7 @@ export function ChannelSidebar({
     if (canManageChannels) spaceMenuItems.push({ label: "Create channel", icon: "plus", onSelect: () => setShowNewChannel(true) });
     if (onOpenEvents) spaceMenuItems.push({ label: "Events", icon: "calendar", onSelect: onOpenEvents });
     if (onOpenModQueue) spaceMenuItems.push({ label: "Moderation queue", icon: "history", onSelect: onOpenModQueue });
+    if (canManageChannels && onOpenWebhooks) spaceMenuItems.push({ label: "Webhooks", icon: "webhook", onSelect: onOpenWebhooks });
     if (onOpenNotificationSettings) {
       spaceMenuItems.push({ label: "Notification settings", icon: "bell", onSelect: onOpenNotificationSettings });
     }

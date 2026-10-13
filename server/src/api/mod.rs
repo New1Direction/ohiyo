@@ -32,6 +32,7 @@ pub mod signal;
 pub mod threads;
 pub mod users;
 pub mod watch;
+pub mod webhooks;
 
 use crate::AppState;
 use axum::{
@@ -289,10 +290,33 @@ pub fn router() -> Router<AppState> {
             put(channels::set_channel_category),
         )
         .route("/channels/{id}", delete(channels::delete_channel))
+        // Incoming webhooks: made per text channel by people who manage channels; posted to
+        // with no account at their secret URL (see api::webhooks).
+        .route(
+            "/channels/{channel_id}/webhooks",
+            get(webhooks::list_webhooks).post(webhooks::create_webhook),
+        )
+        .route(
+            "/webhooks/{id}",
+            patch(webhooks::update_webhook).delete(webhooks::delete_webhook),
+        )
+        .route("/webhooks/{id}/token", post(webhooks::renew_token))
+        .route(
+            "/webhooks/{id}/{token}",
+            post(webhooks::post_message).layer(DefaultBodyLimit::max(webhooks::MAX_BODY_BYTES)),
+        )
         // Threads: started from a message in a space's text channel, listed per channel.
         .route(
             "/channels/{channel_id}/threads",
             get(threads::list_threads).post(threads::create_thread),
+        )
+        .route(
+            "/threads/{id}",
+            patch(threads::rename_thread).delete(threads::delete_thread),
+        )
+        .route(
+            "/threads/{id}/follow",
+            put(threads::follow_thread).delete(threads::unfollow_thread),
         )
         // Messages
         .route(
