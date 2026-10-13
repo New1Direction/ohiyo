@@ -1409,6 +1409,10 @@ button:disabled,
   width: max-content;
   min-width: 13.5rem;
   max-width: min(18rem, calc(100vw - 24px));
+  /* A space's managers get a long menu: on a short window it scrolls instead of spilling. */
+  max-height: calc(100dvh - 96px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   border: 1px solid color-mix(in oklch, var(--text-primary) 10%, transparent);
   border-radius: 14px;

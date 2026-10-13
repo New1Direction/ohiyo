@@ -29,6 +29,9 @@ import { FindPeopleModal } from "./components/FindPeopleModal";
 import { SearchModal, type SearchHit } from "./components/SearchModal";
 import { MembersModal } from "./components/MembersModal";
 import { RolesModal } from "./components/RolesModal";
+import { RenameSpaceDialog } from "./components/RenameSpaceDialog";
+import { ChannelSettingsModal } from "./components/ChannelSettingsModal";
+import { memberRolesOf, nameColors } from "./lib/roleColors";
 import { EventsModal } from "./components/EventsModal";
 import { SavedModal } from "./components/SavedModal";
 import { CategoriesModal } from "./components/CategoriesModal";
@@ -638,6 +641,8 @@ function MainApp({
   const [showSearch, setShowSearch] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showRoles, setShowRoles] = useState(false);
+  const [showRenameSpace, setShowRenameSpace] = useState(false);
+  const [channelSettingsFor, setChannelSettingsFor] = useState<Channel | null>(null);
   const [showEvents, setShowEvents] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
@@ -1593,14 +1598,27 @@ function MainApp({
         break;
       }
 
-      case "ServerCreate":
+      case "ServerCreate": {
         // Upsert: also used as a "server changed" signal (categories, channel moves).
         setServers((prev) =>
           prev.some((s) => s.id === event.d.id)
             ? prev.map((s) => (s.id === event.d.id ? event.d : s))
             : [...prev, event.d]
         );
+        // The open channel was made private to us, or deleted: step out of it.
+        const open = selectedChannelRef.current;
+        if (open && open.server_id === event.d.id && !open.parent_id && !event.d.channels.some((c) => c.id === open.id)) {
+          const next = event.d.channels.find((c) => c.channel_type === "text");
+          if (next) handleSelectChannelRef.current(next);
+          else {
+            setSelectedChannel(null);
+            selectedChannelRef.current = null;
+            setMessages([]);
+          }
+          toast(`#${open.name} isn't open to you any more.`);
+        }
         break;
+      }
 
       case "ServerDelete":
         setServers((prev) => prev.filter((s) => s.id !== event.d.id));
@@ -3192,6 +3210,10 @@ function MainApp({
     return names.length ? names.join(", ") : "Group chat";
   }
 
+  // Names take the colour of their highest coloured role in the open space.
+  const openSpace = servers.find((s) => s.id === selectedServerId);
+  const roleNameColors = useMemo(() => nameColors(openSpace ?? {}), [openSpace]);
+
   const sidebarVoiceParticipants = useMemo(() => {
     const next = new Map<string, VoiceSidebarParticipant[]>();
     for (const [channelId, members] of voiceParticipantsByChannel) {
@@ -3483,6 +3505,13 @@ function MainApp({
             canManageChannels={can(myPerms, PERM.MANAGE_CHANNELS)}
             canManageServer={can(myPerms, PERM.MANAGE_SERVER)}
             onOpenCategories={() => setShowCategories(true)}
+            onRenameSpace={selectedServer && can(myPerms, PERM.MANAGE_SERVER) ? () => { setMobileNavOpen(false); setShowRenameSpace(true); } : undefined}
+            onOpenRoles={selectedServer && can(myPerms, PERM.MANAGE_ROLES) ? () => { setMobileNavOpen(false); setShowRoles(true); } : undefined}
+            onOpenChannelSettings={
+              selectedServer && selectedChannel && selectedChannel.server_id === selectedServer.id && !selectedChannel.parent_id && can(myPerms, PERM.MANAGE_CHANNELS)
+                ? () => { setMobileNavOpen(false); setChannelSettingsFor(selectedChannel); }
+                : undefined
+            }
             onSelectChannel={handleSelectChannel}
             onJoinVoice={handleJoinVoice}
             onCreateChannel={handleCreateChannel}
@@ -3592,6 +3621,8 @@ function MainApp({
         onReportUser={(user) => void reportTarget("user", user.id, "user")}
         mentionables={selectedServer?.members ?? []}
         channelMembers={selectedServer?.members ?? undefined}
+        nameColors={roleNameColors}
+        rolesOf={selectedServer ? (userId) => memberRolesOf(selectedServer, userId) : undefined}
         onlineUserIds={onlineUsers}
         activityNotices={selectedChannel ? chatActivityNotices.filter((notice) => notice.channelId === selectedChannel.id) : []}
         currentUsername={currentUser.username}
@@ -3956,6 +3987,7 @@ function MainApp({
           onRemoveTimeout={handleRemoveTimeout}
           canManageRoles={can(myPerms, PERM.MANAGE_ROLES)}
           onManageRoles={() => { setShowMembers(false); setShowRoles(true); }}
+          space={selectedServer}
           onKick={handleKick}
           onBan={handleBan}
           onClose={() => setShowMembers(false)}
@@ -3969,7 +4001,33 @@ function MainApp({
           serverId={selectedServer.id}
           members={selectedServer.members}
           ownerId={selectedServer.owner_id}
+          currentUserId={currentUser.id}
+          myPermissions={myPerms}
           onClose={() => setShowRoles(false)}
+        />
+      )}
+
+      {showRenameSpace && selectedServer && (
+        <RenameSpaceDialog
+          name={selectedServer.name}
+          onRename={async (name) => {
+            const updated = await api.renameServer(token, selectedServer.id, name);
+            setServers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+            toast(`Renamed to ${updated.name}.`, "success");
+          }}
+          onClose={() => setShowRenameSpace(false)}
+        />
+      )}
+
+      {channelSettingsFor && selectedServer && channelSettingsFor.server_id === selectedServer.id && (
+        <ChannelSettingsModal
+          token={token}
+          serverId={selectedServer.id}
+          channel={selectedServer.channels.find((c) => c.id === channelSettingsFor.id) ?? channelSettingsFor}
+          roles={selectedServer.roles ?? []}
+          members={selectedServer.members}
+          myPermissions={myPerms}
+          onClose={() => setChannelSettingsFor(null)}
         />
       )}
 

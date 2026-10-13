@@ -123,6 +123,16 @@ pub struct Role {
     pub created_at: i64,
     #[serde(default)]
     pub is_everyone: bool,
+    /// Members holding it are listed under it in the member list.
+    #[serde(default)]
+    pub hoist: bool,
+}
+
+/// Who holds which role in a space; sent with the space so names can take role colours.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct MemberRole {
+    pub user_id: String,
+    pub role_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -666,6 +676,11 @@ pub struct ServerWithChannels {
     pub members: Vec<PublicUser>,
     #[serde(default)]
     pub categories: Vec<Category>,
+    /// The space's roles, lowest first, and who holds which.
+    #[serde(default)]
+    pub roles: Vec<Role>,
+    #[serde(default)]
+    pub member_roles: Vec<MemberRole>,
 }
 
 // ── JWT claims ────────────────────────────────────────────────────────────────
