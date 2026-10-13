@@ -5,6 +5,7 @@ import type { WebhookCreated, WebhookSummary } from "./components/WebhooksDialog
 import type { ThreadSummary } from "./lib/threads";
 import type { OverwriteBits, OverwriteRow } from "./lib/roleColors";
 import type { RecoveryCodes, TwoFactorChallenge, TwoFactorSetup, TwoFactorStatus } from "./lib/twoFactor";
+import type { InstanceBilling } from "./lib/instantServers";
 
 // ── Runtime endpoint config ──────────────────────────────────────────────────
 // The packaged app has a default home baked in, but the active home can switch at
@@ -562,6 +563,8 @@ export interface HostedInstance {
   error: string | null;
   created_at: number;
   updated_at: number;
+  /** The paid plan, once a checkout was started for this server. */
+  billing?: InstanceBilling | null;
 }
 
 export type SelfHostGuide = {
@@ -581,11 +584,6 @@ export type InstanceExport = {
   billing_note: string;
 };
 
-export type BillingCheckout = {
-  mode: "operator" | "checkout" | string;
-  checkout_url: string;
-  note: string;
-};
 
 export type PushConfig = {
   enabled: boolean;
@@ -771,8 +769,15 @@ export const api = {
     request<InstanceExport>(`/instances/${id}/export`, {}, token),
   getGraduateGuide: (id: string, token: string) =>
     request<SelfHostGuide>(`/instances/${id}/graduate`, {}, token),
-  getBillingCheckout: (id: string, token: string) =>
-    request<BillingCheckout>(`/instances/${id}/billing`, {}, token),
+  /** Start Stripe Checkout for a server's paid plan; open the returned URL. */
+  startPaidPlanCheckout: (id: string, token: string) =>
+    request<{ checkout_url: string }>(`/instances/${id}/billing/checkout`, { method: "POST" }, token),
+  /** End a server's paid plan when the current period ends. */
+  cancelPaidPlan: (id: string, token: string) =>
+    request<HostedInstance>(`/instances/${id}/billing/cancel`, { method: "POST" }, token),
+  /** A Stripe customer-portal link for your billing account. */
+  openBillingPortal: (token: string) =>
+    request<{ url: string }>("/billing/portal", { method: "POST" }, token),
   deleteInstance: (id: string, token: string) =>
     request<void>(`/instances/${id}`, { method: "DELETE" }, token),
 

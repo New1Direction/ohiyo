@@ -92,6 +92,15 @@ pub async fn delete_account(
             .await
             .map_err(internal)?;
     for id in &instances {
+        // A paid plan ends with its server; if it can't be cancelled, nothing is deleted.
+        crate::billing::release_instance(&state.db, state.billing.as_ref(), id)
+            .await
+            .map_err(|(code, _)| {
+                (
+                    code,
+                    "couldn't cancel your Instant Server's paid plan".to_owned(),
+                )
+            })?;
         // The app tells this apart from a proxy's 502 by these words (deleteAccountMessage).
         crate::provision::delete_instance(&state.db, state.provisioner.as_ref(), &me, id)
             .await

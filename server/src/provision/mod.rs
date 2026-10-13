@@ -59,15 +59,10 @@ pub trait MachineProvisioner: Send + Sync {
     async fn destroy_volume(&self, volume_id: &str) -> Result<(), ProvisionError>;
 }
 
-/// Max instances a single owner may hold on the free tier (cost-honest cap).
+/// Max free-plan instances a single owner may hold (cost-honest cap). Servers on the
+/// paid plan don't count against it. Whether this deployment can provision at all is
+/// `billing::provisioner_kind`.
 pub const MAX_FREE_INSTANCES: i64 = 3;
-
-/// Whether this deployment can really provision Instant Servers. Without a Fly API token
-/// `build_state` falls back to the in-memory fake, which exists for tests and local
-/// development; a release build must not hand out instances from it.
-pub fn provisioning_available(has_fly_token: bool, debug_build: bool) -> bool {
-    has_fly_token || debug_build
-}
 
 /// Slugify a display name and append a short unique suffix from the instance id, so
 /// the subdomain is human-readable yet collision-resistant (`the-roost-a1b2c3`).
@@ -131,13 +126,14 @@ pub async fn create_instance(
     // free-tier limit, evaluated in the same statement under SQLite's write lock. This
     // closes the check-then-insert TOCTOU (concurrent requests can't each read a stale
     // count and all insert) and excludes terminal-`failed` rows, so a run of provisioning
-    // errors can't permanently lock a user out of their own quota.
+    // errors can't permanently lock a user out of their own quota. Paid servers are
+    // outside the free quota.
     let inserted = sqlx::query(
         "INSERT INTO hosted_instances
          (id, owner_id, name, subdomain, region, tier, status, created_at, updated_at)
          SELECT ?,?,?,?,?,?,?,?,?
          WHERE (SELECT COUNT(*) FROM hosted_instances
-                WHERE owner_id = ? AND status != 'failed') < ?",
+                WHERE owner_id = ? AND status != 'failed' AND tier = 'free') < ?",
     )
     .bind(&id)
     .bind(owner_id)
@@ -170,7 +166,7 @@ pub async fn create_instance(
     if inserted.rows_affected() == 0 {
         return Err((
             StatusCode::CONFLICT,
-            "free-tier instance limit reached".into(),
+            "free-tier instance limit reached — delete one, or move one to the paid plan".into(),
         ));
     }
 
@@ -371,17 +367,6 @@ pub async fn delete_instance(
 mod create_tests {
     use super::*;
 
-    #[test]
-    fn a_release_build_without_a_fly_token_cannot_provision() {
-        assert!(!provisioning_available(false, false));
-    }
-
-    #[test]
-    fn a_fly_token_or_a_debug_build_can_provision() {
-        assert!(provisioning_available(true, false));
-        assert!(provisioning_available(false, true));
-        assert!(provisioning_available(true, true));
-    }
     use crate::provision::fake::FakeProvisioner;
     use async_trait::async_trait;
     use sqlx::sqlite::SqlitePoolOptions;

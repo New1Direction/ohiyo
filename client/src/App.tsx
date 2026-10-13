@@ -128,7 +128,7 @@ import { onLocalClock } from "./lib/watchSync";
 import { VOICE_UNAVAILABLE, callEnvironment, refusesCall } from "./lib/voiceSupport";
 import { arrivalInOpenChat, isLookingAt, lastRealMessageId } from "./lib/attention";
 import { unreadTotal, withoutUnread } from "./lib/unreadTotal";
-import { availabilityFrom, offersInstantServers, type InstantServersAvailability } from "./lib/instantServers";
+import { availabilityFrom, billingReturnFrom, billingReturnMessage, offersInstantServers, type InstantServersAvailability } from "./lib/instantServers";
 import { useDesktopShell } from "./hooks/useDesktopShell";
 import { useAppUpdate } from "./hooks/useAppUpdate";
 import { UpdateBar } from "./components/UpdateBar";
@@ -636,6 +636,19 @@ function MainApp({
       live = false;
     };
   }, [token]);
+  // Back from Stripe Checkout or the billing portal (?instant_billing=…): say what
+  // happened, drop the marker from the address, and show the servers.
+  useEffect(() => {
+    const back = billingReturnFrom(window.location.search);
+    if (!back) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("instant_billing");
+    url.searchParams.delete("instance");
+    window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    const { text, tone } = billingReturnMessage(back);
+    toast(text, tone);
+    setShowInstantServers(true);
+  }, [toast]);
   const [showInvite, setShowInvite] = useState(false);
   const [showPrivateDmLink, setShowPrivateDmLink] = useState(false);
   const [showFindPeople, setShowFindPeople] = useState(false);

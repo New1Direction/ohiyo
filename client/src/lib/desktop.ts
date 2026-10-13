@@ -142,3 +142,20 @@ export async function initDeepLinks(onInvite: (code: string) => void): Promise<(
     return () => {};
   }
 }
+
+/** Go to a payment page (Stripe Checkout or the billing portal). The desktop app opens
+ *  it in the system browser, which comes back to the web app afterwards. On the web the
+ *  tab itself goes there and Stripe sends it back: a new tab opened after a network
+ *  round trip is no longer a click, and popup blockers stop it. */
+export async function openPaymentPage(url: string): Promise<void> {
+  if (isDesktop()) {
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(url);
+      return;
+    } catch {
+      /* opener unavailable — fall through to the browser path */
+    }
+  }
+  window.location.assign(url);
+}

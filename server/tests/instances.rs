@@ -86,7 +86,7 @@ async fn free_tier_cap_is_enforced() {
 }
 
 #[tokio::test]
-async fn owner_can_sleep_wake_export_graduate_and_open_billing() {
+async fn owner_can_sleep_wake_export_and_graduate() {
     let srv = TestServer::start().await;
     let alice = srv.register("alice", "supersecret123").await;
 
@@ -165,23 +165,6 @@ async fn owner_can_sleep_wake_export_graduate_and_open_billing() {
         .await
         .unwrap();
     assert!(graduate["steps"].as_array().unwrap().len() >= 4);
-
-    let billing: Value = srv
-        .get_auth(&format!("/api/v1/instances/{id}/billing"), &alice.token)
-        .await
-        .json()
-        .await
-        .unwrap();
-    assert!(
-        billing["checkout_url"]
-            .as_str()
-            .unwrap()
-            .starts_with("mailto:")
-            || billing["checkout_url"]
-                .as_str()
-                .unwrap()
-                .starts_with("http")
-    );
 }
 
 #[tokio::test]
@@ -356,7 +339,7 @@ async fn instance_tier_changes_are_operator_only() {
 async fn the_app_can_ask_whether_instant_servers_are_offered() {
     // The command palette offers Instant Servers only where this server can make them. A
     // test build provisions with the in-memory fake, so the answer here is yes; a release
-    // build without FLY_API_TOKEN answers no (see provision::provisioning_available).
+    // build without FLY_API_TOKEN answers no (see billing::provisioner_kind).
     let srv = TestServer::start().await;
     let alice = srv.register("alice", "supersecret123").await;
     let res = srv
@@ -364,6 +347,7 @@ async fn the_app_can_ask_whether_instant_servers_are_offered() {
         .await;
     assert_eq!(res.status(), 200);
     let body: Value = res.json().await.unwrap();
-    assert_eq!(body, json!({ "available": true }));
+    assert_eq!(body["available"], true);
+    assert_eq!(body["provisioner"], "simulated");
     assert_eq!(srv.get("/api/v1/instances/available").await.status(), 401);
 }
