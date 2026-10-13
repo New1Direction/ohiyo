@@ -53,6 +53,12 @@ fn voice_state_of<'a>(user: &'a AuthOk) -> impl Fn(&Value) -> bool + 'a {
 
 #[tokio::test]
 async fn deafen_reaches_everyone_and_always_counts_as_muted() {
+    // Two gateways and many reads (each holds a 64 KiB buffer) make this test's future too
+    // big for the test thread's stack in an unoptimised build, so it runs boxed.
+    Box::pin(deafen_scenario()).await;
+}
+
+async fn deafen_scenario() {
     let srv = TestServer::start().await;
     let alice = srv.register("deafalice", "password123").await;
     let bob = srv.register("deafbob", "password123").await;
