@@ -173,3 +173,17 @@ export function describeModAction(entry: { action: string; metadata: string | nu
   const spaced = entry.action.replace(/_/g, " ").trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
+
+/**
+ * Whether to offer an action like Time out on `memberId`: you have the permission, they're
+ * not the owner or you, and they're among the members the server says you outrank
+ * (`moderatable`, from GET /servers/{id}/moderatable; until it answers, only the owner and
+ * you are left out). The server refuses the rest anyway.
+ */
+export function canActOn(
+  memberId: string,
+  ctx: { ownerId: string; currentUserId: string; allowed: boolean; moderatable?: ReadonlySet<string> },
+): boolean {
+  if (!ctx.allowed || memberId === ctx.ownerId || memberId === ctx.currentUserId) return false;
+  return ctx.moderatable ? ctx.moderatable.has(memberId) : true;
+}

@@ -5,7 +5,9 @@
 //! row can't be moved to another account), under a key derived with HKDF-SHA256 from
 //! `OHIYO_TOTP_KEY`, or from `JWT_SECRET` when that isn't set. With neither (or with only
 //! the throwaway secret a dev server makes up at boot), [`SecretBox::from_env`] is `None` and
-//! two-factor sign-in can't be turned on, rather than keeping secrets in plaintext.
+//! two-factor sign-in can't be turned on, rather than keeping secrets in plaintext. When
+//! `OHIYO_TOTP_KEY` is set after accounts turned it on under the `JWT_SECRET` key, that key
+//! still opens their secrets, which are then sealed again under the new key.
 //!
 //! Recovery codes are 80 random bits each and stored as SHA-256 of the user id and the code,
 //! so a copy of the database doesn't give them away and they keep working even if the
@@ -214,6 +216,41 @@ pub fn hash_recovery_code(user_id: &str, normalized: &str) -> String {
 #[derive(Clone)]
 pub struct SecretBox {
     key: [u8; 32],
+    /// The key derived from `JWT_SECRET`, kept when `OHIYO_TOTP_KEY` is set so secrets sealed
+    /// before it was set still open (and get sealed again under `key`).
+    fallback: Option<[u8; 32]>,
+}
+
+/// A secret [`SecretBox::open_checked`] opened, and whether it was sealed under the old
+/// (`JWT_SECRET`) key and so should be sealed again under the current one.
+pub struct Opened {
+    pub plaintext: Vec<u8>,
+    pub stale: bool,
+}
+
+fn derive_key(master: &[u8]) -> [u8; 32] {
+    let hk = hkdf::Hkdf::<Sha256>::new(None, master);
+    let mut key = [0u8; 32];
+    hk.expand(HKDF_INFO, &mut key)
+        .expect("32 bytes is a valid HKDF-SHA256 output length");
+    key
+}
+
+fn open_with(key: &[u8; 32], user_id: &str, blob: &[u8]) -> Option<Vec<u8>> {
+    if blob.len() <= NONCE_BYTES {
+        return None;
+    }
+    let (nonce, sealed) = blob.split_at(NONCE_BYTES);
+    let cipher = Aes256Gcm::new_from_slice(key).ok()?;
+    cipher
+        .decrypt(
+            Nonce::from_slice(nonce),
+            Payload {
+                msg: sealed,
+                aad: user_id.as_bytes(),
+            },
+        )
+        .ok()
 }
 
 impl std::fmt::Debug for SecretBox {
@@ -225,11 +262,10 @@ impl std::fmt::Debug for SecretBox {
 impl SecretBox {
     /// A box keyed by HKDF-SHA256 of `master`.
     pub fn new(master: &[u8]) -> Self {
-        let hk = hkdf::Hkdf::<Sha256>::new(None, master);
-        let mut key = [0u8; 32];
-        hk.expand(HKDF_INFO, &mut key)
-            .expect("32 bytes is a valid HKDF-SHA256 output length");
-        SecretBox { key }
+        SecretBox {
+            key: derive_key(master),
+            fallback: None,
+        }
     }
 
     /// The box this server uses: `OHIYO_TOTP_KEY` if set, else `JWT_SECRET` unless it was made
@@ -242,21 +278,27 @@ impl SecretBox {
         )
     }
 
-    /// [`SecretBox::from_env`] on given values, so the choice can be tested.
+    /// [`SecretBox::from_env`] on given values, so the choice can be tested. With its own key,
+    /// a real JWT secret is kept as the fallback for secrets sealed before that key was set.
     pub fn from_values(
         own_key: Option<&str>,
         jwt: Option<&str>,
         jwt_generated: bool,
     ) -> Option<Self> {
+        let jwt = jwt
+            .map(str::trim)
+            .filter(|j| j.len() >= MIN_KEY_LEN && !jwt_generated);
         if let Some(key) = own_key.map(str::trim).filter(|k| !k.is_empty()) {
             // A key that's set but too short is a mistake, not a reason to fall back silently.
-            return (key.len() >= MIN_KEY_LEN).then(|| Self::new(key.as_bytes()));
+            if key.len() < MIN_KEY_LEN {
+                return None;
+            }
+            return Some(SecretBox {
+                key: derive_key(key.as_bytes()),
+                fallback: jwt.map(|j| derive_key(j.as_bytes())),
+            });
         }
-        let jwt = jwt.map(str::trim).filter(|j| j.len() >= MIN_KEY_LEN)?;
-        if jwt_generated {
-            return None;
-        }
-        Some(Self::new(jwt.as_bytes()))
+        jwt.map(|j| Self::new(j.as_bytes()))
     }
 
     /// Nonce followed by ciphertext. The user id is bound in as associated data.
@@ -279,22 +321,25 @@ impl SecretBox {
     }
 
     /// The plaintext, or `None` if the blob was changed, made for another user, or sealed
-    /// under another key.
+    /// under a key this box doesn't hold.
     pub fn open(&self, user_id: &str, blob: &[u8]) -> Option<Vec<u8>> {
-        if blob.len() <= NONCE_BYTES {
-            return None;
+        self.open_checked(user_id, blob).map(|o| o.plaintext)
+    }
+
+    /// Like [`SecretBox::open`], and says whether the blob needed the old key: the current key
+    /// is tried first, then the fallback.
+    pub fn open_checked(&self, user_id: &str, blob: &[u8]) -> Option<Opened> {
+        if let Some(plaintext) = open_with(&self.key, user_id, blob) {
+            return Some(Opened {
+                plaintext,
+                stale: false,
+            });
         }
-        let (nonce, sealed) = blob.split_at(NONCE_BYTES);
-        let cipher = Aes256Gcm::new_from_slice(&self.key).ok()?;
-        cipher
-            .decrypt(
-                Nonce::from_slice(nonce),
-                Payload {
-                    msg: sealed,
-                    aad: user_id.as_bytes(),
-                },
-            )
-            .ok()
+        let old = self.fallback.as_ref()?;
+        open_with(old, user_id, blob).map(|plaintext| Opened {
+            plaintext,
+            stale: true,
+        })
     }
 }
 
@@ -490,6 +535,31 @@ mod tests {
         let own = SecretBox::from_values(Some(&long), Some(&"j".repeat(40)), true).unwrap();
         let blob = own.seal("u", b"x");
         assert!(SecretBox::new(long.as_bytes()).open("u", &blob).is_some());
+    }
+
+    #[test]
+    fn with_its_own_key_a_secret_sealed_under_the_jwt_key_still_opens_and_is_marked_stale() {
+        let jwt = "j".repeat(40);
+        let own = "k".repeat(40);
+        let old = SecretBox::from_values(None, Some(&jwt), false).unwrap();
+        let blob = old.seal("u", b"secret");
+        let now = SecretBox::from_values(Some(&own), Some(&jwt), false).unwrap();
+        let opened = now
+            .open_checked("u", &blob)
+            .expect("opens with the fallback");
+        assert_eq!(opened.plaintext, b"secret");
+        assert!(opened.stale, "needs sealing again");
+        let fresh = now.open_checked("u", &now.seal("u", b"secret")).unwrap();
+        assert!(!fresh.stale, "sealed under the current key");
+        // A blob sealed under neither key, or for another account, still opens nothing.
+        let stranger = SecretBox::new(b"a-key-nobody-here-has-0123456789abc");
+        assert!(now
+            .open_checked("u", &stranger.seal("u", b"secret"))
+            .is_none());
+        assert!(now.open_checked("someone-else", &blob).is_none());
+        // A JWT secret made up at boot is never a fallback.
+        let made_up = SecretBox::from_values(Some(&own), Some(&jwt), true).unwrap();
+        assert!(made_up.open("u", &blob).is_none());
     }
 
     #[test]

@@ -13,7 +13,7 @@ import { CommandPalette, type CommandAction } from "./components/CommandPalette"
 import { CallOverlay } from "./components/CallOverlay";
 import { IncomingCallCard } from "./components/IncomingCallCard";
 import { callCountsAsUnread, nextRings, type IncomingRing } from "./lib/dmCall";
-import { startRingtone } from "./lib/ringtone";
+import { ringVolume, startRingtone } from "./lib/ringtone";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BootSplash } from "./components/BootSplash";
 import { Onboarding } from "./components/Onboarding";
@@ -648,6 +648,7 @@ function MainApp({
   const [slowmodeFor, setSlowmodeFor] = useState<Channel | null>(null);
   // Members timed out in the selected space (for those who can time out): user → until.
   const [memberTimeouts, setMemberTimeouts] = useState<ReadonlyMap<string, number>>(new Map());
+  const [moderatable, setModeratable] = useState<ReadonlySet<string> | undefined>(undefined);
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   // maybeNotify runs from the gateway handler registered once per token, so it reads the
   // current blocked list through this ref, not the first render's.
@@ -1018,7 +1019,10 @@ function MainApp({
   const ringAudible = rings.some((r) => !mutedChannelIds.has(r.channelId));
   useEffect(() => {
     if (!ringAudible) return;
-    return startRingtone();
+    // Settings → Notifications: sounds off rings silently, and the slider sets how loud.
+    const volume = ringVolume(loadSoundPrefs());
+    if (volume === null) return;
+    return startRingtone(volume);
   }, [ringAudible]);
   const hasRings = rings.length > 0;
   useEffect(() => {
@@ -1221,11 +1225,17 @@ function MainApp({
   const canTimeoutMembers = can(myPerms, PERM.MODERATE_MEMBERS);
   useEffect(() => {
     setMemberTimeouts(new Map());
+    setModeratable(undefined);
     if (!showMembers || !selectedServerId || !canTimeoutMembers) return;
     let alive = true;
     api
       .listTimeouts(token, selectedServerId)
       .then((rows) => alive && setMemberTimeouts(new Map(rows.map((t): [string, number] => [t.user_id, t.until]))))
+      .catch(() => {});
+    // Whom you outrank, so Time out isn't offered on someone the server would refuse.
+    api
+      .listModeratable(token, selectedServerId)
+      .then((ids) => alive && setModeratable(new Set(ids)))
       .catch(() => {});
     return () => {
       alive = false;
@@ -3162,6 +3172,13 @@ function MainApp({
     );
   }
 
+  /** Whether a call outside a voice channel is a one-to-one DM or a group chat's. */
+  function chatCallKind(channelId: string | null): "dm" | "group" | null {
+    const chat = channelId ? dms.find((d) => d.id === channelId) : undefined;
+    if (!chat) return null;
+    return chat.channel_type === "dm" ? "dm" : "group";
+  }
+
   /** A DM's or group chat's name, as the call screen shows it. */
   function chatCallName(channelId: string | null): string | null {
     const chat = channelId ? dms.find((d) => d.id === channelId) : undefined;
@@ -3764,6 +3781,7 @@ function MainApp({
           webrtc={webrtc}
           currentUser={currentUser}
           channelName={voiceChannel?.name ?? chatCallName(webrtc.channelId) ?? "Voice"}
+          callKind={voiceChannel ? "voice" : chatCallKind(webrtc.channelId) ?? "voice"}
           pushToTalk={voiceControls.pushToTalk}
           ringing={outgoingCall !== null && outgoingCall === webrtc.channelId}
         />
@@ -3933,6 +3951,7 @@ function MainApp({
           canBan={can(myPerms, PERM.BAN_MEMBERS)}
           canTimeout={canTimeoutMembers}
           timeouts={memberTimeouts}
+          moderatable={moderatable}
           onTimeout={handleTimeout}
           onRemoveTimeout={handleRemoveTimeout}
           canManageRoles={can(myPerms, PERM.MANAGE_ROLES)}
