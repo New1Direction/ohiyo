@@ -92,7 +92,9 @@ pub fn generate_secret() -> Vec<u8> {
 
 /// RFC 4226 HOTP before reducing to digits: the 31-bit dynamically truncated HMAC-SHA1.
 pub fn hotp_raw(secret: &[u8], counter: u64) -> u32 {
-    let mut mac = Hmac::<Sha1>::new_from_slice(secret).expect("HMAC accepts a key of any length");
+    // `KeyInit` (for the cipher) also has a `new_from_slice`, so name the one meant.
+    let mut mac =
+        <Hmac<Sha1> as Mac>::new_from_slice(secret).expect("HMAC accepts a key of any length");
     mac.update(&counter.to_be_bytes());
     let digest = mac.finalize().into_bytes();
     let offset = (digest[19] & 0x0f) as usize;
