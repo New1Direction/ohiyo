@@ -107,7 +107,7 @@ export function MembersModal({
 
   const colors = space ? nameColors(space) : new Map<string, string>();
   const groups: { label: string; roleId?: string; members: PublicUser[] }[] = space
-    ? hoistGroups(sorted, space, onlineUsers)
+    ? hoistGroups(sorted, space, new Set([...onlineUsers, currentUserId]))
     : [{ label: "", members: sorted }];
   const now = Date.now();
   const timedOutUntil = (id: string) => {

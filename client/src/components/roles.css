@@ -116,7 +116,23 @@
   color: var(--text-primary);
   font-size: 0.8125rem;
 }
-.kc-role-editor__actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; position: sticky; bottom: 0; }
+.kc-role-editor__actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -10px;
+  padding: 18px 10px 6px;
+  /* The modal's own lower colour, faded in, so the list scrolls away under the buttons. */
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklch, var(--bg-base) 86%, var(--bg-channel)) 16px
+  );
+}
 .kc-role-editor__saved { margin-right: auto; color: var(--green); font-size: 0.8125rem; font-weight: 600; }
 
 .kc-role-option {
@@ -273,7 +289,3 @@
   .kc-tristate__btn { transition: none; }
 }
 
-@media (max-width: 480px) {
-  .kc-channel-perms__row { flex-wrap: wrap; }
-  .kc-role-editor__actions { background: var(--bg-elevated, var(--bg-channel)); padding-top: 8px; }
-}

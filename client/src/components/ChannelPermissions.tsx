@@ -65,8 +65,8 @@ export function ChannelPermissions({ channelName, overwrites, roles, members, my
     ...overwrites.filter((o) => o.target_type !== "everyone").map((o) => ({ type: o.target_type, id: o.target_id ?? "" })),
     ...added.filter((a) => !overwrites.some((o) => o.target_type === a.type && o.target_id === a.id)),
   ];
+  // The roles and members let in or set apart come first; @everyone, the baseline, last.
   const targets: Target[] = [
-    { type: "everyone", id: null, name: "@everyone" },
     ...listed.flatMap((t): Target[] => {
       if (t.type === "role") {
         const role = rolesById.get(t.id);
@@ -75,6 +75,7 @@ export function ChannelPermissions({ channelName, overwrites, roles, members, my
       const member = membersById.get(t.id);
       return member ? [{ type: "member", id: member.id, name: member.display_name }] : [];
     }),
+    { type: "everyone", id: null, name: "@everyone" },
   ];
   const rolesToAdd = roles.filter((r) => !r.is_everyone && !listed.some((t) => t.type === "role" && t.id === r.id));
   const membersToAdd = members.filter((m) => !listed.some((t) => t.type === "member" && t.id === m.id));
