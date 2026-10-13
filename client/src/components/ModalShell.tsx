@@ -6,6 +6,8 @@ type Props = {
   /** id of the heading element inside, for aria-labelledby */
   labelledBy: string;
   maxWidthClass?: string;
+  /** "side": a panel from the right on phones (the member list); centred everywhere else. */
+  placement?: "center" | "side";
   children: React.ReactNode;
 };
 
