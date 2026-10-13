@@ -90,6 +90,8 @@ try {
   await page.locator(".kc-settings-nav button", { hasText: "Appearance" }).click();
   await page.click('button[aria-label="Use theme: Ohiyo Light"]');
   await page.keyboard.press("Escape");
+  // Let the "theme applied" notice go, so it doesn't cover the sheet in the screenshots.
+  await page.waitForSelector("text=Ohiyo Light\" applied", { state: "detached", timeout: 10000 }).catch(() => {});
   await settle(page, 300);
   await page.click('button[aria-label="Open search"]');
   await page.fill(BOX, `from:${B} has:link`);
