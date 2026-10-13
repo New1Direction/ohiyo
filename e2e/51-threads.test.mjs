@@ -141,7 +141,7 @@ try {
   await pageA.click('[role="menuitem"]:has-text("Rename thread")');
   await pageA.waitForSelector(nameField, { timeout: 5000 });
   await pageA.fill(nameField, "Pizza night");
-  await pageA.click('button:has-text("Save")');
+  await pageA.click('[role="dialog"] button:has-text("Save")');
   await message(pageB, text).locator('button[aria-label^="Open thread Pizza night"]').waitFor({ timeout: 8000 });
   await pageA.waitForSelector(`${PANEL} .kc-chat-title:has-text("Pizza night")`, { timeout: 5000 });
   log("A renamed the thread and B sees the new name ✓");
