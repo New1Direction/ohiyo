@@ -75,8 +75,16 @@ try {
   const randomId = random.body.id;
   const invite = await api(tokenA, `/servers/${space.id}/invites`, { method: "POST", body: "{}" });
   if ((await api(tokenB, `/invites/${invite.body.code}`, { method: "POST", body: "{}" })).status !== 200) throw new Error("B couldn't join");
-  const say = (token, channelId, content) =>
-    api(token, `/channels/${channelId}/messages`, { method: "POST", body: JSON.stringify({ content }) });
+  // The server allows 30 messages per 10 seconds per person: past that, wait for it.
+  const say = async (token, channelId, content) => {
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      const res = await api(token, `/channels/${channelId}/messages`, { method: "POST", body: JSON.stringify({ content }) });
+      if (res.status === 200) return res;
+      if (res.status !== 429) throw new Error(`couldn't post "${content}" (${res.status})`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    throw new Error(`still too fast to post "${content}"`);
+  };
   await say(tokenA, randomId, `mine-1-${u}`);
   await say(tokenA, randomId, `mine-2-${u}`);
   log("A's space has #general and #random; A wrote twice in #random; B joined");
