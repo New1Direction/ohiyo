@@ -28,6 +28,7 @@ pub mod polls;
 pub mod profile;
 pub mod push;
 pub mod reactions;
+pub mod read_state;
 pub mod reliability;
 pub mod roles;
 pub mod saved;
@@ -117,6 +118,8 @@ pub fn router() -> Router<AppState> {
         .route("/users/@me/prefs", get(profile::get_prefs))
         .route("/users/@me/prefs", post(profile::set_prefs))
         .route("/users/@me/notification-settings", get(notifications::list))
+        // Mark chats read up to their newest message ("Mark as read", "Mark space as read").
+        .route("/users/@me/read", post(read_state::mark_read))
         .route(
             "/users/@me/notification-settings/{target_type}/{target_id}",
             put(notifications::set),

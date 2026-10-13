@@ -43,6 +43,7 @@ import { slowmodeLabel, slowmodeWait } from "../lib/moderation";
 import { ComposerModerationNotice } from "./moderation/ComposerModerationNotice";
 import { useTimedOut } from "./moderation/useModerationClock";
 import { fileUrlOn } from "../lib/fileUrl";
+import { firstUnreadId, unreadBarLabel } from "../lib/unreadMarker";
 import { callLogText } from "../lib/dmCall";
 import { CallLogLine } from "./CallLogLine";
 import { paintRoleColor } from "../lib/roleColors";
@@ -123,12 +124,20 @@ export type ChatActivityNotice = {
 // Row model for the virtualized message list. Hoisted to module scope so the type
 // (and the memoized derivations that use it) is stable across renders.
 type MsgGroup = { author: Message["author"]; msgs: Message[]; isMe: boolean };
-type ChatRow = { kind: "messages"; group: MsgGroup } | { kind: "activity"; notice: ChatActivityNotice };
+type ChatRow =
+  | { kind: "messages"; group: MsgGroup }
+  | { kind: "activity"; notice: ChatActivityNotice }
+  // The red "New messages" line above the first unread message.
+  | { kind: "new-messages" };
+
+/** The "New messages" line's row: a fixed height, so the list's estimate is exact. */
+const NEW_MESSAGES_LINE_PX = 34;
 
 // A row keeps its identity when rows above it come or go (older history loading in), so
 // what lives in it (a playing video, a revealed spoiler) is not rebuilt.
 function rowKey(row: ChatRow | undefined, index: number): string {
   if (!row) return `row-${index}`;
+  if (row.kind === "new-messages") return "new-messages";
   return row.kind === "activity" ? `activity-${row.notice.id}` : `messages-${row.group.msgs[0]?.id ?? index}`;
 }
 
@@ -213,6 +222,15 @@ type Props = {
   onOpenSearch?: () => void;
   /** A message to scroll to and mark (a search result's Jump); `seq` makes a repeat jump count. */
   focusMessage?: { id: string; seq: number } | null;
+  /** Unread messages waiting when this chat was opened: a "New messages" line above the first
+   *  of them and a catch-up bar, until you leave, send, press Esc or Mark as read. */
+  unreadMarker?: { count: number } | null;
+  /** Jump when the first unread message isn't loaded yet: load older history up to it. */
+  onJumpToFirstUnread?: () => void;
+  /** The line and the bar go (Mark as read, Esc, or sending a message). */
+  onDismissUnreadMarker?: () => void;
+  /** Shift+Esc: mark every chat read (only the main chat handles it). */
+  onMarkAllRead?: () => void;
   onOpenMembers?: () => void;
   /** Open/start a direct message from a user's profile card. */
   onOpenDm?: (user: PublicUser) => void | Promise<void>;
@@ -434,6 +452,10 @@ export function ChatPane({
   onInvite,
   onOpenSearch,
   focusMessage,
+  unreadMarker,
+  onJumpToFirstUnread,
+  onDismissUnreadMarker,
+  onMarkAllRead,
   onOpenMembers,
   onOpenDm,
   onBlockUser,
@@ -769,6 +791,7 @@ export function ChatPane({
     if (forceBottomRef.current || atBottomRef.current) {
       listRef.current?.scrollToItem(last, "end");
       forceBottomRef.current = false;
+      atBottomRef.current = true; // pinned to the latest until they scroll up
       setShowJump(false);
     } else {
       setShowJump(true);
@@ -780,7 +803,9 @@ export function ChatPane({
   // remember this channel's reading position for restore-on-return.
   function handleListScroll() {
     const el = listOuterRef.current;
-    if (!el) return;
+    // A list not laid out yet (its first render, before it has a height) says nothing about
+    // where they're reading.
+    if (!el || el.clientHeight === 0) return;
     atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
     if (atBottomRef.current) setShowJump(false);
     if (channel?.id) scrollMapRef.current[channel.id] = { offset: el.scrollTop, atBottom: atBottomRef.current };
@@ -947,26 +972,42 @@ export function ChatPane({
   // Group consecutive messages by same author, then add soft local activity notes
   // as lightweight rows. These notices feel like chat activity without polluting
   // the real persisted message history.
+  // Where the "New messages" line goes (a message id), or "older" when the first unread
+  // message isn't loaded yet.
+  const firstUnread = useMemo(
+    () => (unreadMarker && unreadMarker.count > 0 ? firstUnreadId(displayMessages, unreadMarker.count, currentUserId) : null),
+    [unreadMarker, displayMessages, currentUserId]
+  );
+  const lineBefore = firstUnread && firstUnread !== "older" ? firstUnread : null;
+
   const groups = useMemo(() => {
     const out: MsgGroup[] = [];
     for (const msg of displayMessages) {
       const last = out[out.length - 1];
-      if (last && last.author.id === msg.author.id) {
+      // The line splits one person's run of messages, so it starts a new group there.
+      if (last && last.author.id === msg.author.id && msg.id !== lineBefore) {
         last.msgs.push(msg);
       } else {
         out.push({ author: msg.author, msgs: [msg], isMe: msg.author.id === currentUserId });
       }
     }
     return out;
-  }, [displayMessages, currentUserId]);
+  }, [displayMessages, currentUserId, lineBefore]);
 
   const rows = useMemo<ChatRow[]>(
     () => [
-      ...groups.map((group) => ({ kind: "messages" as const, group })),
+      ...groups.flatMap((group): ChatRow[] =>
+        group.msgs[0]?.id === lineBefore ? [{ kind: "new-messages" }, { kind: "messages", group }] : [{ kind: "messages", group }]
+      ),
       ...activityNotices.map((notice) => ({ kind: "activity" as const, notice })),
     ],
-    [groups, activityNotices]
+    [groups, activityNotices, lineBefore]
   );
+  const lineIndex = rows.findIndex((r) => r.kind === "new-messages");
+  // "12 new messages since 3:12 PM": since the first unread one, when it's loaded.
+  const unreadBar = unreadMarker
+    ? unreadBarLabel(unreadMarker.count, displayMessages.find((m) => m.id === lineBefore)?.created_at ?? null, Date.now())
+    : "";
 
   // A search result's Jump: once its message is among the rows, scroll it to the middle and
   // mark it. Declared after the auto-scroll effect above, so on the render that loads the
@@ -1001,6 +1042,54 @@ export function ChatPane({
     return () => clearTimeout(t);
   }, [flashId]);
 
+  // The line coming or going changes the rows' sizes: measure again.
+  useEffect(() => {
+    listRef.current?.resetAfterIndex(0);
+  }, [lineIndex]);
+
+  // Jump to the first unread message: scroll the line to the top. When it isn't loaded yet,
+  // ask for older history and scroll once it arrives (declared after the auto-scroll effect,
+  // like a search result's Jump, so it wins over "open at the bottom").
+  const pendingLineJumpRef = useRef(false);
+  const scrollToLine = useCallback((index: number) => {
+    pendingRestoreRef.current = null;
+    forceBottomRef.current = false;
+    atBottomRef.current = false;
+    listRef.current?.scrollToItem(index, "start");
+    setShowJump(true);
+  }, []);
+  useEffect(() => {
+    if (!pendingLineJumpRef.current || lineIndex < 0) return;
+    pendingLineJumpRef.current = false;
+    scrollToLine(lineIndex);
+  }, [lineIndex, scrollToLine]);
+  function jumpToFirstUnread() {
+    if (lineIndex >= 0) scrollToLine(lineIndex);
+    else if (firstUnread === "older") {
+      pendingLineJumpRef.current = true;
+      onJumpToFirstUnread?.();
+    }
+  }
+
+  // Esc marks this chat read (the line and the bar go); Shift+Esc marks everything read, as
+  // in Discord. Not while a dialog or a menu has Esc for itself.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (document.querySelector('[role="dialog"], [role="menu"], [role="listbox"]')) return;
+      if (e.shiftKey) {
+        if (onMarkAllRead) {
+          e.preventDefault();
+          onMarkAllRead();
+        }
+        return;
+      }
+      if (unreadMarker && onDismissUnreadMarker) onDismissUnreadMarker();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [unreadMarker, onDismissUnreadMarker, onMarkAllRead]);
+
   // A boolean, not the callback: App passes a fresh function every render.
   const canOpenRecovery = onSaveRecovery !== undefined;
   // Stable identity so VariableSizeList keeps the same itemSize callback (it caches
@@ -1010,6 +1099,7 @@ export function ChatPane({
       const row = rows[index];
       if (!row) return 60;
       if (row.kind === "activity") return 48;
+      if (row.kind === "new-messages") return NEW_MESSAGES_LINE_PX;
       const g = row.group;
       const metrics = metricsRef.current;
       const { linePx, basePx, textWidth } = metrics;
@@ -1099,6 +1189,7 @@ export function ChatPane({
           encrypted: f.encrypted,
         }));
       onSend(transformed, pendingFiles.map((f) => f.id), replyTarget?.id ?? null, encryptedAttachments.length ? encryptedAttachments : undefined);
+      onDismissUnreadMarker?.(); // you've caught up: the line and the bar go
       setInput("");
       draftsRef.current[channel.id] = "";
       persistDraft(channel.id, "", encryptedChatsRef.current[channel.id] === true); // sent → no lingering draft
@@ -1107,7 +1198,7 @@ export function ChatPane({
     },
     // claimSlowmodeSlot reads slowmodeSeconds and slowSentAt, listed here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [input, pendingFiles, channel, pluginManager, onSend, replyTarget, slowmodeSeconds, slowSentAt]
+    [input, pendingFiles, channel, pluginManager, onSend, replyTarget, slowmodeSeconds, slowSentAt, onDismissUnreadMarker]
   );
 
   // Throttle "typing…" pings so we emit at most one every few seconds.
@@ -1906,6 +1997,15 @@ export function ChatPane({
         <p className="kc-thread-starter-gone">The first message of this thread was deleted.</p>
       )}
 
+      {/* The catch-up bar sits above the list, not over it, so it never hides a message. */}
+      {unreadMarker && unreadMarker.count > 0 && !isLoading && (
+        <div className="kc-unread-bar" role="status">
+          <span className="kc-unread-bar__text">{unreadBar}</span>
+          <button type="button" onClick={jumpToFirstUnread}>Jump</button>
+          <button type="button" onClick={onDismissUnreadMarker}>Mark as read</button>
+        </div>
+      )}
+
       {/* Messages — virtualized */}
       <div ref={setListBox} className={`flex-1 overflow-hidden relative${e2eEnabled ? " kc-e2e" : ""}`}>
         {/* Screen-reader announcement of the latest message (the list is virtualized). */}
@@ -1949,6 +2049,13 @@ export function ChatPane({
           >
             {({ index, style }: { index: number; style: React.CSSProperties }) => {
               const row = rows[index];
+              if (row.kind === "new-messages") {
+                return (
+                  <div style={style} className="kc-new-messages-line" role="separator" aria-label="New messages">
+                    <span className="kc-new-messages-line__label" aria-hidden="true">New messages</span>
+                  </div>
+                );
+              }
               if (row.kind === "activity") {
                 return <ActivityNoticeRow key={row.notice.id} notice={row.notice} style={style} />;
               }
@@ -2238,7 +2345,7 @@ export function ChatPane({
         </ErrorBoundary>
         {showJump && (
           <button type="button" className="kc-jump-bottom" onClick={jumpToBottom} aria-label="Jump to latest messages">
-            ↓ New messages
+            ↓ Jump to present
           </button>
         )}
       </div>

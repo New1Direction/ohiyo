@@ -107,7 +107,8 @@ import { signInRemovesLocalDataNow, signOutRemovesLocalDataNow } from "./lib/sig
 import { clearDeletedAccountData, clearLocalMessageData } from "./lib/logoutCleanup";
 import { onPlaintextCacheEvicted, saveEncryptedChannels } from "./lib/storageQuota";
 import { uploadOne } from "./lib/uploadOne";
-import { dropDraftsEnteringEncryptedMode } from "./lib/drafts";
+import { dropDraftsEnteringEncryptedMode, forgetAllDrafts } from "./lib/drafts";
+import { firstUnreadId } from "./lib/unreadMarker";
 import { apiStatus, badRequestMessage, deviceLimitMessage, moderationRefusal } from "./lib/apiErrors";
 import type { UseWebRTCReturn, WebRTCCallbacks } from "./hooks/useWebRTC";
 import { useTyping } from "./hooks/useTyping";
@@ -184,6 +185,8 @@ const NO_THREADS: ThreadSummary[] = [];
 /** Jumping to an older message pages back this many messages at a time, at most this often. */
 const JUMP_PAGE = 100;
 const JUMP_PAGES = 10;
+/** Mark-as-read asks the server about at most this many chats at a time (its limit). */
+const MARK_READ_BATCH = 200;
 /** An incoming call's card stays at least this long, plus this grace, if its stop is lost. */
 const RING_FALLBACK_MIN_SECS = 10;
 const RING_FALLBACK_GRACE_SECS = 5;
@@ -200,6 +203,7 @@ function clearSignedOutMessageData(): void {
     };
     const vault = getVaultStore();
     clearLocalMessageData(vault ? [browser, vault] : [browser]);
+    forgetAllDrafts();
   } catch {
     /* storage disabled — nothing was persisted to clear */
   }
@@ -676,6 +680,16 @@ function MainApp({
   const [welcomed, setWelcomed] = useState(false);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [mentions, setMentions] = useState<Set<string>>(new Set());
+  const unreadRef = useRef(unread);
+  unreadRef.current = unread;
+  const mentionsRef = useRef(mentions);
+  mentionsRef.current = mentions;
+  // When the newest message this device has heard of in each chat was sent (for read marks
+  // from your other devices).
+  const newestMessageAtRef = useRef(new Map<string, number>());
+  // The chat you just opened had this many unread messages: the "New messages" line and the
+  // catch-up bar, until you leave, send, press Esc or Mark as read.
+  const [unreadMarker, setUnreadMarker] = useState<{ channelId: string; count: number } | null>(null);
   // Notification settings (a space's level, mutes), synced across the account's devices.
   const [notifSettings, setNotifSettings] = useState<NotificationSettings>({});
   const notifSettingsRef = useRef(notifSettings);
@@ -1402,6 +1416,7 @@ function MainApp({
       case "MessageCreate": {
         const msg = event.d;
         typing.clearTyping(msg.channel_id, msg.author.id);
+        newestMessageAtRef.current.set(msg.channel_id, Math.max(newestMessageAtRef.current.get(msg.channel_id) ?? 0, msg.created_at));
         if (threadIdsRef.current.has(msg.channel_id)) {
           // A reply in a thread: an open thread shows it (and marks it read) itself. A thread
           // you follow counts as unread and notifies like its channel; any other thread only
@@ -1738,6 +1753,28 @@ function MainApp({
         break;
       }
 
+      case "ReadStateUpdate": {
+        // A chat clears only when the mark covers the newest message this device has heard
+        // of: one that came in after it (sent just as you read) stays unread.
+        const read = new Set(
+          event.d.reads
+            .filter((r) => r.last_read_at >= (newestMessageAtRef.current.get(r.channel_id) ?? 0))
+            .map((r) => r.channel_id)
+        );
+        setUnread((prev) => {
+          if (![...read].some((id) => prev[id])) return prev;
+          const next = { ...prev };
+          for (const id of read) delete next[id];
+          return next;
+        });
+        setMentions((prev) => {
+          if (![...read].some((id) => prev.has(id))) return prev;
+          const next = new Set(prev);
+          for (const id of read) next.delete(id);
+          return next;
+        });
+        break;
+      }
       case "ReadReceipt": {
         if (privacyModeRef.current) break;
         const { channel_id, user_id, last_read_at } = event.d;
@@ -2016,6 +2053,8 @@ function MainApp({
       /* storage off — non-fatal */
     }
     setMobileNavOpen(false); // collapse the drawer once you've picked a channel
+    const waiting = unreadRef.current[channel.id] ?? 0;
+    setUnreadMarker(waiting > 0 ? { channelId: channel.id, count: waiting } : null);
     // Reset + fetch the watch-party state for the channel we're entering.
     setWatchSession(null);
     api.getWatch(token, channel.id)
@@ -2726,6 +2765,92 @@ function MainApp({
     }
   }
 
+  // The catch-up bar's Jump when the first unread message isn't loaded yet: page back through
+  // the open chat's history (decrypting, in an encrypted chat) until it is. The chat then
+  // scrolls the "New messages" line into view.
+  async function jumpToFirstUnread() {
+    const channel = selectedChannelRef.current;
+    const marker = unreadMarker;
+    const me = currentUser?.id;
+    if (!channel || !marker || marker.channelId !== channel.id || !me) return;
+    let history = messages.filter((m) => m.channel_id === channel.id && !m.id.startsWith("temp-"));
+    try {
+      for (let page = 0; page < JUMP_PAGES && firstUnreadId(history, marker.count, me) === "older"; page += 1) {
+        const oldest = history[0]?.id;
+        if (!oldest) break;
+        const older = await api.listMessages(token, channel.id, JUMP_PAGE, oldest);
+        if (!older.length) break;
+        const shown = await decryptMessages(channel.id, older);
+        if (selectedChannelRef.current?.id !== channel.id) return;
+        history = [...shown, ...history];
+      }
+      if (selectedChannelRef.current?.id !== channel.id) return;
+      setMessages((prev) => {
+        const loaded = new Set(history.map((m) => m.id));
+        return [...history, ...prev.filter((m) => !loaded.has(m.id))];
+      });
+      if (firstUnreadId(history, marker.count, me) === "older") toast("The first new message is too far back to jump to.", "info");
+    } catch {
+      toast("Couldn't load older messages. Check your connection and try again.", "error");
+    }
+  }
+
+  // Mark chats read (a chat's own menu, the space menu, Shift+Esc). Their numbers clear at
+  // once; the server marks them read up to their newest message and tells your other devices.
+  // If it can't, the numbers come back.
+  async function markChatsRead(channelIds: string[]) {
+    const ids = [...new Set(channelIds)];
+    if (!ids.length) return;
+    const before: Record<string, number> = {};
+    for (const id of ids) if (unreadRef.current[id]) before[id] = unreadRef.current[id];
+    const mentioned = ids.filter((id) => mentionsRef.current.has(id));
+    setUnread((prev) => {
+      const next = { ...prev };
+      for (const id of ids) delete next[id];
+      return next;
+    });
+    if (mentioned.length) {
+      setMentions((prev) => {
+        const next = new Set(prev);
+        for (const id of mentioned) next.delete(id);
+        return next;
+      });
+    }
+    try {
+      for (let i = 0; i < ids.length; i += MARK_READ_BATCH) await api.markRead(token, ids.slice(i, i + MARK_READ_BATCH));
+    } catch {
+      setUnread((prev) => {
+        const next = { ...prev };
+        for (const [id, n] of Object.entries(before)) next[id] = Math.max(next[id] ?? 0, n);
+        return next;
+      });
+      if (mentioned.length) setMentions((prev) => new Set([...prev, ...mentioned]));
+      toast("Couldn't mark that as read. Check your connection and try again.", "error");
+    }
+  }
+
+  // Every channel in the open space, and the threads you follow in them.
+  function markSpaceRead() {
+    const space = serversRef.current.find((s) => s.id === selectedServerId);
+    if (!space) return;
+    const channelIds = new Set(space.channels.filter((c) => c.channel_type !== "voice").map((c) => c.id));
+    const threads = [...followedThreadsRef.current].filter((id) => {
+      const parent = threadParentRef.current.get(id);
+      return parent !== undefined && channelIds.has(parent);
+    });
+    void markChatsRead([...channelIds, ...threads]);
+  }
+
+  // Shift+Esc: everything with a number or a mention.
+  function markEverythingRead() {
+    const ids = [
+      ...Object.entries(unreadRef.current).filter(([, n]) => n > 0).map(([id]) => id),
+      ...mentionsRef.current,
+    ];
+    void markChatsRead(ids);
+    setUnreadMarker(null);
+  }
+
   // Jump to a channel from search results (find it across loaded servers).
   function jumpToChannel(channelId: string) {
     for (const s of serversRef.current) {
@@ -3322,6 +3447,8 @@ function MainApp({
             onFindPeople={() => { setMobileNavOpen(false); setShowFindPeople(true); }}
             onOpenEvents={() => { setMobileNavOpen(false); setShowEvents(true); }}
             onReportServer={selectedServer ? () => void reportTarget("server", selectedServer.id, "server") : undefined}
+            onMarkRead={(ids) => void markChatsRead(ids)}
+            onMarkSpaceRead={selectedServer ? markSpaceRead : undefined}
             onOpenModQueue={canModerateSelectedServer ? () => setShowModQueue(true) : undefined}
             onOpenInvites={
               selectedServer && (can(myPerms, PERM.CREATE_INVITE) || can(myPerms, PERM.MANAGE_SERVER))
@@ -3365,6 +3492,10 @@ function MainApp({
       ) : (
       <ChatPane
         focusMessage={focusMessage && focusMessage.channelId === selectedChannel?.id ? focusMessage : null}
+        unreadMarker={unreadMarker && unreadMarker.channelId === selectedChannel?.id ? unreadMarker : null}
+        onJumpToFirstUnread={() => void jumpToFirstUnread()}
+        onDismissUnreadMarker={() => setUnreadMarker(null)}
+        onMarkAllRead={markEverythingRead}
         peerGone={selectedChannel?.channel_type === "dm" && goneDms.has(selectedChannel.id)}
         channel={selectedChannel}
         messages={visibleMessages}
@@ -3526,6 +3657,7 @@ function MainApp({
           onRename={canManageThread(openThread, currentUser.id, myPerms) ? () => setRenamingThread(openThread) : undefined}
           onDelete={canManageThread(openThread, currentUser.id, myPerms) ? () => setDeletingThread(openThread) : undefined}
           archived={isArchived(openThread, nowSec)}
+          initialUnread={unread[openThread.id] ?? 0}
           timedOutUntil={myTimeoutUntil}
           onRead={(lastId) => {
             if (windowHiddenRef.current) return;

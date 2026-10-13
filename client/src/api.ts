@@ -204,6 +204,13 @@ export type ReadCursor = {
   last_read_at: number;
 };
 
+/** A chat marked read, up to its newest message (your own read mark, from any of your devices). */
+export type ReadMark = {
+  channel_id: string;
+  last_read_message_id: string;
+  last_read_at: number;
+};
+
 export type ServerEmoji = {
   id: string;
   server_id: string;
@@ -1089,6 +1096,15 @@ export const api = {
     const qs = query.toString();
     return request<Message[]>(`/channels/${channelId}/messages${qs ? `?${qs}` : ""}`, {}, token);
   },
+
+  /** Mark chats read up to their newest message (at most 200 at a time); only chats you can
+   *  read are marked. */
+  markRead: (token: string, channelIds: string[]) =>
+    request<{ reads: ReadMark[] }>(
+      "/users/@me/read",
+      { method: "POST", body: JSON.stringify({ channel_ids: channelIds }) },
+      token
+    ),
 
   /** Read cursors for a channel — hydrates Delivered/Seen receipts on open. */
   listReads: (token: string, channelId: string) =>

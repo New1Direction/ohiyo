@@ -4,6 +4,7 @@ import type { GatewayEvent } from "../gateway";
 import type { PluginManager } from "../plugins/registry";
 import type { ThreadSummary } from "../lib/threads";
 import { ChatPane } from "./ChatPane";
+import { firstUnreadId } from "../lib/unreadMarker";
 
 type Props = {
   token: string;
@@ -36,7 +37,13 @@ type Props = {
   timedOutUntil?: number | null;
   /** The newest message you've now seen in the open thread (to mark it read). */
   onRead?: (lastMessageId: string) => void;
+  /** New replies waiting when the thread opened: its "New messages" line and catch-up bar. */
+  initialUnread?: number;
 };
+
+/** Jumping back to the first new reply pages back this many at a time, at most this often. */
+const JUMP_PAGE = 100;
+const JUMP_PAGES = 10;
 
 /** One reaction change applied to a message list (as the main chat does it). */
 function withReaction(
@@ -90,10 +97,35 @@ export function ThreadPanel({
   archived,
   timedOutUntil = null,
   onRead,
+  initialUnread = 0,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const threadId = thread.id;
+  // The count as the thread opened (the panel is remounted per thread); it stays until you
+  // leave, send, press Esc or Mark as read.
+  const [unreadMarker, setUnreadMarker] = useState(() => (initialUnread > 0 ? { count: initialUnread } : null));
+
+  // Jump to the first new reply when it isn't loaded yet: page back until it is.
+  const jumpToFirstUnread = useCallback(async () => {
+    if (!unreadMarker) return;
+    let history = messages.filter((m) => !m.id.startsWith("temp-"));
+    try {
+      for (let page = 0; page < JUMP_PAGES && firstUnreadId(history, unreadMarker.count, currentUserId) === "older"; page += 1) {
+        const oldest = history[0]?.id;
+        if (!oldest) break;
+        const older = await api.listMessages(token, threadId, JUMP_PAGE, oldest);
+        if (!older.length) break;
+        history = [...older, ...history];
+      }
+      setMessages((prev) => {
+        const loaded = new Set(history.map((m) => m.id));
+        return [...history, ...prev.filter((m) => !loaded.has(m.id))];
+      });
+    } catch {
+      onToast("Couldn't load older replies. Check your connection and try again.", "error");
+    }
+  }, [unreadMarker, messages, currentUserId, token, threadId, onToast]);
 
   useEffect(() => {
     let live = true;
@@ -218,6 +250,9 @@ export function ThreadPanel({
         onReportUser={onReportUser}
         mentionables={mentionables}
         onlineUserIds={onlineUserIds}
+        unreadMarker={unreadMarker}
+        onJumpToFirstUnread={() => void jumpToFirstUnread()}
+        onDismissUnreadMarker={() => setUnreadMarker(null)}
         moderation={{ timedOutUntil, bypassSlowmode: false }}
         threadView={{
           parentName,
