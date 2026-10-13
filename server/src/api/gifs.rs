@@ -14,6 +14,7 @@ use crate::{auth::AuthUser, AppState};
 pub const KLIPY_API: &str = "https://api.klipy.com";
 const KLIPY_TIMEOUT: Duration = Duration::from_secs(4);
 
+#[derive(Clone)]
 pub struct Klipy {
     pub api_key: String,
     pub base_url: String,
