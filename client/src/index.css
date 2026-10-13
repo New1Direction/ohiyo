@@ -4754,9 +4754,10 @@ ol.kc-md-list { list-style: decimal; }
 }
 .kc-voice-options { display: grid; gap: var(--space-2); }
 .kc-voice-option {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 2px var(--space-3);
   min-height: 44px;
   padding: var(--space-3);
   border-radius: var(--radius-md);
@@ -4767,10 +4768,9 @@ ol.kc-md-list { list-style: decimal; }
 }
 .kc-voice-option:hover { border-color: color-mix(in oklch, var(--accent) 40%, var(--bg-hover)); }
 .kc-voice-option--on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.kc-voice-option input { margin-top: 3px; accent-color: var(--accent); }
-.kc-voice-option__text { display: grid; gap: 2px; }
+.kc-voice-option input { grid-row: 1 / span 2; margin-top: 3px; accent-color: var(--accent); }
 .kc-voice-option__name { font-size: var(--text-sm); font-weight: 700; color: var(--text-primary); }
-.kc-voice-option__hint { font-size: var(--text-xs); line-height: 1.45; color: var(--text-muted); }
+.kc-voice-option__hint { grid-column: 2; font-size: var(--text-xs); line-height: 1.45; color: var(--text-muted); }
 .kc-voice-key {
   display: flex;
   flex-wrap: wrap;

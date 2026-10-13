@@ -118,18 +118,14 @@ export function VoiceTab() {
         <div className="kc-voice-options" role="radiogroup" aria-labelledby="kc-voice-mode-title">
           <label className={`kc-voice-option${prefs.inputMode === "voice" ? " kc-voice-option--on" : ""}`}>
             <input type="radio" name="kc-voice-input-mode" value="voice" checked={prefs.inputMode === "voice"} onChange={() => setMode("voice")} />
-            <span className="kc-voice-option__text">
-              <span className="kc-voice-option__name">Voice activity</span>
-              <span className="kc-voice-option__hint">Your voice goes out whenever you speak.</span>
-            </span>
+            <span className="kc-voice-option__name">Voice activity</span>
+            <span className="kc-voice-option__hint">Your voice goes out whenever you speak.</span>
           </label>
           <label className={`kc-voice-option${prefs.inputMode === "ptt" ? " kc-voice-option--on" : ""}`}>
             <input type="radio" name="kc-voice-input-mode" value="ptt" checked={prefs.inputMode === "ptt"} onChange={() => setMode("ptt")} />
-            <span className="kc-voice-option__text">
-              <span className="kc-voice-option__name">Push to talk</span>
-              <span className="kc-voice-option__hint">
-                Your voice only goes out while you hold a key, and only while Ohiyo is the window you&apos;re using.
-              </span>
+            <span className="kc-voice-option__name">Push to talk</span>
+            <span className="kc-voice-option__hint">
+              Your voice only goes out while you hold a key, and only while Ohiyo is the window you&apos;re using.
             </span>
           </label>
         </div>
