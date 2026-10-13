@@ -56,6 +56,10 @@ try {
   await pageB.waitForSelector('.channel-sidebar button:has-text("staff")', { timeout: 8000 });
   log("Sasha joined Role HQ and sees #staff while it's public");
 
+  // Sasha is reading #staff when it goes private.
+  await pageB.click('.channel-sidebar button:has-text("staff")', { timeout: 8000 });
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #staff"]', { timeout: 8000 });
+
   // ── Make #staff private, Mods only ──
   await pageA.click('.channel-sidebar button:has-text("staff")', { timeout: 8000 });
   await openSpaceMenu(pageA, "Channel settings");
@@ -68,7 +72,8 @@ try {
   log("Robin made #staff private for Mods");
 
   await pageB.waitForSelector('.channel-sidebar button:has-text("staff")', { state: "detached", timeout: 10000 });
-  log("#staff is gone for Sasha");
+  await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 8000 });
+  log("#staff is gone for Sasha, who is moved to #general");
 
   if ((await api(tokenA, `/servers/${space.id}/members/${meB.id}/roles/${mods.id}`, { method: "PUT" })).status !== 204) throw new Error("couldn't give Sasha Mods");
   await pageB.waitForSelector('.channel-sidebar button:has-text("staff")', { timeout: 10000 });
