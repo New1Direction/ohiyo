@@ -18,12 +18,18 @@ type Options = {
   mutedChannelIds?: string[];
   /** Unread counts by channel. */
   unread?: Record<string, number>;
+  /** Offer "Invites" (the space's links) and "Bans" (people who can ban) in the space menu. */
+  invites?: boolean;
+  bans?: boolean;
   /** Offer Mark as read (a channel's menu) and Mark space as read (the space menu). */
   markRead?: boolean;
 };
 
 /** The channel sidebar for one space, with every header action recorded by name. */
-export function mountChannelSidebar(element: HTMLElement, { owner, manage, notificationSettings, webhooks, mutedChannelIds, unread, markRead }: Options) {
+export function mountChannelSidebar(
+  element: HTMLElement,
+  { owner, manage, notificationSettings, webhooks, mutedChannelIds, unread, invites, bans, markRead }: Options,
+) {
   const calls: string[] = [];
   const me = { id: "me", username: "me", display_name: "Me", avatar_url: null };
   const server = {
@@ -71,6 +77,8 @@ export function mountChannelSidebar(element: HTMLElement, { owner, manage, notif
         onOpenEvents={record("events")}
         onReportServer={record("report")}
         onOpenModQueue={manage ? record("moderation queue") : undefined}
+        onOpenInvites={invites ? record("invites") : undefined}
+        onOpenBans={bans ? record("bans") : undefined}
         onLeaveServer={async () => {
           calls.push("leave");
         }}

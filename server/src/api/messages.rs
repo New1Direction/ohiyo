@@ -356,6 +356,20 @@ pub async fn send_message(
     Path(channel_id): Path<String>,
     State(state): State<AppState>,
     Json(body): Json<SendMessageBody>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    // A slowmode refusal says in Retry-After how long to wait.
+    match send_checked(auth, channel_id, state, body).await {
+        Ok(message) => message.into_response(),
+        Err(error) => crate::api::moderation::with_retry_after(error),
+    }
+}
+
+async fn send_checked(
+    auth: AuthUser,
+    channel_id: String,
+    state: AppState,
+    body: SendMessageBody,
 ) -> Result<Json<MessageWithAuthor>, (StatusCode, String)> {
     if !user_can_access(&state, &channel_id, &auth.0).await {
         return Err((StatusCode::FORBIDDEN, "no access to this channel".into()));
@@ -366,6 +380,7 @@ pub async fn send_message(
             "you can't send messages in this channel".into(),
         ));
     }
+    crate::api::moderation::ensure_not_timed_out_in_channel(&state, &channel_id, &auth.0).await?;
     ensure_dm_not_blocked(&state, &channel_id, &auth.0).await?;
     // Refresh liveness so an active user never trips their dead-man's switch.
     crate::api::users::touch_active(&state.db, &auth.0).await;
@@ -397,6 +412,8 @@ pub async fn send_message(
             "content or attachments required".into(),
         ));
     }
+    // Last of the checks, so a message refused for another reason doesn't use up the slot.
+    crate::api::moderation::claim_slowmode(&state, &channel_id, &auth.0).await?;
 
     let author: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
         .bind(&auth.0)
@@ -1172,6 +1189,30 @@ pub async fn distribute_voice_key(
         );
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Delete one message as a moderation step (a ban that takes the person's recent messages
+/// with it): its files go if nothing else uses them, search forgets it, everyone in the
+/// channel is told, and a thread it started or sat in is brought up to date.
+pub(crate) async fn delete_message_everywhere(
+    state: &AppState,
+    message: &Message,
+) -> Result<(), sqlx::Error> {
+    delete_message_and_files(state, &message.id, message.attachments.as_deref()).await?;
+    if crate::search::search_enabled() {
+        tokio::spawn(crate::search::delete_message(message.id.clone()));
+    }
+    broadcast_to_channel(
+        state,
+        &message.channel_id,
+        &GatewayEvent::MessageDelete {
+            id: message.id.clone(),
+            channel_id: message.channel_id.clone(),
+        },
+    )
+    .await;
+    crate::api::threads::after_message_deleted(state, &message.channel_id, &message.id).await;
+    Ok(())
 }
 
 /// Delete one message and, in the same transaction, each attached file that nothing

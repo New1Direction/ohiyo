@@ -4,7 +4,7 @@
 //! may be ciphertext; reviewers use ids/context they are allowed to access.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -420,7 +420,7 @@ async fn can_view_queue(state: &AppState, server_id: &str, user_id: &str) -> boo
             state,
             server_id,
             user_id,
-            crate::api::roles::perm::MANAGE_SERVER,
+            crate::api::roles::perm::MANAGE_SERVER | crate::api::roles::perm::MODERATE_MEMBERS,
         )
         .await
 }
@@ -502,21 +502,74 @@ pub async fn resolve_report(
     Ok(Json(load_report(&state, &report_id).await?))
 }
 
+/// One moderation log entry as the app shows it: the stored action, plus who did it and to
+/// whom by name (None once that account is gone) and the reason, when one was given.
+#[derive(Serialize, sqlx::FromRow)]
+pub struct ModerationLogEntry {
+    #[serde(flatten)]
+    #[sqlx(flatten)]
+    pub action: ModerationAction,
+    pub actor_name: Option<String>,
+    pub target_name: Option<String>,
+    pub reason: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+pub struct ModerationLogQuery {
+    /// Only this kind of action ("ban_member", "timeout_member", …).
+    #[serde(default)]
+    pub action: Option<String>,
+    /// The next page: entries older than this (unix seconds)…
+    #[serde(default)]
+    pub before: Option<i64>,
+    /// …or as old, listed after the entry with this id (the last one of the page before).
+    #[serde(default)]
+    pub before_id: Option<String>,
+    #[serde(default)]
+    pub limit: Option<i64>,
+}
+
+/// GET /servers/{server_id}/moderation-actions?action=&before=&before_id=&limit= — the
+/// moderation log, newest first.
 pub async fn moderation_actions(
     auth: AuthUser,
     Path(server_id): Path<String>,
+    Query(query): Query<ModerationLogQuery>,
     State(state): State<AppState>,
-) -> Result<Json<Vec<ModerationAction>>, (StatusCode, String)> {
+) -> Result<Json<Vec<ModerationLogEntry>>, (StatusCode, String)> {
     if !can_view_queue(&state, &server_id, &auth.0).await {
         return Err((
             StatusCode::FORBIDDEN,
             "you can't view moderation actions".into(),
         ));
     }
-    let rows: Vec<ModerationAction> = sqlx::query_as(
-        "SELECT * FROM moderation_actions WHERE server_id = ? ORDER BY created_at DESC LIMIT 200",
+    let action = query.action.filter(|a| !a.is_empty());
+    if action.as_ref().is_some_and(|a| a.len() > 64) {
+        return Err((StatusCode::BAD_REQUEST, "unknown action".into()));
+    }
+    let limit = query.limit.unwrap_or(200).clamp(1, 200);
+    // Older entries may carry plain text in `metadata`; only JSON can hold a reason.
+    let rows: Vec<ModerationLogEntry> = sqlx::query_as(
+        "SELECT m.*, a.display_name AS actor_name,
+                CASE WHEN m.target_type = 'user' THEN t.display_name END AS target_name,
+                CASE WHEN json_valid(m.metadata) THEN json_extract(m.metadata, '$.reason') END AS reason
+         FROM moderation_actions m
+         LEFT JOIN users a ON a.id = m.actor_id
+         LEFT JOIN users t ON t.id = m.target_id
+         WHERE m.server_id = ?
+           AND (? IS NULL OR m.action = ?)
+           AND (? IS NULL OR m.created_at < ? OR (m.created_at = ? AND m.id < COALESCE(?, '')))
+         ORDER BY m.created_at DESC, m.id DESC
+         LIMIT ?",
     )
     .bind(&server_id)
+    .bind(&action)
+    .bind(&action)
+    .bind(query.before)
+    .bind(query.before)
+    .bind(query.before)
+    .bind(&query.before_id)
+    .bind(limit)
     .fetch_all(&state.db)
     .await
     .map_err(crate::api::error::internal)?;

@@ -33,6 +33,8 @@ type Props = {
   onRename?: () => void;
   onDelete?: () => void;
   archived?: boolean;
+  /** When your time out in the space ends (unix seconds): you can read the thread but not reply. */
+  timedOutUntil?: number | null;
   /** The newest message you've now seen in the open thread (to mark it read). */
   onRead?: (lastMessageId: string) => void;
   /** New replies waiting when the thread opened: its "New messages" line and catch-up bar. */
@@ -93,6 +95,7 @@ export function ThreadPanel({
   onRename,
   onDelete,
   archived,
+  timedOutUntil = null,
   onRead,
   initialUnread = 0,
 }: Props) {
@@ -250,6 +253,7 @@ export function ThreadPanel({
         unreadMarker={unreadMarker}
         onJumpToFirstUnread={() => void jumpToFirstUnread()}
         onDismissUnreadMarker={() => setUnreadMarker(null)}
+        moderation={{ timedOutUntil, bypassSlowmode: false }}
         threadView={{
           parentName,
           starterDeleted: thread.starter_deleted,

@@ -120,7 +120,7 @@ try {
   if (!order.lineBeforeFirst) throw new Error("the line isn't above B's first new message");
   if (!order.mineBeforeLine) throw new Error("A's own earlier message isn't above the line");
   log("Jump shows the line, between A's own messages and B's first new one ✓");
-  await shot(pageA, "55-catch-up-desktop-dark");
+  await shot(pageA, "56-catch-up-desktop-dark");
 
   await bar(pageA).locator('button:has-text("Mark as read")').click();
   await line(pageA).waitFor({ state: "detached", timeout: 4000 });
@@ -169,7 +169,7 @@ try {
   await settle(pageA, 400);
   if (!(await lineInView(pageA))) throw new Error("light theme: Jump didn't bring the line into view, uncovered");
   await pageA.waitForSelector(".ohiyo-toast", { state: "detached", timeout: 12000 }).catch(() => {});
-  await shot(pageA, "55-catch-up-desktop-light");
+  await shot(pageA, "56-catch-up-desktop-light");
 
   await say(tokenB, general.id, `phone-${u}`);
   await pageA.setViewportSize({ width: 390, height: 844 });
@@ -197,7 +197,7 @@ try {
   }
   const overflow = await pageA.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   if (overflow) throw new Error("the page scrolls sideways on a phone");
-  await shot(pageA, "55-catch-up-phone");
+  await shot(pageA, "56-catch-up-phone");
   log("the line and the bar look right in light, and fit a phone ✓");
 
   console.log("\n✅ CATCH UP PASSED");

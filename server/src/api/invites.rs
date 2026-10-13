@@ -106,6 +106,18 @@ pub async fn create_invite(
             "join the server before inviting others".into(),
         ));
     }
+    if !crate::api::invite_controls::can_create_invites(&state, &server_id, &auth.0).await {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "you can't make invites in this space".into(),
+        ));
+    }
+    if crate::api::moderation::active_timeout(&state, &server_id, &auth.0)
+        .await
+        .is_some()
+    {
+        return Err(crate::api::moderation::timed_out_error());
+    }
 
     let now = now_unix();
     // Clamp to sane bounds so `now + ttl` can't overflow and codes stay usable.
@@ -174,6 +186,8 @@ pub struct InvitePreview {
     pub icon_url: Option<String>,
     pub member_count: i64,
     pub already_member: bool,
+    /// The space has paused its invites: joining would be refused.
+    pub paused: bool,
 }
 
 /// GET /invites/{code} — preview a server before joining (no side effects).
@@ -226,6 +240,7 @@ pub async fn get_invite(
         icon_url: server.icon_url,
         member_count,
         already_member: is_member(&state, &inv.server_id, &auth.0).await?,
+        paused: server.invites_paused,
     }))
 }
 
@@ -252,6 +267,14 @@ pub async fn redeem_invite(
         return Err((
             StatusCode::FORBIDDEN,
             "you're banned from this server".into(),
+        ));
+    }
+    if crate::api::invite_controls::invites_paused(&state, &inv.server_id).await
+        && !is_member(&state, &inv.server_id, &auth.0).await?
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "this space isn't taking new members right now".into(),
         ));
     }
 
@@ -329,10 +352,13 @@ pub async fn revoke_invite(
         .map_err(crate::api::error::internal)?;
 
     let is_owner = owner_id.as_deref() == Some(auth.0.as_str());
-    if inv.created_by != auth.0 && !is_owner {
+    if inv.created_by != auth.0
+        && !is_owner
+        && !crate::api::invite_controls::manages_invites(&state, &inv.server_id, &auth.0).await
+    {
         return Err((
             StatusCode::FORBIDDEN,
-            "only the creator or owner can revoke this".into(),
+            "only the creator or the space's managers can revoke this".into(),
         ));
     }
 
