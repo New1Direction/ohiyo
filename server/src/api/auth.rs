@@ -281,18 +281,21 @@ async fn username_taken<'e>(
 /// matches whatever the case. Names were case-sensitive before, so two older accounts can
 /// differ only by case; then only the exact spelling signs in.
 async fn login_account(db: &sqlx::SqlitePool, username: &str) -> Result<Option<User>, sqlx::Error> {
-    let exact: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
-        .bind(username)
-        .fetch_optional(db)
-        .await?;
+    // A webhook's account never signs in (api::webhooks).
+    let exact: Option<User> =
+        sqlx::query_as("SELECT * FROM users WHERE username = ? AND is_bot = 0")
+            .bind(username)
+            .fetch_optional(db)
+            .await?;
     if exact.is_some() {
         return Ok(exact);
     }
-    let mut matches: Vec<User> =
-        sqlx::query_as("SELECT * FROM users WHERE username = ? COLLATE NOCASE LIMIT 2")
-            .bind(username)
-            .fetch_all(db)
-            .await?;
+    let mut matches: Vec<User> = sqlx::query_as(
+        "SELECT * FROM users WHERE username = ? COLLATE NOCASE AND is_bot = 0 LIMIT 2",
+    )
+    .bind(username)
+    .fetch_all(db)
+    .await?;
     Ok(if matches.len() == 1 {
         matches.pop()
     } else {
@@ -426,6 +429,7 @@ pub async fn register(
         password_hash: hash,
         avatar_url: None,
         created_at: now_unix(),
+        is_bot: false,
     };
 
     let secret = jwt_secret();

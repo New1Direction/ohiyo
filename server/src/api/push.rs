@@ -502,6 +502,8 @@ pub async fn enqueue_message_pushes(
     channel_id: &str,
     author_id: &str,
     content: &str,
+    // False for a webhook's message: naming people doesn't count as mentioning them.
+    mentions_count: bool,
 ) {
     let rows: Result<Vec<(String, String)>, sqlx::Error> = sqlx::query_as(
         "SELECT sm.user_id, u.username
@@ -570,8 +572,9 @@ pub async fn enqueue_message_pushes(
                 .find(|(user_id, s)| *user_id == id && s.target_type == target_type)
                 .map(|(_, s)| s)
         };
-        let mentioned =
-            is_server_channel && crate::api::notifications::mentions(content, &username);
+        let mentioned = mentions_count
+            && is_server_channel
+            && crate::api::notifications::mentions(content, &username);
         if !crate::api::notifications::should_push(
             is_server_channel,
             mentioned,

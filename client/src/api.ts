@@ -1,5 +1,6 @@
 import { DEFAULT_HOME_URL, normalizeHomeUrl } from "./lib/homes";
 import type { NotificationLevel, NotificationSetting, NotificationTarget } from "./lib/notificationSettings";
+import type { WebhookCreated, WebhookSummary } from "./components/WebhooksDialog";
 import type { ThreadSummary } from "./lib/threads";
 
 // ── Runtime endpoint config ──────────────────────────────────────────────────
@@ -36,6 +37,9 @@ export type PublicUser = {
   username: string;
   display_name: string;
   avatar_url: string | null;
+  /** A webhook (another service posting to a channel), not a person: shown with an APP badge
+   *  and no profile. Absent for people. */
+  bot?: boolean;
 };
 
 export type Server = {
@@ -118,6 +122,8 @@ export type ReplyPreview = {
   id: string;
   author: string;
   content: string;
+  /** The quoted message came from a webhook (another service): shown with an APP badge. */
+  bot?: boolean;
 };
 
 export type PollOption = { id: string; text: string; votes: number; me: boolean };
@@ -715,6 +721,23 @@ export const api = {
       { method: "PUT", body: JSON.stringify(body) },
       token,
     ),
+
+  // Incoming webhooks, per text channel, for people who manage a space's channels. The
+  // token (and so the URL to post to) is only in the answer that issues it.
+  listWebhooks: (token: string, channelId: string) =>
+    request<WebhookSummary[]>(`/channels/${encodeURIComponent(channelId)}/webhooks`, {}, token),
+  createWebhook: (token: string, channelId: string, name: string) =>
+    request<WebhookCreated>(
+      `/channels/${encodeURIComponent(channelId)}/webhooks`,
+      { method: "POST", body: JSON.stringify({ name }) },
+      token,
+    ),
+  updateWebhook: (token: string, id: string, body: { name?: string; avatar_file_id?: string }) =>
+    request<WebhookSummary>(`/webhooks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }, token),
+  renewWebhook: (token: string, id: string) =>
+    request<WebhookCreated>(`/webhooks/${encodeURIComponent(id)}/token`, { method: "POST" }, token),
+  deleteWebhook: (token: string, id: string) =>
+    request<void>(`/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }, token),
 
   // Encrypted E2E key backup (recovery-code model). Server stores ciphertext only;
   // getKeyBackup rejects with a 404 when none exists.

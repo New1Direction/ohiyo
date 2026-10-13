@@ -71,6 +71,14 @@ box; server channels are stored like any chat server's.
   **Dusk** dark theme, with a real motion system and reduced-motion support.
 - **Desktop-native** — Tauri app with native notifications, deep links, and an
   encrypted local vault for sensitive cache namespaces; the web build runs anywhere.
+- **Webhooks** — let another service post to a space's text channel (Space menu →
+  Webhooks, for people who manage channels). The URL is shown once; post Discord-style JSON
+  to it and the message appears under the webhook's name, marked APP:
+  `curl -X POST -H 'Content-Type: application/json' -d '{"content":"Deploy finished"}' https://<server>/api/v1/webhooks/<id>/<token>`.
+  `{"text": …}` (Slack style) works too; `?wait=true` returns the message. A post's
+  `username`/`avatar_url` are ignored, so a webhook can't pose as someone, and
+  `@everyone`/`@here` ping nobody. GitHub's own webhook payload isn't Discord's format, so
+  point GitHub at a relay or an Action that posts `{"content": …}` for now.
 - **Fast private actions** — Ctrl/⌘K jumps to channels and also exposes quick actions
   for Privacy Mode, one-time private DM links, and joining an active voice room.
 

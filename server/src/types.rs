@@ -12,6 +12,11 @@ pub struct User {
     pub password_hash: String,
     pub avatar_url: Option<String>,
     pub created_at: i64,
+    /// The account a webhook posts as (api::webhooks), not a person: it can't sign in and
+    /// isn't found, messaged or befriended.
+    #[sqlx(default)]
+    #[serde(default)]
+    pub is_bot: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -138,6 +143,9 @@ pub struct ReplyPreview {
     pub id: String,
     pub author: String,
     pub content: String,
+    /// The reply quotes a webhook (another service), shown with an APP badge.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bot: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +173,13 @@ pub struct PublicUser {
     pub username: String,
     pub display_name: String,
     pub avatar_url: Option<String>,
+    /// A webhook, not a person: the app shows an APP badge and no profile. Left out for people.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bot: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl From<User> for PublicUser {
@@ -174,6 +189,7 @@ impl From<User> for PublicUser {
             username: u.username,
             display_name: u.display_name,
             avatar_url: u.avatar_url,
+            bot: u.is_bot,
         }
     }
 }

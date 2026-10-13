@@ -1533,6 +1533,7 @@ async fn build_ready(user_id: &str, state: &AppState) -> anyhow::Result<GatewayE
                 username,
                 display_name,
                 avatar_url,
+                bot: false,
             };
             (channel_id, peer)
         })
@@ -1660,6 +1661,7 @@ mod tests {
                 username: "u1".to_owned(),
                 display_name: "U1".to_owned(),
                 avatar_url: None,
+                bot: false,
             },
             muted: false,
             video: false,

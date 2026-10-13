@@ -37,6 +37,7 @@ import { Icon } from "./Icon";
 import { MessageActionSheet } from "./MessageActionSheet";
 import { threadChipLabel, type ThreadSummary } from "../lib/threads";
 import { avatarStyle } from "../lib/avatarStyle";
+import { fileUrlOn } from "../lib/fileUrl";
 
 const HIDDEN_MESSAGES_PREFIX = "kc:hidden-messages:";
 function hiddenMessagesKey(channelId: string, userId: string): string {
@@ -1789,34 +1790,58 @@ export function ChatPane({
               return (
                 <div style={style} className="msg-group kc-message-row px-4 pt-2 hover:bg-white/[0.02]">
                   <div className="flex items-start gap-3">
-                    <button
-                      className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
-                      style={{
-                        ...avatarStyle(g.author.id, g.author.avatar_url ? assetUrl(g.author.avatar_url) : null),
-                        color: "#fff",
-                        cursor: "pointer",
-                        border: "none",
-                      }}
-                      onClick={(e) => {
-                        profileAnchorRef.current = e.currentTarget as HTMLElement;
-                        setProfileUserId(g.author.id);
-                      }}
-                      title={`View ${g.author.display_name}'s profile`}
-                    >
-                      {!g.author.avatar_url && <AvatarMark />}
-                    </button>
+                    {g.author.bot ? (
+                      // A webhook (another service posting here) has no profile to open. With a
+                      // picture its avatar is styled like a person's; without one it's the
+                      // theme's tint (kc-webhook-avatar) under the webhook icon.
+                      <span
+                        className="msg-avatar kc-webhook-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                        style={g.author.avatar_url ? avatarStyle(g.author.id, assetUrl(g.author.avatar_url)) : undefined}
+                        aria-hidden="true"
+                      >
+                        {!g.author.avatar_url && <Icon name="webhook" size={18} />}
+                      </span>
+                    ) : (
+                      <button
+                        className="msg-avatar mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                        style={{
+                          ...avatarStyle(g.author.id, g.author.avatar_url ? assetUrl(g.author.avatar_url) : null),
+                          color: "#fff",
+                          cursor: "pointer",
+                          border: "none",
+                        }}
+                        onClick={(e) => {
+                          profileAnchorRef.current = e.currentTarget as HTMLElement;
+                          setProfileUserId(g.author.id);
+                        }}
+                        title={`View ${g.author.display_name}'s profile`}
+                      >
+                        {!g.author.avatar_url && <AvatarMark />}
+                      </button>
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="msg-meta flex items-baseline gap-2">
-                        <button
-                          className="text-sm font-semibold"
-                          style={{ color: "var(--text-primary)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
-                          onClick={(e) => {
-                            profileAnchorRef.current = e.currentTarget as HTMLElement;
-                            setProfileUserId(g.author.id);
-                          }}
-                        >
-                          {g.author.display_name}
-                        </button>
+                        {g.author.bot ? (
+                          <span className="flex items-baseline gap-1.5">
+                            <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                              {g.author.display_name}
+                            </span>
+                            <span className="kc-app-badge" title="Posted by another app through a webhook">
+                              APP
+                            </span>
+                          </span>
+                        ) : (
+                          <button
+                            className="text-sm font-semibold"
+                            style={{ color: "var(--text-primary)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                            onClick={(e) => {
+                              profileAnchorRef.current = e.currentTarget as HTMLElement;
+                              setProfileUserId(g.author.id);
+                            }}
+                          >
+                            {g.author.display_name}
+                          </button>
+                        )}
                         <MessageTime unix={g.msgs[0].created_at} className="text-xs" style={{ color: "var(--text-secondary)" }} />
                       </div>
                       {g.msgs.map((msg, mi) => (
@@ -2812,10 +2837,7 @@ function fitImg(w: number, h: number, maxW: number, maxH: number): { w: number; 
 }
 
 function assetUrl(url: string): string {
-  // Only http(s) absolute URLs pass through; data:/blob: are rejected so a
-  // crafted attachment URL can't smuggle an inline payload into <img>/<video>.
-  if (/^https?:/i.test(url)) return url;
-  return `${getFileBase()}${url.startsWith("/") ? url : `/${url}`}`;
+  return fileUrlOn(getFileBase(), url);
 }
 
 function VideoAttachmentPlayer({ url, filename, compact = false }: { url: string; filename: string; compact?: boolean }) {
@@ -3136,6 +3158,11 @@ function ReplyQuote({ reply }: { reply: NonNullable<Message["reply_to"]> }) {
     >
       <span style={{ color: "var(--accent)", flexShrink: 0 }}>↩</span>
       <span style={{ fontWeight: 600, color: "var(--text-secondary)", flexShrink: 0 }}>{reply.author}</span>
+      {reply.bot && (
+        <span className="kc-app-badge" style={{ flexShrink: 0 }}>
+          APP
+        </span>
+      )}
       <span className="truncate" style={{ opacity: 0.85 }}>{reply.content}</span>
     </div>
   );

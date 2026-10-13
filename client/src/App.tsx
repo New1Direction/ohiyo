@@ -31,8 +31,10 @@ import { SavedModal } from "./components/SavedModal";
 import { CategoriesModal } from "./components/CategoriesModal";
 import { ForwardModal } from "./components/ForwardModal";
 import { PERM, can } from "./permissions";
-import { mentionsYou } from "./lib/mentions";
 import { NotificationSettingsDialog, type NotificationSettingsTarget } from "./components/NotificationSettingsDialog";
+import { WebhooksDialog, type WebhookApi } from "./components/WebhooksDialog";
+import { mentionsMe, notificationTitle } from "./lib/messageNotify";
+import { fileUrlOn } from "./lib/fileUrl";
 import {
   isMuted,
   messageAlert,
@@ -623,6 +625,22 @@ function MainApp({
   const notifSettingsRef = useRef(notifSettings);
   notifSettingsRef.current = notifSettings;
   const [notifTarget, setNotifTarget] = useState<NotificationSettingsTarget | null>(null);
+  // The space's incoming webhooks (space menu → Webhooks, for people who manage channels).
+  const [showWebhooks, setShowWebhooks] = useState(false);
+  const webhookApi = useMemo<WebhookApi>(
+    () => ({
+      list: (channelId) => api.listWebhooks(token, channelId),
+      create: (channelId, name) => api.createWebhook(token, channelId, name),
+      rename: (id, name) => api.updateWebhook(token, id, { name }),
+      renew: (id) => api.renewWebhook(token, id),
+      remove: (id) => api.deleteWebhook(token, id),
+      setPicture: async (id, file) => {
+        const { id: fileId } = await uploadOne(getApiBase(), token, file);
+        return api.updateWebhook(token, id, { avatar_file_id: fileId });
+      },
+    }),
+    [token],
+  );
   // Render again when the next mute ends, so its chat counts and notifies again on time.
   const [muteTick, setMuteTick] = useState(0);
   useEffect(() => {
@@ -1265,7 +1283,7 @@ function MainApp({
           // A reply in a thread: an open thread shows it itself. Threads don't count as
           // unread yet; a reply that mentions you still notifies.
           const me = currentUserRef.current;
-          if (me && msg.author.id !== me.id && mentionsYou(msg.content, me.username)) maybeNotify(msg);
+          if (me && msg.author.id !== me.id && mentionsMe(msg.content, msg.author, me.username)) maybeNotify(msg);
           break;
         }
         if (selectedChannelRef.current?.id === msg.channel_id) {
@@ -1294,7 +1312,7 @@ function MainApp({
           currentUserRef.current &&
           msg.author.id !== currentUserRef.current.id &&
           selectedChannelRef.current?.id !== msg.channel_id &&
-          mentionsYou(msg.content, currentUserRef.current.username)
+          mentionsMe(msg.content, msg.author, currentUserRef.current.username)
         ) {
           setMentions((prev) => {
             const next = new Set(prev);
@@ -2348,7 +2366,8 @@ function MainApp({
     const channelId = threadParentRef.current.get(msg.channel_id) ?? msg.channel_id;
     const serverId = serversRef.current.find((s) => s.channels.some((c) => c.id === channelId))?.id ?? null;
     const me = currentUserRef.current;
-    const mentioned = serverId !== null && me !== null && mentionsYou(msg.content ?? "", me.username);
+    // A webhook naming you doesn't count as a mention (lib/messageNotify.ts).
+    const mentioned = serverId !== null && me !== null && mentionsMe(msg.content ?? "", msg.author, me.username);
     const nowSecs = Math.floor(Date.now() / 1000);
     if (!messageAlert(notifSettingsRef.current, { channelId, serverId }, mentioned, nowSecs).notify) return;
     const lookingAtIt = isLookingAt({
@@ -2362,7 +2381,7 @@ function MainApp({
     // Native OS notification under Tauri, Web Notification in a browser — but only from
     // ONE tab/window when several are open (claimNotification), so no double-ping.
     void claimNotification(msg.id).then((mine) => {
-      if (mine) void notify({ title: msg.author.display_name, body });
+      if (mine) void notify({ title: notificationTitle(msg.author), body });
     });
   }
 
@@ -2815,6 +2834,14 @@ function MainApp({
                   }
                 : undefined
             }
+            onOpenWebhooks={
+              selectedServer
+                ? () => {
+                    setMobileNavOpen(false);
+                    setShowWebhooks(true);
+                  }
+                : undefined
+            }
             myStatus={myStatus}
             onSetStatus={handleSetStatus}
             myActivity={!privacyMode && currentUser ? activities.get(currentUser.id) ?? null : null}
@@ -3097,6 +3124,20 @@ function MainApp({
       )}
 
       {/* Invite-people modal — generates a shareable link for the open server */}
+      {showWebhooks && selectedServer && (
+        <WebhooksDialog
+          spaceName={selectedServer.name}
+          channels={selectedServer.channels
+            .filter((c) => c.channel_type === "text" && !c.parent_id)
+            .sort((a, b) => a.position - b.position)
+            .map((c) => ({ id: c.id, name: c.name }))}
+          webhookApi={webhookApi}
+          urlFor={(w) => `${getApiBase()}/webhooks/${w.id}/${w.token}`}
+          fileUrl={(stored) => fileUrlOn(getFileBase(), stored)}
+          onCopy={(text) => navigator.clipboard.writeText(text)}
+          onClose={() => setShowWebhooks(false)}
+        />
+      )}
       {notifTarget && (
         <NotificationSettingsDialog
           target={notifTarget}
