@@ -12,6 +12,14 @@ the matching category — see [CONTRIBUTING](CONTRIBUTING.md#changelog).
 ## [Unreleased]
 
 ### Added
+- **Events, properly.** A month calendar (today marked, arrow keys move between days) and an
+  agenda, which phones open on. An event can have an end time, a place (one of the space's
+  voice or text channels, or an address or link of your own) and a cover picture. Answer
+  Interested, Going or Can't go, and see who's going. The host, or anyone who can manage the
+  space, can edit an event or cancel it, and people who answered are told. People who said
+  Interested or Going get a reminder 15 minutes before and at the start, with Join voice for
+  an event in a voice channel, unless they silenced the space. Add to calendar saves an .ics
+  file. Times show in your own time zone.
 - **Help & feedback,** at the foot of Settings and in the command palette: this home's live
   status ("All systems normal", or which parts aren't working), what's new, a bug report
   prefilled with your app version and system (and nothing private), questions and ideas,

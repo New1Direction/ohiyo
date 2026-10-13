@@ -111,7 +111,8 @@ async fn event_titles_and_descriptions_are_capped() {
             .post_json_auth(
                 &format!("/api/v1/servers/{server_id}/events"),
                 &owner.token,
-                json!({ "title": title, "description": description, "starts_at": 2_000_000_000 }),
+                // A day ahead: events can be planned up to two years out.
+                json!({ "title": title, "description": description, "starts_at": common::now_unix() + 86_400 }),
             )
             .await;
         assert_eq!(res.status(), status);

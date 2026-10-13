@@ -4,6 +4,18 @@ import { apiStatus } from "./lib/apiErrors";
 import type { NotificationSetting } from "./lib/notificationSettings";
 import type { ThreadSummary } from "./lib/threads";
 
+/** To you, about an event you said Interested or Going to: it starts in 15 minutes
+ * ("soon"), it's starting ("start"), or it was cancelled. */
+export type EventReminder = {
+  server_id: string;
+  event_id: string;
+  title: string;
+  starts_at: number;
+  phase: "soon" | "start" | "cancelled";
+  location_kind: "voice" | "text" | "place" | null;
+  location_channel_id: string | null;
+};
+
 /** A peer already present in a voice channel when you join. */
 export type VoicePeer = {
   user_id: string;
@@ -65,6 +77,7 @@ export type GatewayEvent =
   | { t: "UserDeleted"; d: { user_id: string } }
   | { t: "PermissionsUpdate"; d: { server_id: string } }
   | { t: "EventsChanged"; d: { server_id: string } }
+  | { t: "EventReminder"; d: EventReminder }
   | { t: "ReactionUpdate"; d: { message_id: string; channel_id: string; emoji: string; user_id: string; added: boolean } }
   | { t: "ReadReceipt"; d: { channel_id: string; user_id: string; last_read_message_id: string; last_read_at: number } }
   // You read chats (here or on another device): their unread numbers clear everywhere.
@@ -121,7 +134,7 @@ const EVENT_TAGS: Record<GatewayEvent["t"], true> = {
   Ready: true, MessageCreate: true, MessageUpdate: true, MessageDelete: true, DisappearingUpdate: true,
   SenderKeyDistribution: true, GroupMembersUpdate: true, VoiceKeyDistribution: true, ServerCreate: true,
   ServerDelete: true, ChannelCreate: true, MemberJoin: true, MemberLeave: true, PermissionsUpdate: true,
-  EventsChanged: true, ReactionUpdate: true, ReadReceipt: true, PresenceUpdate: true, TypingStart: true,
+  EventsChanged: true, EventReminder: true, ReactionUpdate: true, ReadReceipt: true, PresenceUpdate: true, TypingStart: true,
   VoiceState: true, VoiceRoster: true, VoiceSignal: true, WatchUpdate: true, HeartbeatAck: true,
   DeviceAdded: true, UserDeleted: true, NotificationSettingsUpdate: true, ThreadUpdate: true,
   ThreadDelete: true, ThreadFollowUpdate: true, SlowmodeUpdate: true, CallRing: true, CallRingStop: true,

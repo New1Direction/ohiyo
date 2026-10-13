@@ -9,7 +9,7 @@ process.env.TZ = "America/Los_Angeles";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { agenda, dayKey, eventsByDay, monthGrid, moveDay, shiftMonth } from "../src/lib/eventCalendar.ts";
+import { agenda, dayKey, eventsByDay, monthGrid, moveDay, shiftMonth, weekStartFor } from "../src/lib/eventCalendar.ts";
 
 const keys = (weeks: Date[][]) => weeks.flat().map(dayKey);
 const at = (y: number, m: number, d: number, h = 12, min = 0) => Math.floor(new Date(y, m, d, h, min).getTime() / 1000);
@@ -91,4 +91,10 @@ test("the agenda lists what hasn't finished yet, grouped by day", () => {
   assert.deepEqual(groups.map((g) => g.key), ["2026-10-12", "2026-10-13"]);
   assert.deepEqual(groups[0].events.map((e) => e.id), ["noEnd", "live"]);
   assert.deepEqual(groups[1].events.map((e) => e.id), ["tomorrow"]);
+});
+
+test("weeks start on Sunday in the US and on Monday in most other places", () => {
+  assert.equal(weekStartFor("en-US"), 0);
+  assert.equal(weekStartFor("en-GB"), 1);
+  assert.equal(weekStartFor("de-DE"), 1);
 });

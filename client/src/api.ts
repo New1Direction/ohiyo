@@ -352,15 +352,41 @@ export type AuthResponse = {
   user: PublicUser;
 };
 
+export type EventRsvpStatus = "interested" | "going" | "not_going";
+
+/** Where an event happens: one of the space's voice or text channels, or a place. */
+export type EventLocation =
+  | { kind: "voice" | "text"; channel_id: string | null; text: null }
+  | { kind: "place"; channel_id: null; text: string | null };
+
 export type EventInfo = {
   id: string;
   server_id: string;
   title: string;
   description: string | null;
   starts_at: number;
+  ends_at: number | null;
   created_by: string;
+  /** How many are going, and whether you are (what older apps read). */
   rsvp_count: number;
   me_rsvp: boolean;
+  location: EventLocation | null;
+  cover_url: string | null;
+  cancelled: boolean;
+  counts: { interested: number; going: number; not_going: number };
+  me_status: EventRsvpStatus | null;
+  /** Some of the people going, first to answer first. */
+  going: PublicUser[];
+};
+
+/** What creating or editing an event sends; on an edit, left-out fields stay as they are. */
+export type EventDraft = {
+  title: string;
+  description: string | null;
+  starts_at: number;
+  ends_at: number | null;
+  location: { kind: "voice" | "text"; channel_id: string } | { kind: "place"; text: string } | null;
+  cover_file_id?: string | null;
 };
 
 export type Role = {
@@ -961,14 +987,19 @@ export const api = {
   listEvents: (token: string, serverId: string) =>
     request<EventInfo[]>(`/servers/${serverId}/events`, {}, token),
 
-  createEvent: (token: string, serverId: string, title: string, startsAt: number, description?: string | null) =>
-    request<void>(`/servers/${serverId}/events`, {
-      method: "POST",
-      body: JSON.stringify({ title, starts_at: startsAt, description: description ?? null }),
-    }, token),
+  createEvent: (token: string, serverId: string, draft: EventDraft) =>
+    request<void>(`/servers/${serverId}/events`, { method: "POST", body: JSON.stringify(draft) }, token),
 
-  rsvpEvent: (token: string, serverId: string, eventId: string) =>
-    request<void>(`/servers/${serverId}/events/${eventId}/rsvp`, { method: "POST" }, token),
+  editEvent: (token: string, serverId: string, eventId: string, draft: Partial<EventDraft>) =>
+    request<void>(`/servers/${serverId}/events/${eventId}`, { method: "PATCH", body: JSON.stringify(draft) }, token),
+
+  /** Answer Interested, Going or Can't go; null takes the answer back. */
+  rsvpEvent: (token: string, serverId: string, eventId: string, status: EventRsvpStatus | null) =>
+    request<void>(`/servers/${serverId}/events/${eventId}/rsvp`, { method: "POST", body: JSON.stringify({ status }) }, token),
+
+  /** Call it off: it stays on the calendar as cancelled, and people who answered are told. */
+  cancelEvent: (token: string, serverId: string, eventId: string) =>
+    request<void>(`/servers/${serverId}/events/${eventId}/cancel`, { method: "POST", body: "{}" }, token),
 
   deleteEvent: (token: string, serverId: string, eventId: string) =>
     request<void>(`/servers/${serverId}/events/${eventId}`, { method: "DELETE" }, token),

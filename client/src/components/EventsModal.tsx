@@ -1,206 +1,235 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type EventInfo } from "../api";
+import { api, getApiBase, type EventDraft, type EventInfo, type EventRsvpStatus } from "../api";
+import { errorMessage } from "../lib/errorMessage";
+import { eventToIcs, icsFileName } from "../lib/eventIcs";
+import { uploadOne } from "../lib/uploadOne";
+import { EventCalendar, type CalendarView } from "./events/EventCalendar";
+import { EventCard } from "./events/EventCard";
+import { EventForm, type EventFormResult } from "./events/EventForm";
 import { ModalShell } from "./ModalShell";
+
+type ChannelRef = { id: string; name: string; channel_type: string };
 
 type Props = {
   token: string;
   serverId: string;
+  serverName: string;
   currentUserId: string;
+  channels: ChannelRef[];
+  /** They can manage the space, so they edit and cancel anyone's event. */
+  canManageServer: boolean;
   /** Bumped when a gateway EventsChanged arrives for this server. */
   refreshKey: number;
+  /** Open on this event's card (from a reminder). */
+  initialEventId?: string | null;
+  onJoinVoice: (channelId: string) => void;
   onClose: () => void;
 };
 
-/** Plan and RSVP to server hangouts. */
-export function EventsModal({ token, serverId, currentUserId, refreshKey, onClose }: Props) {
+type Screen = { kind: "calendar" } | { kind: "event"; id: string } | { kind: "form"; editing: EventInfo | null };
+
+const PHONE_QUERY = "(max-width: 640px)";
+
+function usePhone(): boolean {
+  const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia?.(PHONE_QUERY).matches === true);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia(PHONE_QUERY);
+    const onChange = () => setPhone(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  return phone;
+}
+
+function useNow(): number {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
+
+/** Save an .ics file made here on the device. */
+function downloadIcs(ev: EventInfo, location: string | null) {
+  const ics = eventToIcs({ ...ev, location }, Math.floor(Date.now() / 1000));
+  const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = icsFileName(ev.title);
+  document.body.append(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** The space's events: a calendar, each event's card, and a form to plan or edit one. */
+export function EventsModal(props: Props) {
+  const { token, serverId, serverName, currentUserId, channels, canManageServer, refreshKey, initialEventId, onJoinVoice, onClose } = props;
   const [events, setEvents] = useState<EventInfo[]>([]);
-  const [title, setTitle] = useState("");
-  // Seed the next round hour so the input never shows the empty "yyyy-mm-dd" mask.
-  const [when, setWhen] = useState(() => nextRoundHourLocal());
-  const [desc, setDesc] = useState("");
+  const [screen, setScreen] = useState<Screen>(initialEventId ? { kind: "event", id: initialEventId } : { kind: "calendar" });
+  const [chosenView, setChosenView] = useState<CalendarView | null>(null);
+  const [day, setDay] = useState<string | undefined>(undefined);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const phone = usePhone();
+  const now = useNow();
 
   const refresh = useCallback(async () => {
     try {
-      setError(null);
-      setEvents(await api.listEvents(token, serverId));
+      const list = await api.listEvents(token, serverId);
+      setEvents(list);
+      return list;
     } catch {
-      setEvents([]);
       setError("Events could not load. Check your connection and try again.");
+      return null;
     }
   }, [token, serverId]);
 
-  // Re-fetch on a gateway EventsChanged bump, and when the token/server changes
-  // (e.g. a token rotation while the modal is open).
   useEffect(() => {
     void refresh();
   }, [refresh, refreshKey]);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    const ts = when ? Math.floor(new Date(when).getTime() / 1000) : 0;
-    if (!title.trim() || !ts || busy) return;
+  async function run(what: string, action: () => Promise<unknown>) {
+    setError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      setError(errorMessage(err, `Could not ${what}. Try again.`));
+    }
+  }
+
+  async function save({ draft, cover, removeCover }: EventFormResult, editing: EventInfo | null) {
     setBusy(true);
     setError(null);
     try {
-      await api.createEvent(token, serverId, title.trim(), ts, desc.trim() || null);
-      setTitle("");
-      setWhen(nextRoundHourLocal());
-      setDesc("");
-      await refresh();
-    } catch {
-      setError("Could not create that event. Try again.");
+      const body: EventDraft = { ...draft };
+      if (cover) body.cover_file_id = (await uploadOne(getApiBase(), token, cover)).id;
+      else if (removeCover) body.cover_file_id = null;
+      if (editing) await api.editEvent(token, serverId, editing.id, body);
+      else await api.createEvent(token, serverId, body);
+      const list = await refresh();
+      const saved = editing
+        ? list?.find((e) => e.id === editing.id)
+        : list?.filter((e) => e.created_by === currentUserId && e.title === draft.title && e.starts_at === draft.starts_at).pop();
+      setScreen(saved ? { kind: "event", id: saved.id } : { kind: "calendar" });
+    } catch (err) {
+      setError(errorMessage(err, "Could not save that event. Try again."));
     } finally {
       setBusy(false);
     }
   }
 
-  async function rsvp(id: string) {
-    try {
-      setError(null);
-      await api.rsvpEvent(token, serverId, id);
-      await refresh();
-    } catch {
-      setError("Could not update your RSVP. Try again.");
-    }
-  }
-  async function remove(id: string) {
-    try {
-      setError(null);
-      await api.deleteEvent(token, serverId, id);
-      await refresh();
-    } catch {
-      setError("Could not cancel that event. Try again.");
-    }
-  }
+  const open = screen.kind === "event" ? events.find((e) => e.id === screen.id) ?? null : null;
+  const locationText = (ev: EventInfo): string | null => {
+    const loc = ev.location;
+    if (!loc) return `Ohiyo · ${serverName}`;
+    if (loc.kind === "place") return loc.text;
+    const ch = channels.find((c) => c.id === loc.channel_id);
+    return `Ohiyo · ${serverName}${ch ? ` · ${loc.kind === "voice" ? "🔊" : "#"} ${ch.name}` : ""}`;
+  };
 
   return (
-    <ModalShell onClose={onClose} labelledBy="kc-events-title" maxWidthClass="max-w-lg">
-      <h2
-        id="kc-events-title"
-        style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-2xl)", color: "var(--text-primary)" }}
-      >
-        📅 Events
-      </h2>
-      <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-        Plan a hangout — everyone can RSVP.
-      </p>
-
-      {/* Create */}
-      <form onSubmit={handleCreate} className="mt-4 flex flex-col gap-2">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="What's happening? (e.g. Movie night)"
-          aria-label="Event title"
-          maxLength={120}
-          className="kc-field w-full px-3.5 py-2.5 text-sm outline-none"
-        />
-        <span className="text-xs" style={{ color: "var(--text-secondary)", marginBottom: "calc(-1 * var(--space-1))" }}>
-          When?
-        </span>
-        <div className="flex flex-wrap gap-2">
-          <input
-            type="datetime-local"
-            value={when}
-            onChange={(e) => setWhen(e.target.value)}
-            aria-label="Event time"
-            className="kc-field flex-1 px-3 py-2 text-sm outline-none"
-          />
-          <button
-            type="submit"
-            disabled={!title.trim() || !when || busy}
-            className="kc-cta flex-shrink-0 px-4 py-2 text-sm"
-            style={{ opacity: !title.trim() || !when || busy ? 0.65 : 1 }}
-          >
-            Add event
+    <ModalShell onClose={onClose} labelledBy="kc-events-title" maxWidthClass="max-w-2xl">
+      <div className="kc-events-top">
+        <h2 id="kc-events-title" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-2xl)", color: "var(--text-primary)" }}>
+          📅 Events
+        </h2>
+        {screen.kind === "calendar" && (
+          <button type="button" className="kc-cta px-4 py-2 text-sm" onClick={() => setScreen({ kind: "form", editing: null })}>
+            New event
           </button>
-        </div>
-        {title.trim() && !when && (
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            Add a time to schedule it.
-          </p>
         )}
-        <input
-          value={desc}
-          onChange={(e) => setDesc(e.target.value)}
-          placeholder="Details (optional)"
-          aria-label="Event details"
-          maxLength={300}
-          className="kc-field w-full px-3 py-2 text-sm outline-none"
-        />
-      </form>
+      </div>
+
+      {screen.kind !== "calendar" && (
+        <button
+          type="button"
+          className="kc-events-back"
+          onClick={() => {
+            setConfirmCancel(false);
+            setError(null);
+            setScreen(screen.kind === "form" && screen.editing ? { kind: "event", id: screen.editing.id } : { kind: "calendar" });
+          }}
+        >
+          ‹ {screen.kind === "form" && screen.editing ? "Back to event" : "Back to calendar"}
+        </button>
+      )}
 
       {error && (
-        <div role="alert" className="mt-3 rounded-xl px-3 py-2 text-sm" style={{ background: "color-mix(in oklch, var(--danger) 12%, var(--bg-elevated))", color: "var(--danger)" }}>
+        <div role="alert" className="mt-3 rounded-xl px-3 py-2 text-sm" style={{ background: "color-mix(in oklch, var(--danger) 12%, var(--bg-input))", color: "var(--danger)" }}>
           {error}
         </div>
       )}
 
-      {/* List */}
-      <div className="mt-5 flex flex-col gap-2" style={{ maxHeight: 340, overflowY: "auto" }}>
-        {events.length === 0 ? (
-          <p className="text-center text-sm" style={{ color: "var(--text-muted)", padding: "var(--space-4)" }}>
-            Nothing planned yet. Start something above.
-          </p>
-        ) : (
-          events.map((ev) => (
-            <div
-              key={ev.id}
-              className="flex items-center gap-3 px-3 py-2.5"
-              style={{ borderRadius: "var(--radius-lg)", background: "var(--bg-input)" }}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{ev.title}</div>
-                <div className="text-xs" style={{ color: "var(--accent)" }}>{fmtWhen(ev.starts_at)}</div>
-                {ev.description && (
-                  <div className="truncate text-xs" style={{ color: "var(--text-muted)" }}>{ev.description}</div>
-                )}
-                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  {ev.rsvp_count} {ev.rsvp_count === 1 ? "person" : "people"} going
+      <div style={{ maxHeight: "min(70vh, 640px)", overflowY: "auto", marginTop: "var(--space-1)" }}>
+        {screen.kind === "calendar" && (
+          <EventCalendar
+            events={events}
+            now={now}
+            view={chosenView ?? (phone ? "agenda" : "month")}
+            onViewChange={setChosenView}
+            day={day}
+            onDayChange={setDay}
+            onOpen={(id) => setScreen({ kind: "event", id })}
+          />
+        )}
+
+        {screen.kind === "form" && (
+          <EventForm channels={channels} initial={screen.editing ?? undefined} busy={busy} onSubmit={(r) => void save(r, screen.editing)} />
+        )}
+
+        {screen.kind === "event" && !open && <p className="kc-cal-empty">This event is gone.</p>}
+        {open && (
+          <>
+            <EventCard
+              event={open}
+              channels={channels}
+              canManage={open.created_by === currentUserId || canManageServer}
+              onRsvp={(status: EventRsvpStatus | null) => void run("save your answer", () => api.rsvpEvent(token, serverId, open.id, status))}
+              onJoinVoice={(id) => {
+                onJoinVoice(id);
+                onClose();
+              }}
+              onAddToCalendar={() => downloadIcs(open, locationText(open))}
+              onEdit={() => setScreen({ kind: "form", editing: open })}
+              onCancel={() => setConfirmCancel(true)}
+              onDelete={() =>
+                void run("delete that event", async () => {
+                  await api.deleteEvent(token, serverId, open.id);
+                  setScreen({ kind: "calendar" });
+                })
+              }
+            />
+            {confirmCancel && !open.cancelled && (
+              <div className="kc-event-confirm" role="group" aria-label="Cancel this event?">
+                <p>Cancel {open.title}? It stays on the calendar as cancelled, and everyone who answered is told.</p>
+                <div className="kc-event-confirm-actions">
+                  <button
+                    type="button"
+                    className="kc-event-action is-danger kc-interactive"
+                    onClick={() =>
+                      void run("cancel that event", async () => {
+                        await api.cancelEvent(token, serverId, open.id);
+                        setConfirmCancel(false);
+                      })
+                    }
+                  >
+                    Yes, cancel it
+                  </button>
+                  <button type="button" className="kc-event-action kc-interactive" onClick={() => setConfirmCancel(false)}>
+                    Keep it
+                  </button>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => rsvp(ev.id)}
-                className="kc-interactive flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-                style={
-                  ev.me_rsvp
-                    ? { background: "var(--green)", color: "#fff", border: "none" }
-                    : { background: "transparent", color: "var(--accent)", border: "1px solid var(--accent)" }
-                }
-              >
-                {ev.me_rsvp ? "✓ Going" : "I'm in"}
-              </button>
-              {ev.created_by === currentUserId && (
-                <button
-                  type="button"
-                  onClick={() => remove(ev.id)}
-                  aria-label="Cancel event"
-                  className="kc-interactive flex-shrink-0"
-                  style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          ))
+            )}
+          </>
         )}
       </div>
     </ModalShell>
   );
-}
-
-function fmtWhen(unix: number): string {
-  const d = new Date(unix * 1000);
-  return d.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-/** Next round hour from now, formatted for a datetime-local input (YYYY-MM-DDTHH:mm). */
-function nextRoundHourLocal(): string {
-  const d = new Date();
-  d.setHours(d.getHours() + 1, 0, 0, 0);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

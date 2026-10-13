@@ -30,6 +30,7 @@ import { SearchModal, type SearchHit } from "./components/SearchModal";
 import { MembersModal } from "./components/MembersModal";
 import { RolesModal } from "./components/RolesModal";
 import { EventsModal } from "./components/EventsModal";
+import { EventBanner } from "./components/events/EventBanner";
 import { SavedModal } from "./components/SavedModal";
 import { CategoriesModal } from "./components/CategoriesModal";
 import { ForwardModal } from "./components/ForwardModal";
@@ -161,7 +162,7 @@ import {
 } from "./lib/homes";
 import type { Channel, Message, PublicUser, ServerWithChannels, ServerEmoji } from "./api";
 import type { PluginAPI } from "./plugins/api";
-import type { GatewayEvent, ConnectionStatus, Activity, WatchSession } from "./gateway";
+import type { GatewayEvent, ConnectionStatus, Activity, WatchSession, EventReminder } from "./gateway";
 
 type VoiceSidebarParticipant = {
   user_id: string;
@@ -653,6 +654,10 @@ function MainApp({
   blockedUserIdsRef.current = blockedUserIds;
   const [forwarding, setForwarding] = useState<Message | null>(null);
   const [eventsRefresh, setEventsRefresh] = useState(0);
+  // The latest reminder for an event you said Interested or Going to, shown across the top.
+  const [eventReminder, setEventReminder] = useState<EventReminder | null>(null);
+  // Open the Events panel on this event (from a reminder).
+  const [eventToOpen, setEventToOpen] = useState<string | null>(null);
   const [myPerms, setMyPerms] = useState(0);
   // When your time out in the selected space ends (unix seconds), if you're timed out.
   const [myTimeoutUntil, setMyTimeoutUntil] = useState<number | null>(null);
@@ -1854,6 +1859,20 @@ function MainApp({
           setEventsRefresh((n) => n + 1);
         }
         break;
+
+      case "EventReminder": {
+        // An event you're in starts in 15 minutes, is starting, or was called off: a banner
+        // here, and a system notification when you're away (one tab or window shows it).
+        const d = event.d;
+        setEventReminder(d);
+        if (document.hidden || windowHiddenRef.current) {
+          const title = d.phase === "cancelled" ? "Event cancelled" : d.phase === "start" ? "Event starting" : "Starting in 15 minutes";
+          void claimNotification(`event:${d.event_id}:${d.phase}`).then((mine) => {
+            if (mine) void notify({ title, body: d.title });
+          });
+        }
+        break;
+      }
 
       case "CallRing": {
         const d = event.d;
@@ -3726,6 +3745,26 @@ function MainApp({
 
       {/* Toast notifications */}
       <ToastStack toasts={toasts} />
+      {eventReminder && (
+        <EventBanner
+          reminder={eventReminder}
+          onJoinVoice={(channelId) => {
+            const space = servers.find((sv) => sv.id === eventReminder.server_id);
+            const channel = space?.channels?.find((c) => c.id === channelId);
+            setEventReminder(null);
+            if (!space || !channel) return;
+            setSelectedServerId(space.id);
+            handleJoinVoice(channel);
+          }}
+          onOpen={() => {
+            setSelectedServerId(eventReminder.server_id);
+            setEventToOpen(eventReminder.event_id);
+            setShowEvents(true);
+            setEventReminder(null);
+          }}
+          onDismiss={() => setEventReminder(null)}
+        />
+      )}
       <NewDeviceAlert
         key={ownNewDevices.map((d) => d.device_id).join(",")}
         devices={ownNewDevices}
@@ -3898,11 +3937,20 @@ function MainApp({
       {/* Scheduled events */}
       {showEvents && selectedServer && (
         <EventsModal
+          key={`${selectedServer.id}:${eventToOpen ?? ""}`}
           token={token}
           serverId={selectedServer.id}
+          serverName={selectedServer.name}
           currentUserId={currentUser.id}
+          channels={selectedServer.channels ?? []}
+          canManageServer={can(myPerms, PERM.MANAGE_SERVER)}
           refreshKey={eventsRefresh}
-          onClose={() => setShowEvents(false)}
+          initialEventId={eventToOpen}
+          onJoinVoice={joinVoiceById}
+          onClose={() => {
+            setShowEvents(false);
+            setEventToOpen(null);
+          }}
         />
       )}
 

@@ -471,6 +471,17 @@ pub enum GatewayEvent {
     EventsChanged {
         server_id: String,
     },
+    /// To one person who said Interested or Going: an event starts in 15 minutes ("soon"),
+    /// is starting ("start"), or was cancelled ("cancelled").
+    EventReminder {
+        server_id: String,
+        event_id: String,
+        title: String,
+        starts_at: i64,
+        phase: String,
+        location_kind: Option<String>,
+        location_channel_id: Option<String>,
+    },
     ReactionUpdate {
         message_id: String,
         channel_id: String,

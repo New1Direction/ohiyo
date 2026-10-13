@@ -341,6 +341,26 @@ async fn three_rsvp_answers_with_counts_and_the_old_toggle_still_works() {
     let ev = only_event(&srv, &c, &s.id).await;
     assert_eq!(ev["me_rsvp"], false, "a second toggle takes it back");
     assert!(ev["me_status"].is_null());
+    // Those apps label the empty body as JSON.
+    let res = srv
+        .post_raw_auth(
+            &format!("/api/v1/servers/{}/events/{id}/rsvp", s.id),
+            &c.token,
+            "application/json",
+            Vec::new(),
+        )
+        .await;
+    assert_eq!(res.status(), 204);
+    assert_eq!(only_event(&srv, &c, &s.id).await["me_rsvp"], true);
+    let res = srv
+        .post_raw_auth(
+            &format!("/api/v1/servers/{}/events/{id}/rsvp", s.id),
+            &c.token,
+            "application/json",
+            Vec::new(),
+        )
+        .await;
+    assert_eq!(res.status(), 204);
 
     // Clearing an answer, and an answer that isn't one of the three.
     assert_eq!(rsvp(&srv, &b, &s.id, &id, Value::Null).await, 204);
@@ -490,6 +510,11 @@ async fn reminders_go_once_at_fifteen_minutes_and_once_at_the_start() {
         1,
         "the 15-minute reminder goes once"
     );
+    // The relay sends that nudge; a device takes a new one once nothing is waiting.
+    sqlx::query("UPDATE push_deliveries SET status = 'delivered'")
+        .execute(&srv.state.db)
+        .await
+        .unwrap();
 
     server::api::events::send_due_reminders(&srv.state, start + 5).await;
     assert_eq!(

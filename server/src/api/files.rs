@@ -447,8 +447,8 @@ pub(crate) async fn files_of_channel(
         .collect())
 }
 
-/// The files a space uses: its messages' attachments, its custom emoji and its icon. As
-/// with [`files_of_channel`], collect before deleting and release after.
+/// The files a space uses: its messages' attachments, its custom emoji, its icon and its
+/// events' covers. As with [`files_of_channel`], collect before deleting and release after.
 pub(crate) async fn files_of_server(
     conn: &mut sqlx::SqliteConnection,
     server_id: &str,
@@ -476,18 +476,26 @@ pub(crate) async fn files_of_server(
             .fetch_optional(&mut *conn)
             .await?;
     ids.extend(icon.flatten().as_deref().and_then(file_id_in_url));
+    let covers: Vec<String> = sqlx::query_scalar(
+        "SELECT cover_file_id FROM events WHERE server_id = ? AND cover_file_id IS NOT NULL",
+    )
+    .bind(server_id)
+    .fetch_all(&mut *conn)
+    .await?;
+    ids.extend(covers);
     Ok(ids)
 }
 
 /// How many places still reference a file id: message attachments (either JSON shape;
 /// ids are UUIDs, so a substring match is exact), avatars, banners, server icons (all
-/// stored as `…/files/<id>…` URLs) and server emoji.
+/// stored as `…/files/<id>…` URLs), server emoji and event covers.
 const FILE_REFERENCES_SQL: &str = "SELECT
       (SELECT COUNT(*) FROM messages WHERE instr(attachments, ?) > 0)
     + (SELECT COUNT(*) FROM users
          WHERE instr(avatar_url, '/files/' || ?) > 0 OR instr(banner_url, '/files/' || ?) > 0)
     + (SELECT COUNT(*) FROM servers WHERE instr(icon_url, '/files/' || ?) > 0)
-    + (SELECT COUNT(*) FROM server_emojis WHERE file_id = ?)";
+    + (SELECT COUNT(*) FROM server_emojis WHERE file_id = ?)
+    + (SELECT COUNT(*) FROM events WHERE cover_file_id = ?)";
 
 /// Within a write transaction (the one that deleted the referencing message, or one
 /// batch of [`release_files_in_batches`]), delete each file in `file_ids` that nothing
@@ -502,6 +510,7 @@ pub(crate) async fn delete_unreferenced_files(
     let mut seen = std::collections::HashSet::new();
     for id in file_ids.iter().filter(|id| seen.insert(id.as_str())) {
         let references: i64 = sqlx::query_scalar(FILE_REFERENCES_SQL)
+            .bind(id)
             .bind(id)
             .bind(id)
             .bind(id)
