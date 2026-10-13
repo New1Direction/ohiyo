@@ -173,3 +173,11 @@ export function describeModAction(entry: { action: string; metadata: string | nu
   const spaced = entry.action.replace(/_/g, " ").trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
+
+/** Whether to offer an action like Time out on `memberId`. */
+export function canActOn(
+  memberId: string,
+  ctx: { ownerId: string; currentUserId: string; allowed: boolean; moderatable?: ReadonlySet<string> },
+): boolean {
+  return ctx.allowed && memberId !== ctx.ownerId && memberId !== ctx.currentUserId;
+}

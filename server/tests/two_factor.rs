@@ -568,3 +568,50 @@ async fn twenty_wrong_codes_an_hour_then_no_more_even_on_a_fresh_sign_in() {
         200
     );
 }
+
+/// What the test server signs sessions with (see `common`), long enough to key a box.
+const TEST_JWT: &str = "integration-test-secret-not-for-production";
+const OWN_KEY: &str = "a-dedicated-two-factor-key-at-least-32-chars";
+
+#[tokio::test]
+async fn setting_its_own_key_later_keeps_codes_working_and_reseals_the_secret() {
+    use server::auth::two_factor::SecretBox;
+    // The server now has OHIYO_TOTP_KEY; the account turned two-factor on when the secret was
+    // sealed under the key derived from JWT_SECRET.
+    let srv = TestServer::start_with(|state| {
+        state.two_factor = SecretBox::from_values(Some(OWN_KEY), Some(TEST_JWT), false);
+    })
+    .await;
+    let (me, secret, _codes) = turn_on(&srv, "tfa_rekey").await;
+    let old_box = SecretBox::from_values(None, Some(TEST_JWT), false).expect("jwt box");
+    let pool = sqlx::SqlitePool::connect(srv.db_url()).await.unwrap();
+    sqlx::query("UPDATE two_factor SET secret_enc = ? WHERE user_id = ?")
+        .bind(old_box.seal(&me.id, &secret))
+        .bind(&me.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let challenge = challenge_of(&password_login(&srv, "tfa_rekey").await);
+    let res = second_step(&srv, &challenge, &next_code(&secret)).await;
+    assert_eq!(res.status(), 200, "a code still works after the key moved");
+
+    let blob: Vec<u8> = sqlx::query_scalar("SELECT secret_enc FROM two_factor WHERE user_id = ?")
+        .bind(&me.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let own_only = SecretBox::from_values(Some(OWN_KEY), None, false).expect("own box");
+    assert_eq!(
+        own_only.open(&me.id, &blob).as_deref(),
+        Some(secret.as_slice()),
+        "the secret was sealed again under the new key"
+    );
+    let stranger =
+        SecretBox::from_values(Some("some-other-key-that-is-32-chars-long"), None, false)
+            .expect("other box");
+    assert!(
+        stranger.open(&me.id, &blob).is_none(),
+        "a wrong key still opens nothing"
+    );
+}

@@ -2,7 +2,14 @@
 // Used for an incoming DM call; silent where audio can't play (no AudioContext, or the
 // browser hasn't allowed sound yet).
 
+import type { SoundPrefs } from "./notificationSounds";
+
 type AudioContextCtor = typeof AudioContext;
+
+/** How loud the ring is for these sound settings; `null` when it should be silent. */
+export function ringVolume(_prefs: SoundPrefs): number | null {
+  return 0.18;
+}
 
 /** Start ringing; returns a function that stops it. */
 export function startRingtone(volume = 0.18): () => void {
