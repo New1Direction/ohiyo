@@ -8,7 +8,8 @@ import { api } from "../api";
 import type { OhiyoHome } from "../lib/homes";
 import { BirdMark } from "./BirdMark";
 import { markActivation } from "../lib/activation";
-import { rateLimitMessage } from "../lib/apiErrors";
+import { apiStatus, rateLimitMessage } from "../lib/apiErrors";
+import { codeKind, isTwoFactorChallenge, signInCodeMessage } from "../lib/twoFactor";
 import { takeSignInNotice } from "../lib/sessionNotice";
 import {
   friendlyAuthError,
@@ -92,6 +93,11 @@ export function AuthScreen({ home, onAuth }: Props) {
   const [factIndex, setFactIndex] = useState(0);
   const usernameRef = useRef<HTMLInputElement>(null);
   const linkRef = useRef<HTMLInputElement>(null);
+  // Two-factor sign-in: the password was right and the server wants a code for this challenge.
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [useRecovery, setUseRecovery] = useState(false);
+  const codeRef = useRef<HTMLInputElement>(null);
 
   // A scanned QR opens the app with ?link=<code> — jump straight to the link form.
   useEffect(() => {
@@ -126,6 +132,14 @@ export function AuthScreen({ home, onAuth }: Props) {
           ? await api.login(username.trim(), password)
           : await api.register(username.trim(), password, displayName.trim() || undefined);
       localStorage.setItem(LAST_USERNAME_KEY, username.trim());
+      if (isTwoFactorChallenge(res)) {
+        // No session yet: the code step comes next.
+        setChallenge(res.challenge);
+        setCode("");
+        setUseRecovery(false);
+        setLoading(false);
+        return;
+      }
       if (mode === "register") markActivation(res.user.id, "account");
       onAuth(res.token, res.user.id);
     } catch (err) {
@@ -133,6 +147,42 @@ export function AuthScreen({ home, onAuth }: Props) {
       setLoading(false);
     }
   }
+
+  async function handleCodeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (challenge === null || loading) return;
+    const typed = code.trim();
+    const kind = codeKind(typed);
+    if (kind === null) {
+      setError(useRecovery ? "A recovery code is 16 letters and numbers." : "Type the 6 digits from your authenticator app.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await api.loginTwoFactor(challenge, kind === "totp" ? typed.replace(/[\s-]/g, "") : typed);
+      onAuth(res.token, res.user.id);
+    } catch (err) {
+      setError(signInCodeMessage(err));
+      // The challenge ran out or gave up: back to the password.
+      if (apiStatus(err) === 401) {
+        setChallenge(null);
+        setPassword("");
+      }
+      setLoading(false);
+    }
+  }
+
+  function leaveCodeStep() {
+    setChallenge(null);
+    setCode("");
+    setError("");
+  }
+
+  // The code field gets the cursor as soon as it appears, and again when switching kinds.
+  useEffect(() => {
+    if (challenge !== null) codeRef.current?.focus();
+  }, [challenge, useRecovery]);
 
   async function handleLinkSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -204,12 +254,18 @@ export function AuthScreen({ home, onAuth }: Props) {
             <BirdMark size={30} />
             <span>o<b>Hi</b>Yo</span>
           </div>
-          <div key={mode} className="ohiyo-auth-mode-copy">
+          <div key={challenge !== null ? "two-factor" : mode} className="ohiyo-auth-mode-copy">
             <h1 className="ohiyo-door__greeting">
-              {mode === "login" ? scene.greeting : mode === "register" ? "Join Ohiyo" : "Link this device"}
+              {challenge !== null
+                ? "One more step"
+                : mode === "login" ? scene.greeting : mode === "register" ? "Join Ohiyo" : "Link this device"}
             </h1>
             <p className="ohiyo-door__line">
-              {mode === "login"
+              {challenge !== null
+                ? useRecovery
+                  ? "Type one of the recovery codes you saved when you turned on two-factor sign-in."
+                  : "Open your authenticator app and type the 6-digit code for Ohiyo."
+                : mode === "login"
                 ? scene.line
                 : mode === "register"
                   ? "Free forever. Takes ten seconds."
@@ -221,7 +277,79 @@ export function AuthScreen({ home, onAuth }: Props) {
             </div>
           </div>
         <div className="ohiyo-auth-form-zone">
-        {mode !== "link" && (
+        {challenge !== null && (
+          <form key="two-factor" onSubmit={handleCodeSubmit} className="ohiyo-auth-mode-panel flex flex-col gap-3" aria-label="Two-factor code" autoComplete="off">
+            <input
+              ref={codeRef}
+              id="kc-two-factor-code"
+              type="text"
+              aria-label={useRecovery ? "Recovery code" : "Code from your authenticator app"}
+              placeholder={useRecovery ? "XXXX-XXXX-XXXX-XXXX" : "123 456"}
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value);
+                if (error) setError("");
+              }}
+              inputMode={useRecovery ? "text" : "numeric"}
+              autoComplete={useRecovery ? "off" : "one-time-code"}
+              autoCapitalize={useRecovery ? "characters" : "off"}
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={useRecovery ? 24 : 7}
+              data-no-native-autocomplete="true"
+              className="kc-field px-3.5 py-3 text-center font-mono text-base tracking-widest outline-none"
+            />
+            {error && (
+              <div
+                className="kc-shake px-3 py-2 text-xs"
+                style={{
+                  background: "color-mix(in oklch, var(--danger) 12%, transparent)",
+                  color: "var(--danger)",
+                  borderRadius: "var(--radius-md)",
+                  fontWeight: 500,
+                }}
+                role="alert"
+              >
+                {error}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={loading || codeKind(code) === null}
+              className="kc-cta mt-1 flex items-center justify-center gap-2 py-3 text-base"
+              style={{
+                opacity: loading || codeKind(code) === null ? 0.65 : 1,
+                cursor: loading ? "default" : "pointer",
+              }}
+            >
+              {loading ? (
+                <span
+                  className="kc-spinner"
+                  style={{ width: 16, height: 16, borderColor: "rgba(255,255,255,0.35)", borderTopColor: "#fff" }}
+                />
+              ) : (
+                "Sign in"
+              )}
+            </button>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+              <button
+                type="button"
+                className="ohiyo-door__link"
+                onClick={() => {
+                  setUseRecovery((v) => !v);
+                  setCode("");
+                  setError("");
+                }}
+              >
+                {useRecovery ? "Use the code from my app" : "Use a recovery code instead"}
+              </button>
+              <button type="button" className="ohiyo-door__link" onClick={leaveCodeStep}>
+                Back
+              </button>
+            </div>
+          </form>
+        )}
+        {challenge === null && mode !== "link" && (
         <form
           key={mode}
           onSubmit={handleSubmit}
@@ -367,7 +495,7 @@ export function AuthScreen({ home, onAuth }: Props) {
         </form>
         )}
 
-        {mode === "link" && (
+        {challenge === null && mode === "link" && (
           <form key="link" onSubmit={handleLinkSubmit} className="ohiyo-auth-mode-panel flex flex-col gap-3" aria-label="Link a device" autoComplete="off">
             <input
               ref={linkRef}
@@ -426,7 +554,7 @@ export function AuthScreen({ home, onAuth }: Props) {
         )}
         </div>
 
-          <div className="ohiyo-door__links">
+          <div className="ohiyo-door__links" hidden={challenge !== null}>
             {mode === "login" ? (
               <>
                 <p>
