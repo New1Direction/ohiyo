@@ -20,6 +20,9 @@ export function ChangePassword({ token, username, onToast, onChanged, needsCode 
   const [next, setNext] = useState("");
   const [repeat, setRepeat] = useState("");
   const [code, setCode] = useState("");
+  // The server asked for a code this card didn't know it needed (the status hadn't loaded).
+  const [codeAsked, setCodeAsked] = useState(false);
+  const showCode = needsCode || codeAsked;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +39,7 @@ export function ChangePassword({ token, username, onToast, onChanged, needsCode 
     next.length >= MIN_LENGTH &&
     repeat === next &&
     next !== current &&
-    (!needsCode || codeKind(code) !== null);
+    (!showCode || codeKind(code) !== null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,7 +48,7 @@ export function ChangePassword({ token, username, onToast, onChanged, needsCode 
     setError(null);
     try {
       const typed = codeKind(code) === "totp" ? code.replace(/[\s-]/g, "") : code.trim();
-      const res = await api.changePassword(token, current, next, needsCode ? typed : undefined);
+      const res = await api.changePassword(token, current, next, showCode ? typed : undefined);
       setCurrent("");
       setNext("");
       setRepeat("");
@@ -53,7 +56,9 @@ export function ChangePassword({ token, username, onToast, onChanged, needsCode 
       onChanged(res.token);
       onToast("Password changed. You're signed out everywhere else.", "success");
     } catch (err) {
-      setError(stepUpCodeMessage(err) ?? passwordChangeMessage(err));
+      const codeProblem = stepUpCodeMessage(err);
+      if (codeProblem) setCodeAsked(true);
+      setError(codeProblem ?? passwordChangeMessage(err));
     } finally {
       setBusy(false);
     }
@@ -103,7 +108,7 @@ export function ChangePassword({ token, username, onToast, onChanged, needsCode 
           className={field}
           style={fieldStyle}
         />
-        {needsCode && (
+        {showCode && (
           <input
             type="text"
             inputMode="numeric"

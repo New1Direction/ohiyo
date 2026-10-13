@@ -91,10 +91,21 @@ export function TwoFactorCard({ twoFactorApi, username, onToast, onStatus }: Pro
     }
   }
 
+  // A change announced by the server: read the status again, but leave any form or recovery
+  // codes on screen alone (this device's own change is announced to it too). If the read
+  // fails, what's shown stays, unless nothing was shown yet.
+  async function refresh() {
+    try {
+      learn(await twoFactorApi.status());
+      setStep((s) => (s.kind === "loading" || s.kind === "failed" ? { kind: "idle" } : s));
+    } catch {
+      setStep((s) => (s.kind === "loading" ? { kind: "failed" } : s));
+    }
+  }
+
   useEffect(() => {
     void load();
-    // Another device turning it on or off: read the status again.
-    const again = () => void load();
+    const again = () => void refresh();
     window.addEventListener(TWO_FACTOR_EVENT, again);
     return () => window.removeEventListener(TWO_FACTOR_EVENT, again);
     // eslint-disable-next-line react-hooks/exhaustive-deps

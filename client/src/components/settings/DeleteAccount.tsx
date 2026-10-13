@@ -19,6 +19,9 @@ export function DeleteAccount({ token, username, onDeleted, needsCode = false }:
   const [password, setPassword] = useState("");
   const [typed, setTyped] = useState("");
   const [code, setCode] = useState("");
+  // The server asked for a code this form didn't know it needed (the status hadn't loaded).
+  const [codeAsked, setCodeAsked] = useState(false);
+  const showCode = needsCode || codeAsked;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Typing the name is a deliberate step, not a password: a phone's capital first letter
@@ -26,7 +29,7 @@ export function DeleteAccount({ token, username, onDeleted, needsCode = false }:
   const ready =
     password.length > 0 &&
     typed.trim().toLowerCase() === username.toLowerCase() &&
-    (!needsCode || codeKind(code) !== null);
+    (!showCode || codeKind(code) !== null);
   // Opening the form removes the button that opened it: the cursor goes to the first field.
   const passwordField = useRef<HTMLInputElement>(null);
   useLayoutEffect(() => {
@@ -40,10 +43,11 @@ export function DeleteAccount({ token, username, onDeleted, needsCode = false }:
     setError(null);
     try {
       const sentCode = codeKind(code) === "totp" ? code.replace(/[\s-]/g, "") : code.trim();
-      await api.deleteAccount(token, password, username, needsCode ? sentCode : undefined);
+      await api.deleteAccount(token, password, username, showCode ? sentCode : undefined);
       onDeleted();
     } catch (err) {
       const codeProblem = stepUpCodeMessage(err);
+      if (codeProblem) setCodeAsked(true);
       setError(codeProblem ? `${codeProblem} Nothing was deleted.` : deleteAccountMessage(err));
       setBusy(false);
     }
@@ -118,7 +122,7 @@ export function DeleteAccount({ token, username, onDeleted, needsCode = false }:
             style={fieldStyle}
           />
         </label>
-        {needsCode && (
+        {showCode && (
           <input
             type="text"
             inputMode="numeric"
