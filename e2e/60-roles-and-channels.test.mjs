@@ -108,6 +108,44 @@ try {
   await pageB.waitForSelector('.channel-sidebar :text("Crew HQ")', { timeout: 10000 });
   log("Sasha sees the space's new name");
 
+  // ── Shown separately, in the light theme, and on a phone ──
+  await pageA.locator('button[aria-label="Settings"]').first().click();
+  await pageA.locator(".kc-settings-nav button", { hasText: "Appearance" }).click();
+  await pageA.click('button[aria-label="Use theme: Ohiyo Light"]');
+  await pageA.keyboard.press("Escape");
+  await settle(pageA, 300);
+  await openSpaceMenu(pageA, "Roles");
+  await pageA.click('button[aria-label="Edit Mods"]', { timeout: 8000 });
+  await pageA.click('label:has-text("Show members separately") input[type="checkbox"]');
+  await pageA.click('button:has-text("Save changes")');
+  await pageA.waitForSelector("text=Saved ✓", { timeout: 6000 });
+  await shot(pageA, "60-roles-editor-light");
+  await pageA.keyboard.press("Escape");
+  await pageA.getByRole("button", { name: /See who's here/i }).click();
+  await pageA.waitForSelector('.kc-members-group:has-text("Mods")', { timeout: 8000 });
+  await shot(pageA, "60-roles-member-list-light");
+  await pageA.keyboard.press("Escape");
+  log("Mods shown separately: the member list gives them their own section");
+
+  await pageA.click('.channel-sidebar button:has-text("staff")', { timeout: 8000 });
+  await openSpaceMenu(pageA, "Channel settings");
+  await pageA.click('[role="tab"]:has-text("Permissions")', { timeout: 6000 });
+  await pageA.waitForSelector('[aria-label="Mods · View channels: Allow"][aria-pressed="true"]', { timeout: 8000 });
+  await shot(pageA, "60-roles-channel-permissions-light");
+  await pageA.keyboard.press("Escape");
+
+  await pageA.setViewportSize({ width: 390, height: 844 });
+  await settle(pageA, 400);
+  await pageA.locator('button[aria-label="Open channels"]').first().click();
+  await settle(pageA, 450);
+  await pageA.locator('.kc-nav button[aria-haspopup="menu"]').first().click();
+  await pageA.click('.kc-nav [role="menuitem"]:has-text("Channel settings")', { timeout: 6000 });
+  await pageA.click('[role="tab"]:has-text("Permissions")', { timeout: 6000 });
+  await pageA.waitForSelector('[aria-label="Mods · View channels: Allow"][aria-pressed="true"]', { timeout: 8000 });
+  await shot(pageA, "60-roles-channel-permissions-phone");
+  await pageA.keyboard.press("Escape");
+  log("channel permissions and the role editor shot in light and on a phone");
+
   log("ROLES AND CHANNELS PASSED");
 } catch (e) {
   failed = true;
