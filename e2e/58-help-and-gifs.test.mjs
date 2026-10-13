@@ -63,8 +63,8 @@ try {
 
   // The command palette opens the same page.
   await page.keyboard.press("Control+k");
-  await page.keyboard.type("help");
-  await page.keyboard.press("Enter");
+  await page.getByRole("combobox", { name: "Search channels and DMs" }).fill("help");
+  await page.getByRole("option", { name: /Help & feedback/ }).click();
   await statusAnswered(page);
   log("the command palette opens Help & feedback ✓");
 
