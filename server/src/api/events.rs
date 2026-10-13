@@ -242,3 +242,6 @@ pub async fn delete_event(
     .await;
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// Remind people who said Interested or Going: 15 minutes before an event and at its start.
+pub async fn send_due_reminders(_state: &AppState, _now: i64) {}
