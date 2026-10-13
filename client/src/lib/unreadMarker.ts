@@ -22,7 +22,7 @@ export function firstUnreadId(messages: readonly MarkerMessage[], unread: number
 }
 
 // Intl puts a narrow no-break space before AM/PM; the bar reads the same either way.
-const plainSpaces = (s: string) => s.replace(/[  ]/g, " ");
+const plainSpaces = (s: string) => s.replace(/[\u202f\u00a0]/g, " ");
 
 /** "12 new messages since 3:12 PM", with the day when it isn't today ("since Oct 10 at
  *  6:30 PM"), or just the count when the first one's time isn't known. */
