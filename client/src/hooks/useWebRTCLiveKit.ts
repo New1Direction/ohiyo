@@ -18,6 +18,7 @@ import {
 import { usePeerQuality } from "../webrtc/usePeerQuality";
 import type { ScreenSharePresetId } from "../webrtc/screenShare";
 import { enableLiveKitMicrophone, liveKitScreenShareOptions } from "../webrtc/livekit";
+import { toggleDeafenState } from "../lib/voiceControls";
 import type { CallState, VoiceParticipant, WebRTCCallbacks, UseWebRTCReturn } from "./useWebRTC";
 
 // Media E2EE (FrameCryptor) is on by default whenever the SFU is on; set
@@ -42,7 +43,7 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [participants, setParticipants] = useState<Map<string, VoiceParticipant>>(new Map());
-  const [self, setSelf] = useState({ muted: false, video: false, screen: false, listenOnly: false });
+  const [self, setSelf] = useState({ muted: false, video: false, screen: false, listenOnly: false, deafened: false });
 
   const roomRef = useRef<Room | null>(null);
   const channelRef = useRef<string | null>(null);
@@ -63,6 +64,13 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
   // LiveKit gives identity/name only. Preserve the richer Ohiyo PublicUser from
   // gateway VoiceState so call tiles can show real profile pictures.
   const voiceUsersRef = useRef<Map<string, PublicUser>>(new Map());
+  // Who is deafened, from gateway VoiceState (LiveKit itself doesn't know).
+  const voiceDeafRef = useRef<Map<string, boolean>>(new Map());
+  // Deafen state for this device, and whether the mic was muted before deafening.
+  const deafenedRef = useRef(false);
+  const mutedBeforeDeafenRef = useRef(false);
+  // Push to talk / input sensitivity gate (set by useVoiceControls), under mute.
+  const gateOpenRef = useRef(true);
 
   // Our own key for a channel (minted once per call), also recorded in the collected set.
   const ensureMyVoiceKey = useCallback((cid: string): Uint8Array => {
@@ -124,6 +132,7 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       // Listen-only = joined without ever publishing a mic track; distinct from muted
       // (mic track present but disabled), which still has an audio publication.
       listenOnly: p.audioTrackPublications.size === 0,
+      deafened: voiceDeafRef.current.get(p.identity) ?? false,
     };
   };
 
@@ -160,7 +169,20 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       video: room.localParticipant.isCameraEnabled,
       screen: room.localParticipant.isScreenShareEnabled,
       listenOnly: false,
+      deafened: deafenedRef.current,
     });
+  }, []);
+
+  // Hold the published mic back while the push to talk / sensitivity gate is closed. A mic
+  // muted through LiveKit stays muted either way.
+  const applyGate = useCallback(() => {
+    const lp = roomRef.current?.localParticipant;
+    if (!lp) return;
+    for (const pub of lp.audioTrackPublications.values()) {
+      if (String(pub.source) !== "microphone") continue;
+      const t = pub.track?.mediaStreamTrack;
+      if (t) t.enabled = lp.isMicrophoneEnabled && gateOpenRef.current;
+    }
   }, []);
 
   const reset = useCallback(() => {
@@ -176,7 +198,10 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
     setLocalStream(null);
     setRemoteStreams(new Map());
     setParticipants(new Map());
-    setSelf({ muted: false, video: false, screen: false, listenOnly: false });
+    voiceDeafRef.current.clear();
+    deafenedRef.current = false;
+    mutedBeforeDeafenRef.current = false;
+    setSelf({ muted: false, video: false, screen: false, listenOnly: false, deafened: false });
   }, []);
 
   const joinVoice = useCallback(
@@ -232,14 +257,16 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
         if (opts?.video) await room.localParticipant.setCameraEnabled(true);
         refresh();
         refreshLocal();
+        applyGate();
         const nextSelf = {
           muted: joinMuted || micResult === "listen-only",
           video: room.localParticipant.isCameraEnabled,
           screen: room.localParticipant.isScreenShareEnabled,
           listenOnly: micResult === "listen-only",
+          deafened: false,
         };
         setSelf(nextSelf);
-        cbRef.current.sendMeta(cid, nextSelf.muted, nextSelf.video, nextSelf.screen, nextSelf.listenOnly);
+        cbRef.current.sendMeta(cid, nextSelf.muted, nextSelf.video, nextSelf.screen, nextSelf.listenOnly, false);
         setCallState("connected");
         // Announce our key to everyone already in the room so we all converge.
         if (E2EE_ENABLED) {
@@ -255,7 +282,7 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
         throw e;
       }
     },
-    [callState, refresh, refreshLocal, reset, ensureMyVoiceKey, distributeMyVoiceKey, evictVoiceKey]
+    [callState, refresh, refreshLocal, reset, applyGate, ensureMyVoiceKey, distributeMyVoiceKey, evictVoiceKey]
   );
 
   const hangUp = useCallback(() => {
@@ -276,7 +303,8 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       listenOnly || !room.localParticipant.isMicrophoneEnabled,
       room.localParticipant.isCameraEnabled,
       room.localParticipant.isScreenShareEnabled,
-      listenOnly
+      listenOnly,
+      deafenedRef.current
     );
   }, []);
 
@@ -284,14 +312,46 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
     const room = roomRef.current;
     if (!room) return;
     const shouldPublish = !room.localParticipant.isMicrophoneEnabled;
+    // Unmuting while deafened undeafens too, as Discord does.
+    if (shouldPublish) {
+      deafenedRef.current = false;
+      mutedBeforeDeafenRef.current = false;
+    }
     await enableLiveKitMicrophone(room.localParticipant, shouldPublish).then((micResult) => {
+      applyGate();
       refreshLocal();
       if (micResult === "listen-only") {
         setSelf((prev) => ({ ...prev, muted: true, listenOnly: true }));
       }
       pushMeta();
     });
-  }, [refreshLocal, pushMeta]);
+  }, [refreshLocal, pushMeta, applyGate]);
+
+  /** Deafen: hear nobody (CallOverlay silences the call's sound) and mute the mic too.
+   *  Undeafening puts the mic back as it was. */
+  const toggleDeafen = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+    const lp = room.localParticipant;
+    const mic = toggleDeafenState({
+      muted: !lp.isMicrophoneEnabled,
+      deafened: deafenedRef.current,
+      mutedBeforeDeafen: mutedBeforeDeafenRef.current,
+    });
+    deafenedRef.current = mic.deafened;
+    mutedBeforeDeafenRef.current = mic.mutedBeforeDeafen;
+    if (mic.muted === lp.isMicrophoneEnabled) await enableLiveKitMicrophone(lp, !mic.muted);
+    applyGate();
+    refreshLocal();
+    pushMeta();
+  }, [refreshLocal, pushMeta, applyGate]);
+
+  /** Push to talk / input sensitivity: let the mic through or hold it back, under mute. */
+  const setTransmitGate = useCallback((open: boolean) => {
+    if (gateOpenRef.current === open) return;
+    gateOpenRef.current = open;
+    applyGate();
+  }, [applyGate]);
 
   const toggleVideo = useCallback(async () => {
     const room = roomRef.current;
@@ -346,10 +406,16 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
       muted: boolean;
       video: boolean;
       screen: boolean;
+      deafened?: boolean;
     }) => {
       if (s.channel_id !== channelRef.current) return;
-      if (s.joined) voiceUsersRef.current.set(s.user_id, s.user);
-      else voiceUsersRef.current.delete(s.user_id);
+      if (s.joined) {
+        voiceUsersRef.current.set(s.user_id, s.user);
+        voiceDeafRef.current.set(s.user_id, s.deafened ?? false);
+      } else {
+        voiceUsersRef.current.delete(s.user_id);
+        voiceDeafRef.current.delete(s.user_id);
+      }
       refresh();
 
       if (!E2EE_ENABLED || !s.joined) return;
@@ -405,6 +471,8 @@ export function useWebRTCLiveKit(cb: WebRTCCallbacks, token: string): UseWebRTCR
     joinVoice,
     hangUp,
     toggleAudio,
+    toggleDeafen,
+    setTransmitGate,
     toggleVideo,
     toggleScreenShare,
     onRoster,
