@@ -38,32 +38,40 @@ try {
   await pageB.waitForSelector('textarea[placeholder*="Say something to #general"]', { timeout: 12000 });
   log("A + B in Event HQ");
 
-  // ── A creates an event ──
+  // ── A creates an event for tomorrow evening (and is down as Going) ──
   await pageA.click('.channel-sidebar button[aria-haspopup="menu"]');
   await pageA.click('.channel-sidebar [role="menuitem"]:has-text("Events")');
   await pageA.waitForSelector("text=📅 Events", { timeout: 5000 });
+  await pageA.click('button:has-text("New event")');
   await pageA.fill('input[aria-label="Event title"]', "Game night");
-  await pageA.fill('input[aria-label="Event time"]', "2026-06-20T20:00");
-  await pageA.click('button:has-text("Add event")');
-  await pageA.waitForSelector("text=Game night", { timeout: 6000 });
+  const tomorrow = await pageA.evaluate(() => {
+    const d = new Date(Date.now() + 86_400_000);
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T20:00`;
+  });
+  await pageA.fill('input[aria-label="Starts"]', tomorrow);
+  await pageA.click('button:has-text("Create event")');
+  await pageA.waitForSelector('article[aria-label="Game night"]', { timeout: 6000 });
   log("A created an event ✓");
   await shot(pageA, "33-events");
 
-  // ── B opens events, sees it, RSVPs ──
+  // ── B opens events, finds it in the agenda, says Interested ──
   await pageB.click('.channel-sidebar button[aria-haspopup="menu"]');
   await pageB.click('.channel-sidebar [role="menuitem"]:has-text("Events")');
-  await pageB.waitForSelector("text=Game night", { timeout: 6000 });
+  await pageB.click('button[aria-pressed]:has-text("Agenda")');
+  await pageB.click('section button:has-text("Game night")');
   log("B sees the event ✓");
-  await pageB.locator('button:has-text("I\'m in")').first().click();
-  await pageB.waitForSelector('button:has-text("✓ Going")', { timeout: 6000 });
-  log("B RSVP'd ✓");
+  const answers = 'article[aria-label="Game night"] [role="group"][aria-label="Your answer"]';
+  await pageB.click(`${answers} button:has-text("Interested")`);
+  await pageB.waitForSelector(`${answers} button[aria-pressed="true"]:has-text("Interested")`, { timeout: 6000 });
+  log("B said Interested ✓");
 
-  // ── A's open panel updates live via gateway ──
-  await pageA.waitForSelector("text=1 person going", { timeout: 8000 });
-  log("A's events panel shows '1 person going' LIVE (gateway) ✓");
+  // ── A's open card updates live via the gateway ──
+  await pageA.waitForSelector(`${answers} button:has-text("Interested"):has-text("1")`, { timeout: 8000 });
+  log("A's card shows 1 interested LIVE (gateway) ✓");
   await shot(pageA, "34-events-rsvp");
 
-  console.log("\n✅ EVENTS FLOW PASSED (create · live delivery · RSVP · live count)");
+  console.log("\n✅ EVENTS FLOW PASSED (create · live delivery · Interested · live count)");
 } catch (err) {
   failed = true;
   console.error("\n❌ FAILED:", err.message);

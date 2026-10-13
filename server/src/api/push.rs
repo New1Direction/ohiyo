@@ -637,6 +637,18 @@ const CALL_BODY: &str = "Incoming call on Ohiyo.";
 
 /// Wake the offline devices of people a DM call is ringing for. Online devices already ring
 /// over the gateway.
+/// Wake the phones of people an event reminder or cancellation is for, if they're offline.
+/// It's the same content-free nudge as a new message: push_deliveries only takes the kinds
+/// "message" and "test".
+pub async fn queue_event_pushes(state: &AppState, recipient_ids: &[String]) {
+    if recipient_ids.is_empty() {
+        return;
+    }
+    if let Err(e) = queue_for_users(state, recipient_ids, "message", true).await {
+        tracing::warn!("event push enqueue failed: {e}");
+    }
+}
+
 pub async fn queue_call_pushes(state: &AppState, recipient_ids: &[String]) {
     if recipient_ids.is_empty() {
         return;

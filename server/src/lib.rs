@@ -171,6 +171,8 @@ pub fn spawn_sweeper(state: AppState, period: std::time::Duration) -> tokio::tas
             api::webhooks::sweep_orphan_accounts(&state).await;
             // Call logs left ringing or ongoing by a restart.
             api::calls::sweep_stale_logs(&state).await;
+            // Event reminders: 15 minutes before and at the start.
+            api::events::send_due_reminders(&state, types::now_unix()).await;
         }
     })
 }

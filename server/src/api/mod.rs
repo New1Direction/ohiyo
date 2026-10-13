@@ -9,6 +9,7 @@ pub mod dm_links;
 pub mod embeds;
 pub mod emoji;
 pub mod error;
+pub mod event_reminders;
 pub mod events;
 pub mod files;
 pub mod gifs;
@@ -259,8 +260,12 @@ pub fn router() -> Router<AppState> {
             post(events::rsvp_event),
         )
         .route(
+            "/servers/{server_id}/events/{event_id}/cancel",
+            post(events::cancel_event),
+        )
+        .route(
             "/servers/{server_id}/events/{event_id}",
-            delete(events::delete_event),
+            delete(events::delete_event).patch(events::edit_event),
         )
         // Roles & permissions
         .route(
