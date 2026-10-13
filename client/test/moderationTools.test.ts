@@ -101,6 +101,17 @@ test("the moderation log names each action in plain words", () => {
   assert.equal(describeModAction({ action: "some_new_thing", metadata: null }), "Some new thing");
 });
 
+test("role and channel edits read plainly in the moderation log", () => {
+  const named = (name: string) => JSON.stringify({ name });
+  assert.equal(describeModAction({ action: "update_role", metadata: named("Mods") }), "Edited the Mods role");
+  assert.equal(describeModAction({ action: "update_role", metadata: null }), "Edited a role");
+  assert.equal(describeModAction({ action: "reorder_roles", metadata: null }), "Reordered roles");
+  assert.equal(describeModAction({ action: "rename_space", metadata: named("Crew HQ") }), "Renamed the space to Crew HQ");
+  assert.equal(describeModAction({ action: "update_channel", metadata: named("staff") }), "Edited #staff");
+  assert.equal(describeModAction({ action: "set_channel_permissions", metadata: null }), "Changed a channel's permissions");
+  assert.equal(describeModAction({ action: "sync_channel_permissions", metadata: null }), "Synced a channel with its category");
+});
+
 test("the two new permissions exist and have plain labels", () => {
   assert.equal(PERM.MODERATE_MEMBERS, 1 << 9);
   assert.equal(PERM.CREATE_INVITE, 1 << 10);
