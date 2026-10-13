@@ -12,6 +12,7 @@ import {
   type ScreenSharePresetId,
 } from "../webrtc/screenShare";
 import { usePeerQuality, type PeerQuality } from "../webrtc/usePeerQuality";
+import { toggleDeafenState, toggleMuteState } from "../lib/voiceControls";
 
 // Fallback when /ice-servers can't be reached. STUN works on LAN/most networks.
 const FALLBACK_ICE: RTCIceServer[] = [
@@ -30,6 +31,8 @@ export type VoiceParticipant = {
   // Optional so the LiveKit engine (which doesn't track it per-participant) can omit it;
   // the mesh engine always populates it from the gateway VoiceState `listenOnly` key.
   listenOnly?: boolean;
+  /** Hears nobody (deafened). A deafened participant is always muted. */
+  deafened?: boolean;
 };
 
 type PeerEntry = {
@@ -43,7 +46,7 @@ export type WebRTCCallbacks = {
   getIceServers: () => Promise<RTCIceServer[]>;
   sendJoin: (channelId: string, muted: boolean, video: boolean, listenOnly: boolean) => void;
   sendLeave: (channelId: string) => void;
-  sendMeta: (channelId: string, muted: boolean, video: boolean, screen: boolean, listenOnly: boolean) => void;
+  sendMeta: (channelId: string, muted: boolean, video: boolean, screen: boolean, listenOnly: boolean, deafened: boolean) => void;
   sendSignal: (to: string, kind: string, payload: string) => void;
 };
 
@@ -68,7 +71,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [participants, setParticipants] = useState<Map<string, VoiceParticipant>>(new Map());
-  const [self, setSelf] = useState({ muted: false, video: false, screen: false, listenOnly: false });
+  const [self, setSelf] = useState({ muted: false, video: false, screen: false, listenOnly: false, deafened: false });
 
   const pcsRef = useRef<Map<string, PeerEntry>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -83,6 +86,11 @@ export function useWebRTC(cb: WebRTCCallbacks) {
   // Guards against overlapping mic-acquire/renegotiation runs from rapid Unmute clicks
   // (each would re-add a track and re-offer every peer — a signaling storm).
   const audioUpgradeInFlightRef = useRef(false);
+  // Push to talk and input sensitivity hold the mic back through this gate (set by
+  // useVoiceControls); mute and deafen sit on top of it. Open unless something closes it.
+  const gateOpenRef = useRef(true);
+  // Whether the mic was muted before deafening, so undeafening puts it back as it was.
+  const mutedBeforeDeafenRef = useRef(false);
   // Guards a double screen-share start (two rapid clicks would overwrite
   // screenStreamRef and leak the first capture).
   const screenShareInFlightRef = useRef(false);
@@ -268,6 +276,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
         next.set(p.user_id, {
           user_id: p.user_id, user: p.user, muted: p.muted, video: p.video, screen: p.screen,
           listenOnly: p.listenOnly ?? prev.get(p.user_id)?.listenOnly ?? false,
+          deafened: p.deafened ?? false,
         });
       }
       return next;
@@ -336,6 +345,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
 
   const onVoiceState = useCallback((s: {
     channel_id: string; user_id: string; user: PublicUser; joined: boolean; muted: boolean; video: boolean; screen: boolean; listenOnly: boolean;
+    deafened?: boolean;
   }) => {
     if (channelRef.current !== s.channel_id) return;
     if (s.user_id === cbRef.current.currentUserId) return;
@@ -346,6 +356,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     if (s.joined) {
       setParticipants((prev) => new Map(prev).set(s.user_id, {
         user_id: s.user_id, user: s.user, muted: s.muted, video: s.video, screen: s.screen, listenOnly: s.listenOnly,
+        deafened: s.deafened ?? false,
       }));
     } else {
       closePeer(s.user_id);
@@ -422,7 +433,7 @@ export function useWebRTC(cb: WebRTCCallbacks) {
       const wantVideo = opts?.video ?? false;
       const joinMuted = opts?.muted ?? false;
       const { stream, hasMic } = await acquireLocalMedia(wantVideo);
-      for (const track of stream.getAudioTracks()) track.enabled = !joinMuted;
+      for (const track of stream.getAudioTracks()) track.enabled = !joinMuted && gateOpenRef.current;
       localStreamRef.current = stream;
       setLocalStream(stream);
       channelRef.current = cid;
@@ -430,7 +441,8 @@ export function useWebRTC(cb: WebRTCCallbacks) {
       const startVideo = wantVideo && hasRealCameraRef.current;
       const listenOnly = !hasMic;
       const muted = listenOnly || joinMuted;
-      setSelf({ muted, video: startVideo, screen: false, listenOnly });
+      mutedBeforeDeafenRef.current = false;
+      setSelf({ muted, video: startVideo, screen: false, listenOnly, deafened: false });
       cbRef.current.sendJoin(cid, muted, startVideo, listenOnly);
       setCallState("connected");
     } catch (err) {
@@ -459,14 +471,15 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     setLocalStream(null);
     setRemoteStreams(new Map());
     setParticipants(new Map());
-    setSelf({ muted: false, video: false, screen: false, listenOnly: false });
+    mutedBeforeDeafenRef.current = false;
+    setSelf({ muted: false, video: false, screen: false, listenOnly: false, deafened: false });
     setChannelId(null);
     setCallState("idle");
   }, [closePeer]);
 
-  const pushMeta = useCallback((next: { muted: boolean; video: boolean; screen: boolean; listenOnly: boolean }) => {
+  const pushMeta = useCallback((next: { muted: boolean; video: boolean; screen: boolean; listenOnly: boolean; deafened: boolean }) => {
     const cid = channelRef.current;
-    if (cid) cbRef.current.sendMeta(cid, next.muted, next.video, next.screen, next.listenOnly);
+    if (cid) cbRef.current.sendMeta(cid, next.muted, next.video, next.screen, next.listenOnly, next.deafened);
   }, []);
 
   const toggleAudio = useCallback(async () => {
@@ -516,14 +529,40 @@ export function useWebRTC(cb: WebRTCCallbacks) {
 
     // Compute next state, then run side-effects (DOM track mutation + network push)
     // OUTSIDE the setSelf updater — updaters must be pure and may run twice.
+    // Unmuting while deafened undeafens too, as Discord does.
     const prev = selfRef.current;
-    const muted = !prev.muted;
+    const mic = toggleMuteState({ muted: prev.muted, deafened: prev.deafened, mutedBeforeDeafen: mutedBeforeDeafenRef.current });
+    mutedBeforeDeafenRef.current = mic.mutedBeforeDeafen;
     const latestTrack = localStreamRef.current?.getAudioTracks()[0] ?? null;
-    if (latestTrack) latestTrack.enabled = !muted;
-    const next = { ...prev, muted, listenOnly: muted && !latestTrack };
+    if (latestTrack) latestTrack.enabled = !mic.muted && gateOpenRef.current;
+    const next = { ...prev, muted: mic.muted, deafened: mic.deafened, listenOnly: mic.muted && !latestTrack };
     setSelf(next);
     pushMeta(next);
   }, [acquireMicStream, pushMeta, renegotiate]);
+
+  /** Deafen: hear nobody (CallOverlay silences the call's sound) and mute the mic too.
+   *  Undeafening puts the mic back as it was. */
+  const toggleDeafen = useCallback(() => {
+    if (!channelRef.current) return;
+    const prev = selfRef.current;
+    const mic = toggleDeafenState({ muted: prev.muted, deafened: prev.deafened, mutedBeforeDeafen: mutedBeforeDeafenRef.current });
+    mutedBeforeDeafenRef.current = mic.mutedBeforeDeafen;
+    // Someone listening without a microphone stays muted whatever happens.
+    const muted = mic.muted || prev.listenOnly;
+    const track = localStreamRef.current?.getAudioTracks()[0] ?? null;
+    if (track) track.enabled = !muted && gateOpenRef.current;
+    const next = { ...prev, muted, deafened: mic.deafened };
+    setSelf(next);
+    pushMeta(next);
+  }, [pushMeta]);
+
+  /** Push to talk / input sensitivity: let the mic through or hold it back, under mute. */
+  const setTransmitGate = useCallback((open: boolean) => {
+    if (gateOpenRef.current === open) return;
+    gateOpenRef.current = open;
+    const track = localStreamRef.current?.getAudioTracks()[0] ?? null;
+    if (track) track.enabled = !selfRef.current.muted && open;
+  }, []);
 
   const toggleVideo = useCallback(async () => {
     const cur = selfRef.current;
@@ -684,6 +723,8 @@ export function useWebRTC(cb: WebRTCCallbacks) {
     joinVoice,
     hangUp,
     toggleAudio,
+    toggleDeafen,
+    setTransmitGate,
     toggleVideo,
     toggleScreenShare,
     // gateway-driven

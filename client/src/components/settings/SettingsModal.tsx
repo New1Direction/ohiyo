@@ -52,10 +52,11 @@ import { ConfirmWithPassword } from "./ConfirmWithPassword";
 import { passwordStepMessage } from "../../lib/apiErrors";
 import { PluginsTab } from "./PluginsTab";
 import { DesktopAppCard } from "./DesktopAppCard";
+import { VoiceTab } from "./VoiceTab";
 import type { PrivacyPrefs } from "../../lib/privacyPrefs";
 import { AvatarMark } from "../BirdMark";
 
-export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security" | "notifications";
+export type Tab = "account" | "profile" | "appearance" | "plugins" | "social" | "emoji" | "security" | "notifications" | "voice";
 
 const SETTINGS_TABS: Array<{ id: Tab; label: string; description: string }> = [
   { id: "account", label: "Account", description: "Login and basics" },
@@ -63,6 +64,7 @@ const SETTINGS_TABS: Array<{ id: Tab; label: string; description: string }> = [
   { id: "social", label: "Social links", description: "Your places online" },
   { id: "security", label: "Privacy & security", description: "Keys and safety" },
   { id: "notifications", label: "Notifications", description: "Alerts on your devices" },
+  { id: "voice", label: "Voice & video", description: "Mic and push to talk" },
   { id: "appearance", label: "Appearance", description: "Colors and comfort" },
   { id: "plugins", label: "Plugins", description: "Extra powers" },
   { id: "emoji", label: "Custom emoji", description: "For your spaces" },
@@ -219,6 +221,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
           {tab === "security" && <SecurityTab token={token} userId={currentUser?.id} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} onSignOutEverywhere={onSignOutEverywhere} />}
           {tab === "notifications" && <NotificationsTab token={token} onToast={onToast} />}
+          {tab === "voice" && <VoiceTab />}
           {tab === "emoji" && <EmojiTab token={token} servers={servers} onToast={onToast} />}
         </div>
       </div>

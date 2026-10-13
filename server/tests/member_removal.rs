@@ -127,6 +127,7 @@ fn seat_in_room(w: &World, channel_id: &str, user: &AuthOk, name: &str) {
         video: false,
         screen: false,
         listen_only: false,
+        deafened: false,
         conn_id: 0,
     };
     w.srv
