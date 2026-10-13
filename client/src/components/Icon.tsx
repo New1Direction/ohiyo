@@ -41,7 +41,10 @@ export type IconName =
   | "phone"
   | "phoneOff"
   | "video"
-  | "more";
+  | "more"
+  | "home"
+  | "at"
+  | "user";
 
 const PATHS: Record<IconName, ReactNode> = {
   search: (
@@ -262,6 +265,24 @@ const PATHS: Record<IconName, ReactNode> = {
       <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" />
       <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
       <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    </>
+  ),
+  home: (
+    <>
+      <path d="M3 10.5 12 3l9 7.5" />
+      <path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" />
+    </>
+  ),
+  at: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
     </>
   ),
 };
