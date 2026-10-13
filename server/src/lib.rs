@@ -74,6 +74,12 @@ pub struct AppState {
     /// same volume always has room to write; 0 turns the guard off. Read once at startup
     /// from `MIN_FREE_DISK_BYTES`.
     pub min_free_disk_bytes: u64,
+    /// How long a DM call rings before it counts as missed. Tests shorten it.
+    pub call_ring_secs: u64,
+    /// Most people in one DM or group-chat call (the voice is peer-to-peer).
+    pub dm_call_cap: usize,
+    /// DM and group-chat calls in progress: channel_id → session (see api::calls).
+    pub calls: api::calls::CallSessions,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
@@ -107,6 +113,9 @@ pub fn build_state(db: SqlitePool) -> AppState {
         login_limit_per_username_per_minute: api::auth::login_limit_from_env(),
         cloudflare_turn: api::ice::CloudflareTurn::from_env(),
         min_free_disk_bytes: api::files::min_free_disk_from_env(),
+        call_ring_secs: 40,
+        dm_call_cap: 10,
+        calls: api::calls::new_call_sessions(),
     }
 }
 
@@ -152,6 +161,8 @@ pub fn spawn_sweeper(state: AppState, period: std::time::Duration) -> tokio::tas
             api::push::sweep_stale_push_rows(&state).await;
             // Webhook accounts left with no webhook and no messages.
             api::webhooks::sweep_orphan_accounts(&state).await;
+            // Call logs left ringing or ongoing by a restart.
+            api::calls::sweep_stale_logs(&state).await;
         }
     })
 }

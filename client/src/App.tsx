@@ -11,6 +11,9 @@ import { ToastStack } from "./components/ToastStack";
 import { SettingsModal, type Tab } from "./components/settings/SettingsModal";
 import { CommandPalette, type CommandAction } from "./components/CommandPalette";
 import { CallOverlay } from "./components/CallOverlay";
+import { IncomingCallCard } from "./components/IncomingCallCard";
+import { callCountsAsUnread, nextRings, type IncomingRing } from "./lib/dmCall";
+import { startRingtone } from "./lib/ringtone";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BootSplash } from "./components/BootSplash";
 import { Onboarding } from "./components/Onboarding";
@@ -176,6 +179,11 @@ const NO_THREADS: ThreadSummary[] = [];
 /** Jumping to an older message pages back this many messages at a time, at most this often. */
 const JUMP_PAGE = 100;
 const JUMP_PAGES = 10;
+/** An incoming call's card stays at least this long, plus this grace, if its stop is lost. */
+const RING_FALLBACK_MIN_SECS = 10;
+const RING_FALLBACK_GRACE_SECS = 5;
+/** Seats in a DM or group-chat call (the server's limit, for the "full" message). */
+const DM_CALL_SEATS = 10;
 
 // On logout: drop decrypted plaintext, the outbox and every draft from localStorage and
 // (desktop) the vault. Identity and session keys stay.
@@ -941,6 +949,12 @@ function MainApp({
   const webrtc = liveKitEnabled ? sfu : mesh;
   // Push to talk, input sensitivity and the mute/deafen shortcuts, from this device's settings.
   const voiceControls = useVoiceControls(webrtc);
+  // Calls in DMs and group chats: the calls ringing for you, and the chat you're calling
+  // while nobody has answered yet (the call screen says "Ringing…").
+  const [rings, setRings] = useState<IncomingRing[]>([]);
+  const [outgoingCall, setOutgoingCall] = useState<string | null>(null);
+  const outgoingCallRef = useRef(outgoingCall);
+  outgoingCallRef.current = outgoingCall;
 
   // ── Desktop shell: the tray, the dock badge, and a window that can sit hidden ──
   // Unread numbers after notification settings: the sidebar shows `shownUnread`; the Dock,
@@ -966,6 +980,21 @@ function MainApp({
     }
   }
   for (const d of dms) if (isMuted(notifSettings[settingKey("channel", d.id)], nowSec)) mutedChannelIds.add(d.id);
+  // A call ringing for you plays the ringtone, unless its chat is muted (the card still shows,
+  // quietly). A ring whose stop never came (a dropped connection) goes when its time is up.
+  const ringAudible = rings.some((r) => !mutedChannelIds.has(r.channelId));
+  useEffect(() => {
+    if (!ringAudible) return;
+    return startRingtone();
+  }, [ringAudible]);
+  const hasRings = rings.length > 0;
+  useEffect(() => {
+    if (!hasRings) return;
+    const timer = window.setInterval(() => {
+      setRings((prev) => nextRings(prev, { type: "tick", now: Math.floor(Date.now() / 1000) }));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [hasRings]);
   // A window hidden in the tray is never "looking at" a chat: messages there notify and
   // count as unread, and are marked read when the window comes back.
   const windowHiddenRef = useRef(false);
@@ -1381,6 +1410,14 @@ function MainApp({
           if ((following || mentioned) && !isOpen) maybeNotify(msg);
           break;
         }
+        if (msg.call) {
+          // A call log: it shows in the chat, but the ring is the notification. It only counts
+          // as unread once it's a call you missed (MessageUpdate).
+          if (selectedChannelRef.current?.id === msg.channel_id) {
+            setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+          }
+          break;
+        }
         if (selectedChannelRef.current?.id === msg.channel_id) {
           // Dedup by id: a duplicate MessageCreate (gateway replay, or a resend whose
           // first response was lost) must not render the message twice.
@@ -1427,6 +1464,17 @@ function MainApp({
       case "MessageUpdate": {
         const msg = event.d;
         setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
+        if (msg.call) {
+          // Someone answered the call you're making: it's no longer just ringing.
+          if (msg.call.state !== "ringing" && outgoingCallRef.current === msg.channel_id) setOutgoingCall(null);
+          // A call you missed counts as unread unless you're looking at that chat.
+          const me = currentUserRef.current;
+          const lookingAtIt = selectedChannelRef.current?.id === msg.channel_id && !windowHiddenRef.current;
+          if (me && !lookingAtIt && callCountsAsUnread(msg.call, me.id, msg.author.id)) {
+            setUnread((prev) => ({ ...prev, [msg.channel_id]: (prev[msg.channel_id] ?? 0) + 1 }));
+          }
+          break;
+        }
         // Edited E2E messages arrive as ciphertext — decrypt for the viewer (mirrors MessageCreate).
         if (isEncrypted(msg.content) || isSignalCiphertext(msg.content) || isGroupCiphertext(msg.content)) {
           void decryptMessages(msg.channel_id, [msg]).then((dec) => {
@@ -1752,6 +1800,49 @@ function MainApp({
         if (event.d.server_id === selectedServerIdRef.current) {
           setEventsRefresh((n) => n + 1);
         }
+        break;
+
+      case "CallRing": {
+        const d = event.d;
+        if (blockedUserIdsRef.current.has(d.caller.id) || webrtcRef.current?.channelId === d.channel_id) break;
+        const nowSecs = Math.floor(Date.now() / 1000);
+        const ring: IncomingRing = {
+          channelId: d.channel_id,
+          messageId: d.message_id,
+          callerId: d.caller.id,
+          callerName: d.caller.display_name || d.caller.username,
+          video: d.video,
+          // The server stops the ring on time; this is only the fallback for a stop that never
+          // arrives, so a clock that runs fast can't cut a ring short.
+          ringUntil: Math.max(d.ring_until, nowSecs + RING_FALLBACK_MIN_SECS) + RING_FALLBACK_GRACE_SECS,
+        };
+        setRings((prev) => nextRings(prev, { type: "ring", ring }));
+        notifyRing(ring);
+        break;
+      }
+
+      case "CallRingStop":
+        setRings((prev) => nextRings(prev, { type: "stop", channelId: event.d.channel_id }));
+        break;
+
+      case "CallEnded": {
+        const { channel_id, outcome } = event.d;
+        setRings((prev) => nextRings(prev, { type: "stop", channelId: channel_id }));
+        const wasCalling = outgoingCallRef.current === channel_id;
+        if (wasCalling) setOutgoingCall(null);
+        // A one-to-one call ends for both when one hangs up: leave it here too.
+        if (webrtcRef.current?.channelId === channel_id) {
+          webrtcRef.current.hangUp();
+          if (wasCalling && outcome === "declined") toast("They declined the call.");
+          else if (wasCalling && outcome === "missed") toast("No answer.");
+        }
+        break;
+      }
+
+      case "VoiceRefused":
+        if (webrtcRef.current?.channelId === event.d.channel_id) webrtcRef.current.hangUp();
+        if (outgoingCallRef.current === event.d.channel_id) setOutgoingCall(null);
+        toast(`This call is full (up to ${DM_CALL_SEATS} people).`, "error");
         break;
 
       case "VoiceRoster":
@@ -2538,6 +2629,17 @@ function MainApp({
     });
   }
 
+  // A call that rings while you're away from Ohiyo also shows as a system notification,
+  // unless its chat is muted. Like messages, only one tab or window shows it.
+  function notifyRing(ring: IncomingRing) {
+    const away = document.hidden || windowHiddenRef.current;
+    const nowSecs = Math.floor(Date.now() / 1000);
+    if (!away || isMuted(notifSettingsRef.current[settingKey("channel", ring.channelId)], nowSecs)) return;
+    void claimNotification(`call:${ring.messageId}`).then((mine) => {
+      if (mine) void notify({ title: ring.callerName, body: ring.video ? "Incoming video call" : "Incoming call" });
+    });
+  }
+
   // Go to a search result. Open its channel, then page back through its history until the
   // message is there (a channel opens on its latest page), and have the chat scroll to it and
   // mark it. A result in a thread opens that thread beside its channel.
@@ -2843,6 +2945,69 @@ function MainApp({
       );
   }
 
+  // ── Calls in DMs and group chats ──
+  // Calling joins the chat's voice room, then rings the others; the call screen says
+  // "Ringing…" until someone answers by joining it too.
+  async function handleStartCall(channel: Channel, video: boolean) {
+    setMobileNavOpen(false);
+    if (refusesCall(isDesktop(), callEnvironment())) {
+      toast(VOICE_UNAVAILABLE, "error");
+      return;
+    }
+    if (webrtc.channelId === channel.id) return;
+    if (webrtc.channelId) webrtc.hangUp();
+    try {
+      await webrtc.joinVoice(channel.id, { video, muted: false });
+    } catch (err) {
+      toast(`Couldn't start the call: ${err instanceof Error ? err.message : err}`, "error");
+      return;
+    }
+    setOutgoingCall(channel.id);
+    try {
+      await api.startCall(token, channel.id, video);
+    } catch (err) {
+      setOutgoingCall(null);
+      webrtcRef.current?.hangUp();
+      toast(`Couldn't call: ${err instanceof Error ? err.message : err}`, "error");
+    }
+  }
+
+  // Answering joins the call (the server stops the ring on your other devices).
+  function handleAcceptCall(ring: IncomingRing, video: boolean) {
+    setRings((prev) => nextRings(prev, { type: "stop", channelId: ring.channelId }));
+    if (refusesCall(isDesktop(), callEnvironment())) {
+      toast(VOICE_UNAVAILABLE, "error");
+      return;
+    }
+    const chat = dms.find((d) => d.id === ring.channelId);
+    if (chat && selectedChannelRef.current?.id !== chat.id) void handleSelectChannel(chat);
+    if (webrtc.channelId === ring.channelId) return;
+    if (webrtc.channelId) webrtc.hangUp();
+    webrtc.joinVoice(ring.channelId, { video, muted: false })
+      .then(() => completeActivation("call"))
+      .catch((err) => toast(`Couldn't join the call: ${err instanceof Error ? err.message : err}`, "error"));
+  }
+
+  function handleDeclineCall(ring: IncomingRing) {
+    setRings((prev) => nextRings(prev, { type: "stop", channelId: ring.channelId }));
+    api.declineCall(token, ring.channelId).catch((err) =>
+      toast(`Couldn't decline the call: ${err instanceof Error ? err.message : err}`, "error")
+    );
+  }
+
+  /** A DM's or group chat's name, as the call screen shows it. */
+  function chatCallName(channelId: string | null): string | null {
+    const chat = channelId ? dms.find((d) => d.id === channelId) : undefined;
+    if (!chat) return null;
+    const peer = dmUsers[chat.id];
+    if (chat.channel_type === "dm" && peer) return peer.display_name || peer.username;
+    if (chat.name) return chat.name;
+    const names = (groupMembers[chat.id] ?? [])
+      .filter((m) => m.id !== currentUser?.id)
+      .map((m) => m.display_name || m.username);
+    return names.length ? names.join(", ") : "Group chat";
+  }
+
   const sidebarVoiceParticipants = useMemo(() => {
     const next = new Map<string, VoiceSidebarParticipant[]>();
     for (const [channelId, members] of voiceParticipantsByChannel) {
@@ -3004,6 +3169,14 @@ function MainApp({
     : false;
   const voiceChannel =
     servers.flatMap((s) => s.channels).find((c) => c.id === webrtc.channelId) ?? null;
+  // The open DM or group chat, if you can call it: not a deleted account or someone you blocked.
+  const callableChat =
+    selectedChannel &&
+    (selectedChannel.channel_type === "dm" || selectedChannel.channel_type === "group_dm") &&
+    !goneDms.has(selectedChannel.id) &&
+    !(selectedChannel.channel_type === "dm" && blockedUserIds.has(dmUsers[selectedChannel.id]?.id ?? ""))
+      ? selectedChannel
+      : null;
   // Servers with at least one unread channel get a dot on the rail.
   const unreadServerIds = new Set<string>();
   for (const s of servers) {
@@ -3232,6 +3405,23 @@ function MainApp({
         onOpenThread={setOpenThread}
         onStartThread={selectedChannelThreadable ? setThreadFromMessage : undefined}
         onOpenThreads={selectedChannelThreadable ? () => setShowThreadList(true) : undefined}
+        onStartCall={callableChat ? (video) => void handleStartCall(callableChat, video) : undefined}
+        onJoinCall={
+          callableChat
+            ? () => {
+                if (webrtc.channelId && webrtc.channelId !== callableChat.id) webrtc.hangUp();
+                handleJoinVoice(callableChat);
+              }
+            : undefined
+        }
+        dmCall={
+          callableChat
+            ? {
+                participants: sidebarVoiceParticipants.get(callableChat.id)?.length ?? 0,
+                inCall: webrtc.channelId === callableChat.id,
+              }
+            : null
+        }
         moderation={
           selectedServer
             ? {
@@ -3347,10 +3537,25 @@ function MainApp({
         <CallOverlay
           webrtc={webrtc}
           currentUser={currentUser}
-          channelName={voiceChannel?.name ?? "Voice"}
+          channelName={voiceChannel?.name ?? chatCallName(webrtc.channelId) ?? "Voice"}
           pushToTalk={voiceControls.pushToTalk}
+          ringing={outgoingCall !== null && outgoingCall === webrtc.channelId}
         />
       </ErrorBoundary>
+
+      {/* Calls ringing for you in DMs and group chats. */}
+      {rings.length > 0 && (
+        <div className="kc-incoming-calls">
+          {rings.map((ring) => (
+            <IncomingCallCard
+              key={ring.channelId}
+              ring={ring}
+              onAccept={(video) => handleAcceptCall(ring, video)}
+              onDecline={() => handleDeclineCall(ring)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Toast notifications */}
       <ToastStack toasts={toasts} />

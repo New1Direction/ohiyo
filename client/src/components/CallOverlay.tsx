@@ -19,6 +19,8 @@ type Props = {
   channelName: string;
   /** Set while push to talk is the input mode: the key to hold, and whether you're talking. */
   pushToTalk?: PushToTalkStatus | null;
+  /** True while a DM call you started rings and nobody has answered yet. */
+  ringing?: boolean;
 };
 
 // ── Icons (simple stroke set) ──────────────────────────────────────────────────
@@ -659,7 +661,7 @@ function ScreenShareParticipantChip({
   );
 }
 
-export function CallOverlay({ webrtc, currentUser, channelName, pushToTalk = null }: Props) {
+export function CallOverlay({ webrtc, currentUser, channelName, pushToTalk = null, ringing = false }: Props) {
   const { localStream, remoteStreams, participants, self, callState, quality } = webrtc;
   const [minimized, setMinimized] = useState(false);
   const [showShareSheet, setShowShareSheet] = useState(false);
@@ -749,7 +751,8 @@ export function CallOverlay({ webrtc, currentUser, channelName, pushToTalk = nul
   const total = people.length;
   const hasMedia = people.some((p) => p.video || p.screen);
   const mode: "solo" | "voice" | "media" = hasMedia ? "media" : total === 1 ? "solo" : "voice";
-  const modeLabel = mode === "media" ? "Video room" : mode === "voice" ? "Voice room" : "Solo voice";
+  const modeLabel =
+    ringing && total === 1 ? "Ringing…" : mode === "media" ? "Video room" : mode === "voice" ? "Voice room" : "Solo voice";
   const sortedMediaPeople = [...people].sort((a, b) => Number(b.screen) - Number(a.screen) || Number(b.video) - Number(a.video));
   const hasScreenShare = sortedMediaPeople.some((p) => p.screen);
   const screenPerson = sortedMediaPeople.find((p) => p.screen) ?? sortedMediaPeople[0];
@@ -921,8 +924,14 @@ export function CallOverlay({ webrtc, currentUser, channelName, pushToTalk = nul
                 </div>
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 850, letterSpacing: "-0.05em", color: "var(--text-primary)" }}>{selfName}</div>
-                  <div style={{ marginTop: 6, color: "var(--text-secondary)", fontSize: 14, fontWeight: 700 }}>You’re live in {channelName}</div>
-                  <div style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.45 }}>Waiting for someone else to hop in. This room is ready when they are.</div>
+                  <div style={{ marginTop: 6, color: "var(--text-secondary)", fontSize: 14, fontWeight: 700 }}>
+                    {ringing ? `Calling ${channelName}` : `You’re live in ${channelName}`}
+                  </div>
+                  <div style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.45 }}>
+                    {ringing
+                      ? "They’ll be here as soon as they answer."
+                      : "Waiting for someone else to hop in. This room is ready when they are."}
+                  </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, color: self.muted ? "var(--danger)" : "var(--green)", fontSize: 12, fontWeight: 850 }}>
                   <StrokeIcon d={self.deafened ? Icon.headphonesOff : self.muted ? Icon.micOff : Icon.mic} size={14} />

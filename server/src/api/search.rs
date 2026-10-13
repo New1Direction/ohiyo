@@ -262,7 +262,7 @@ async fn sql_page(
     }
     qb.push(") AND (m.expires_at IS NULL OR m.expires_at > ")
         .push_bind(now_unix())
-        .push(")");
+        .push(") AND m.call_log IS NULL");
     for word in &query.text {
         qb.push(" AND m.content LIKE ")
             .push_bind(format!("%{}%", like_escaped(word)))
