@@ -5538,6 +5538,7 @@ ol.kc-md-list { list-style: decimal; }
 @media (max-width: 760px) {
   /* Keep the newest messages clear of the bar. */
   body:has(.kc-call-overlay--bar) .kc-chat-header { margin-bottom: 62px; }
+}
 
 /* ── Catching up (like Discord) ──
    The red "New messages" line above the first unread message; the bar at the top of the chat
