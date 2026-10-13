@@ -86,12 +86,22 @@ try {
   if ((await sideways(page)) > 0) throw new Error(`the page scrolls sideways at 390: ${await sideways(page)}px`);
   log("phone: scrolling up and down leaves the panels alone, and nothing scrolls sideways ✓");
 
+  // The You tab opens Settings; switch to the light theme there and come back.
+  const SETTINGS = '[role="dialog"][aria-labelledby="kc-settings-dialog-title"]';
+  await swipe(cdp, [90, 420], [330, 424]);
+  await settle(page, 450);
+  await page.locator('.kc-nav nav[aria-label="Main"] button[aria-label="You"]').tap();
+  await page.waitForSelector(SETTINGS, { timeout: 6000 });
+  await page.locator(`${SETTINGS} .kc-settings-nav__item`, { hasText: "Appearance" }).click();
+  await page.click('button[aria-label="Use theme: Ohiyo Light"]');
+  await page.locator(`${SETTINGS} button`, { hasText: "Back to Ohiyo" }).click();
+  await page.waitForSelector(SETTINGS, { state: "detached", timeout: 4000 });
+  if (await drawerOpen(page)) await swipe(cdp, [300, 420], [40, 424]);
+  await settle(page, 450);
+  log("phone: the You tab opens Settings ✓");
+
   // In the light theme, on the smallest phone.
-  await page.evaluate(() => localStorage.setItem("kikkacord:theme", "light"));
   await page.setViewportSize({ width: 320, height: 568 });
-  await page.reload();
-  await page.waitForSelector(COMPOSER, { timeout: 12000 });
-  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
   await settle(page, 600);
   await swipe(cdp, [70, 300], [280, 304]);
   await settle(page, 450);

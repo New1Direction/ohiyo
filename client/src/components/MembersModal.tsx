@@ -131,7 +131,7 @@ export function MembersModal({
         )}
       </div>
 
-      <div className="mt-4 flex flex-col gap-1" style={{ maxHeight: 380, overflowY: "auto" }}>
+      <div className="kc-members-list mt-4 flex flex-col gap-1" style={{ maxHeight: 380, overflowY: "auto" }}>
         {sorted.map((m) => (
           <div
             key={m.id}

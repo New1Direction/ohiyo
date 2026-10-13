@@ -5506,6 +5506,11 @@ ol.kc-md-list { list-style: decimal; }
 
   /* The member list: a panel from the right that follows a swipe back out. */
   .kc-backdrop--side { place-items: stretch end; padding: 0; }
+  /* In the panel the title keeps its count on its line, Manage roles goes below if it must,
+     and the list fills the panel instead of stopping at a desktop dialog's height. */
+  .kc-modal--side .kc-polish-hero { flex-wrap: wrap; row-gap: var(--space-2); }
+  .kc-modal--side .kc-polish-title { white-space: nowrap; }
+  .kc-modal--side .kc-members-list { max-height: none !important; }
   .kc-modal--side {
     width: min(22rem, 88vw); max-width: none !important; height: 100%;
     border-radius: var(--radius-xl) 0 0 var(--radius-xl);
