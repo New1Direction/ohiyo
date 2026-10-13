@@ -510,7 +510,10 @@ function ControlBtn({
       ? "linear-gradient(145deg, color-mix(in oklch, var(--accent) 82%, white), var(--accent-hover))"
       : "color-mix(in oklch, var(--text-primary) 6%, var(--bg-input))";
   const color = danger || active ? "#fff" : "var(--text-secondary)";
-  const short = label.replace("Turn ", "").replace(" off", "").replace(" on", "").replace("Call ", "");
+  // A short caption under the button: "Turn camera on" → "Camera", "Call audio" → "Audio". Only
+  // the hang-up button says Leave; a red Mute or Deafen keeps its own caption.
+  const trimmed = label === "Leave call" ? "Leave" : label.replace("Turn ", "").replace(" off", "").replace(" on", "").replace("Call ", "");
+  const short = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: compact ? 4 : 6, minWidth: compact ? 48 : 64 }}>
       <button
@@ -531,7 +534,7 @@ function ControlBtn({
       </button>
       {!compact && (
         <span style={{ color: danger ? "var(--danger)" : active ? "var(--accent)" : "var(--text-muted)", fontSize: 11, fontWeight: 800, lineHeight: 1 }}>
-          {danger ? "Leave" : short}
+          {short}
         </span>
       )}
     </div>
