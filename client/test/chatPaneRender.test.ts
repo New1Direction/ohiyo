@@ -690,6 +690,7 @@ test("catching up: nothing unread, no line and no bar", () => {
   const html = catchUp(null);
   assert.doesNotMatch(html, /New messages/);
   assert.doesNotMatch(html, /new messages/);
+});
 
 // ── Calls in DMs ─────────────────────────────────────────────────────────────
 
