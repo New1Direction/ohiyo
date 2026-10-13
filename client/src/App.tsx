@@ -122,7 +122,19 @@ import { NewDeviceAlert } from "./components/NewDeviceAlert";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { StartThreadDialog } from "./components/StartThreadDialog";
 import { ThreadListDialog } from "./components/ThreadListDialog";
-import { canStartThread, defaultThreadName, threadsByMessage, upsertThread, type ThreadSummary } from "./lib/threads";
+import {
+  canManageThread,
+  canStartThread,
+  defaultThreadName,
+  isArchived,
+  removeThread,
+  threadAlert,
+  threadsByMessage,
+  upsertThread,
+  withFollow,
+  type ThreadSummary,
+} from "./lib/threads";
+import { DeleteThreadDialog } from "./components/DeleteThreadDialog";
 import { setSignInNotice } from "./lib/sessionNotice";
 import {
   loadActiveHomeId,
@@ -560,6 +572,15 @@ function MainApp({
   const [openThread, setOpenThread] = useState<ThreadSummary | null>(null);
   const [threadFromMessage, setThreadFromMessage] = useState<Message | null>(null);
   const [showThreadList, setShowThreadList] = useState(false);
+  // Threads you follow (they count as unread and notify like their channel), and the thread
+  // being renamed or deleted.
+  const [followedThreads, setFollowedThreads] = useState<ReadonlySet<string>>(() => new Set());
+  const followedThreadsRef = useRef<ReadonlySet<string>>(followedThreads);
+  followedThreadsRef.current = followedThreads;
+  const openThreadRef = useRef<ThreadSummary | null>(null);
+  openThreadRef.current = openThread;
+  const [renamingThread, setRenamingThread] = useState<ThreadSummary | null>(null);
+  const [deletingThread, setDeletingThread] = useState<ThreadSummary | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<Tab>("appearance");
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -911,6 +932,7 @@ function MainApp({
     notifSettings,
     (id) => channelServer.get(id) ?? null,
     nowSec,
+    (id) => threadParentRef.current.get(id),
   );
   const totalUnread = unreadTotal(countedUnread);
   // Chats that look muted in the sidebar: muted themselves, or in a muted space.
@@ -947,6 +969,10 @@ function MainApp({
           threadParentRef.current.set(t.id, t.parent_id ?? selectedChannelId);
         }
         setThreadsByParent((prev) => ({ ...prev, [selectedChannelId]: list }));
+        // The list says which of them you follow (a newer server only).
+        setFollowedThreads((prev) =>
+          list.reduce((set, t) => (t.following === undefined ? set : withFollow(set, t.id, t.following)), prev)
+        );
       })
       .catch(() => {
         // The channel still works without its thread list; the next ThreadUpdate fills it in.
@@ -956,6 +982,13 @@ function MainApp({
     };
   }, [token, selectedChannelId, selectedChannelThreadable]);
   const channelThreads = (selectedChannelId && threadsByParent[selectedChannelId]) || NO_THREADS;
+  // New replies in the channel's threads you follow (after notification settings), for the
+  // line under each thread's message and the Threads list.
+  const channelThreadUnread = new Map<string, number>();
+  for (const t of channelThreads) {
+    const n = shownUnread[t.id];
+    if (n && followedThreads.has(t.id)) channelThreadUnread.set(t.id, n);
+  }
   // Lets the open thread listen to the gateway for its own messages.
   const subscribeGateway = useCallback(
     (handler: (event: GatewayEvent) => void) => gatewayRef.current?.on(handler) ?? (() => {}),
@@ -1231,6 +1264,15 @@ function MainApp({
         // Seed unread badges from the server so they no longer wipe to zero on reload.
         setUnread(event.d.unread ?? {});
         setNotifSettings(settingsFromList(event.d.notification_settings ?? []));
+        {
+          // The threads you follow; their unread counts are in `unread` above.
+          const followed = event.d.followed_threads ?? [];
+          for (const t of followed) {
+            threadIdsRef.current.add(t.id);
+            if (t.parent_id) threadParentRef.current.set(t.id, t.parent_id);
+          }
+          setFollowedThreads(new Set(followed.map((t) => t.id)));
+        }
         // Per-account onboarding flag (same batch as currentUser → no onboarding flash).
         try {
           setWelcomed(localStorage.getItem(`kc:welcomed:${event.d.user.id}`) === "1");
@@ -1280,10 +1322,18 @@ function MainApp({
         const msg = event.d;
         typing.clearTyping(msg.channel_id, msg.author.id);
         if (threadIdsRef.current.has(msg.channel_id)) {
-          // A reply in a thread: an open thread shows it itself. Threads don't count as
-          // unread yet; a reply that mentions you still notifies.
+          // A reply in a thread: an open thread shows it (and marks it read) itself. A thread
+          // you follow counts as unread and notifies like its channel; any other thread only
+          // notifies when the reply mentions you.
           const me = currentUserRef.current;
-          if (me && msg.author.id !== me.id && mentionsMe(msg.content, msg.author, me.username)) maybeNotify(msg);
+          if (!me || msg.author.id === me.id) break;
+          const following = followedThreadsRef.current.has(msg.channel_id);
+          const mentioned = mentionsMe(msg.content, msg.author, me.username);
+          const isOpen = openThreadRef.current?.id === msg.channel_id && !windowHiddenRef.current;
+          if (following && !isOpen) {
+            setUnread((prev) => ({ ...prev, [msg.channel_id]: (prev[msg.channel_id] ?? 0) + 1 }));
+          }
+          if ((following || mentioned) && !isOpen) maybeNotify(msg);
           break;
         }
         if (selectedChannelRef.current?.id === msg.channel_id) {
@@ -1427,6 +1477,27 @@ function MainApp({
           if (event.d.channel_type === "dm" && !dmUsersRef.current[event.d.id]) void nameDm(event.d.id);
         }
         break;
+
+      case "ThreadDelete": {
+        // A thread was deleted with its replies: the line under its message goes.
+        const { id, parent_id: parent } = event.d;
+        setThreadsByParent((prev) => (prev[parent] ? { ...prev, [parent]: removeThread(prev[parent], id) } : prev));
+        setOpenThread((prev) => (prev?.id === id ? null : prev));
+        setFollowedThreads((prev) => withFollow(prev, id, false));
+        setUnread((prev) => withoutUnread(prev, id));
+        threadIdsRef.current.delete(id);
+        break;
+      }
+
+      case "ThreadFollowUpdate": {
+        // You followed or unfollowed a thread, here or on another of your devices.
+        const { thread, following } = event.d;
+        threadIdsRef.current.add(thread.id);
+        if (thread.parent_id) threadParentRef.current.set(thread.id, thread.parent_id);
+        setFollowedThreads((prev) => withFollow(prev, thread.id, following));
+        if (!following) setUnread((prev) => withoutUnread(prev, thread.id));
+        break;
+      }
 
       case "ThreadUpdate": {
         // A thread started, got a reply, lost one, or lost its first message.
@@ -1733,6 +1804,19 @@ function MainApp({
   // and for DMs the server fans out a ReadReceipt so the sender sees "Seen".
   // Deduped per channel, and only recorded on a successful socket send so a
   // closed socket retries on the next trigger.
+  // Follow or stop following a thread: at once on screen, undone if the server says no.
+  async function toggleThreadFollow(thread: ThreadSummary) {
+    const following = !followedThreadsRef.current.has(thread.id);
+    setFollowedThreads((prev) => withFollow(prev, thread.id, following));
+    if (!following) setUnread((prev) => withoutUnread(prev, thread.id));
+    try {
+      await api.setThreadFollow(token, thread.id, following);
+    } catch {
+      setFollowedThreads((prev) => withFollow(prev, thread.id, !following));
+      toast(following ? "Couldn't follow the thread." : "Couldn't unfollow the thread.", "error");
+    }
+  }
+
   function sendAck(channelId: string, messageId: string | undefined) {
     if (!messageId || messageId.startsWith("temp-")) return;
     if (lastAckRef.current[channelId] === messageId) return;
@@ -2369,7 +2453,17 @@ function MainApp({
     // A webhook naming you doesn't count as a mention (lib/messageNotify.ts).
     const mentioned = serverId !== null && me !== null && mentionsMe(msg.content ?? "", msg.author, me.username);
     const nowSecs = Math.floor(Date.now() / 1000);
-    if (!messageAlert(notifSettingsRef.current, { channelId, serverId }, mentioned, nowSecs).notify) return;
+    // A thread you follow notifies like its channel; any other thread only for an @mention.
+    const alert = threadParentRef.current.has(msg.channel_id)
+      ? threadAlert(
+          notifSettingsRef.current,
+          { parentId: channelId, serverId },
+          followedThreadsRef.current.has(msg.channel_id),
+          mentioned,
+          nowSecs,
+        )
+      : messageAlert(notifSettingsRef.current, { channelId, serverId }, mentioned, nowSecs);
+    if (!alert.notify) return;
     const lookingAtIt = isLookingAt({
       openChannelId: selectedChannelRef.current?.id,
       messageChannelId: msg.channel_id,
@@ -2994,6 +3088,7 @@ function MainApp({
             : undefined
         }
         threadByMessage={selectedChannelThreadable ? threadByMessage : undefined}
+        threadUnread={selectedChannelThreadable ? channelThreadUnread : undefined}
         onOpenThread={setOpenThread}
         onStartThread={selectedChannelThreadable ? setThreadFromMessage : undefined}
         onOpenThreads={selectedChannelThreadable ? () => setShowThreadList(true) : undefined}
@@ -3021,6 +3116,50 @@ function MainApp({
           onBlockUser={blockUser}
           onReportUser={(user) => void reportTarget("user", user.id, "user")}
           onReportMessage={(msg) => void reportTarget("message", msg.id, "message")}
+          following={followedThreads.has(openThread.id)}
+          onToggleFollow={() => void toggleThreadFollow(openThread)}
+          onRename={canManageThread(openThread, currentUser.id, myPerms) ? () => setRenamingThread(openThread) : undefined}
+          onDelete={canManageThread(openThread, currentUser.id, myPerms) ? () => setDeletingThread(openThread) : undefined}
+          archived={isArchived(openThread, nowSec)}
+          onRead={(lastId) => {
+            if (windowHiddenRef.current) return;
+            sendAck(openThread.id, lastId);
+            setUnread((prev) => withoutUnread(prev, openThread.id));
+          }}
+        />
+      )}
+      {renamingThread && (
+        <StartThreadDialog
+          title="Rename thread"
+          intro="Everyone in the channel sees the new name."
+          submitLabel="Save"
+          failure="Couldn't rename the thread. Try again?"
+          requireName
+          suggestedName={renamingThread.name}
+          onCancel={() => setRenamingThread(null)}
+          onStart={async (name) => {
+            const renamed = await api.renameThread(token, renamingThread.id, name);
+            const parent = renamed.parent_id;
+            if (parent) setThreadsByParent((prev) => ({ ...prev, [parent]: upsertThread(prev[parent] ?? [], renamed) }));
+            setOpenThread((prev) => (prev?.id === renamed.id ? renamed : prev));
+            setRenamingThread(null);
+          }}
+        />
+      )}
+      {deletingThread && (
+        <DeleteThreadDialog
+          thread={deletingThread}
+          onCancel={() => setDeletingThread(null)}
+          onDelete={async () => {
+            const gone = deletingThread;
+            await api.deleteThread(token, gone.id);
+            const parent = gone.parent_id;
+            if (parent) setThreadsByParent((prev) => (prev[parent] ? { ...prev, [parent]: removeThread(prev[parent], gone.id) } : prev));
+            setOpenThread((prev) => (prev?.id === gone.id ? null : prev));
+            setUnread((prev) => withoutUnread(prev, gone.id));
+            setDeletingThread(null);
+            toast("Thread deleted.", "success");
+          }}
         />
       )}
       {threadFromMessage && selectedChannel && (
@@ -3031,6 +3170,8 @@ function MainApp({
             const thread = await api.createThread(token, selectedChannel.id, threadFromMessage.id, name);
             threadIdsRef.current.add(thread.id);
             threadParentRef.current.set(thread.id, selectedChannel.id);
+            // Starting a thread follows it (the server says so too, to your other devices).
+            setFollowedThreads((prev) => withFollow(prev, thread.id, thread.following ?? true));
             setThreadsByParent((prev) => ({ ...prev, [selectedChannel.id]: upsertThread(prev[selectedChannel.id] ?? [], thread) }));
             setThreadFromMessage(null);
             setOpenThread(thread);
@@ -3041,6 +3182,7 @@ function MainApp({
         <ThreadListDialog
           channelName={selectedChannel.name}
           threads={channelThreads}
+          unread={channelThreadUnread}
           onClose={() => setShowThreadList(false)}
           onOpen={(thread) => {
             setShowThreadList(false);
