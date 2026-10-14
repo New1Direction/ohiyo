@@ -37,7 +37,7 @@ test("the palette's Instant Servers entry follows that answer", () => {
 
 // ── The paid plan ─────────────────────────────────────────────────────────────
 
-import { billingReturnFrom, planFor, readinessFrom } from "../src/lib/instantServers.ts";
+import { billingReturnFrom, billingReturnMessage, planFor, readinessFrom } from "../src/lib/instantServers.ts";
 
 const sellable = readinessFrom({ available: true, provisioner: "live", paid_plan: { available: true, price_label: "$8/month", reason: null } });
 
@@ -102,4 +102,17 @@ test("only Stripe's three return markers count", () => {
   assert.equal(billingReturnFrom("?instant_billing=portal"), "portal");
   assert.equal(billingReturnFrom("?instant_billing=paid"), null);
   assert.equal(billingReturnFrom("?invite=abc"), null);
+  assert.doesNotMatch(billingReturnMessage("canceled").text, /nothing was charged/i);
+  assert.match(billingReturnMessage("canceled").text, /does not cancel a subscription/);
+});
+
+test("recoverable subscriptions use the portal, even when new sales are unavailable", () => {
+  for (const status of ["unpaid", "paused", "incomplete"]) {
+    for (const ready of [sellable, readinessFrom(null)]) {
+      const plan = planFor({ tier: "free", status: "healthy", billing: { status, cancel_at_period_end: false, current_period_end: null } }, ready);
+      assert.equal(plan.action, "manage", status);
+      assert.equal(plan.badge, "Free");
+      assert.ok(plan.action === "manage" && !plan.canCancel);
+    }
+  }
 });

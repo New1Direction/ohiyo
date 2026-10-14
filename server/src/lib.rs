@@ -61,6 +61,9 @@ pub struct AppState {
     /// Paid Instant Servers (Stripe); `None` unless Stripe is configured at startup, and
     /// then nobody can buy the paid plan.
     pub billing: Option<billing::Billing>,
+    /// Serialize control-plane mutations and billing reconciliation in this single
+    /// SQLite control-plane process, including their external side effects.
+    pub instance_lifecycle: std::sync::Arc<tokio::sync::Mutex<()>>,
     /// Unix timestamp when this process state was built; used for public status uptime.
     pub started_at: i64,
     /// How long a gateway socket may send nothing before it is closed as half-open.
@@ -118,6 +121,7 @@ pub fn build_state(db: SqlitePool) -> AppState {
         watch: gateway::new_watch_sessions(),
         provisioner,
         billing: billing::Billing::from_env(),
+        instance_lifecycle: Default::default(),
         started_at: types::now_unix(),
         gateway_idle_timeout: gateway::IDLE_TIMEOUT,
         register_limit_per_hour: api::auth::register_limit_from_env(),
@@ -133,6 +137,18 @@ pub fn build_state(db: SqlitePool) -> AppState {
 }
 
 // ── Background tasks ──────────────────────────────────────────────────────────
+
+/// Recover missed billing events and stopped paid machines independently of message GC.
+pub fn spawn_billing_reconciler(state: AppState) -> tokio::task::JoinHandle<()> {
+    spawn_periodic(std::time::Duration::from_secs(300), move || {
+        let state = state.clone();
+        async move {
+            if let Err((_, error)) = billing::reconcile(&state).await {
+                tracing::error!(%error, "billing reconciliation failed");
+            }
+        }
+    })
+}
 
 /// How often the background sweeps and the push dispatcher wake up.
 pub const BACKGROUND_INTERVAL: std::time::Duration = std::time::Duration::from_secs(20);

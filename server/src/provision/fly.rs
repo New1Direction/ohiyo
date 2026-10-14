@@ -1,7 +1,7 @@
 //! Real Fly Machines provisioner. For each instance it creates a persistent volume,
 //! then launches one microVM from the Ohiyo server image mounting that volume at /data.
 //!
-//! Live provisioning needs `FLY_API_TOKEN`, `FLY_APP_NAME`, and `FLY_IMAGE`. The
+//! Live provisioning needs `FLY_API_TOKEN`, `FLY_INSTANCES_APP`, and `FLY_IMAGE`. The
 //! request-payload builder is unit-tested; the network calls are not exercised in CI.
 
 use super::{
@@ -31,7 +31,10 @@ impl FlyProvisioner {
             app: std::env::var("FLY_INSTANCES_APP").unwrap_or_else(|_| "ohiyo-instances".into()),
             image: std::env::var("FLY_IMAGE")
                 .unwrap_or_else(|_| "registry.fly.io/ohiyo-instances:latest".into()),
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .expect("Fly HTTP client"),
         }
     }
 
@@ -82,6 +85,9 @@ impl FlyProvisioner {
                     "PUBLIC_BASE_URL": req.public_url,
                     "DATABASE_URL": "sqlite:/data/ohiyo.db",
                     "BIND_ADDR": "0.0.0.0:3000",
+                    // The default 5 GiB disk reserve exceeds this 3 GiB volume and
+                    // would reject every upload. Keep 256 MiB for SQLite instead.
+                    "MIN_FREE_DISK_BYTES": "268435456",
                     "OHIYO_SERVER_PACK_EXPORT": "1"
                 },
                 "services": [{
@@ -298,5 +304,6 @@ mod tests {
             .unwrap()
             .is_empty());
         assert_eq!(cfg["config"]["checks"]["health"]["path"], "/healthz");
+        assert_eq!(cfg["config"]["env"]["MIN_FREE_DISK_BYTES"], "268435456");
     }
 }

@@ -154,7 +154,7 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
   }
 
   function remove(inst: HostedInstance, plan: Plan) {
-    const paidNote = plan.kind === "paid" ? " Its paid plan ends right away, and the rest of this period isn't refunded." : "";
+    const paidNote = plan.action === "manage" ? " Its subscription ends right away, and the rest of this period isn't refunded." : "";
     if (confirm(`Delete ${inst.name}?${paidNote} Export first if you need it.`)) {
       void run(`delete:${inst.id}`, () => api.deleteInstance(inst.id, token), () => onToast("Instant Server deleted.", "success"));
     }
@@ -249,7 +249,7 @@ export function InstantServersModal({ token, onAddHome, onToast, onClose }: Prop
                     )}
                     {inst.status === "sleeping" ? (
                       <button type="button" onClick={() => run(`wake:${inst.id}`, () => api.wakeInstance(inst.id, token), () => onToast("Server is awake.", "success"))} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" }}>Wake</button>
-                    ) : (
+                    ) : inst.tier !== "paid" && (
                       <button type="button" onClick={() => run(`sleep:${inst.id}`, () => api.sleepInstance(inst.id, token), () => onToast("Server is sleeping.", "success"))} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" }}>Sleep</button>
                     )}
                     <button type="button" onClick={() => exportPack(inst)} className="kc-interactive rounded-full px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "none" }}>Export</button>

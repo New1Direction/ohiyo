@@ -246,6 +246,12 @@ pub async fn sleep_instance(
     id: &str,
 ) -> Result<HostedInstance, (StatusCode, String)> {
     let inst = owner_instance(db, owner_id, id).await?;
+    if inst.tier == "paid" {
+        return Err((
+            StatusCode::CONFLICT,
+            "paid servers stay on; cancel the plan before putting this server to sleep".into(),
+        ));
+    }
     let machine_id = machine_id_or_conflict(&inst)?;
     provisioner
         .stop(machine_id)

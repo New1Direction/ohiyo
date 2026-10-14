@@ -87,7 +87,7 @@ the moment `FLY_API_TOKEN` is present.
 4. **On the control-plane host** (the main Ohiyo server), set:
    ```bash
    FLY_API_TOKEN=<fly auth token>          # `fly tokens create org`
-   FLY_APP_NAME=ohiyo-instances
+   FLY_INSTANCES_APP=ohiyo-instances          # FLY_APP_NAME is reserved by Fly
    FLY_IMAGE=registry.fly.io/ohiyo-instances:latest
    FLY_PRIMARY_REGION=iad                   # optional, defaults to iad
    ```
@@ -109,6 +109,13 @@ The paid plan (about $8 per community per month) is sold only when **both** Stri
 configured and Instant Servers really run here (`FLY_API_TOKEN`). Otherwise the app shows
 "Paid plan unavailable" with the reason, and the server refuses checkouts (HTTP 503).
 
+**Not a launch certification:** the current hosted API is on Railway; the existing
+instance router uses Fly's `fly-replay`. A Fly token alone does not make Railway route
+community domains. Validate wildcard DNS/TLS and the real routed `/healthz` path on
+staging before enabling sales. Use one control-plane process per SQLite database.
+Follow [billing recovery and launch gates](docs/reliability-runbook.md#paid-instant-servers).
+Never test a real charge or deploy production as part of a local test run.
+
 1. In Stripe, create a product "Ohiyo paid server" with a **recurring monthly price**
    ($8/month). Note its price id (`price_…`).
 2. Add a webhook endpoint `https://<control-plane host>/api/v1/billing/stripe/webhook`
@@ -119,6 +126,9 @@ configured and Instant Servers really run here (`FLY_API_TOKEN`). Otherwise the 
    secret (`whsec_…`).
 3. Turn on the **customer portal** (Settings → Billing → Customer portal): allow updating
    the payment method, viewing invoices, and cancelling at the end of the period.
+   Disable product/price/quantity changes. Set Stripe's failed-payment retry policy to
+   end in `unpaid` or `canceled`; leaving a subscription `past_due` forever grants
+   indefinite grace. Verify the exact recurring price, currency and displayed price.
 4. On the control-plane host set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
    `STRIPE_PRICE_ID`, and optionally `OHIYO_PAID_PRICE_LABEL` (default `$8/month`) and
    `OHIYO_APP_URL` (where checkout returns to, default `https://app.ohiyo.gg`).
@@ -128,15 +138,22 @@ configured and Instant Servers really run here (`FLY_API_TOKEN`). Otherwise the 
 
 How it behaves:
 
-- The plan turns on only from Stripe's signed webhook, never from the redirect back.
+- The plan turns on from current Stripe subscription state, fetched after a signed
+  webhook or by the five-minute reconciliation sweep, never from the redirect back.
+- Concurrent checkout requests reuse one open session. A lost response retries the
+  persisted request under the same Stripe idempotency key. Very old uncertain requests
+  stop for operator review rather than risk another charge.
 - A failed renewal (`past_due`) keeps the plan while Stripe retries; once Stripe gives up
   (`unpaid`/`canceled`) the server moves to the free plan. It keeps running and keeps its
   data either way.
 - Cancelling in the app or the portal ends the plan at the end of the paid period.
-- Deleting a paid server (or the account) cancels its subscription immediately, without
-  a refund for the rest of the period; if Stripe can't be reached, nothing is deleted.
+- Deleting a server cancels any subscription (including unpaid/paused), or closes its
+  pending checkout, before destroying its machine/volume. Account deletion does this
+  for each server in sequence. A failure stops deletion, but earlier cancellations or
+  server removals are not rolled back; retry is safe. No automatic refund is issued.
 - "Stays on" means Ohiyo never puts a paid server to sleep, and a paid server asleep at
-  payment is woken. There is no uptime SLA yet.
+  payment is woken. Sleep requests are refused while paid. Reconciliation retries
+  failed wakeups and restarts stopped paid machines. There is no uptime SLA yet.
 - `PATCH /api/v1/instances/{id}/tier` (operators only) still sets a tier by hand, for
   comps; Stripe events don't touch servers they didn't sell.
 

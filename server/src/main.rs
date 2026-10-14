@@ -44,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
     // content-free push dispatch, each on its own task.
     spawn_sweeper(state.clone(), BACKGROUND_INTERVAL);
     spawn_push_dispatcher(state.clone(), BACKGROUND_INTERVAL);
+    server::spawn_billing_reconciler(state.clone());
 
     let app = build_app(state);
 

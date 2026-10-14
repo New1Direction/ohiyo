@@ -103,10 +103,8 @@ impl StripeBilling {
         {
             return Err(BillingError::NotFound);
         }
-        Err(BillingError::Upstream(format!(
-            "stripe returned {status}: {}",
-            body["error"]["message"].as_str().unwrap_or("no message")
-        )))
+        // Stripe error messages can contain customer input; keep logs content-free.
+        Err(BillingError::Upstream(format!("stripe returned {status}")))
     }
 
     fn id_of(body: &Value) -> Result<String, BillingError> {
@@ -120,6 +118,10 @@ impl StripeBilling {
 
 #[async_trait]
 impl BillingProvider for StripeBilling {
+    fn test_mode(&self) -> bool {
+        self.secret_key.starts_with("sk_test_") || self.secret_key.starts_with("rk_test_")
+    }
+
     async fn create_customer(&self, user_id: &str) -> Result<String, BillingError> {
         let body = self
             .post(
@@ -140,6 +142,7 @@ impl BillingProvider for StripeBilling {
                 "/v1/checkout/sessions",
                 &[
                     ("mode", "subscription"),
+                    ("expires_at", &req.expires_at.to_string()),
                     ("customer", &req.customer_id),
                     ("client_reference_id", &req.instance_id),
                     ("line_items[0][price]", &self.price_id),
@@ -151,7 +154,7 @@ impl BillingProvider for StripeBilling {
                     ("subscription_data[metadata][instance_id]", &req.instance_id),
                     ("subscription_data[metadata][owner_id]", &req.owner_id),
                 ],
-                None,
+                Some(&req.idempotency_key),
             )
             .await?;
         let url = body["url"]
@@ -215,6 +218,51 @@ impl BillingProvider for StripeBilling {
         Self::read(res).await.map(|_| ())
     }
 
+    async fn subscription(
+        &self,
+        subscription_id: &str,
+    ) -> Result<super::SubscriptionUpdate, BillingError> {
+        let body = Self::read(
+            self.client
+                .get(format!(
+                    "{}/v1/subscriptions/{subscription_id}",
+                    self.base_url
+                ))
+                .bearer_auth(&self.secret_key)
+                .send()
+                .await,
+        )
+        .await?;
+        let items = body["items"]["data"].as_array();
+        if !items.is_some_and(|items| {
+            items.len() == 1
+                && items[0]["price"]["id"].as_str() == Some(&self.price_id)
+                && items[0]["quantity"].as_i64() == Some(1)
+        }) {
+            return Err(BillingError::Upstream(
+                "subscription has an unexpected price or quantity; operator review required".into(),
+            ));
+        }
+        super::parse_event(
+            &serde_json::json!({"type": "customer.subscription.updated", "data": {"object": body}}),
+        )
+        .ok_or_else(|| BillingError::Upstream("invalid subscription response".into()))
+    }
+
+    async fn checkout(&self, session_id: &str) -> Result<Value, BillingError> {
+        Self::read(
+            self.client
+                .get(format!(
+                    "{}/v1/checkout/sessions/{session_id}",
+                    self.base_url
+                ))
+                .bearer_auth(&self.secret_key)
+                .send()
+                .await,
+        )
+        .await
+    }
+
     fn verify_webhook(
         &self,
         payload: &[u8],
@@ -254,7 +302,7 @@ pub fn verify_signature(
     }
     let t = timestamp.ok_or(BillingError::BadSignature)?;
     let signed_at: i64 = t.parse().map_err(|_| BillingError::BadSignature)?;
-    if (now - signed_at).abs() > SIGNATURE_TOLERANCE_SECS {
+    if now.abs_diff(signed_at) > SIGNATURE_TOLERANCE_SECS as u64 {
         return Err(BillingError::BadSignature);
     }
     for candidate in candidates {
@@ -320,6 +368,10 @@ mod tests {
         assert_eq!(verify_signature("whsec_test", body, &header, 699), bad);
         assert_eq!(verify_signature("whsec_test", body, "v1=abcd", 1_000), bad);
         assert_eq!(verify_signature("whsec_test", body, "", 1_000), bad);
+        assert_eq!(
+            verify_signature("whsec_test", body, "t=-9223372036854775808,v1=00", 1_000),
+            bad
+        );
         assert_eq!(
             verify_signature("whsec_test", body, "t=1000,v1=zz", 1_000),
             bad

@@ -30,7 +30,7 @@
 <main id="main" class="legal wrap">
   <p class="eyebrow">Privacy</p>
   <h1>Privacy Policy</h1>
-  <p class="legal-updated">Effective June 27, 2026. Updated October 12, 2026.</p>
+  <p class="legal-updated">Effective June 27, 2026. Updated October 14, 2026.</p>
   <p>Ohiyo is built around a simple promise: the hosted server should not be able to read your private messages. This policy explains what the official hosted service at <b>ohiyo.gg</b>, <b>app.ohiyo.gg</b>, and <b>ohiyo-server-production.up.railway.app</b> handles. If you self-host Ohiyo, your host controls its own data practices.</p>
   <p>For a more technical, honest boundary of what Ohiyo protects and what metadata remains, read the <a href="threat-model.html">public privacy threat model</a>.</p>
 
@@ -56,6 +56,10 @@
 
   <h2>Backups and retention</h2>
   <p>The hosted production database and uploads are stored on Railway infrastructure. A copy of the database (not the uploads) is kept in Cloudflare R2 storage and updated every ten seconds, so the service can be restored if the server's storage is lost. The copy holds what the database holds, in the same form: messages in end-to-end encrypted conversations stay ciphertext. Something changed or removed from the live service can stay in that copy for up to three days. Ephemeral logs and staged import files may be retained only as needed for operations, safety, debugging, or legal requirements.</p>
+
+  <h2>Optional paid hosting</h2>
+  <p>Where paid Instant Servers are enabled, Stripe handles checkout, payment details, invoices and the billing portal under its own privacy policy. Ohiyo sends Stripe account and instance identifiers, not message content or encryption keys. Ohiyo stores Stripe customer, subscription and checkout identifiers, plan status and billing timestamps; it does not receive full card details. Managed community machines use Fly infrastructure where configured; paid hosting is not available on every deployment.</p>
+  <p>Deleting a hosted server or account first closes pending checkouts and cancels subscriptions. If payment or hosting services fail, deletion stops and can be retried; cancellations or server removals already completed are not rolled back. Billing records and processed event identifiers remain after account deletion to handle late payment events and operational or legal obligations. Stripe customer and invoice records are not erased by deleting an Ohiyo account; contact us about billing-data retention. Exported server databases and uploads may include readable server-channel content and unencrypted files, not just ciphertext.</p>
 
   <h2>Your choices</h2>
   <ul>

@@ -167,7 +167,7 @@ test("the legal pages say where the hosted service really runs", () => {
   // TURN relay, which sees the callers' addresses but not what is said.
   assert.match(privacy, /relay run by Cloudflare/);
   assert.match(privacy, /Cloudflare can't hear or see the call/);
-  assert.match(privacy, /Updated October 12, 2026/);
+  assert.match(privacy, /Updated October 14, 2026/);
   // GIF search (KLIPY) goes through the server; GIF images load from KLIPY in the browser.
   assert.match(privacy, /Your search goes from the Ohiyo server to KLIPY/);
   assert.match(privacy, /load from KLIPY's servers in your browser/);
@@ -181,6 +181,8 @@ test("the privacy page says you can delete your account, and what that does not 
   assert.match(privacy, /delete your account in the app, under Settings → Account/);
   assert.match(privacy, /copies on their own devices/);
   assert.match(privacy, /change your password/i);
+  assert.match(privacy, /Billing records and processed event identifiers remain after account deletion/);
+  assert.match(privacy, /Stripe customer and invoice records are not erased/);
 });
 
 test("the landscape is decoration, and matches the script that draws it", () => {

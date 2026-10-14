@@ -143,6 +143,7 @@ pub async fn create_instance(
     State(state): State<AppState>,
     Json(body): Json<CreateInstanceBody>,
 ) -> Result<Json<HostedInstance>, (StatusCode, String)> {
+    let _lifecycle = state.instance_lifecycle.lock().await;
     if current_provisioner() == Provisioner::Off {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -218,6 +219,7 @@ pub async fn sleep_instance(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<HostedInstance>, (StatusCode, String)> {
+    let _lifecycle = state.instance_lifecycle.lock().await;
     let inst =
         provision::sleep_instance(&state.db, state.provisioner.as_ref(), &auth.0, &id).await?;
     Ok(Json(inst))
@@ -229,6 +231,7 @@ pub async fn wake_instance(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<HostedInstance>, (StatusCode, String)> {
+    let _lifecycle = state.instance_lifecycle.lock().await;
     let inst =
         provision::wake_instance(&state.db, state.provisioner.as_ref(), &auth.0, &id).await?;
     Ok(Json(inst))
@@ -242,6 +245,7 @@ pub async fn set_tier(
     Path(id): Path<String>,
     Json(body): Json<SetTierBody>,
 ) -> Result<Json<HostedInstance>, (StatusCode, String)> {
+    let _lifecycle = state.instance_lifecycle.lock().await;
     if !crate::auth::is_operator(&auth.0) {
         return Err((
             StatusCode::FORBIDDEN,
@@ -266,7 +270,7 @@ pub async fn export_instance(
         version: 2,
         generated_at: crate::types::now_unix(),
         instance: inst,
-        data_note: "This ownership pack is control-plane metadata plus self-host instructions. The raw Server Pack is downloaded from the hosted home itself and contains SQLite/uploads ciphertext, not users' recovery codes or everyone’s readable history.".into(),
+        data_note: "This ownership pack is control-plane metadata plus self-host instructions. The raw Server Pack comes from the hosted home and includes its database and uploads. End-to-end encrypted conversations stay ciphertext; server channels, unencrypted conversations and files may be readable. Treat the export as sensitive.".into(),
         self_host: guide,
         billing_note: "Free managed servers can be put to sleep. On the paid plan Ohiyo keeps the server running and never puts it to sleep; there is no uptime SLA during the beta. Exporting and self-hosting stay free on either plan.".into(),
     }))
@@ -301,6 +305,7 @@ pub async fn billing_checkout(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<CheckoutStarted>, (StatusCode, String)> {
+    let _lifecycle = state.instance_lifecycle.lock().await;
     let inst = load_owner_instance(&state, &auth.0, &id).await?;
     let billing = billing_or_unavailable(&state)?;
     if !state.rate.check(
@@ -324,6 +329,7 @@ pub async fn billing_cancel(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<InstanceView>, (StatusCode, String)> {
+    let _lifecycle = state.instance_lifecycle.lock().await;
     let inst = load_owner_instance(&state, &auth.0, &id).await?;
     let Some(billing) = state.billing.as_ref() else {
         return Err((
@@ -390,6 +396,7 @@ pub async fn stripe_webhook(
         .map_err(|_| (StatusCode::BAD_REQUEST, "invalid signature".to_string()))?;
     let event: serde_json::Value = serde_json::from_slice(&body)
         .map_err(|_| (StatusCode::BAD_REQUEST, "invalid event".to_string()))?;
+    let _lifecycle = state.instance_lifecycle.lock().await;
     billing::handle_event(
         &state.db,
         state.provisioner.as_ref(),
@@ -408,6 +415,7 @@ pub async fn delete_instance(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let _lifecycle = state.instance_lifecycle.lock().await;
     let inst = load_owner_instance(&state, &auth.0, &id).await?;
     billing::release_instance(&state.db, state.billing.as_ref(), &inst.id).await?;
     provision::delete_instance(&state.db, state.provisioner.as_ref(), &auth.0, &id).await?;

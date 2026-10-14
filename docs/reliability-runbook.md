@@ -47,6 +47,109 @@ CHECK_INSTANT_SERVER_PROVISION=1 scripts/status-check.sh
 
 The webhook payload contains both `text` and `content` fields so Slack-style and Discord-style receivers can display it. It lists each failed check.
 
+## Paid Instant Servers
+
+### Launch gates and safe validation
+
+Do not enable paid hosting based on green unit tests alone. The hosted Railway API
+does not implement a Railway provisioner or Fly replay routing. Confirm the chosen
+control plane and wildcard community domains route to the intended Fly machine, with
+TLS, persistent storage, export/restore and externally reachable `/healthz` working.
+Run a **single control-plane process per SQLite database**: the lifecycle lock covers
+checkout, webhook, account deletion, provisioning and reconciliation in that process,
+not multiple replicas. Do not run old and new binaries against one writable database.
+
+Local regression command (no Stripe account, cloud credentials or real charges):
+
+```bash
+cd server
+cargo test --locked --test instance_billing --test instances --test delete_account
+```
+
+This drives the shipping HTTP router, SQLite migrations, real Stripe HTTP adapter and
+signed webhooks against an isolated local Stripe stand-in and simulated machines.
+It does **not** prove Stripe dashboard configuration, tax/invoice requirements, card
+networks, Fly scheduling, data persistence or DNS/TLS. On separately authorized staging,
+use Stripe **test-mode** credentials and test cards; never copy a live webhook signing
+secret into a fixture. A debug/simulated provisioner refuses live-mode keys.
+
+Before live sales, record evidence of checkout → paid → stopped-machine recovery →
+portal payment-method update → renewal failure → recovery → period-end cancellation →
+free → export → instance/account deletion. Check the Stripe dashboard and cloud resource
+list as well as the app. Verify no second subscription or leftover machine/volume.
+Configure retries to leave `past_due` eventually, and disable portal price/quantity
+changes. The beta's "stays on" promise is no automatic sleep, not guaranteed uptime.
+
+### Signals and recovery
+
+The separate billing worker runs every five minutes. It retrieves current subscriptions
+and completed checkout sessions, retries uncertain checkout creation under its saved
+idempotency key, updates entitlements atomically, and checks/restarts paid machines.
+One row failure does not prevent other rows from recovering. It is **not** a global
+Stripe inventory scanner: unknown subscriptions and cloud resources still need operator
+inventory review after an outage or database restore.
+
+Route these structured `tracing` signals to the deployment's log sink before launch:
+
+| Signal | Action |
+|---|---|
+| `billing webhook processed` (`event_id`, `kind`, `applied`) | Correlate delivery with Stripe; never log payloads/signatures or checkout/portal URLs. |
+| `billing reconciliation completed` (`checked`, `failed`) | Alert if missing for 15 minutes, or `failed > 0` for two sweeps. No configured billing means no sweep log. |
+| `billing reconciliation row failed` | Identify the instance, inspect current Stripe state, then retry/replay after fixing provider/configuration errors. |
+| `paid machine recovery failed` | Check machine state, routed health, persistent volume and Fly incidents. Do not recreate a missing machine blindly. |
+| `cancelling a subscription with no unpaid server behind it` | Review the duplicate/orphan subscription and any charge; cancellation is automatic, **refunds are manual and need authorization**. |
+| `billing provider call failed` / webhook 5xx | Preserve event IDs and durable rows; Stripe retries failed deliveries. Reconciliation is the fallback for lost deliveries. |
+
+These are log signals and recommended thresholds, **not configured production alerts**.
+The public status endpoint is not proof of billing health. Do not remove Stripe keys
+to stop sales if customers already exist: it also stops cancellation, portal and recovery.
+Disable the checkout route at the ingress while retaining webhooks/portal/cancellation.
+
+Useful **read-only** checks against an authorized database copy:
+
+```sql
+-- Entitlement drift (operator comps without subscriptions are intentionally excluded).
+SELECT h.id, h.tier, s.status FROM hosted_instances h
+JOIN instance_subscriptions s ON s.instance_id = h.id
+WHERE h.tier != CASE WHEN s.status IN ('active','trialing','past_due') THEN 'paid' ELSE 'free' END;
+-- Recovery backlog / old pending checkouts.
+SELECT instance_id, status, updated_at FROM instance_subscriptions
+WHERE status = 'checkout_pending' OR status = 'past_due';
+-- Retained billing tombstones; inspect nonterminal subscriptions in Stripe.
+SELECT s.instance_id, s.status FROM instance_subscriptions s
+LEFT JOIN hosted_instances h ON h.id = s.instance_id WHERE h.id IS NULL;
+```
+
+For "checkout needs operator reconciliation", locate the session via Stripe request
+logs/idempotency key and the instance metadata. After 23 hours an uncertain request is
+not automatically recreated because Stripe can discard idempotency keys after 24 hours.
+Confirm whether payment occurred; cancel duplicate/live orphan subscriptions and obtain
+refund approval where needed. Only then perform an approved, backed-up DB repair to link
+the recovered session/subscription or clear a proven expired attempt. Do not clear event
+dedupe rows or grant a paid tier based on a redirect. Replayed events fetch current Stripe
+state; same-second or reordered snapshots cannot restore a cancelled subscription.
+
+Account deletion retains billing tombstones and event IDs so late events can be matched;
+Stripe also retains its customer/invoice records. Do not promise deletion of all billing
+records at account deletion. The control plane handles identifiers/status/timestamps,
+not card details, message content or encryption keys. Hosting/exported data can include
+readable server-channel messages and unencrypted files; it is not all ciphertext.
+
+### Provisioning incidents and rollback
+
+If provisioning times out, inventory Fly machines and volumes before retrying. Cloud
+creation and a local DB write are not one transaction: a timeout/crash may leave an
+orphan, and the registry's `healthy` status is not a routed application health check.
+Match machine names (`ohiyo-<subdomain>`) and attached volume IDs to the registry. Never
+delete an ambiguous volume until its attachment and retained customer data are checked.
+Cloud cleanup or production DB repair requires explicit operator authorization.
+
+Before rollout take a restorable DB backup; migration 0055 is additive. Roll forward
+for billing failures. An old binary ignores durable checkout requests and restores the
+unsafe webhook ordering logic, so do not roll back with sales or webhook processing
+enabled. Keep sales paused until reconciliation, queued webhooks and inventory review
+converge. Deployments and production test charges require separate authorization.
+
 ## Backup restore drills
 
 Run at least weekly and before launch milestones:

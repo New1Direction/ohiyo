@@ -83,6 +83,7 @@ pub async fn delete_account(
     crate::api::two_factor::require_second_factor(&state, &auth.0, body.two_factor_code).await?;
     let me = auth.0;
 
+    let _lifecycle = state.instance_lifecycle.lock().await;
     // Instant Servers run on real machines: destroy them first. If the cloud refuses,
     // stop here with the account intact, so the user can try again.
     let instances: Vec<String> =

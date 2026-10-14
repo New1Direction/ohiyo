@@ -63,6 +63,7 @@ export type Plan =
   | { kind: "free"; badge: string; action: "unavailable"; reason: string }
   | { kind: "free"; badge: string; action: "none"; reason: string }
   | { kind: "pending"; badge: string; action: "upgrade"; label: string; note: string }
+  | { kind: "free"; badge: string; action: "manage"; note: string; canCancel: false }
   | { kind: "paid"; badge: string; action: "manage"; note: string | null; canCancel: boolean }
   | { kind: "comped"; badge: string; action: "none"; note: string };
 
@@ -86,6 +87,9 @@ export function planFor(inst: PlanInput, readiness: Readiness): Plan {
       note = billing.current_period_end ? `Ends ${day(billing.current_period_end)}, then moves to the free plan.` : "Ends at the end of this period, then moves to the free plan.";
     else if (billing.current_period_end) note = `Renews ${day(billing.current_period_end)}.`;
     return { kind: "paid", badge: "Paid · stays on", action: "manage", note, canCancel: !billing.cancel_at_period_end };
+  }
+  if (billing && ["unpaid", "paused", "incomplete"].includes(billing.status)) {
+    return { kind: "free", badge: "Free", action: "manage", canCancel: false, note: "Your subscription needs attention. Open billing to resolve payment or cancel it before starting another plan." };
   }
   const label = `Upgrade · ${readiness.paid.priceLabel ?? "paid plan"}`;
   if (!["healthy", "sleeping", "waking"].includes(inst.status)) {
@@ -113,7 +117,7 @@ export function billingReturnMessage(kind: BillingReturn): { text: string; tone:
     case "success":
       return { text: "Checkout finished. Your server moves to the paid plan as soon as Stripe confirms the payment, usually within a minute.", tone: "success" };
     case "canceled":
-      return { text: "Checkout cancelled. Nothing was charged.", tone: "info" };
+      return { text: "Checkout closed. Check billing for any completed payment; returning here does not cancel a subscription.", tone: "info" };
     case "portal":
       return { text: "Back from billing. Changes show up here once Stripe confirms them.", tone: "info" };
   }
