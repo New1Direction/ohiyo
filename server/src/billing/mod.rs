@@ -778,6 +778,20 @@ pub async fn handle_event(
         return Ok(Applied::Ignored);
     }
     let applied = match parse_event(event) {
+        // The webhook endpoint can receive other products from the same Stripe
+        // account. Leave them alone; price validation only applies to our sales.
+        Some(up)
+            if up.instance_id.is_none()
+                && !sqlx::query_scalar::<_, bool>(
+                    "SELECT EXISTS(SELECT 1 FROM instance_subscriptions WHERE stripe_subscription_id = ?)",
+                )
+                .bind(&up.subscription_id)
+                .fetch_one(db)
+                .await
+                .map_err(crate::api::error::internal)? =>
+        {
+            Applied::Ignored
+        }
         Some(up) => {
             // Delivery order and created timestamps cannot order Stripe snapshots.
             let mut current = provider

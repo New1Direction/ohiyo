@@ -1036,6 +1036,41 @@ async fn webhook_failures_retry_and_concurrent_delivery_is_idempotent() {
         .unwrap()
         .1["items"]["data"][0]["price"]["id"] = json!("price_other");
     assert!(server::billing::reconcile(&srv.state).await.is_err());
+
+    // Removing metadata must not make a subscription we already know invisible.
+    let mut known = subscription(
+        "customer.subscription.updated",
+        &id,
+        &format!("cus_{}", alice.id),
+        "sub_retry",
+        "past_due",
+        false,
+        now_unix(),
+    );
+    known["data"]["object"]["metadata"] = json!({});
+    assert_eq!(webhook(&srv, &known).await.status(), 200);
+    assert_eq!(
+        instance(&srv, &alice.token, &id).await["billing"]["status"],
+        "past_due"
+    );
+
+    // A shared Stripe account can sell unrelated products. Those signed events
+    // must be acknowledged without applying Ohiyo's price rules to them.
+    let unrelated = event(
+        "customer.subscription.updated",
+        now_unix(),
+        json!({"id": "sub_other_product", "customer": "cus_elsewhere", "status": "active", "metadata": {}, "items": {"data": [{}]}}),
+    );
+    advance_stripe(&srv, &unrelated);
+    stripe
+        .subscriptions
+        .lock()
+        .unwrap()
+        .get_mut("sub_other_product")
+        .unwrap()
+        .1["items"]["data"][0]["price"]["id"] = json!("price_other");
+    assert_eq!(deliver(&srv, &unrelated).await.status(), 200);
+    assert_eq!(instance(&srv, &alice.token, &id).await["tier"], "paid");
 }
 
 #[derive(Default)]
