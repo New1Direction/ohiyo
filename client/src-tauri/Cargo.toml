@@ -37,7 +37,7 @@ tauri-plugin-autostart = "2"
 # The app offers its own updates. Desktop only. Held at one minor because the npm
 # @tauri-apps/plugin-updater must be on the same one, as the Tauri CLI requires; move
 # both together (and the other @tauri-apps packages with tauri itself).
-tauri-plugin-updater = "~2.13"
+tauri-plugin-updater = "~2.14"
 
 # OS keychain for the vault master key — native backend per platform.
 [target.'cfg(target_os = "macos")'.dependencies]
