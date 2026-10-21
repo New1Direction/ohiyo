@@ -1,8 +1,10 @@
 # Kikka public-research worker
 
 One actual Pi Durable agent loop, behind Burrow's existing runtime boundary.
-No coding agent, shell, Git checkout, ImOrb agent loop or account connector is
-installed inside it. ImOrb remains a separate, optional bridge target.
+No second agent loop runs inside its optional computer. The legacy ImOrb task
+bridge remains separate; Pi can now attach an ImOrb resource through the
+[versioned ComputerProvider contract](COMPUTERS.md). Browser/desktop engines
+remain unavailable until installed and explicitly authorized.
 
 ## Runtime decision and recovery contract
 

@@ -120,6 +120,11 @@ async fn pi_transport_reconciles_owner_scoped_results_history_evidence_and_stop_
                 Json(json!({"acknowledged":true})).into_response()
             },
             "evidence" => ([("Content-Type","image/png")], b"fixture-png".to_vec()).into_response(),
+            "computer" => {
+                assert_eq!(body["owner"], "pilot");
+                assert_eq!(body["run"], "run-pi-fixture");
+                Json(json!({"state":"ready","computer_id":"fixture-computer"})).into_response()
+            },
             _ => panic!("unsupported operation"),
         }
     }
@@ -137,8 +142,76 @@ async fn pi_transport_reconciles_owner_scoped_results_history_evidence_and_stop_
     }))
     .await;
     let id = create(&s, &owner, "Compare official public subscription plans.").await;
-    start(&s, &owner, &id).await;
+    let workspace: Value = s
+        .post_json_auth(
+            "/api/v1/burrow/computer-workspaces",
+            &owner,
+            json!({"name":"Research"}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = workspace["id"].as_str().unwrap();
+    let outsider_workspace: Value = s
+        .post_json_auth(
+            "/api/v1/burrow/computer-workspaces",
+            &other,
+            json!({"name":"Private"}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(s.post_json_auth(&route(&id), &owner, json!({"version":0,"allow_agent":true,"max_cost_cents":37,"computer_workspace":outsider_workspace["id"]})).await.status(), 404);
+    let attached = json!({"version":0,"allow_agent":true,"max_cost_cents":37,"computer_workspace":workspace_id});
+    assert_eq!(
+        s.post_json_auth(&route(&id), &owner, attached.clone())
+            .await
+            .status(),
+        200
+    );
+    assert_eq!(
+        s.post_json_auth(&route(&id), &owner, attached)
+            .await
+            .status(),
+        200
+    );
+    assert_eq!(
+        s.post_json_auth(
+            &route(&id),
+            &owner,
+            json!({"version":0,"allow_agent":true,"max_cost_cents":37})
+        )
+        .await
+        .status(),
+        409
+    );
     agent::tick(&s.state).await.unwrap();
+    assert_eq!(
+        journal.lock().await["admission"]["computer_workspace"],
+        workspace_id
+    );
+    let computer = format!("/api/v1/burrow/tasks/{id}/computer");
+    assert_eq!(
+        s.post_json_auth(
+            &computer,
+            &other,
+            json!({"action":"status","request_id":"steal"})
+        )
+        .await
+        .status(),
+        404
+    );
+    let status = s
+        .post_json_auth(
+            &computer,
+            &owner,
+            json!({"action":"status","request_id":"inspect"}),
+        )
+        .await;
+    assert_eq!(status.status(), 200);
+    assert_eq!(status.json::<Value>().await.unwrap()["state"], "ready");
     let before = view(&s, &owner, &id).await;
     assert_eq!(before["task"]["state"], "working");
     assert_eq!(

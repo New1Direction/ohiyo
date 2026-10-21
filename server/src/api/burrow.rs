@@ -1,6 +1,7 @@
 //! Opt-in writing pilot. The only external input is the task's explicit request.
 //! No tools, chat access, automatic retries, or claims of verified completion.
 pub mod agent;
+pub mod computer;
 pub mod context;
 pub mod creation;
 pub mod everyday;

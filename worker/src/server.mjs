@@ -1,10 +1,13 @@
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { KikkaWorker } from './runtime.mjs';
 import { credentialResolver } from './routing.mjs';
 import { SubscriptionAccounts } from './subscription-oauth.mjs';
+import { ComputerProvider } from './computer-provider.mjs';
+import { ImOrbComputerBackend } from './imorb-computer.mjs';
 
 export function workerServer(worker, token, { subscriptionAccounts } = {}) {
   if (!token || token.length < 32) throw new Error('A private worker token of at least 32 characters is required.');
@@ -28,6 +31,7 @@ export function workerServer(worker, token, { subscriptionAccounts } = {}) {
           output = await subscriptions.call(body.owner, provider, body.action, body); break;
         }
         case 'start': output = await worker.start(body.admission); break;
+        case 'computer': output = await worker.computer(body); break;
         case 'status': output = await worker.status(body.run); break;
         case 'watch': output = await worker.events(body.run); break;
         case 'control': await worker.control(body.run, body.command); output = { acknowledged: true }; break;
@@ -57,6 +61,12 @@ if (process.argv[1] && resolve(process.argv[1]) === new URL(import.meta.url).pat
     || !Number.isFinite(config.policy.outputUsdPerMillion) || config.policy.outputUsdPerMillion < 0.6
     || config.policy.maxOutputTokens !== 4096)) throw new Error('Invalid bounded worker policy.');
   const worker = new KikkaWorker({ ...config, directory: resolve(process.env.KIKKA_WORKER_DIRECTORY),
+    computerFactory: config.computer ? () => new ComputerProvider({
+      directory: resolve(process.env.KIKKA_WORKER_DIRECTORY, 'computers'), grants: config.computer.grants,
+      resolveGrants: () => JSON.parse(readFileSync(process.env.KIKKA_WORKER_CONFIG, 'utf8')).computer?.grants ?? [],
+      idleMs: config.computer.idleMs, backend: new ImOrbComputerBackend({ binary: config.computer.binary,
+        home: config.computer.home, repo: config.computer.repo, size: config.computer.size }),
+    }) : undefined,
     policy: routingEnabled ? { provider: 'burrow-routing' } : config.policy, routingEnabled,
     resolveCredential: routingEnabled ? credentialResolver(process.env.KIKKA_ROUTING_ACCESS_URL, process.env.KIKKA_WORKER_TOKEN) : undefined });
   const server = workerServer(worker, process.env.KIKKA_WORKER_TOKEN);

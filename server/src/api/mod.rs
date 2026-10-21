@@ -57,6 +57,8 @@ pub fn router() -> Router<AppState> {
     Router::new()
         // Burrow is an explicit, account-scoped surface; it never reads chat.
         .route("/burrow", get(burrow::list))
+        .route("/burrow/computer-workspaces", post(burrow::computer::create))
+        .route("/burrow/tasks/{id}/computer", post(burrow::computer::command))
         .route("/burrow/subscriptions", get(burrow::subscriptions::status))
         .route("/burrow/subscriptions/{provider}", post(burrow::subscriptions::connect).delete(burrow::subscriptions::disconnect))
         .route("/burrow/subscriptions/{provider}/code", post(burrow::subscriptions::complete))

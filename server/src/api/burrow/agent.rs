@@ -218,6 +218,7 @@ pub struct Run {
     pub role: String,
     pub routing: Option<sqlx::types::Json<Value>>,
     pub usage: Option<sqlx::types::Json<Value>>,
+    pub computer_workspace: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -228,6 +229,7 @@ pub struct Start {
     max_cost_cents: i64,
     role: Option<String>,
     routing: Option<Value>,
+    computer_workspace: Option<String>,
 }
 
 pub(super) fn connected(s: &AppState, user: &str) -> Result<Kikka, Error> {
@@ -290,6 +292,28 @@ pub async fn start(
             "Start with a saved document request. Created pages keep their existing editor.".into(),
         ));
     }
+    if let Some(workspace) = &body.computer_workspace {
+        let authorized: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM burrow_computer_workspaces WHERE id=? AND user_id=?)",
+        )
+        .bind(workspace)
+        .bind(&user)
+        .fetch_one(&s.db)
+        .await
+        .map_err(internal)?;
+        if !authorized {
+            return Err((
+                StatusCode::NOT_FOUND,
+                "Computer workspace unavailable.".into(),
+            ));
+        }
+        if kikka.pi.is_none() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Computers require Pi Durable as task owner.".into(),
+            ));
+        }
+    }
     let target = kikka.target();
     let role = body.role.as_deref().unwrap_or("research");
     if !super::routing::ROLES.contains(&role) {
@@ -307,6 +331,7 @@ pub async fn start(
         if previous.max_cost_cents != body.max_cost_cents
             || previous.target != target
             || previous.role != role
+            || previous.computer_workspace != body.computer_workspace
             || !super::routing::same_snapshot(
                 previous.routing.as_ref().map(|v| &v.0),
                 body.routing.as_ref(),
@@ -380,9 +405,9 @@ pub async fn start(
         ));
     }
     let run = crate::types::new_id();
-    sqlx::query("INSERT INTO burrow_agent_runs(id,task_id,request_version,target,root_goal,goal,max_cost_cents,phase,activity,role,routing) VALUES(?,?,?,?,?,?,?,'queued','Getting ready…',?,?)")
+    sqlx::query("INSERT INTO burrow_agent_runs(id,task_id,request_version,target,root_goal,goal,max_cost_cents,phase,activity,role,routing,computer_workspace) VALUES(?,?,?,?,?,?,?,'queued','Getting ready…',?,?,?)")
         .bind(&run).bind(&id).bind(body.version).bind(target).bind(format!("burrow-{run}"))
-        .bind(&task.request).bind(body.max_cost_cents).bind(role).bind(routing).execute(&mut *tx).await.map_err(internal)?;
+        .bind(&task.request).bind(body.max_cost_cents).bind(role).bind(routing).bind(&body.computer_workspace).execute(&mut *tx).await.map_err(internal)?;
     sqlx::query("INSERT INTO burrow_attempts(task_id,started_at) VALUES(?,?)")
         .bind(&id)
         .bind(now)
@@ -679,6 +704,9 @@ pub async fn tick(s: &AppState) -> Result<(), sqlx::Error> {
                         .await?;
                 let task = owned(s, &owner, &run.task_id).await.map_err(|e| sqlx::Error::Protocol(e.1))?;
                 let mut admission = json!({"owner":owner,"task":run.task_id,"root_goal":run.root_goal,"goal":run.goal,"max_cost_cents":run.max_cost_cents});
+                if let Some(workspace) = &run.computer_workspace {
+                    admission["computer_workspace"] = json!(workspace);
+                }
                 admission["burrow_context"] = json!(super::context::prompt(s, &owner, &task).await.map_err(|e| sqlx::Error::Protocol(e.1))?);
                 admission["comparison"] = json!(task.comparison);
                 if let (Some(id), Some(version)) = (&task.routine_id, task.routine_version) {
