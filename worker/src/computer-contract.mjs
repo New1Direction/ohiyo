@@ -2,9 +2,17 @@
  * Breaking changes require a major version. Additive operations/capabilities require a minor version.
  * No engine-specific tools, credentials, model loops, booking or payment operations belong here.
  */
-export const COMPUTER_CONTRACT_VERSION = '1.0.0';
+export const COMPUTER_CONTRACT_VERSION = '1.1.0';
 export const COMPUTER_STATES = Object.freeze(['provisioning', 'ready', 'unavailable', 'reconnecting', 'replacing', 'released']);
 export const REPLAY_CLASSES = Object.freeze(['read_only', 'idempotent_effect', 'non_idempotent_effect']);
+
+/** Host/engine assertion, NEVER reconstructed from provider JSON or model output.
+ * Throw only when execution demonstrably never crossed the dispatch boundary.
+ * A timeout, process exit, cancellation or missing acknowledgement is NOT proof.
+ */
+export class ComputerNotDispatched extends Error {
+  constructor() { super('Computer action was not dispatched.'); this.name = 'ComputerNotDispatched'; }
+}
 
 // Each operation names a capability and its minimum effect classification. Engines
 // advertise only implemented capabilities; registration never implies availability.
@@ -25,7 +33,7 @@ export const COMPUTER_OPERATIONS = Object.freeze({
 
 /** Every call, including lifecycle, carries authenticated identity, never inferred from a model.
  * @typedef {{account:string, workspace_id:string, task_id:string, root_goal_id:string, request_id:string}} ComputerIdentity
- * @typedef {{contract_version:'1.0.0', features:string[], persistence:{workspace:boolean, profile:boolean}, limitations:string[]}} ComputerCapabilities
+ * @typedef {{contract_version:'1.1.0', features:string[], persistence:{workspace:boolean, profile:boolean}, limitations:string[]}} ComputerCapabilities
  * @typedef {{session_id:string, access_url:string, expires_at:string, mode:'read_only'|'interactive'}} LiveView
  * @typedef {{operation:string, args:object, replay_class:'read_only'|'idempotent_effect'|'non_idempotent_effect', invariant?:string}} ComputerAction
  * @typedef {{state:string, computer_id:string|null, generation:number, capabilities:ComputerCapabilities, reason:string|null}} ComputerStatus
@@ -47,6 +55,8 @@ export const COMPUTER_OPERATIONS = Object.freeze({
  * persistent_state_key, and storage root. list() must be scoped to this provider namespace.
  * open/reconnect/release must reconcile deterministic IDs before reissuing lifecycle work.
  * execute must never internally replay effects after dispatch uncertainty.
+ * execute may throw ComputerNotDispatched only with positive proof of non-dispatch.
+ * All other failures leave non-idempotent effects uncertain, including after restart.
  * Returned status is validated by the host; a backend cannot grant a task permissions.
  */
 
