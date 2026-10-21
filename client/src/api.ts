@@ -630,6 +630,84 @@ export type GifPage = {
   has_next: boolean;
 };
 
+export type BurrowTask = {
+  id: string;
+  kind: "writing" | "tracker";
+  format: "document" | "creation";
+  template: "bill" | "packing" | null;
+  request: string;
+  state: "waiting" | "working" | "draft_ready" | "failed";
+  result: string;
+  error: string | null;
+  project?: string | null;
+  routine_id?: string | null;
+  routine_version?: number | null;
+  comparison?: boolean;
+  manual_notes?: string;
+  manual_edited?: boolean;
+  proposed_result?: string;
+  version: number;
+  created_at: number;
+  updated_at: number;
+};
+export type BurrowWorkspace = { tasks: BurrowTask[]; can_run: boolean; service: string | null; can_research?: boolean; agent_task_ids?: string[] };
+export type BurrowMemory = { id: string; project: string | null; text: string; source_task: string; version: number; created_at: number; updated_at: number };
+export type BurrowContext = { memories: BurrowMemory[]; history: [string, string, string, number][]; routines: [string, number, string, string, string][] };
+export type ResearchFact = { label: string; value: string; evidence_id: string; quote: string; source_url: string; captured_at: string };
+export type ResearchComparison = { title: string; requirements: string[]; options: { name: string; sources?: { evidence_id: string; url: string; captured_at: string; limitations: string[] }[]; unknowns?: string[]; annualized_monthly?: { amount: string; currency: string } | null; attributes: ResearchFact[]; price: null | { amount: ResearchFact; currency: ResearchFact; billing: ResearchFact; shipping: ResearchFact | null; tax: ResearchFact | null } }[] };
+export type ModelRole = "general" | "research" | "review" | "summary";
+export type ModelCatalogEntry = { id: string; providerModelId: string; contextWindow: number; maxOutputTokens: number; inputUsdPerMillion: number | null; outputUsdPerMillion: number | null };
+export type ModelConnection = { id: string; name: string; templateId: string; modelMapping: string; active: boolean; priority: number; scope: "personal" | "ohiyo"; hasKey: boolean };
+export type ModelRoute = Omit<ModelCatalogEntry, "id"> & { canonicalModel: string; connectionId: string; connectionRevision: string; fundedBy: "ohiyo" | "you"; endpoint: string };
+export type ModelRouting = { catalog: ModelCatalogEntry[]; roles: Partial<Record<ModelRole, string>>; connections: ModelConnection[]; preview: Partial<Record<ModelRole, ModelRoute>>; disabledReason?: string };
+export type ModelConnectionInput = Pick<ModelConnection, "name" | "templateId" | "modelMapping" | "active" | "priority"> & { id?: string; key?: string };
+export type SubscriptionProvider = "claude" | "chatgpt";
+export type SubscriptionConnection = { state: "connected" | "disconnected" | "unavailable" | "awaiting_sign_in" | "verifying" | "failed" | "expired"; email?: string | null; plan?: string | null; attempt?: string; authorizationUrl?: string | null; userCode?: string | null; expiresAt?: number; usableForResearch: boolean; models?: (ModelCatalogEntry & { name?: string })[] };
+export type SubscriptionConnections = { claude: SubscriptionConnection; chatgpt: SubscriptionConnection };
+export type ModelRequestUsage = { id: string; role: ModelRole; canonicalModel: string; providerModelId: string; connectionId: string; fundedBy: "ohiyo" | "you"; reservationMicros: number; status: "dispatching" | "complete"; usage: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } | null; reportedCostMicros: number | null; costSource?: "sdk-estimate" | "subscription" };
+export type BurrowAgent = {
+  task: BurrowTask;
+  agent: { id: string; phase: string; activity: string; runtime_id: string | null;
+    max_cost_cents?: number;
+    role?: ModelRole; routing?: Partial<Record<ModelRole, ModelRoute>> | null; usage?: ModelRequestUsage[] | null };
+  connected: boolean;
+  commands: [string, string, string, string][];
+  events: { seq: number; type: string; data: { id?: string; url?: string; capturedAt?: string; content?: string; verification?: string; comparison?: ResearchComparison } }[];
+  history: [number, string][];
+};
+
+export type BillPage = {
+  type: "bill"; title: string; currency: "USD" | "EUR" | "GBP";
+  people: { id: string; name: string }[];
+  expenses: { id: string; title: string; amount: string; paid_by: string; shared_by: string[] }[];
+};
+export type PackingPage = {
+  type: "packing"; title: string; nights: number; weather: "warm" | "cold" | "mixed";
+  activities: string[];
+  items: { id: string; title: string; quantity: number; packed: boolean; custom: boolean }[];
+};
+export type EverydayResult = { page: BillPage; summary: { total_cents: number; people: { id: string; paid_cents: number; share_cents: number }[]; payments: { from: string; to: string; cents: number }[] } } | { page: PackingPage; summary: { packed: number; total: number } };
+
+export type LaunchPage = {
+  title: string;
+  layout: "table" | "cards";
+  simple: boolean;
+  stopped: boolean;
+  items: { title: string; owner: string; date: string; blocker: string; done: boolean; extra: string }[];
+  costs: { title: string; cents: number | null; period: "once" | "monthly" }[] | null;
+  risks: string[] | null;
+  notes: string;
+  extra_column: string | null;
+};
+export type LaunchResult = {
+  page: LaunchPage;
+  proof: { changed: string[]; checks: string[]; needs: string[]; monthly_cents: number; once_cents: number };
+  reply: string;
+  instruction: string;
+  can_undo: boolean;
+};
+export type LaunchAction = { type: "steer"; text: string } | { type: "edit"; page: LaunchPage } | { type: "undo" } | { type: "fork" };
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -656,6 +734,55 @@ async function request<T>(
 }
 
 export const api = {
+  burrow: (token: string) => request<BurrowWorkspace>("/burrow", {}, token),
+  burrowContext: (token: string, task: string, q = "") => request<BurrowContext>(`/burrow/tasks/${task}/context?q=${encodeURIComponent(q)}`, {}, token),
+  rememberBurrow: (token: string, task: string, text: string, personal: boolean) => request(`/burrow/tasks/${task}/memories`, { method: "POST", body: JSON.stringify({ text, personal }) }, token),
+  changeBurrowMemory: (token: string, memory: BurrowMemory, text: string | null) => request(`/burrow/memories/${memory.id}`, { method: "PATCH", body: JSON.stringify({ version: memory.version, text }) }, token),
+  saveBurrowRoutine: (token: string, task: string, name: string, instructions: string) => request(`/burrow/tasks/${task}/routine`, { method: "POST", body: JSON.stringify({ name, instructions }) }, token),
+  saveBurrowNotes: (token: string, task: BurrowTask, text: string) => request<BurrowTask>(`/burrow/tasks/${task.id}/notes`, { method: "PATCH", body: JSON.stringify({ version: task.version, text }) }, token),
+  acceptBurrowRevision: (token: string, task: BurrowTask) => request<BurrowTask>(`/burrow/tasks/${task.id}/accept-revision`, { method: "POST", body: JSON.stringify({ version: task.version }) }, token),
+  keepBurrowResult: (token: string, task: BurrowTask) => request<BurrowTask>(`/burrow/tasks/${task.id}/keep-result`, { method: "POST", body: JSON.stringify({ version: task.version }) }, token),
+  modelRouting: (token: string) => request<ModelRouting>("/burrow/model-routing", {}, token),
+  subscriptions: (token: string) => request<SubscriptionConnections>("/burrow/subscriptions", {}, token),
+  connectSubscription: (token: string, provider: SubscriptionProvider) => request<SubscriptionConnection>(`/burrow/subscriptions/${provider}`, { method: "POST" }, token),
+  completeClaude: (token: string, attempt: string, code: string) => request<SubscriptionConnection>("/burrow/subscriptions/claude/code", { method: "POST", body: JSON.stringify({ attempt, code }) }, token),
+  disconnectSubscription: (token: string, provider: SubscriptionProvider) => request<SubscriptionConnection>(`/burrow/subscriptions/${provider}`, { method: "DELETE" }, token),
+  saveModelRoles: (token: string, roles: ModelRouting["roles"]) => request("/burrow/model-routing/roles", { method: "PUT", body: JSON.stringify(roles) }, token),
+  saveModelConnection: (token: string, connection: ModelConnectionInput) => request("/burrow/model-routing/connections", { method: "POST", body: JSON.stringify(connection) }, token),
+  deleteModelConnection: (token: string, id: string) => request(`/burrow/model-routing/connections/${encodeURIComponent(id)}`, { method: "DELETE" }, token),
+  burrowAgent: (token: string, id: string) => request<BurrowAgent>(`/burrow/tasks/${id}/agent`, {}, token),
+  startBurrowAgent: (token: string, task: BurrowTask, cents: number, role?: ModelRole, routing?: ModelRouting["preview"]) => request(`/burrow/tasks/${task.id}/agent`, {
+    method: "POST", body: JSON.stringify({ version: task.version, allow_agent: true, max_cost_cents: cents, role, routing }),
+  }, token),
+  controlBurrowAgent: (token: string, task: BurrowTask, requestId: string, action: "steer" | "stop" | "continue", message: string) => request<BurrowTask>(`/burrow/tasks/${task.id}/agent/control`, {
+    method: "POST", body: JSON.stringify({ version: task.version, request_id: requestId, action, message, allow_spending: action === "continue" }),
+  }, token),
+  burrowEvidence: async (token: string, id: string, evidence: string) => {
+    const r = await fetch(`${getApiBase()}/burrow/tasks/${id}/agent/evidence/${encodeURIComponent(evidence)}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) throw new Error("Saved screenshot is unavailable. Please try again.");
+    return r.blob();
+  },
+  createBurrowTask: (token: string, text: string, kind: BurrowTask["kind"] = "writing", template?: "bill" | "packing", context?: { project?: string; routine_id?: string; comparison?: boolean }) => request<BurrowTask>("/burrow/tasks", {
+    method: "POST", body: JSON.stringify({ request: text, kind, template, ...context }),
+  }, token),
+  createBurrowPage: (token: string, text: string, example?: "quiz" | "story" | "page") => request<BurrowTask>("/burrow/tasks", {
+    method: "POST", body: JSON.stringify({ request: text, format: "creation", example }),
+  }, token),
+  makeBurrowPage: (token: string, task: BurrowTask, instruction?: string) => request<BurrowTask>(`/burrow/tasks/${task.id}/run`, {
+    method: "POST", body: JSON.stringify({ allow_generation: true, version: task.version, instruction }),
+  }, token),
+  changeBurrowPage: (token: string, task: BurrowTask, action: "undo" | "stop") => request<BurrowTask>(`/burrow/tasks/${task.id}/creation`, {
+    method: "POST", body: JSON.stringify({ version: task.version, action }),
+  }, token),
+  changeLaunchTracker: (token: string, task: BurrowTask, action: LaunchAction) => request<BurrowTask>(`/burrow/tasks/${task.id}/tracker`, {
+    method: "POST", body: JSON.stringify({ version: task.version, action }),
+  }, token),
+  runBurrowTask: (token: string, id: string) => request<BurrowTask>(`/burrow/tasks/${id}/run`, {
+    method: "POST", body: JSON.stringify({ allow_generation: true }),
+  }, token),
+  saveBurrowResult: (token: string, task: BurrowTask, result: string) => request<BurrowTask>(`/burrow/tasks/${task.id}/result`, {
+    method: "PATCH", body: JSON.stringify({ result, version: task.version }),
+  }, token),
   /** Exchange the JWT for a one-time gateway ticket (used to open the WebSocket). */
   getWsTicket: (token: string) =>
     request<{ ticket: string }>("/ws/ticket", { method: "POST" }, token).then((r) => r.ticket),

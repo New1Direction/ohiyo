@@ -84,6 +84,15 @@ pub async fn delete_account(
     let me = auth.0;
 
     let _lifecycle = state.instance_lifecycle.lock().await;
+    let active_helper: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM burrow_agent_runs r JOIN burrow_tasks t ON t.id=r.task_id WHERE t.user_id=? AND r.phase!='finished')")
+        .bind(&me).fetch_one(&state.db).await.map_err(internal)?;
+    if active_helper {
+        return Err((
+            StatusCode::CONFLICT,
+            "Stop Kikka's workspace tasks and resolve uncertain work before deleting your account."
+                .into(),
+        ));
+    }
     // Instant Servers run on real machines: destroy them first. If the cloud refuses,
     // stop here with the account intact, so the user can try again.
     let instances: Vec<String> =

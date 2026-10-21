@@ -2,6 +2,7 @@ pub mod abuse;
 pub mod account;
 pub mod auth;
 pub mod bans;
+pub mod burrow;
 pub mod calls;
 pub mod channels;
 pub mod discord_import;
@@ -54,6 +55,31 @@ use emoji::{create_emoji, delete_emoji, list_emojis};
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        // Burrow is an explicit, account-scoped surface; it never reads chat.
+        .route("/burrow", get(burrow::list))
+        .route("/burrow/subscriptions", get(burrow::subscriptions::status))
+        .route("/burrow/subscriptions/{provider}", post(burrow::subscriptions::connect).delete(burrow::subscriptions::disconnect))
+        .route("/burrow/subscriptions/{provider}/code", post(burrow::subscriptions::complete))
+        .route("/burrow/model-routing", get(burrow::routing::get))
+        .route("/burrow/model-routing/roles", put(burrow::routing::put_roles))
+        .route("/burrow/model-routing/connections", post(burrow::routing::upsert))
+        .route("/burrow/model-routing/connections/{id}", delete(burrow::routing::delete))
+        .route("/burrow/internal/model-access", post(burrow::routing::access))
+        .route("/burrow/tasks", post(burrow::create))
+        .route("/burrow/tasks/{id}/run", post(burrow::run))
+        .route("/burrow/tasks/{id}/result", patch(burrow::edit))
+        .route("/burrow/tasks/{id}/context", get(burrow::context::get))
+        .route("/burrow/tasks/{id}/memories", post(burrow::context::remember))
+        .route("/burrow/memories/{id}", patch(burrow::context::change_memory))
+        .route("/burrow/tasks/{id}/routine", post(burrow::context::save_routine))
+        .route("/burrow/tasks/{id}/notes", patch(burrow::context::notes))
+        .route("/burrow/tasks/{id}/accept-revision", post(burrow::context::accept))
+        .route("/burrow/tasks/{id}/keep-result", post(burrow::context::keep_current))
+        .route("/burrow/tasks/{id}/tracker", post(burrow::tracker::change))
+        .route("/burrow/tasks/{id}/creation", post(burrow::creation::change))
+        .route("/burrow/tasks/{id}/agent", get(burrow::agent::view).post(burrow::agent::start))
+        .route("/burrow/tasks/{id}/agent/control", post(burrow::agent::control))
+        .route("/burrow/tasks/{id}/agent/evidence/{evidence}", get(burrow::agent::evidence))
         // Auth
         .route("/auth/register", post(auth::register))
         .route("/auth/login", post(auth::login))

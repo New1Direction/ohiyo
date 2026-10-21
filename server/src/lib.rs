@@ -93,6 +93,10 @@ pub struct AppState {
     pub dm_call_cap: usize,
     /// DM and group-chat calls in progress: channel_id → session (see api::calls).
     pub calls: api::calls::CallSessions,
+    /// Optional, allowlisted Burrow writing pilot. Never used by Ohiyo chat.
+    pub burrow: Option<api::burrow::Burrow>,
+    /// Optional single-account local ImOrb bridge; separate from writing and chat.
+    pub kikka: Option<api::burrow::agent::Kikka>,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
@@ -133,6 +137,8 @@ pub fn build_state(db: SqlitePool) -> AppState {
         call_ring_secs: 40,
         dm_call_cap: 10,
         calls: api::calls::new_call_sessions(),
+        burrow: api::burrow::Burrow::from_env(),
+        kikka: api::burrow::agent::Kikka::from_env(),
     }
 }
 

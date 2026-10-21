@@ -1,0 +1,6 @@
+.burrow-selection { position: fixed; z-index: 300; display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100vw - 16px); border: 1px solid #45483f; border-radius: 10px; background: #252821; color: #ebe9df; box-shadow: 0 8px 28px #0006; font: 12px/1.4 system-ui, sans-serif; }
+.burrow-selection button { border: 0; border-radius: 6px; background: transparent; color: inherit; padding: 9px 8px; font: inherit; cursor: pointer; white-space: nowrap; }
+.burrow-selection button:hover { background: #3b4034; }
+.burrow-selection button:focus-visible { outline: 2px solid #cf8b70; outline-offset: -2px; }
+.burrow-selection button:disabled { opacity: .45; cursor: not-allowed; }
+.burrow-selection-notice { position: fixed; z-index: 301; bottom: 24px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); padding: 12px 16px; border: 1px solid #45483f; border-radius: 10px; background: #252821; color: #ebe9df; font: 12px/1.5 system-ui, sans-serif; box-shadow: 0 8px 28px #0006; }

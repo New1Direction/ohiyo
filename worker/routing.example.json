@@ -1,0 +1,29 @@
+{
+  "catalog": [
+    {
+      "id": "openai/gpt-4o-mini",
+      "providerModelId": "gpt-4o-mini",
+      "contextWindow": 128000,
+      "maxOutputTokens": 4096,
+      "inputUsdPerMillion": 0.15,
+      "outputUsdPerMillion": 0.6
+    }
+  ],
+  "connections": [
+    {
+      "id": "ohiyo-default",
+      "name": "Ohiyo default",
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "modelMapping": "openai/*",
+      "active": true,
+      "priority": 0,
+      "keyEnv": "KIKKA_DEFAULT_API_KEY"
+    }
+  ],
+  "roles": {
+    "general": "openai/gpt-4o-mini",
+    "research": "openai/gpt-4o-mini",
+    "review": "openai/gpt-4o-mini",
+    "summary": "openai/gpt-4o-mini"
+  }
+}

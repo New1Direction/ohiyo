@@ -1,0 +1,23 @@
+{
+  "page": {
+    "title": "The midnight bakery",
+    "description": "The last train has gone. One shop is still glowing. A little adventure where you decide what happens next.",
+    "theme": "forest",
+    "spec": {
+      "root": "root",
+      "elements": {
+        "root": {"type":"Stack","props":{},"children":["story","hint"]},
+        "story": {"type":"Story","props":{"scenes":[
+          {"id":"start","heading":"A light in the rain","text":"You duck under a striped awning. Behind the bakery window, a tiny fox in an apron is frosting a cake twice its size. It spots you and points at the door.\n\nA sign reads: ONE FAVOUR. ONE WISH.","choices":[{"label":"Go inside and help the fox","next":"help"},{"label":"Read the smaller writing on the sign","next":"sign"}]},
+          {"id":"help","heading":"A very important delivery","text":"The fox hands you a silver cake box. ‘The moon forgot her birthday,’ it whispers. ‘Would you take this up?’\n\nA ladder leans against the back wall. Its top disappears into the clouds.","choices":[{"label":"Climb the ladder with the cake","next":"moon"},{"label":"Ask for a slice before agreeing","next":"slice"}]},
+          {"id":"sign","heading":"The small print","text":"You wipe rain from the sign. Under the big letters: WISHES CANNOT BE FOR YOURSELF.\n\nInside, the fox has fallen asleep beside a photograph of a forest. It looks very far from home.","choices":[{"label":"Wish the fox a way home","next":"home"},{"label":"Wake the fox and offer to help","next":"help"}]},
+          {"id":"moon","heading":"A birthday above the clouds","text":"The moon takes one careful bite. Every puddle in the city glows gold.\n\n‘Make a wish,’ she says. You wish that nobody has to spend their birthday alone. Somewhere below, a thousand phones begin to ring.","choices":[]},
+          {"id":"slice","heading":"A fair exchange","text":"The fox grins. You share a slice at a flour-dusted table. The rain stops. For the first time all week, neither of you is in a hurry.\n\n‘That was the wish,’ the fox says. ‘Someone to have cake with.’", "choices":[]},
+          {"id":"home","heading":"The door in the oven","text":"The oven clicks open. A breeze carries the scent of pine. The fox wakes, sees the forest, and presses a cinnamon bun into your hand.\n\nBy morning the bakery is gone. On rainy nights, you still smell cinnamon at that corner.","choices":[]}
+        ]},"children":[]},
+        "hint": {"type":"Reveal","props":{"label":"A small hint?","text":"Not every wish has to be yours. There are three endings to find."},"children":[]}
+      }
+    }
+  },
+  "reply": "This is a ready-made example of a playable story. You choose what happens next. There are three endings; use Start over to find another one."
+}

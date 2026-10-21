@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+echo 'Checking Rust and Bun toolchains'
+if ! command -v cargo >/dev/null && [[ ! -x "$HOME/.cargo/bin/cargo" ]]; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+fi
+if [[ -f "$HOME/.cargo/env" ]]; then
+  source "$HOME/.cargo/env"
+fi
+rustup component add rustfmt clippy
+
+# The repository's v2 Bun lockfile needs Bun 1.4+, newer than some orb templates.
+if ! bun -e 'process.exit(Bun.semver.satisfies(Bun.version, ">=1.4.0") ? 0 : 1)'; then
+  bun upgrade
+fi
+
+echo 'Installing client dependencies from the lockfile'
+bun install --cwd "$root/client" --frozen-lockfile
+echo 'Ready. Server tests create disposable SQLite databases; no shared data is migrated.'

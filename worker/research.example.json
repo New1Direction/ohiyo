@@ -1,0 +1,16 @@
+{
+  "policy": {
+    "provider": "openai",
+    "modelId": "gpt-4o-mini",
+    "inputUsdPerMillion": 0.15,
+    "outputUsdPerMillion": 0.6,
+    "maxOutputTokens": 4096
+  },
+  "approvedUrls": [
+    "https://www.spotify.com/us/premium/",
+    "https://www.spotify.com/uk/premium/",
+    "https://www.spotify.com/de/premium/",
+    "https://www.spotify.com/in-en/premium/",
+    "https://www.spotify.com/br-pt/premium/"
+  ]
+}

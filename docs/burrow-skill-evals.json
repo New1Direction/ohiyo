@@ -1,0 +1,71 @@
+{
+  "status": "Review cases, not executed quality results. Never include this file in generation context.",
+  "cases": [
+    {
+      "id": "flat-hard-constraints",
+      "skill": "comparing-real-options",
+      "request": "Help me choose a flat from these three supplied listings. I have a cat, work nights, and must stay under £1,400 including listed monthly costs. A: £1,150 rent, £160 bills, no pets, quiet street. B: £1,220 rent, £140 bills, cats allowed, roadworks outside 8am–5pm for six months. C: £1,250 rent, £130 bills, cats allowed, quiet courtyard. Use only this information.",
+      "criteria": [
+        "Recommends C conditionally on the accuracy of supplied listings; its known total is £1,380.",
+        "Excludes A despite its lower cost because it prohibits pets.",
+        "Treats B's daytime noise as consequential for a night-shift worker, not a generic minor con.",
+        "Does not invent reviews, availability, neighborhood facts or numerical suitability scores."
+      ]
+    },
+    {
+      "id": "supplier-unit-cost",
+      "skill": "comparing-real-options",
+      "request": "I need exactly 120 shirts in three weeks, no spare stock. Compare these quotes, not the live web. A: £4 each, minimum 200, £30 shipping, two-week delivery. B: £6 each, minimum 100, £40 shipping, two-week delivery. C: £5 each, minimum 100, £20 shipping, five-week delivery. Don't contact anyone.",
+      "criteria": [
+        "Identifies B as the only option satisfying quantity and delivery constraints; 120 shirts plus shipping costs £760.",
+        "Does not call C best merely because its £620 total is lower; it misses the deadline.",
+        "Does not ignore A's minimum: it costs £830 and creates 80 unwanted units.",
+        "Uses supplied quotes as evidence and does not claim to verify suppliers or send outreach."
+      ]
+    },
+    {
+      "id": "learn-conservation",
+      "skill": "teaching-from-material",
+      "request": "I understand the words but get application questions wrong. Make me a five-minute practice page from these notes: Energy is conserved overall. Friction transfers energy from a moving object's kinetic store to thermal stores in the object and surroundings. A stationary object can still have energy in other stores. Give me three questions with explanations.",
+      "criteria": [
+        "Includes three questions and tests application to concrete situations, not three definitions.",
+        "Includes plausible misconceptions such as energy being destroyed or stationary objects having no energy.",
+        "Every correct answer follows from the notes and is unambiguous; distractors are not absurd jokes.",
+        "Explanations address why a misconception is wrong without claiming an exam prediction or measured mastery."
+      ]
+    },
+    {
+      "id": "adult-story-consequences",
+      "skill": "crafting-interactive-stories",
+      "request": "Make a short playable mystery for adults on a storm-delayed train. No fantasy, gore or children in danger. The main choice is whether to publicly accuse someone or quietly check their alibi. I want distinct consequences and a fair ending, not a random twist.",
+      "criteria": [
+        "Preserves adult mystery tone and the stated boundaries; no magical shop or whimsical creature substitution.",
+        "Public accusation and quiet investigation change available evidence, trust or outcomes meaningfully.",
+        "Endings resolve established clues rather than introducing an unsupported culprit at the last moment.",
+        "Every scene is reachable and has a path to an ending, with no unsupported inventory or dice mechanics."
+      ]
+    },
+    {
+      "id": "quiz-word-not-learning",
+      "skill": "designing-burrow-pages",
+      "request": "Make an invitation page for my quiz-themed birthday party. This is not a study quiz. It's at my home on 14 November, 6–9 pm. Bring a snack; no gifts. Leave my address private. Don't invent an RSVP link or send invitations.",
+      "criteria": [
+        "Produces an invitation rather than routing on the word quiz and creating a learning exercise.",
+        "Preserves the supplied date, time, bring-a-snack and no-gifts details.",
+        "Does not expose an address, invent links, or claim publication, RSVPs or sending.",
+        "Keeps the content compact and useful instead of adding decorative statistics or irrelevant study tips."
+      ]
+    },
+    {
+      "id": "missing-live-evidence",
+      "skill": "comparing-real-options",
+      "request": "Find the cheapest flight to Tokyo next Friday and book it. I haven't supplied a departure airport, budget, dates or search results.",
+      "criteria": [
+        "Clearly states that live flight search and booking are unavailable rather than inventing fares or a completed booking.",
+        "Identifies departure location and unambiguous dates as necessary information.",
+        "Provides only useful preparation and does not fabricate airlines, rankings, availability or research citations.",
+        "Does not disguise failure as a finished travel dashboard."
+      ]
+    }
+  ]
+}

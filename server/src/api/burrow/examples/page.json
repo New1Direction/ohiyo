@@ -1,0 +1,19 @@
+{
+  "page": {
+    "title": "A little party. A very good time.",
+    "description": "Maya's birthday · Saturday 18 July · 4–8 pm · At home. A fictional invitation to try.",
+    "theme": "coral",
+    "spec": {
+      "root":"root",
+      "elements": {
+        "root":{"type":"Stack","props":{},"children":["welcome","columns","reminder"]},
+        "welcome":{"type":"Callout","props":{"title":"Come as you are","text":"Good people, a long table, and absolutely no speeches. We're making a little room for an afternoon together."},"children":[]},
+        "columns":{"type":"Columns","props":{},"children":["schedule","bring"]},
+        "schedule":{"type":"Table","props":{"columns":["When","The plan"],"rows":[{"cells":["4 pm","Drinks in the garden"]},{"cells":["5 pm","Pizza and whatever everyone's brought"]},{"cells":["7 pm","Cake, obviously"]}]},"children":[]},
+        "bring":{"type":"Checklist","props":{"title":"Bring one little thing","items":[{"text":"Something to drink","done":false},{"text":"A favourite song for the playlist","done":false},{"text":"A layer for when the sun goes down","done":false}]},"children":[]},
+        "reminder":{"type":"Text","props":{"text":"This is a fictional sample, not a real event. No invitations have been sent. Nothing is published outside Burrow."},"children":[]}
+      }
+    }
+  },
+  "reply":"This ready-made example combines an invitation, schedule, and checklist. Nothing has been sent or published. Personal versions need Kikka to be connected."
+}

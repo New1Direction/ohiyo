@@ -26,6 +26,9 @@ async fn main() -> anyhow::Result<()> {
     let db = db::connect(&database_url).await?;
     tracing::info!("Database connected");
 
+    // An interrupted writing request may have been charged. Require a human retry.
+    api::burrow::recover(&db).await?;
+
     // Bring up the Meilisearch index if full-text search is enabled (logs + continues
     // on failure so an unreachable search service never blocks boot).
     if search::search_enabled() {
@@ -45,6 +48,9 @@ async fn main() -> anyhow::Result<()> {
     spawn_sweeper(state.clone(), BACKGROUND_INTERVAL);
     spawn_push_dispatcher(state.clone(), BACKGROUND_INTERVAL);
     server::spawn_billing_reconciler(state.clone());
+    if state.kikka.is_some() {
+        api::burrow::agent::spawn(state.clone());
+    }
 
     let app = build_app(state);
 

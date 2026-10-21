@@ -1,0 +1,24 @@
+{
+  "page": {
+    "title": "A little science. A better night's sleep.",
+    "description": "Turn a page of notes into something that actually sticks. A sample study space with a playable quiz and a little plan.",
+    "theme": "violet",
+    "spec": {
+      "root": "root",
+      "elements": {
+        "root": {"type":"Stack","props":{},"children":["intro","quiz","lower"]},
+        "intro": {"type":"Callout","props":{"title":"Your five-minute study break","text":"Try an answer. Find out why. Come back to the bits you missed. This is general information, not medical advice."},"children":[]},
+        "quiz": {"type":"Quiz","props":{"questions":[
+          {"question":"Which everyday habit helps your body clock stay consistent?","options":["A different bedtime every night","Keeping a regular wake-up time","Only sleeping when exhausted"],"answer":1,"explanation":"A regular wake-up time helps anchor your body's daily rhythm."},
+          {"question":"What is a circadian rhythm?","options":["Your body's roughly 24-hour clock","The number of dreams you have","A measure of how loudly you snore"],"answer":0,"explanation":"Circadian rhythms coordinate daily changes, including sleepiness and wakefulness."},
+          {"question":"Why can late coffee make falling asleep harder?","options":["It makes your room warmer","It removes your need for sleep","Caffeine blocks signals that help you feel sleepy"],"answer":2,"explanation":"Caffeine blocks adenosine receptors. Its effects can last for hours; sensitivity varies."},
+          {"question":"Which bedroom setup generally supports sleep?","options":["Bright, noisy, and warm","Dark, quiet, and comfortably cool","Notifications turned up"],"answer":1,"explanation":"Reducing light and noise and keeping a comfortable temperature can make settling down easier."}
+        ]},"children":[]},
+        "lower": {"type":"Columns","props":{},"children":["checklist","recap"]},
+        "checklist": {"type":"Checklist","props":{"title":"Make it stick","items":[{"text":"Try the quiz without looking at notes","done":false},{"text":"Read the explanations I missed","done":false},{"text":"Explain one idea in my own words","done":false}]},"children":[]},
+        "recap": {"type":"Reveal","props":{"label":"Give me the short version","text":"Your body follows a roughly 24-hour clock. Consistent routines, less late caffeine, and a comfortable bedroom can support sleep."},"children":[]}
+      }
+    }
+  },
+  "reply": "This is a ready-made example, not a newly generated result. It combines a quiz, study checklist, and expandable summary. Try an answer to see it work."
+}

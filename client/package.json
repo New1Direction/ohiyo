@@ -18,6 +18,8 @@
     "test:profile-editor": "node --test test/profileEditor.browser.mjs"
   },
   "dependencies": {
+    "@json-render/core": "0.21.1",
+    "@json-render/react": "0.21.1",
     "@privacyresearch/libsignal-protocol-typescript": "^0.0.16",
     "@tailwindcss/vite": "^4.3.1",
     "@tauri-apps/api": "^2.12.3",
@@ -34,7 +36,8 @@
     "react-dropzone": "^15.0.0",
     "react-virtualized-auto-sizer": "^2.0.3",
     "react-window": "^1.8.11",
-    "tailwindcss": "^4.3.1"
+    "tailwindcss": "^4.3.1",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.2",

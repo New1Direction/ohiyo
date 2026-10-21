@@ -48,3 +48,6 @@ coverage/
 
 # ── Local video/render workspaces ─────────────────────────────────────────────
 brag-output-*/
+
+# Orb portal URLs are specific to an individual sandbox.
+.amp/portals/
