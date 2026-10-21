@@ -251,19 +251,46 @@ async fn notes_and_manual_edits_use_versions_and_revision_requires_explicit_acce
         .unwrap();
     let other = s.register("editor_other", "test-password").await;
     for (token, version, expected) in [(&other.token, 2, 404), (&owner.token, 1, 409)] {
-        assert_eq!(s.post_json_auth(&format!("{root}/keep-result"), token, json!({"version":version})).await.status(), expected);
+        assert_eq!(
+            s.post_json_auth(
+                &format!("{root}/keep-result"),
+                token,
+                json!({"version":version})
+            )
+            .await
+            .status(),
+            expected
+        );
     }
-    let kept = s.post_json_auth(&format!("{root}/keep-result"), &owner.token, json!({"version":2})).await;
+    let kept = s
+        .post_json_auth(
+            &format!("{root}/keep-result"),
+            &owner.token,
+            json!({"version":2}),
+        )
+        .await;
     assert_eq!(kept.status(), 200);
     let kept: Value = kept.json().await.unwrap();
     assert_eq!(kept["result"], "User edited comparison");
     assert_eq!(kept["proposed_result"], "");
     assert_eq!(kept["manual_edited"], true);
     assert_eq!(kept["manual_notes"], "Call supplier before purchase");
-    assert_eq!(s.post_json_auth(&format!("{root}/keep-result"), &owner.token, json!({"version":2})).await.status(), 409);
+    assert_eq!(
+        s.post_json_auth(
+            &format!("{root}/keep-result"),
+            &owner.token,
+            json!({"version":2})
+        )
+        .await
+        .status(),
+        409
+    );
     // A later proposal still requires a separate version-checked decision.
     sqlx::query("UPDATE burrow_tasks SET proposed_result='New sourced revision' WHERE id=?")
-        .bind(id).execute(&s.state.db).await.unwrap();
+        .bind(id)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
     let r = s
         .post_json_auth(
             &format!("{root}/accept-revision"),

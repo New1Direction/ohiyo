@@ -274,7 +274,10 @@ pub async fn keep_current(
     let changed = sqlx::query("UPDATE burrow_tasks SET proposed_result='',version=version+1,updated_at=? WHERE id=? AND user_id=? AND version=? AND proposed_result!='' AND state='draft_ready'")
         .bind(now_unix()).bind(&id).bind(&user).bind(body.version).execute(&s.db).await.map_err(internal)?.rows_affected();
     if changed != 1 {
-        return Err((StatusCode::CONFLICT, "Revision changed or is unavailable. Refresh before deciding.".into()));
+        return Err((
+            StatusCode::CONFLICT,
+            "Revision changed or is unavailable. Refresh before deciding.".into(),
+        ));
     }
     owned(&s, &user, &id).await.map(Json)
 }

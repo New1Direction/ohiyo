@@ -209,9 +209,16 @@ pub async fn create(
     let now = now_unix();
     let project = context::project(body.project.as_deref())?;
     let routine_version = if let Some(routine) = &body.routine_id {
-        if !body.comparison { return Err((StatusCode::BAD_REQUEST, "Routines produce research comparisons.".into())); }
+        if !body.comparison {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Routines produce research comparisons.".into(),
+            ));
+        }
         Some(context::routine(&s, &user, routine, &project).await?.0)
-    } else { None };
+    } else {
+        None
+    };
     // One statement makes the storage cap atomic under concurrent submissions.
     let inserted = sqlx::query("INSERT INTO burrow_tasks (id,user_id,request,kind,template,format,state,result,created_at,updated_at,project,routine_id,routine_version,comparison) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT count(*) FROM burrow_tasks WHERE user_id=?) < 200")
         .bind(&id).bind(&user).bind(request).bind(&body.kind).bind(&body.template).bind(&body.format).bind(state).bind(result).bind(now).bind(now).bind(project).bind(&body.routine_id).bind(routine_version).bind(body.comparison).bind(&user)

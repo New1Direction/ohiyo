@@ -344,8 +344,12 @@ pub async fn start(
         }
         return Ok(Json(previous));
     }
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM burrow_agent_runs WHERE task_id=?)")
-        .bind(&id).fetch_one(&s.db).await.map_err(internal)?;
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM burrow_agent_runs WHERE task_id=?)")
+            .bind(&id)
+            .fetch_one(&s.db)
+            .await
+            .map_err(internal)?;
     if exists {
         return Err((StatusCode::CONFLICT, "Use a revision on the existing task and its remaining budget. A new approval cannot reset this task’s spending.".into()));
     }
@@ -702,12 +706,16 @@ pub async fn tick(s: &AppState) -> Result<(), sqlx::Error> {
                         .bind(&run.task_id)
                         .fetch_one(&s.db)
                         .await?;
-                let task = owned(s, &owner, &run.task_id).await.map_err(|e| sqlx::Error::Protocol(e.1))?;
+                let task = owned(s, &owner, &run.task_id)
+                    .await
+                    .map_err(|e| sqlx::Error::Protocol(e.1))?;
                 let mut admission = json!({"owner":owner,"task":run.task_id,"root_goal":run.root_goal,"goal":run.goal,"max_cost_cents":run.max_cost_cents});
                 if let Some(workspace) = &run.computer_workspace {
                     admission["computer_workspace"] = json!(workspace);
                 }
-                admission["burrow_context"] = json!(super::context::prompt(s, &owner, &task).await.map_err(|e| sqlx::Error::Protocol(e.1))?);
+                admission["burrow_context"] = json!(super::context::prompt(s, &owner, &task)
+                    .await
+                    .map_err(|e| sqlx::Error::Protocol(e.1))?);
                 admission["comparison"] = json!(task.comparison);
                 if let (Some(id), Some(version)) = (&task.routine_id, task.routine_version) {
                     let definition: String = sqlx::query_scalar("SELECT definition FROM burrow_routines WHERE id=? AND version=? AND user_id=? AND project IS ?")
@@ -848,9 +856,15 @@ async fn reconcile(s: &AppState, k: &Kikka, run: &Run) -> Result<(), String> {
             _ => return Err("Unsupported saved instruction.".into()),
         };
         let sent = if k.pi.is_some() {
-            let owner: String = sqlx::query_scalar("SELECT user_id FROM burrow_tasks WHERE id=?").bind(&run.task_id).fetch_one(&s.db).await.map_err(|e|e.to_string())?;
-            let task = owned(s, &owner, &run.task_id).await.map_err(|e|e.1)?;
-            let context = super::context::prompt(s, &owner, &task).await.map_err(|e|e.1)?;
+            let owner: String = sqlx::query_scalar("SELECT user_id FROM burrow_tasks WHERE id=?")
+                .bind(&run.task_id)
+                .fetch_one(&s.db)
+                .await
+                .map_err(|e| e.to_string())?;
+            let task = owned(s, &owner, &run.task_id).await.map_err(|e| e.1)?;
+            let context = super::context::prompt(s, &owner, &task)
+                .await
+                .map_err(|e| e.1)?;
             k.pi_call(json!({"operation":"control","run":runtime,"command":{"request_id":id,"action":action,"message":message,"burrow_context":context}})).await.map(|_| ())
         } else {
             k.cli(&args).await.map(|_| ())
