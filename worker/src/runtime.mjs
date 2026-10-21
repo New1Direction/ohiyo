@@ -16,6 +16,7 @@ import { freeModels } from './opencode-free.mjs';
 import { openRouterModels, openRouterPolicy, openRouterTransport, selectedEndpoint, providerRestrictions } from './openrouter-free.mjs';
 import { routedModels, roles, validateRouting } from './routing.mjs';
 import { COMPUTER_CONTRACT_VERSION } from './computer-contract.mjs';
+import { batchFetch, normalizeHotel } from './hotel-research.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const instructions = `You are Kikka, a helpful public-web researcher inside Burrow.
@@ -162,6 +163,35 @@ export class KikkaWorker {
         replay: 'safe', execute: async (action, api, toolContext) => {
           const result = await this.computerCall(run, 'execute', `pi-${digest(String(api.taskId))}`, action, toolContext.abortSignal);
           return { output: [{ type: 'text', text: JSON.stringify({ untrustedComputerData: true, ...result }) }] };
+        } }),
+      defineTool({ name: 'research_hotels', description: 'Fetch up to ten approved hotel pages through the discovered browser engine, extract known layouts and save markdown, JSON and screenshots as Materials. Research prices are advisory, never booking quotes. Each page has a separate durable action ID. Unknown layouts return llm_required; extract only observed facts using this existing model loop, then save_hotel_research. Never retry uncertain pages.',
+        parameters: Type.Object({ urls: Type.Array(Type.String(), { minItems: 1, maxItems: 10 }),
+          replay_class: Type.Optional(Type.Union([Type.Literal('read_only'), Type.Literal('non_idempotent_effect')])) }),
+        replay: 'safe', execute: async ({ urls, replay_class }, api, toolContext) => {
+          if (urls.some(url => !get('urls').includes(url))) throw new Error('Hotel page is not approved for this task.');
+          const identity = this.computerIdentity(run, `pi-${digest(String(api.taskId))}`);
+          const result = await batchFetch({ execute: (i, action, options) => this.computerCall(run, 'execute', i.request_id, action, options.signal) },
+            identity, urls, { signal: toolContext.abortSignal, replay_class, screenshots: true });
+          // Full receipts remain in Burrow. Pi gets each filtered page once,
+          // not again inside every markdown/JSON/screenshot Material receipt.
+          for (const page of result.results) for (const capture of [page, page.screenshot]) {
+            if (capture?.output?.artifacts) capture.output.artifacts = capture.output.artifacts.map(
+              ({ id, kind, source_url, fetched_at, extraction }) => ({ id, kind, source_url, fetched_at, extraction }));
+          }
+          return { output: [{ type: 'text', text: JSON.stringify({ untrustedComputerData: true, ...result }) }] };
+        } }),
+      defineTool({ name: 'save_hotel_research', description: 'Save typed hotel facts extracted by Pi ONLY for a saved markdown Material with extraction path llm_required. Do not guess: absent fields are null or empty lists. Fields: name,address,coords:{lat,lng},displayed_price (literal text),currency (ISO code),room_types,cancellation_text,rating (0–10),amenities. Burrow supplies provenance; prices remain advisory. No extra model call, booking or payment.',
+        parameters: Type.Object({ material_id: Type.String(), hotel: Type.Record(Type.String(), Type.Unknown()) }),
+        replay: 'safe', execute: async ({ material_id, hotel }, api) => {
+          if (get('stop') || get('review')) throw new Error('This task cannot save new work.');
+          const source = await this.receipt(run, material_id);
+          if (source.kind !== 'markdown' || source.extraction?.path !== 'llm_required') throw new Error('Only unknown-layout captures may use Pi extraction.');
+          const identity = this.computerIdentity(run, `pi-${digest(String(api.taskId))}`);
+          const normalized = normalizeHotel(hotel, source);
+          const result = await this.saveComputerMaterials(run, identity, { extraction: { path: 'pi_llm', source_material_id: material_id },
+            artifacts: [{ identity, kind: 'json', media_type: 'application/json', source_url: source.source_url,
+              fetched_at: source.fetched_at, content: JSON.stringify(normalized) }] });
+          return { output: [{ type: 'text', text: JSON.stringify(result) }] };
         } }),
     ] : [];
     const research = defineExtension({ name: 'public-research', hooks: [hook(GenerationTask, {
@@ -381,8 +411,54 @@ export class KikkaWorker {
         : method === 'execute' ? await this.computers.execute(identity, action, { signal })
         : await this.computers[method](identity);
     } catch { result = { status: 'unavailable', reason: 'Computer operation rejected or unavailable. Inspect computer permissions and saved receipts; do not improvise a retry of effects.' }; }
+    if (result.status === 'complete' && Array.isArray(result.output?.artifacts)) {
+      result = { ...result, output: { ...result.output, artifacts: await this.saveComputerMaterials(run, identity, result.output) } };
+    }
     event({ operation: action?.operation ?? method, phase: 'returned', status: result.status ?? result.state });
     return result;
+  }
+  async saveComputerMaterials(run, identity, output) {
+    const materials = [];
+    for (const [index, artifact] of output.artifacts.entries()) {
+      if (!['markdown', 'json', 'screenshot'].includes(artifact.kind)
+        || ['account', 'workspace_id', 'task_id', 'root_goal_id', 'request_id'].some(k => artifact.identity?.[k] !== identity[k])
+        || !run.get('urls').includes(artifact.source_url) || !Number.isFinite(Date.parse(artifact.fetched_at))) throw new Error('Computer material scope/provenance rejected.');
+      const id = `e-${digest(JSON.stringify([identity, artifact.kind, index]))}`;
+      const directory = join(run.path, 'evidence', id);
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      const receipt = { identity, kind: artifact.kind, media_type: artifact.media_type, source_url: artifact.source_url,
+        fetched_at: artifact.fetched_at, advisory: true, extraction: output.extraction ?? null,
+        url: artifact.source_url, requestedUrl: artifact.source_url, capturedAt: artifact.fetched_at,
+        title: output.title ?? '', text: output.markdown ?? '', limitations: ['Research only. Prices are advisory; booking requires a fresh Duffel quote.'] };
+      let bytes;
+      if (artifact.kind === 'screenshot') {
+        bytes = Buffer.from(artifact.base64, 'base64');
+        if (bytes.length > 3_000_000 || !bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))) throw new Error('Invalid material screenshot.');
+        receipt.screenshot = 'capture.png'; receipt.sha256 = digest(bytes);
+      } else {
+        if (typeof artifact.content !== 'string' || artifact.content.length > 100000) throw new Error('Invalid text material.');
+        receipt.content = artifact.content;
+      }
+      const existing = run.db.prepare("SELECT data FROM events WHERE type='evidence' AND json_extract(data,'$.id')=? LIMIT 1").get(id);
+      if (existing) {
+        if (JSON.stringify({ id, ...receipt }) !== existing.data) throw new Error('Material action identity has different terms.');
+      } else {
+        if (bytes) {
+          await writeFile(join(directory, 'capture.png.tmp'), bytes, { mode: 0o600, flush: true });
+          await rename(join(directory, 'capture.png.tmp'), join(directory, 'capture.png'));
+        }
+        await writeFile(join(directory, 'receipt.json.tmp'), JSON.stringify(receipt), { mode: 0o600, flush: true });
+        await rename(join(directory, 'receipt.json.tmp'), join(directory, 'receipt.json'));
+        run.db.exec('BEGIN IMMEDIATE');
+        try {
+          run.db.prepare("INSERT INTO events(type,data) VALUES('evidence',?)").run(JSON.stringify({ id, ...receipt }));
+          run.db.prepare("INSERT INTO events(type,data) VALUES('material',?)").run(JSON.stringify({ id, ...receipt }));
+          run.db.exec('COMMIT');
+        } catch (error) { run.db.exec('ROLLBACK'); throw error; }
+      }
+      materials.push({ id, ...receipt });
+    }
+    return materials;
   }
   async computer(command) {
     const run = await this.open(command.run);
