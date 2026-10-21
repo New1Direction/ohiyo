@@ -9,6 +9,7 @@ pub mod routing;
 mod skills;
 pub mod subscriptions;
 pub mod tracker;
+pub mod travel;
 
 use std::{collections::HashSet, time::Duration};
 
