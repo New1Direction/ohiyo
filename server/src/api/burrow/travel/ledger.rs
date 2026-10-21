@@ -404,7 +404,7 @@ impl TravelLedger {
         data.quote = None;
         data.quote_request_id = Some(uuid::Uuid::new_v4().to_string());
         let quote_fence = serde_json::to_string(&data)?;
-        let changed=sqlx::query("UPDATE burrow_travel_transactions SET state='quoting',body=?,updated_at=? WHERE id=? AND state=? AND body=? AND stopped=0").bind(&quote_fence).bind(crate::types::now_unix()).bind(id).bind(&t.state).bind(serde_json::to_string(&t.data)?).execute(&self.db).await?.rows_affected();
+        let changed=sqlx::query("UPDATE burrow_travel_transactions SET state='quoting',body=?,updated_at=? WHERE id=? AND state=? AND body=? AND stopped=0").bind(&quote_fence).bind(crate::types::now_unix()).bind(id).bind(t.state).bind(serde_json::to_string(&t.data)?).execute(&self.db).await?.rows_affected();
         if changed != 1 {
             return Err(TravelError::Conflict);
         }
@@ -581,7 +581,7 @@ impl TravelLedger {
             "reconciliation backoff; no redispatch",
         )?;
         let n=sqlx::query("UPDATE burrow_travel_transactions SET state='reconciling',reconcile_started_at=COALESCE(reconcile_started_at,?),reconcile_attempts=reconcile_attempts+1,reconcile_next_at=?,updated_at=? WHERE id=? AND state=? AND reconcile_attempts=? AND (reconcile_next_at IS NULL OR reconcile_next_at<=?)")
-            .bind(now).bind(now+30).bind(now).bind(id).bind(&t.state).bind(t.reconcile_attempts).bind(now).execute(&self.db).await?.rows_affected();
+            .bind(now).bind(now+30).bind(now).bind(id).bind(t.state).bind(t.reconcile_attempts).bind(now).execute(&self.db).await?.rows_affected();
         if n != 1 {
             return Err(TravelError::Conflict);
         }

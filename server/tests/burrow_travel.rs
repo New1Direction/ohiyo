@@ -205,7 +205,7 @@ async fn setup() -> Harness {
             &scope,
             "mandate",
             1,
-            &[profile_id.clone()],
+            std::slice::from_ref(&profile_id),
             Some(money(75000)),
             "Lowest refundable option near the station; higher rating alternative cost more".into(),
         )
@@ -407,7 +407,7 @@ async fn mandate_versions_are_immutable_and_cannot_widen_running_authority() {
             &h.scope,
             "mandate",
             2,
-            &[h.profile_id.clone()],
+            std::slice::from_ref(&h.profile_id),
             None,
             "new ID cannot bypass existing transaction".into()
         )
@@ -443,7 +443,7 @@ async fn cross_account_workspace_task_mandate_profile_and_receipts_are_isolated(
             &other,
             "other-mandate",
             1,
-            &[h.profile_id.clone()],
+            std::slice::from_ref(&h.profile_id),
             None,
             "not mine".into()
         )

@@ -12,6 +12,8 @@ pub struct BookingRequest {
     pub travelers: Vec<TravelerProfile>,
 }
 
+// Outcomes are handled one at a time; keep the typed provider API without boxing.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum WriteOutcome {
     Confirmed(Observed<Booking>),
@@ -30,6 +32,8 @@ pub struct BookingPage {
     pub after: Option<String>,
 }
 
+// See provision::MachineProvisioner for async_trait's generated must_use pair.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Stays: Send + Sync {
     async fn search(
@@ -46,6 +50,7 @@ pub trait Stays: Send + Sync {
 }
 
 /// Injectable typed HTTP seam. Tests need no token and never call Duffel.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Http: Send + Sync {
     async fn request(
