@@ -179,6 +179,98 @@ Executed verification on 2026-10-21:
   Docker daemon/socket (`docker info` cannot connect). No real browser screenshot,
   desktop boot, authenticated profile reattachment or live-view claim is made.
 
+## ComputerProvider 1.1.0 verification follow-up
+
+The contract remains unchanged. Production `ComputerNotDispatched` sites in
+`src/imorb-computer.mjs` (line numbers at this follow-up):
+
+| Site | Exact condition establishing pre-dispatch | Regression coverage |
+| --- | --- | --- |
+| 28 | Combined signal is already aborted, before calling `spawn`. | Pre-aborted call creates no fixture home; the same command without cancellation initializes it. |
+| 37–38 | Child `error`, no `spawn` event, no PID, and code is `ENOENT`, `EACCES` or `ENOEXEC`. No provider executable ran; queued local stdin is not remote dispatch. | Actual missing and non-executable files reject with this class; non-executable marker stays absent. A spawned nonzero exit instead leaves the effect uncertain. |
+| 150 | No eligible engine after discovery, and no ambiguous discovery error. Engines are absent, explicitly not ready, lack the operation/surface, or threw the actual pre-dispatch class. No engine action was dispatched. | Absent/unavailable/unsupported/pre-dispatch cases are distinguished from timeout, reset, version mismatch and unknown engine state. |
+
+The last site previously swallowed all health errors and incorrectly asserted
+non-dispatch. Ambiguous health failures now throw an ordinary error, preserving
+uncertainty for non-idempotent effects. Unknown engine states are rejected rather
+than interpreted as acknowledged unavailability. Delegated execution errors are
+not reclassified. Timeout, abort after spawn, EOF/nonzero exit, lost acknowledgement
+and unknown process errors never become `ComputerNotDispatched`.
+
+Tests also inject this class in `test/computer-provider.test.mjs:141`, before
+external work, and construct it in `test/imorb-computer.test.mjs:119` for the
+preflight case. The name-only lookalike at provider test line 147 is deliberately
+an ordinary error after an effect; it cannot authorize replay.
+
+The post-write timeout regression uses a real subprocess and the actual file
+helper: the receiver records the request bytes and commits the file before the
+timeout fires. The receipt is `uncertain`, not `unavailable`; worker restart and
+reconnect preserve it, and both the original and a new action ID are prevented
+from overwriting the file. This is transport-fixture evidence, not a live ImOrb.
+
+Follow-up verification on 2026-10-21:
+
+| Working directory | Command | Result |
+| --- | --- | --- |
+| `server` | `cargo test -j 2` | 566 passed, 0 failed, 0 ignored, 0 filtered; doc-tests completed with 0 tests. |
+| `server` | `cargo test --no-default-features -j 2` | 566 passed, 0 failed, 0 ignored, 0 filtered; doc-tests completed with 0 tests. |
+| `worker` | `npm test` | 77 passed, 0 failed, 0 cancelled, 0 skipped. |
+
+Both Cargo commands used `CARGO_PROFILE_DEV_DEBUG=0`,
+`CARGO_PROFILE_TEST_DEBUG=0` and `CARGO_INCREMENTAL=0`. An initial build exhausted
+disk before tests started; `cargo clean` removed generated build cache and both
+complete suites then exited successfully. No test selection or skipping was used.
+
+**Live 12-point ImOrb qualification was not run.** `command -v orbd` finds no
+executable. `/usr/bin/docker` exists, but `docker info` cannot connect to
+`unix:///var/run/docker.sock`: that socket does not exist. A host with the pinned
+`orbd` and an accessible Docker daemon is required; fixtures are not a substitute.
+
+### Missing ImOrb-side APIs
+
+These are proposed upstream resource APIs, **not changes to ComputerProvider**.
+
+1. **Scoped state reattachment — does not block the narrow typed-Duffel travel
+   demo; blocks replacement session-continuity qualification.** The inspected
+   ImOrb mounts its own state at `/orb/state`; destroy removes that state.
+   Create/replace cannot attach an independently retained browser profile and
+   workspace. Suggested resource API:
+
+   ```text
+   create({request_id, account, workspace_id,
+     state:{workspace_volume_id, profile_volume_id, attachment_generation}})
+     -> {computer_id, attachment_generation, persistence:{workspace:true,profile:true}}
+   release({computer_id, retain_state:true})
+   delete_state({account, workspace_id, workspace_volume_id, profile_volume_id})
+   ```
+
+   The provisioner must check account/workspace ownership, enforce exclusive
+   attachment and generation fencing, and retain state independently of machine
+   deletion. Replacement must reattach the same IDs. Explicit authorized state
+   deletion is separate from resource cleanup. Until then, replacement is clean,
+   re-authentication may be needed, and Pi state alone survives.
+
+2. **Scoped expiring live-view sessions — does not block the narrow autonomous
+   typed-Duffel travel demo; blocks Take Over qualification.** Existing portal
+   HTTP/WebSocket routing uses a static per-orb token, not a short-lived,
+   mode-restricted session. Suggested resource API:
+
+   ```text
+   POST /computers/{computer_id}/view-sessions
+     {request_id, account, workspace_id, mode:"read_only"|"interactive", ttl_seconds:300}
+     -> {session_id, access_url, expires_at, mode}
+   DELETE /computers/{computer_id}/view-sessions/{session_id}
+   ```
+
+   Authenticate the Burrow host and enforce owner scope, expiry, revocation and
+   mode on every connection, including WebSocket upgrades and existing sessions.
+   Credentials go only to the authenticated client, never to Pi or action logs.
+
+Neither API substitutes for the separate browser engine, scoped network grants
+and navigation policy. Research can use existing tools without either API;
+booking/payment stay on typed Duffel/spend paths. This does not claim that a
+travel demo or real computer qualification has passed.
+
 ## Changed files for this slice
 
 ```text

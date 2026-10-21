@@ -43,6 +43,12 @@ else if (operation === 'create') {
   const code = args[2]?.replace("'/orb/state/burrow-computer/files'", JSON.stringify(join(home, name, 'files')));
   const result = spawnSync(process.execPath, args[1] === '--version' ? ['--version'] : ['--eval', code], { input, encoding: 'utf8' });
   if (result.status !== 0) process.exit(1);
+  if (existsSync(join(home, 'lose-exec-ack'))) {
+    // Test fault: request bytes were received and the actual file helper already
+    // committed its effect, but no acknowledgement reaches the caller.
+    await writeFile(join(home, 'received-exec.json'), input);
+    await new Promise(resolve => setTimeout(resolve, 60000));
+  }
   process.stdout.write(result.stdout);
 } else throw new Error('No agent or other CLI command allowed');
 await writeFile(registry, JSON.stringify(rows));

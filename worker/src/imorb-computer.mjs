@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { isAbsolute } from 'node:path';
 import { readFileSync, realpathSync } from 'node:fs';
-import { COMPUTER_CONTRACT_VERSION, ComputerNotDispatched, validateComputerCapabilities } from './computer-contract.mjs';
+import { COMPUTER_CONTRACT_VERSION, COMPUTER_STATES, ComputerNotDispatched, validateComputerCapabilities } from './computer-contract.mjs';
 
 const fileHelper = readFileSync(new URL('./imorb-files.mjs', import.meta.url), 'utf8');
 const features = ['files.read', 'files.write', 'files.ensure_directory'];
@@ -89,6 +89,7 @@ export class ImOrbComputerBackend {
       const result = await Promise.race([engine.status(allocation), new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error('Engine health check timed out.')), 5000);
       })]);
+      if (!COMPUTER_STATES.includes(result?.state)) throw new Error('Unknown computer engine state.');
       validateComputerCapabilities(result.capabilities);
       return result;
     } finally { clearTimeout(timer); }
@@ -134,13 +135,18 @@ export class ImOrbComputerBackend {
           input: JSON.stringify({ identity, action }) });
         return JSON.parse(raw);
       }
+      let discoveryUncertain = false;
       for (const engine of this.engines) {
         let state;
-        try { state = await this.engineStatus(engine, a); } catch { continue; }
+        try { state = await this.engineStatus(engine, a); }
+        catch (error) { if (!(error instanceof ComputerNotDispatched)) discoveryUncertain = true; continue; }
         if (action.operation === 'screenshot' && !state.capabilities.features.includes(`${action.args.surface}.screenshot`)) continue;
         if (state.state === 'ready' && state.capabilities.features.includes(action.operation === 'screenshot' ? 'screenshot'
           : action.operation.startsWith('desktop.') ? 'desktop.lcu' : action.operation)) return engine.execute(a, identity, action, { signal: bounded });
       }
+      // A health request may itself have crossed the transport boundary. Only
+      // positively unavailable engines (or no engine) establish non-dispatch.
+      if (discoveryUncertain) throw new Error('Computer engine availability has an unknown outcome.');
       throw new ComputerNotDispatched();
     } finally { this.running.delete(actionKey(identity)); }
   }
