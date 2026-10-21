@@ -10,6 +10,8 @@ try {
   const page = await ctx.newPage();
   page.on("pageerror", (e) => console.error("  ERR:", e.message));
   await page.goto(ORIGIN, { waitUntil: "domcontentloaded" });
+  // The Ohiyo app loads separately from Burrow; DOM readiness precedes its imports.
+  await page.waitForFunction(() => typeof window.__ohiyoTestSandboxHost === "function");
 
   const result = await page.evaluate(async () => {
     const SandboxHost = window.__ohiyoTestSandboxHost;
