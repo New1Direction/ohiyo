@@ -2,7 +2,9 @@
 //! The authenticated Pi bridge supplies Scope; model/tool arguments never create
 //! mandates or traveler profiles. Research Materials are advisory inputs only.
 pub mod duffel;
+mod fixtures;
 mod ledger;
+pub mod workflow;
 pub use ledger::*;
 
 use chrono::{DateTime, NaiveDate};
@@ -114,7 +116,7 @@ pub struct TravelerProfile {
     pub born_on: NaiveDate,
 }
 impl TravelerProfile {
-    fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
         require(
             !self.given_name.trim().is_empty() && !self.family_name.trim().is_empty(),
             "missing traveler given_name/family_name",
@@ -131,6 +133,44 @@ impl TravelerProfile {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct TravelArea {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub radius_meters: f64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SubstitutionTolerance {
+    ExactProperty,
+    #[default]
+    WithinArea,
+}
+
+fn valid_coordinates(latitude: f64, longitude: f64) -> bool {
+    latitude.is_finite()
+        && longitude.is_finite()
+        && (-90.0..=90.0).contains(&latitude)
+        && (-180.0..=180.0).contains(&longitude)
+}
+
+/// Great-circle distance on a mean-radius Earth, in meters. Invalid coordinates
+/// return NaN so a bounded comparison fails closed; argument order is lat/lon.
+pub fn distance_meters(latitude: f64, longitude: f64, to_latitude: f64, to_longitude: f64) -> f64 {
+    if !valid_coordinates(latitude, longitude) || !valid_coordinates(to_latitude, to_longitude) {
+        return f64::NAN;
+    }
+    let a = ((to_latitude - latitude).to_radians() / 2.0).sin().powi(2)
+        + latitude.to_radians().cos()
+            * to_latitude.to_radians().cos()
+            * ((to_longitude - longitude).to_radians() / 2.0)
+                .sin()
+                .powi(2);
+    2.0 * 6_371_008.8 * a.clamp(0.0, 1.0).sqrt().asin()
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Mandate {
     pub maximum: Money,
     pub country_code: String,
@@ -142,6 +182,15 @@ pub struct Mandate {
     pub require_refundable: bool,
     /// Explicit property allowlist. Empty means any property inside city/country.
     pub accommodation_ids: Vec<String>,
+    #[serde(default)]
+    pub area: Option<TravelArea>,
+    #[serde(default)]
+    pub bed_type: Option<String>,
+    #[serde(default)]
+    pub substitution_tolerance: SubstitutionTolerance,
+    /// Soft preferences only; never widen booking authority.
+    #[serde(default)]
+    pub amenity_preferences: Vec<String>,
     /// No date/currency/guest substitutions in V1; optional property substitutions
     /// are confined to the allowlist or city. Preferences never grant authority.
     pub minimum_rating: Option<u8>,
@@ -149,7 +198,30 @@ pub struct Mandate {
     pub spend_capability_id: String,
 }
 impl Mandate {
-    fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
+        if let Some(area) = &self.area {
+            require(
+                valid_coordinates(area.latitude, area.longitude)
+                    && area.radius_meters.is_finite()
+                    && area.radius_meters > 0.0,
+                "invalid mandate area",
+            )?;
+        }
+        require(
+            self.bed_type
+                .as_ref()
+                .is_none_or(|bed| !bed.trim().is_empty()),
+            "invalid mandated bed type",
+        )?;
+        require(
+            self.substitution_tolerance != SubstitutionTolerance::ExactProperty
+                || (!self.accommodation_ids.is_empty()
+                    && self
+                        .accommodation_ids
+                        .iter()
+                        .all(|id| !id.trim().is_empty())),
+            "exact property requires nonempty accommodation IDs",
+        )?;
         require(
             self.maximum.minor > 0 && Money::parse("0", &self.maximum.currency).is_ok(),
             "invalid maximum",
@@ -199,6 +271,27 @@ impl Mandate {
             self.accommodation_ids.is_empty()
                 || self.accommodation_ids.contains(&q.accommodation.id),
             "property substitution outside mandate",
+        )?;
+        require(
+            valid_coordinates(q.accommodation.latitude, q.accommodation.longitude),
+            "invalid property coordinates",
+        )?;
+        if let Some(area) = &self.area {
+            require(
+                distance_meters(
+                    area.latitude,
+                    area.longitude,
+                    q.accommodation.latitude,
+                    q.accommodation.longitude,
+                ) <= area.radius_meters,
+                "property outside mandate area",
+            )?;
+        }
+        require(
+            self.bed_type
+                .as_ref()
+                .is_none_or(|bed| q.bed_type.as_ref().is_some_and(|fact| fact == bed)),
+            "bed type missing/outside mandate",
         )?;
         require(
             self.minimum_rating
@@ -261,6 +354,9 @@ pub struct Quote {
     pub rate_id: String,
     /// Duffel rooms have names, not stable room IDs; rate_id identifies inventory.
     pub room: String,
+    /// Explicit provider fact only, never inferred from the display room name.
+    #[serde(default)]
+    pub bed_type: Option<String>,
     pub accommodation: Accommodation,
     pub check_in: NaiveDate,
     pub check_out: NaiveDate,

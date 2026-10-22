@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilterLXML
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from schemas import extract_hotel
+from control import BrowserControl, PrivateControl
 
 REQUEST_LIMIT = 64 * 1024
 HTML_LIMIT = 2 * 1024 * 1024
@@ -102,7 +103,7 @@ def bounded(value, limit):
 
 
 class Engine:
-    def __init__(self, scope, endpoint):
+    def __init__(self, scope, endpoint, control_path=None):
         self.scope = scope
         self.endpoint = cdp_url(endpoint)
         if set(scope) != set(BINDING) | {"approved_urls", "read_only_urls", "egress_origins"}:
@@ -121,17 +122,22 @@ class Engine:
             raise ValueError("egress_origins must be canonical HTTPS origins")
         if any(origin(url) not in self.origins for url in scope["approved_urls"]):
             raise ValueError("approved URL outside egress origins")
-        self.page = self.context = self.pw = None
+        self.page = self.context = self.pw = self.requests = None
         self.records = {}
         self.cached_bytes = 0
         self.active = None
         self.ready = False
         self.tab_id = "engine"
+        self.control = BrowserControl(self, control_path) if control_path else None
 
     async def start(self):
         if os.environ.get("BURROW_BROWSER_EGRESS_ENFORCED") != "1":
             raise ValueError("operator-enforced egress required")
         self.pw = await async_playwright().start()
+        if self.control:
+            # CDP attachment does not import Chrome's proxy into route.fetch's
+            # API client. Keep sidecar reads on the same authenticated gateway.
+            self.requests = await self.pw.request.new_context(proxy={"server": "http://127.0.0.1:8766"})
         # Never enter a Browser context manager: it would close the shared browser.
         browser = await self.pw.chromium.connect_over_cdp(self.endpoint, timeout=10000)
         if not browser.contexts:
@@ -141,19 +147,27 @@ class Engine:
             raise ValueError("existing service workers unsupported; use a dedicated profile")
         await self.context.route("**/*", self.route)
         await self.context.route_web_socket("**/*", self.websocket)
-        self.page = await self.context.new_page()
+        self.page = await self.control.attach_page() if self.control else await self.context.new_page()
         self.page.set_default_timeout(10000)
         self.ready = True
 
     async def route(self, route):
         request = route.request
         try:
-            allowed = origin(request.url) in self.origins and request.method in ("GET", "HEAD")
+            human = self.control and self.control.state() and self.control.state()["phase"] == "human"
+            allowed = origin(request.url) in self.origins and (human or request.method in ("GET", "HEAD"))
             if request.is_navigation_request():
-                allowed = allowed and request.url in self.scope["approved_urls"]
+                allowed = allowed and (human or request.url in self.scope["approved_urls"])
             if allowed:
+                if human:
+                    # Preserve native form/cookie/redirect semantics for login.
+                    # Playwright does not re-route every redirect hop: the
+                    # mandatory upstream exact-authority policy is the boundary,
+                    # not this interception. Private input never enters crawl4ai.
+                    await route.continue_()
+                    return
                 # Do not let continue_ silently follow redirects outside routing.
-                response = await route.fetch(max_redirects=0, max_retries=0, timeout=10000)
+                response = await self.requests.fetch(request, max_redirects=0, max_retries=0, timeout=10000) if self.requests else await route.fetch(max_redirects=0, max_retries=0, timeout=10000)
                 try:
                     if 300 <= response.status < 400:
                         destination = urljoin(request.url, response.headers.get("location", ""))
@@ -180,10 +194,12 @@ class Engine:
         if self.active:
             self.active.cancel()
             await asyncio.gather(self.active, return_exceptions=True)
-        if self.page:
+        if self.page and not self.control:
             await self.page.close()
         if self.context:
             await self.context.unroute("**/*", self.route)
+        if self.requests:
+            await self.requests.dispose()
         if self.pw:
             await self.pw.stop()  # disconnect transport only; never browser.close()
 
@@ -224,6 +240,8 @@ class Engine:
 
     async def execute(self, body):
         key = self.validate(body)
+        if self.control:
+            self.control.require_agent()
         terms = json.dumps(body, sort_keys=True, separators=(",", ":"))
         if key in self.records:
             record = self.records[key]
@@ -241,12 +259,16 @@ class Engine:
         self.active = task
         try:
             output = await asyncio.wait_for(task, TIMEOUT)
+            if self.control:
+                self.control.require_agent()
             encoded = bounded(json.dumps(output), JSON_LIMIT)
             self.cached_bytes += len(encoded.encode())
             record.update(state="completed", output=output)
             return output
-        except BaseException:
+        except BaseException as error:
             record["state"] = "not_completed"
+            if isinstance(error, PrivateControl):
+                raise  # drained result suppressed; preserve the human's exact tab
             # Cancelled Playwright awaits do not necessarily stop Chrome loading.
             # Close only our tab and fail readiness until the service is replaced.
             self.ready = False
@@ -343,6 +365,7 @@ def create_app(engine, token):
         return web.json_response({"state": "ready" if connected else "unavailable",
                                   "crawl4ai_version": version("crawl4ai"),
                                   "binding": {k: engine.scope[k] for k in BINDING},
+                                  "private_control": engine.control is not None,
                                   "busy": engine.active is not None})
 
     async def execute(request):
@@ -351,10 +374,16 @@ def create_app(engine, token):
     async def cancel(request):
         return web.json_response(await engine.cancel(await request.json()))
 
+    async def control(request):
+        if not engine.control:
+            raise ValueError("private browser control not configured")
+        return web.json_response(await engine.control.call(await request.json()), headers={"Cache-Control": "no-store"})
+
     app.router.add_get("/status", status)
     app.router.add_get("/health", status)
     app.router.add_post("/execute", execute)
     app.router.add_post("/cancel", cancel)
+    app.router.add_post("/control", control)
 
     async def startup(app):
         try:
@@ -379,5 +408,13 @@ if __name__ == "__main__":
     if len(token) < 32 or not token.isascii() or any(c.isspace() for c in token):
         raise ValueError("token must contain at least 32 ASCII non-whitespace characters")
     scope = json.loads(Path(os.environ["BURROW_BROWSER_SCOPE_FILE"]).read_text())
-    engine = Engine(scope, os.environ["BURROW_BROWSER_CDP_URL"])
+    # Only a host-created private directory enables persistent tab/control state.
+    # Legacy read-only installations remain unchanged and advertise no takeover.
+    state_dir = os.environ.get("BURROW_BROWSER_STATE_DIRECTORY")
+    if state_dir:
+        state = Path(state_dir)
+        if not state.is_absolute() or state.stat().st_mode & 0o077:
+            raise ValueError("browser state directory must be absolute and private (0700)")
+        os.umask(0o077)
+    engine = Engine(scope, os.environ["BURROW_BROWSER_CDP_URL"], str(Path(state_dir) / "control.sqlite") if state_dir else None)
     web.run_app(create_app(engine, token), host="127.0.0.1", port=int(os.environ.get("BURROW_BROWSER_PORT", "8765")), access_log=None)

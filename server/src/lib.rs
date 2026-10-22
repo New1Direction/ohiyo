@@ -97,6 +97,9 @@ pub struct AppState {
     pub burrow: Option<api::burrow::Burrow>,
     /// Optional single-account local ImOrb bridge; separate from writing and chat.
     pub kikka: Option<api::burrow::agent::Kikka>,
+    /// Explicit offline travel demo. Never enables a live booking transport.
+    pub travel_fixtures: bool,
+    pub travel_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 /// Build a fresh [`AppState`] around a database pool, initialising all the in-memory
@@ -139,6 +142,8 @@ pub fn build_state(db: SqlitePool) -> AppState {
         calls: api::calls::new_call_sessions(),
         burrow: api::burrow::Burrow::from_env(),
         kikka: api::burrow::agent::Kikka::from_env(),
+        travel_fixtures: std::env::var("BURROW_TRAVEL_FIXTURES").as_deref() == Ok("1"),
+        travel_lock: Default::default(),
     }
 }
 

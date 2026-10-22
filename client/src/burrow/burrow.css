@@ -235,6 +235,10 @@
 .burrow-permission input { display: block; width: 120px; padding: 10px 12px; margin: 8px 0; border: 1px solid var(--line); border-radius: 7px; background: var(--base); color: var(--ink); }
 .burrow-permission select { display: block; max-width: 100%; padding: 10px 12px; margin: 8px 0; border: 1px solid var(--line); border-radius: 7px; background: var(--base); color: var(--ink); font: inherit; }
 .burrow-permission > button { margin-top: 20px; }
+.burrow-private-browser > button { margin-right: 8px; }
+.burrow-private-browser .burrow-browser-frame { display: block; width: 100%; margin: 20px 0; padding: 8px; }
+.burrow-private-browser input { width: min(100%, 320px); }
+.burrow-private-browser form { margin: 20px 0; }
 #model-settings { max-width: 900px; margin: 24px; overflow-wrap: anywhere; }
 #model-settings form { margin: 24px 0; }
 #model-settings label { margin: 16px 0; }
@@ -301,6 +305,14 @@
 .burrow-login input { display: block; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 7px; margin-top: 8px; background: var(--base); color: var(--ink); }
 .burrow-login > button { width: 100%; margin: 10px 0; }
 .burrow-login > .burrow-small { font-size: 10px !important; margin: 20px 0 0 !important; }
+.burrow-travel-form { margin-top: 24px; }
+.burrow-travel-form fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; min-width: 0; border: 0; padding: 0; }
+.burrow-travel-form legend { padding: 16px 0; font-weight: 600; }
+.burrow-travel-form label { display: block; font-size: 12px; min-width: 0; }
+.burrow-travel-form select { display: block; width: 100%; padding: 12px; margin-top: 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--base); color: var(--ink); }
+.burrow-travel-form fieldset > :is(fieldset, p, button), .burrow-travel-form label:has(input[type="checkbox"]) { grid-column: 1 / -1; }
+.burrow-travel-form input[type="checkbox"] { display: inline-block; width: auto; margin: 0 8px 0 0; }
+@media (max-width: 600px) { .burrow-travel-form fieldset { grid-template-columns: minmax(0, 1fr); } }
 @keyframes burrow-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .burrow *, .burrow *::before, .burrow *::after { animation: none !important; transition: none !important; } }
 @media (max-width: 850px) { .burrow-shell { grid-template-columns: 225px minmax(0, 1fr); } .burrow-sidebar { padding: 25px 14px 18px; } .burrow-topbar { padding: 0 24px; } .burrow-welcome, .burrow-detail { padding: 32px 24px; } .burrow-everyday-shortcuts { gap: 10px; } .burrow-everyday-shortcuts button { padding: 17px; } .burrow-door { padding: 30px; gap: 30px; } .burrow-intro h1 { font-size: 36px; } }

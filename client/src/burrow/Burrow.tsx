@@ -7,6 +7,7 @@ import Everyday from "./Everyday";
 import KikkaReply from "./KikkaReply";
 import Creation from "./Creation";
 import ResearchTask from "./ResearchTask";
+import Travel from "./Travel";
 import ModelSettings from "./ModelSettings";
 import SelectionActions from "./SelectionActions";
 import { taskActionError } from "./taskLanguage";
@@ -87,6 +88,7 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [navOpen, setNavOpen] = useState(false);
   const [ambiencePaused, setAmbiencePaused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [travelGoal, setTravelGoal] = useState<string | null>(null);
   const [routing, setRouting] = useState<ModelRouting | null>(null);
   async function refreshRouting() { setRouting(await api.modelRouting(token)); }
   useEffect(() => {
@@ -136,8 +138,9 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: () => void 
   const active = data?.tasks.filter(t => t.state === "working").length ?? 0;
   const filtered = data?.tasks.filter(t => t.request.toLowerCase().includes(search.toLowerCase())) ?? [];
   function selectTask(id: string | null) {
-    if (id === selected) return;
+    if (id === selected && travelGoal === null) return;
     if (dirty && !window.confirm("Discard your unsaved changes?")) return;
+    setTravelGoal(null);
     setSelected(id); setError(""); setNavOpen(false);
     if (id === null) requestAnimationFrame(() => input.current?.focus());
   }
@@ -172,12 +175,13 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: () => void 
       {settingsOpen && <ModelSettings key={routing ? "loaded" : "unavailable"} token={token} data={routing} onRefresh={refreshRouting} onDone={() => { setSettingsOpen(false); selectTask(null); }} />}
       {refreshError && <p role="alert" className="burrow-error burrow-refresh-error">{refreshError}</p>}
       {error && <p role="alert" className="burrow-error burrow-refresh-error">{error}</p>}
-      {task?.format === "creation" ? <Creation key={task.id} task={task} token={token} canRun={data?.can_run ?? false} service={data?.service ?? null} onUpdate={update} onDirtyChange={setDirty} /> : task?.template ? <Everyday key={task.id} task={task} token={token} onUpdate={update} onDirtyChange={setDirty} /> : task?.kind === "tracker" ? <Tracker key={task.id} task={task} token={token} onUpdate={next => { update(next); if (next.id !== task.id) setSelected(next.id); }} onDirtyChange={setDirty} /> : task && (data?.agent_task_ids?.includes(task.id) || (data?.can_research && !task.result)) ? <ResearchTask key={task.id} task={task} token={token} canRun={data?.can_research ?? false} onUpdate={update} onDirtyChange={setDirty} /> : task ? <TaskView key={task.id} task={task} token={token} canRun={data?.can_run ?? false} service={data?.service ?? null} onUpdate={update} onDirtyChange={setDirty} /> : <div className="burrow-welcome">
+      {travelGoal !== null ? <Travel token={token} goal={travelGoal} onDirtyChange={setDirty} onCancel={() => { if (window.confirm("Discard this trip draft?")) setTravelGoal(null); }} onCreated={next => { update(next); setSelected(next.id); setTravelGoal(null); setRequest(""); }} /> : task?.format === "creation" ? <Creation key={task.id} task={task} token={token} canRun={data?.can_run ?? false} service={data?.service ?? null} onUpdate={update} onDirtyChange={setDirty} /> : task?.template ? <Everyday key={task.id} task={task} token={token} onUpdate={update} onDirtyChange={setDirty} /> : task?.kind === "tracker" ? <Tracker key={task.id} task={task} token={token} onUpdate={next => { update(next); if (next.id !== task.id) setSelected(next.id); }} onDirtyChange={setDirty} /> : task && (task.travel || data?.agent_task_ids?.includes(task.id) || (data?.can_research && !task.result)) ? <ResearchTask key={task.id} task={task} token={token} canRun={data?.can_research ?? false} onUpdate={update} onDirtyChange={setDirty} /> : task ? <TaskView key={task.id} task={task} token={token} canRun={data?.can_run ?? false} service={data?.service ?? null} onUpdate={update} onDirtyChange={setDirty} /> : <div className="burrow-welcome">
         <div className="burrow-hello"><div className="burrow-mascot"><img src={kikka} alt="Kikka, ready to help" /><span aria-hidden>✳</span></div>
           <p className="burrow-eyebrow">HEY, I’M KIKKA.</p><h1>What if you could just make it?</h1><p>Your notes, turned into something you can play.<br />An idea, turned into a page you can actually use.</p></div>
         <form onSubmit={create} className="burrow-composer"><label className="sr-only" htmlFor="burrow-request">New task for Kikka</label><textarea id="burrow-request" ref={input} value={request} onChange={e => setRequest(e.target.value)} placeholder="Kikka, can you help me with…" maxLength={8000} required rows={3} />
           <div><span>Start with an idea. Change it together.</span><button className="burrow-primary" disabled={busy || !data || !request.trim()}>{busy ? "Saving…" : "Continue"}<span aria-hidden>↑</span></button></div>
           {data?.can_research && <section className="burrow-research-start"><label>Project (optional)<input maxLength={80} value={project} onChange={e => setProject(e.target.value)} placeholder="Cotton suppliers" /></label><button type="button" className="burrow-secondary" disabled={busy || !request.trim()} onClick={() => void research()}>Research public pages</button></section>}
+          {data?.can_travel === true && <section className="burrow-research-start"><button type="button" className="burrow-secondary" disabled={busy || !request.trim()} onClick={() => setTravelGoal(request)}>Plan a trip</button><span>Fixture demo — no real booking</span></section>}
         </form>
         <div className="burrow-creation-examples"><div className="burrow-example-heading"><h2>A few things you can play with</h2><span>READY-MADE EXAMPLES</span></div><div className="burrow-example-grid">
           <button disabled={busy || !data} onClick={() => void createRequest("Turn my notes into a study space", "quiz")}><span className="burrow-example-art study" aria-hidden="true"><b>A B C</b><i /><i /><i /></span><strong>Make it stick</strong><p>Notes become a quiz.<br />Find out what you actually know.</p><small>Try study example →</small></button>

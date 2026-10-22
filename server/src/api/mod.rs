@@ -82,6 +82,10 @@ pub fn router() -> Router<AppState> {
         .route("/burrow/tasks/{id}/agent", get(burrow::agent::view).post(burrow::agent::start))
         .route("/burrow/tasks/{id}/agent/control", post(burrow::agent::control))
         .route("/burrow/tasks/{id}/agent/evidence/{evidence}", get(burrow::agent::evidence))
+        .route("/burrow/tasks/{id}/travel", get(burrow::travel::workflow::view).post(burrow::travel::workflow::save))
+        .route("/burrow/tasks/{id}/travel/retry", post(burrow::travel::workflow::retry))
+        .route("/burrow/tasks/{id}/travel/reconcile", post(burrow::travel::workflow::reconcile))
+        .route("/burrow/internal/travel", post(burrow::travel::workflow::command))
         // Auth
         .route("/auth/register", post(auth::register))
         .route("/auth/login", post(auth::login))

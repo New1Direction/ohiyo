@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
 import { BirdMark } from "./BirdMark";
 import { ACCENT_PRESETS, getActiveAccent } from "../lib/appearance";
 
@@ -15,10 +15,22 @@ type Props = {
 
 const SUGGESTIONS = ["My Crew", "Game Night", "Study Room"];
 
+// One static SVG path: ordered dithering, without a canvas loop or random particles.
+const DITHER = (() => {
+  const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  let path = "";
+  for (let y = 0; y < 110; y++) for (let x = 0; x < 160; x++) {
+    const radius = Math.hypot((x - 80) / 76, (y - 43) / 57);
+    const density = Math.max(0, 1 - radius) * 0.5 + Math.max(0, 1 - Math.abs(radius - 0.7) * 12) * 0.2;
+    if (density > (bayer[(y % 4) * 4 + x % 4] + 0.5) / 16) path += `M${x * 2} ${y * 2}h1v1h-1z`;
+  }
+  return path;
+})();
+
 const VALUE_BULLETS: { title: string; body: string }[] = [
-  { title: "#general is ready", body: "Your first text room is created for you." },
-  { title: "Voice is ready", body: "A voice room is seeded — no setup needed." },
-  { title: "Next steps are shown", body: "We’ll guide you through message, invite, and call." },
+  { title: "A place to chat", body: "#general comes with your space." },
+  { title: "Room to talk", body: "Voice is set up from the start." },
+  { title: "An easy first hello", body: "A short checklist gets you going." },
 ];
 
 /**
@@ -32,12 +44,27 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
   const [sharedLink, setSharedLink] = useState("");
   const [linkError, setLinkError] = useState("");
   const [accent, setAccentSel] = useState<string>(getActiveAccent);
+  const [pulse, setPulse] = useState<{ id: number; from: string; color: string; x: number; y: number; radius: number } | null>(null);
+  const pulseSequence = useRef(0);
+  const ditherRef = useRef<SVGSVGElement>(null);
+  const ditherClipId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
   const spotlightRef = useRef<HTMLDivElement>(null);
   const pointerRef = useRef({ x: 0, y: 0, frame: 0 });
 
-  function pickAccent(hex: string) {
+  function pickAccent(hex: string, button: HTMLButtonElement) {
+    const field = ditherRef.current?.getBoundingClientRect();
+    if (field?.width && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const swatch = button.getBoundingClientRect();
+      // Use the swatch center for mouse, touch, and keyboard activation alike.
+      const x = (swatch.left + swatch.width / 2 - field.left) * 320 / field.width;
+      const y = (swatch.top + swatch.height / 2 - field.top) * 220 / field.height;
+      setPulse({ id: ++pulseSequence.current, from: accent, color: hex, x, y,
+        radius: Math.hypot(Math.max(x, 320 - x), Math.max(y, 220 - y)) });
+    } else {
+      setPulse(null);
+    }
     setAccentSel(hex);
     onPickAccent?.(hex); // applies live (recolors this screen) + syncs
   }
@@ -45,8 +72,12 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
   useEffect(() => {
     inputRef.current?.focus();
     const pointerState = pointerRef.current;
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const stopPulse = () => { if (motion.matches) setPulse(null); };
+    motion.addEventListener("change", stopPulse);
     return () => {
       if (pointerState.frame) window.cancelAnimationFrame(pointerState.frame);
+      motion.removeEventListener("change", stopPulse);
     };
   }, []);
 
@@ -54,7 +85,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
   const firstName = (displayName || "there").split(/\s+/)[0];
 
   function handlePointerMove(e: PointerEvent<HTMLDivElement>) {
-    if (e.pointerType !== "mouse") return;
+    if (e.pointerType !== "mouse" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     pointerRef.current.x = e.clientX;
     pointerRef.current.y = e.clientY;
     if (pointerRef.current.frame) return;
@@ -105,18 +136,31 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
       style={{
-        background:
-          "radial-gradient(circle at 28% 18%, color-mix(in oklch, var(--accent) 16%, var(--bg-base)) 0%, var(--bg-base) 58%)",
         padding: "var(--space-6)",
       }}
     >
       <div ref={spotlightRef} className="ohiyo-cursor-spotlight" aria-hidden="true" />
       <div className="ohiyo-onboarding-glow" aria-hidden="true" />
+      <svg ref={ditherRef} className="ohiyo-onboarding-dither" viewBox="0 0 320 220" aria-hidden="true" focusable="false">
+        <path d={DITHER} fill={pulse?.from ?? "currentColor"} />
+        {pulse && <>
+          <defs><clipPath id={ditherClipId}><path d={DITHER} /></clipPath></defs>
+          <g key={pulse.id} className="ohiyo-onboarding-dither-pulse" clipPath={`url(#${ditherClipId})`}>
+            <circle className="ohiyo-onboarding-color-wave" cx={pulse.x} cy={pulse.y} r={pulse.radius}
+              fill={pulse.color} style={{ transformOrigin: `${pulse.x}px ${pulse.y}px` }}
+              onAnimationEnd={() => setPulse(current => current?.id === pulse.id ? null : current)} />
+            <circle className="ohiyo-onboarding-wave-edge" cx={pulse.x} cy={pulse.y} r={pulse.radius}
+              fill="none" stroke="white" strokeWidth="18"
+              style={{ transformOrigin: `${pulse.x}px ${pulse.y}px` }} />
+          </g>
+        </>}
+      </svg>
       <div className="ohiyo-onboarding-hero relative z-10 m-auto flex w-full max-w-xl flex-col items-center text-center">
         <div className="ohiyo-onboarding-mark mb-1" style={{ color: "var(--accent)" }}>
           <BirdMark size={64} />
         </div>
 
+        <p className="ohiyo-onboarding-eyebrow">Your people. Your space.</p>
         <h1
           style={{
             fontFamily: "var(--font-display)", fontWeight: 700,
@@ -127,7 +171,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
           oh, hi {firstName} 👋
         </h1>
         <p className="mt-2 text-base" style={{ color: "var(--text-secondary)", maxWidth: 440 }}>
-          Create one space for your people. Ohiyo will set up chat, voice, and a tiny launch checklist for you.
+          Every good space starts with a hello.<br />Give yours a name. We’ll set up chat and voice.
         </p>
 
         {/* Create-your-first-space card */}
@@ -141,6 +185,9 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
             border: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)",
           }}
         >
+          <svg className="ohiyo-onboarding-outline" aria-hidden="true" focusable="false">
+            <rect x="1" y="1" width="calc(100% - 2px)" height="calc(100% - 2px)" rx="22" pathLength="1" />
+          </svg>
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <label
               htmlFor="kc-space-name"
@@ -167,7 +214,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
                 style={{ opacity: !trimmed || busy ? 0.65 : 1, cursor: !trimmed || busy ? "default" : "pointer", minWidth: 112 }}
               >
                 {busy ? (
-                  <span className="kc-spinner" style={{ width: 16, height: 16, borderColor: "rgba(255,255,255,0.35)", borderTopColor: "#fff" }} />
+                  <><span aria-hidden="true" className="kc-spinner" style={{ width: 16, height: 16, borderColor: "rgba(255,255,255,0.35)", borderTopColor: "#fff" }} />Opening…</>
                 ) : trimmed ? (
                   "Let's go"
                 ) : (
@@ -261,7 +308,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
                     title={p.name}
                     aria-label={`Accent ${p.name}`}
                     aria-pressed={isActive}
-                    onClick={() => pickAccent(p.hex)}
+                    onClick={(e) => pickAccent(p.hex, e.currentTarget)}
                     className="kc-accent-swatch"
                     style={{
                       background: p.hex,

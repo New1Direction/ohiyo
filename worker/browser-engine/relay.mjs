@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 let input = ''; for await (const chunk of process.stdin) { input += chunk; if (input.length > 64000) process.exit(1); }
 try {
   const { endpoint, body } = JSON.parse(input);
-  if (!['/status', '/execute', '/cancel'].includes(endpoint)) throw new Error('Unsupported endpoint');
+  if (!['/status', '/execute', '/cancel', '/control'].includes(endpoint)) throw new Error('Unsupported endpoint');
   const token = (await readFile('/run/burrow-browser/token', 'utf8')).trim();
   if (token.length < 32 || /\s/.test(token)) throw new Error('Invalid service token');
   const response = await fetch(`http://127.0.0.1:8765${endpoint}`, {

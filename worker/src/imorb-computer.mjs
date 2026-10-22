@@ -13,9 +13,11 @@ const actionKey = i => JSON.stringify([i.account, i.workspace_id, i.task_id, i.r
  * signatures from computer-contract.mjs, constructed with this transport by host code.
  */
 export class ImOrbComputerBackend {
-  constructor({ binary, home, repo, size = 'small', engines = [], command, dockerCommand = ['docker'], env = {} }) {
+  constructor({ binary, home, repo, size = 'small', sandboxProfile, engines = [], command, dockerCommand = ['docker'], env = {} }) {
     if (!isAbsolute(binary ?? '') || !isAbsolute(home ?? '') || !isAbsolute(repo ?? '') || !['small', 'medium', 'large'].includes(size)) throw new Error('Absolute ImOrb binary, private home and committed repository are required.');
+    if (sandboxProfile !== undefined && sandboxProfile !== 'chromium-userns-v1') throw new Error('Unsupported ImOrb browser sandbox profile.');
     this.command = command ?? [binary]; this.home = home; this.repo = realpathSync(repo); this.size = size; this.engines = engines; this.running = new Map();
+    this.sandboxProfile = sandboxProfile;
     this.dockerCommand = dockerCommand;
     // No model credentials, ambient cloud tokens, agent settings or ORB_SECRET_*.
     this.env = { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? '/nonexistent', ORBD_HOME: home,
@@ -70,7 +72,8 @@ export class ImOrbComputerBackend {
     if (!previous) {
       // ImOrb create is resumable by deterministic name. After an interrupted
       // create, inspect/reconcile its registry rather than invent another name.
-      await this.run(['create', a.computer_id, '--repo', this.repo, '--size', this.size, '--no-snapshot'], { timeoutMs: 180000 });
+      await this.run(['create', a.computer_id, '--repo', this.repo, '--size', this.size, '--no-snapshot',
+        ...(this.sandboxProfile ? ['--sandbox-profile', this.sandboxProfile] : [])], { timeoutMs: 180000 });
     } else if (previous.state === 'Suspended') await this.run(['wake', a.computer_id], { timeoutMs: 150000 });
     else if (previous.state === 'Stopped') await this.run(['start', a.computer_id], { timeoutMs: 150000 });
     else if (previous.state !== 'Running') {
@@ -155,6 +158,12 @@ export class ImOrbComputerBackend {
     await Promise.all(this.engines.map(engine => engine.cancel?.(a, identity)));
     // Killing host exec cannot prove remote effects stopped. Provider retains
     // uncertain effects; cancellation never implies rollback or safe replay.
+  }
+  async browserControl(a, identity, command) {
+    // Dedicated human RPC, not an execute operation and never routed to shell.
+    const engines = this.engines.filter(engine => typeof engine.browserControl === 'function');
+    if (engines.length !== 1) throw new Error('Exactly one private browser engine is required.');
+    return engines[0].browserControl(a, identity, command);
   }
   async live_view(a, identity, options) {
     for (const engine of this.engines) {

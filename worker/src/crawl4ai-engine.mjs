@@ -71,5 +71,14 @@ export class Crawl4aiEngine {
       identity: Object.fromEntries(['account', 'workspace_id', 'task_id', 'root_goal_id', 'request_id'].map(k => [k, identity[k]])),
     });
   }
+  async browserControl(allocation, identity, command) {
+    validateComputerIdentity(identity);
+    if (identity.account !== allocation.account || identity.workspace_id !== allocation.workspace_id) throw new Error('Private browser scope mismatch.');
+    return this.request(allocation, '/control', {
+      allocation: Object.fromEntries(['account', 'workspace_id', 'computer_id', 'generation'].map(k => [k, allocation[k]])),
+      identity: Object.fromEntries(['account', 'workspace_id', 'task_id', 'root_goal_id', 'request_id'].map(k => [k, identity[k]])),
+      command,
+    });
+  }
   async live_view() { throw new Error('No scoped expiring browser view service is installed.'); }
 }

@@ -298,6 +298,9 @@ fn normalize(v: &Value, rate_id: Option<&str>, booking: bool) -> Result<Quote> {
         id: field(v, "id")?.into(),
         rate_id: field(rate, "id")?.into(),
         room: field(room, "name")?.into(),
+        // The supported Stays room schema supplies a display name, not a
+        // guaranteed bed-type fact. Do not turn that name into booking authority.
+        bed_type: None,
         accommodation: accommodation(&v["accommodation"])?,
         check_in: date(v, "check_in_date")?,
         check_out: date(v, "check_out_date")?,
@@ -350,6 +353,10 @@ impl<H: Http> Stays for Duffel<H> {
         longitude: f64,
     ) -> Result<Observed<Vec<SearchOption>>> {
         m.validate()?;
+        let (latitude, longitude, radius_km) =
+            m.area.as_ref().map_or((latitude, longitude, 5.0), |area| {
+                (area.latitude, area.longitude, area.radius_meters / 1000.0)
+            });
         require(
             latitude.is_finite()
                 && longitude.is_finite()
@@ -359,7 +366,7 @@ impl<H: Http> Stays for Duffel<H> {
         )?;
         let mut body = json!({"check_in_date":m.check_in,"check_out_date":m.check_out,"rooms":m.rooms,"guests":m.guests,"free_cancellation_only":m.require_refundable});
         if m.accommodation_ids.is_empty() {
-            body["location"] = json!({"geographic_coordinates":{"latitude":latitude,"longitude":longitude},"radius":5});
+            body["location"] = json!({"geographic_coordinates":{"latitude":latitude,"longitude":longitude},"radius":radius_km});
         } else {
             body["accommodation"] = json!({"ids":m.accommodation_ids});
         }

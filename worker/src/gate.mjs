@@ -12,7 +12,7 @@ const canonical = value => JSON.stringify(value, (_, v) => v && typeof v === 'ob
 // One gate per task. No caller, including compaction, gets the underlying Models.
 export function spendingGate({ db, models, identity, budgetMicros, policy, blocked, activity, stopped, campaign, runId,
   openRouterKey, verifyRoute = verifyOpenRouterSelection, routing, role, admission, resolveCredential,
-  inferenceTransport, subscriptionAccounts, gatewayPrivacyConfirmed = false }) {
+  inferenceTransport, subscriptionAccounts, gatewayPrivacyConfirmed = false, computerControl }) {
   db.exec(`CREATE TABLE IF NOT EXISTS paid_requests (
     id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, reservation INTEGER NOT NULL,
     phase TEXT NOT NULL, response TEXT
@@ -94,6 +94,11 @@ export function spendingGate({ db, models, identity, budgetMicros, policy, block
       if (stopped()) deny('No new requests are authorized for this task.');
       if (uncertain()) deny('Needs you: a model request has an unknown outcome. It will not be repeated.');
     }
+    // Leave Pi's durable generation pending at the paid-request boundary. Give
+    // Back releases this wait; it never creates another agent run or retries an
+    // in-flight model request. Recheck synchronously after every wake.
+    while (computerControl?.active() && !stopped()) await computerControl.wait(options.signal);
+    if (stopped()) deny('No new requests are authorized for this task.');
     if (reserved() + reservation > budgetMicros) deny('Needs you: the approved model budget is exhausted.');
     try { campaign?.admit('model', `${runId}:${id}`); } catch (error) { deny(error.message); }
     // Synchronous SQLite FULL commit completes before the first provider operation.

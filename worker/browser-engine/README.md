@@ -1,9 +1,10 @@
 # Attach-only browser engine
 
 Private Python sidecar and JS adapter behind the existing ComputerProvider
-**1.1.0** host. Pi Durable remains the sole task/model loop. No booking, payment,
-clicks, typing, caller JavaScript, browser launch, new context, or shared-browser
-shutdown. The canonical contract is imported unchanged.
+**1.1.0** host. Pi Durable remains the sole task/model loop. Model operations stay
+read-only: no booking, payment, clicks, typing, caller JavaScript, browser launch,
+new context, or shared-browser shutdown. A separate authenticated human control
+plane supports private Take Over/Give Back. The canonical contract is unchanged.
 
 ## Setup and operation
 
@@ -304,6 +305,72 @@ Next travel-comparison integration: consume these owner-scoped JSON Materials
 with source IDs/timestamps, prefer the `pi_llm` revision over its `llm_required`
 placeholder, and keep all displayed prices advisory. Resolve the chosen hotel
 against Duffel inventory and obtain a fresh typed quote before mandate/spend checks.
+
+## Persistent browser and private takeover
+
+This opt-in path requires the companion ImOrb changes based on
+`15762f1c0e8d29504ed18fff390be60b6b60ded2`; the old binary cannot launch it.
+Enabling `computer.browser.enabled` now selects `--sandbox-profile chromium-userns-v1`
+on **new** allocations. Existing allocations are not silently replaced. The
+default non-browser sandbox is unchanged; never use `--no-sandbox`, privileged,
+SYS_ADMIN or an unconfined seccomp profile as a fallback.
+
+Operator provisioning, inside a dedicated restricted allocation:
+
+1. Install Debian Chromium and this directory at `/opt/burrow-browser`, including
+   its pinned Python environment. Configure the private token/scope files above.
+2. Issue host `egress grant --orb-name NAME --allow-connect example.com:443`
+   for each approved HTTPS authority, with bounded expiry. Revoke broader setup
+   grants before use. Legacy suffix grants are **not** exact authority grants.
+   CONNECT authority enforcement is not inspection of TLS SNI or HTTP origins.
+3. Supervise `python3 /opt/burrow-browser/proxy.py`, then
+   `sh /opt/burrow-browser/chrome.sh`. The loopback adapter reads
+   `/orb/state/runtime/egress.json` on each tunnel. Credentials never enter
+   Chrome argv, task arguments, returned errors or logs. ImOrb remains responsible
+   for public DNS pinning, endpoint authentication and active-tunnel revocation.
+4. Supervise `sh /opt/burrow-browser/run.sh` with
+   `BURROW_BROWSER_STATE_DIRECTORY=/orb/state/burrow` and
+   `BURROW_BROWSER_EGRESS_ENFORCED=1` only after verifying that policy. CDP,
+   proxy and sidecar remain loopback-only. The sidecar's separate API fetch client
+   uses the same loopback proxy, not a direct network path.
+5. Use the ImOrb `exec:` readiness probe, not unauthenticated container-IP HTTP.
+   A private probe must check CDP connectivity and authenticated `/status` with
+   the token read from its file; do not embed the token in a command or URL.
+   Enable the host workspace grant `private_browser: true`, without shell,
+   desktop.lcu or live_view. Old view sessions must expire before takeover.
+
+Profile and control state live under the existing `/orb/state` mount, mode 0700.
+They survive sidecar and allocation stop/start, **not destroy/replacement**.
+An authorized, attached `private_browser` allocation is retained past the normal
+idle deadline instead of deleting its signed-in profile. It still consumes
+resources until explicitly released; automatic sleep is not implemented here.
+Orderly browser shutdown must wait for the Chromium process to exit before
+stopping the allocation so profile writes finish. A sidecar restart reattaches
+the same CDP target. If Chromium itself restarts and that target disappears,
+the sidecar creates a blank owned tab without replaying navigation or guessing a
+restored tab. Cookies remain in the profile; private control remains fenced until
+explicit Give Back. A crash does not guarantee the last unflushed profile write.
+
+The authenticated server computer endpoint accepts `action: "browser_control"`
+and a `browser` command: `status`, `take_over`, `frame`, `input` or `give_back`.
+Scope comes from the owned attached task, never a caller-supplied CDP URL. These
+commands are not Pi tools. Take Over fences all peer computer actions, cached
+receipts and late output before draining in-flight work. New paid model dispatch
+waits before reservation; Stop still wins. Give Back releases this wait without
+creating a new task or replaying an interrupted model call.
+
+Private PNG frames and input use no-store responses and never become task
+messages, receipts or Materials. Durable journals contain opaque input IDs, not
+text or password hashes. Lost input acknowledgement disables further input across
+worker restart. Status can reconcile lost handback; only the matching session and
+generation can release the fence. Closing the UI never gives control back.
+Human-mode forms use native browser cookie/redirect behavior, with the enforced
+network policy as the boundary. Agent navigation remains exact-URL/read-only
+policy controlled. New login origins require host permission, not a model override.
+
+Local tests cover control fencing, replay/acknowledgement loss, same-tab recovery,
+authenticated proxy injection and rendered UI states. UI captures labeled
+"UI FIXTURE" are not evidence of real website login or production isolation.
 
 ## Files in this browser slice
 

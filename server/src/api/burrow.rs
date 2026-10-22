@@ -85,6 +85,7 @@ pub struct Task {
     pub routine_id: Option<String>,
     pub routine_version: Option<i64>,
     pub comparison: bool,
+    pub travel: bool,
     pub manual_notes: String,
     pub manual_edited: bool,
     pub proposed_result: String,
@@ -99,6 +100,7 @@ pub struct Workspace {
     can_run: bool,
     service: Option<String>,
     can_research: bool,
+    can_travel: bool,
     agent_task_ids: Vec<String>,
 }
 
@@ -118,6 +120,7 @@ pub async fn list(
         tasks,
         can_run: runner.is_some(),
         can_research: s.kikka.as_ref().is_some_and(|k| (k.user == user || k.user == "*") && k.pi.is_some()),
+        can_travel: s.travel_fixtures && s.kikka.as_ref().is_some_and(|k| (k.user == user || k.user == "*") && k.pi.is_some()),
         agent_task_ids: sqlx::query_scalar("SELECT DISTINCT r.task_id FROM burrow_agent_runs r JOIN burrow_tasks t ON t.id=r.task_id WHERE t.user_id=?")
             .bind(&user).fetch_all(&s.db).await.map_err(internal)?,
         service: runner

@@ -123,6 +123,9 @@ async fn pi_transport_reconciles_owner_scoped_results_history_evidence_and_stop_
             "computer" => {
                 assert_eq!(body["owner"], "pilot");
                 assert_eq!(body["run"], "run-pi-fixture");
+                if body["action"] == "browser_control" {
+                    return Json(json!({"phase":"human","session_id":"private-session","generation":1,"png":"private-frame-fixture"})).into_response();
+                }
                 Json(json!({"state":"ready","computer_id":"fixture-computer"})).into_response()
             },
             _ => panic!("unsupported operation"),
@@ -212,7 +215,23 @@ async fn pi_transport_reconciles_owner_scoped_results_history_evidence_and_stop_
         .await;
     assert_eq!(status.status(), 200);
     assert_eq!(status.json::<Value>().await.unwrap()["state"], "ready");
+    let private = json!({"action":"browser_control","request_id":"frame-one","browser":{"action":"frame","session_id":"private-session"}});
+    assert_eq!(
+        s.post_json_auth(&computer, &other, private.clone())
+            .await
+            .status(),
+        404
+    );
+    let frame = s.post_json_auth(&computer, &owner, private).await;
+    assert_eq!(frame.status(), 200);
+    assert_eq!(frame.headers()["cache-control"], "no-store");
+    assert_eq!(
+        frame.json::<Value>().await.unwrap()["png"],
+        "private-frame-fixture"
+    );
+    assert_eq!(s.post_json_auth(&computer, &owner, json!({"action":"browser_control","request_id":"bad","browser":{"action":"arbitrary_eval"}})).await.status(), 400);
     let before = view(&s, &owner, &id).await;
+    assert!(!before.to_string().contains("private-frame-fixture"));
     assert_eq!(before["task"]["state"], "working");
     assert_eq!(
         before["agent"]["usage"],

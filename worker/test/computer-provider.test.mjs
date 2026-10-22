@@ -16,7 +16,7 @@ async function fixture(t, { resolveGrants } = {}) {
   let clock = Date.now();
   let provider = new ComputerProvider({ directory, backend, grants: [grant], resolveGrants, idleMs: 1000, now: () => clock });
   t.after(async () => { await provider.close(); await rm(directory, { recursive: true, force: true }); });
-  return { backend, get provider() { return provider; }, advance() { clock += 1001; }, async reopen() {
+  return { backend, get provider() { return provider; }, advance(ms = 1001) { clock += ms; }, async reopen() {
     await provider.close(); provider = new ComputerProvider({ directory, backend, grants: [grant], resolveGrants, idleMs: 1000, now: () => clock }); await provider.reconcile();
   }, run(request_id, a, i = identity) { return provider.execute({ ...i, request_id }, a); } };
 }
@@ -166,4 +166,74 @@ test('stopping one task does not wait for or cancel a neighboring task on the sa
   } finally { clearTimeout(timer); release(); }
   assert.equal((await reading).status, 'complete');
   assert.equal((await f.run('other-still-usable', action('files.read', { path: 'trip.txt' }), other)).status, 'complete');
+});
+
+test('private takeover refuses a still-valid older live view even after that grant is removed', async t => {
+  const grants = [{ ...grant, private_browser: true }];
+  const f = await fixture(t, { resolveGrants: () => grants });
+  await f.provider.open(identity);
+  f.backend.browserControl = async (a, _i, c) => ({ phase: 'human', session_id: c.session_id, generation: a.generation });
+  await assert.rejects(f.provider.browserControl(identity, { action: 'take_over' }), /not authorized/);
+  await f.provider.live_view(identity, { mode: 'read_only' });
+  grants[0].features = grants[0].features.filter(f => f !== 'live_view');
+  await assert.rejects(f.provider.browserControl(identity, { action: 'take_over' }), /expire/);
+  f.advance(300001);
+  assert.equal((await f.provider.browserControl(identity, { action: 'take_over' })).phase, 'human');
+});
+
+test('private takeover fences peer reads, cached receipts and late output across restart until acknowledged handback', async t => {
+  const grants = [{ ...grant, private_browser: true, features: grant.features.filter(f => f !== 'live_view') }];
+  const f = await fixture(t, { resolveGrants: () => grants });
+  await f.provider.open(identity);
+  const peer = { ...identity, task_id: 'peer', root_goal_id: 'peer-root' };
+  await f.provider.open(peer);
+  await f.run('cached', action('browser.read', {}));
+  const original = f.backend.execute.bind(f.backend);
+  let entered, finish;
+  const started = new Promise(r => { entered = r; });
+  const hold = new Promise(r => { finish = r; });
+  f.backend.execute = async () => { entered(); await hold; return { text: 'private-late-output' }; };
+  let loseHandback = false;
+  let phase = 'agent';
+  f.backend.browserControl = async (a, _i, c) => {
+    if (c.action === 'take_over') phase = 'human';
+    if (c.action === 'give_back') phase = 'agent';
+    if (c.action === 'give_back' && loseHandback) throw new Error('lost acknowledgement');
+    if (c.action === 'input') throw new Error('input acknowledgement lost');
+    return { session_id: c.session_id, generation: a.generation, phase };
+  };
+  const reading = f.run('late', action('browser.read', {}), peer);
+  await started;
+  const take = f.provider.browserControl({ ...identity, request_id: 'private-session' }, { action: 'take_over' });
+  await assert.rejects(f.run('blocked', action('browser.read', {}), peer), ComputerNotDispatched);
+  assert.throws(() => f.provider.receipt({ ...identity, request_id: 'cached' }), ComputerNotDispatched);
+  finish();
+  assert.equal((await reading).status, 'unavailable');
+  assert.equal((await take).phase, 'human');
+  await assert.rejects(f.provider.live_view(identity), ComputerNotDispatched);
+  await assert.rejects(f.provider.browserControl(peer, { action: 'frame', session_id: 'private-session' }), /mismatch/);
+  f.advance(); await f.reopen();
+  assert.equal((await f.provider.browserControl(identity, { action: 'status' })).phase, 'human');
+  assert.equal(f.backend.resources.size, 1, 'idle cleanup preserves private browser');
+  await assert.rejects(f.run('cached', action('browser.read', {})), ComputerNotDispatched);
+  const input = { action: 'input', session_id: 'private-session', input: { kind: 'text', text: 'fixture-only' } };
+  await assert.rejects(f.provider.browserControl({ ...identity, request_id: 'type-once' }, input));
+  await f.reopen();
+  assert.equal((await f.provider.browserControl(identity, { action: 'status' })).phase, 'input_uncertain');
+  await assert.rejects(f.provider.browserControl({ ...identity, request_id: 'type-again' }, input), /fenced/);
+  loseHandback = true;
+  await assert.rejects(f.provider.browserControl(identity, { action: 'give_back', session_id: 'private-session' }));
+  await assert.rejects(f.run('still-private', action('browser.read', {})), ComputerNotDispatched);
+  loseHandback = false;
+  assert.equal((await f.provider.browserControl(identity, { action: 'status' })).phase, 'agent', 'status reconciles lost handback without replaying it');
+  f.backend.execute = original;
+  await f.provider.reconnect(identity);
+  assert.equal((await f.run('fresh-observation', action('browser.read', {}))).status, 'complete');
+  await assert.rejects(f.provider.browserControl(identity, { action: 'frame', session_id: 'private-session' }), /mismatch/);
+  await f.provider.browserControl({ ...identity, request_id: 'second-session' }, { action: 'take_over' });
+  await f.provider.browserControl(identity, { action: 'give_back', session_id: 'second-session' });
+  f.advance(); await f.reopen();
+  assert.equal((await f.provider.status(identity)).state, 'ready', 'idle cleanup must preserve the returned private browser profile');
+  await assert.rejects(f.provider.browserControl({ ...identity, request_id: 'private-session' }, { action: 'take_over' }), /already returned/);
+  assert.equal((await f.provider.browserControl(identity, { action: 'status' })).phase, 'agent');
 });

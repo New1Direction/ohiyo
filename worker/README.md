@@ -6,6 +6,43 @@ bridge remains separate; Pi can now attach an ImOrb resource through the
 [versioned ComputerProvider contract](COMPUTERS.md). Browser/desktop engines
 remain unavailable until installed and explicitly authorized.
 
+## Admitted travel tasks
+
+Trusted admission may include `travel: {workspace_id, mandate_id, mandate_version}`.
+IDs are nonempty scope identifiers (letters, digits, `:`, `_`, `-`, at most 160
+characters); version is a positive safe integer. Malformed travel admission or
+missing trusted transport fails start/recovery rather than falling back to web
+research. Travel needs no ComputerProvider, even with a workspace ID.
+
+Configure private `KIKKA_TRAVEL_URL` and `KIKKA_WORKER_TOKEN` (at least 32
+characters). Only HTTP `127.0.0.1` at `/api/v1/burrow/internal/travel`, without
+URL credentials, query or fragment, is accepted. POST uses bearer authentication,
+no redirects or cookies, a 10-second timeout and the Pi tool abort signal.
+Embedders may inject `travelTransport(request, {signal} = {})` into KikkaWorker.
+
+Travel exposes only `travel_research {}`, `travel_select {rate_id, reason}`,
+`travel_book {}`, `travel_reconcile {}` and `travel_status {}`. Extra arguments
+are rejected; identity, mandate/profile, price and funding cannot be supplied by
+the model. Requests contain exactly `{owner, task, root_goal, workspace_id,
+request_id, operation, args}`. Scope comes from stored admission; tool request IDs
+are `pi-` plus SHA-256 of the durable Pi tool task ID. Mandate/version remain in
+trusted admission; the backend resolves and fences its admitted mandate by scope.
+
+The backend owns durable research/selection caches and booking dispatch fences:
+book reentry must read/reconcile committed dispatch state, never blindly create
+again. Authoritative JSON snapshots (`stage`, `reason`, `comparison` with
+`options`/`context`, `transaction_id`, `result`, `terminal`, `mode: 'fixture'`,
+plus display fields) pass through without adding traveler data. Lost transport
+acknowledgement returns nonterminal `stage: 'unknown'`, `acknowledgement_lost:
+true` and the same request ID, never invented success or cancellation.
+
+Stop locally fences new travel work, sends `operation: 'stop', args: {}` under
+the stable task-scoped request ID `stop`, calls any existing computer stop, then
+aborts Pi. `Cancelled` describes the Pi task only: activity explicitly disclaims
+external cancellation/rollback, including when stop acknowledgement is lost.
+The backend must independently fence Stop. No second task/model owner or change
+to ComputerProvider 1.1.0 is introduced; the existing spending gate remains active.
+
 ## Runtime decision and recovery contract
 
 Pinned/tested: `@earendil-works/pi-durable`, `pi-ai`, and `chord` **1.3.0**;

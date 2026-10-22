@@ -30,6 +30,10 @@ fn mandate() -> Mandate {
         guests: vec![Guest::Adult],
         require_refundable: true,
         accommodation_ids: vec![],
+        area: None,
+        bed_type: None,
+        substitution_tolerance: SubstitutionTolerance::WithinArea,
+        amenity_preferences: vec![],
         minimum_rating: Some(3),
         preferences: vec!["near station".into()],
         spend_capability_id: "prefunded".into(),
@@ -247,6 +251,114 @@ async fn held(h: &Harness) -> String {
         .fetch_one(&h.server.state.db)
         .await
         .unwrap()
+}
+
+#[tokio::test]
+async fn bounded_area_bed_and_substitution_policy_fail_closed() {
+    use server::api::burrow::travel::duffel::Stays;
+    let f = Fake::new();
+    f.quote("799.00");
+    let mut q = Duffel::new(f.clone()).quote("rat_a").await.unwrap().value;
+    let now = server::types::now_unix();
+    let mut m = mandate();
+    // Asymmetric lat/lon and offsets catch swapped coordinates or an incorrect
+    // longitude scale; the radius includes the boundary, not a search tolerance.
+    let distance = distance_meters(
+        51.5,
+        -0.12,
+        q.accommodation.latitude,
+        q.accommodation.longitude,
+    );
+    assert!((distance - 1691.0).abs() < 10.0);
+    m.area = Some(TravelArea {
+        latitude: 51.5,
+        longitude: -0.12,
+        radius_meters: distance,
+    });
+    assert!(m.evaluate(&q, now).is_ok());
+    m.area.as_mut().unwrap().radius_meters = distance - 0.01;
+    assert!(m.evaluate(&q, now).is_err());
+    m.area.as_mut().unwrap().radius_meters = distance + 0.01;
+    assert!(m.evaluate(&q, now).is_ok());
+    for (lat, lon, radius) in [
+        (91.0, 0.0, 10.0),
+        (0.0, 181.0, 10.0),
+        (0.0, 0.0, 0.0),
+        (0.0, 0.0, -1.0),
+        (f64::NAN, 0.0, 10.0),
+        (0.0, 0.0, f64::INFINITY),
+    ] {
+        let mut bad = m.clone();
+        bad.area = Some(TravelArea {
+            latitude: lat,
+            longitude: lon,
+            radius_meters: radius,
+        });
+        assert!(bad.evaluate(&q, now).is_err());
+    }
+    let mut bad = q.clone();
+    bad.accommodation.longitude = f64::NAN;
+    assert!(m.evaluate(&bad, now).is_err());
+    // A display name like "Double Suite" is not a bed fact.
+    assert_eq!(q.bed_type, None);
+    m.bed_type = Some("double".into());
+    assert!(m.evaluate(&q, now).is_err());
+    q.bed_type = Some("twin".into());
+    assert!(m.evaluate(&q, now).is_err());
+    q.bed_type = Some("double".into());
+    assert!(m.evaluate(&q, now).is_ok());
+    m.amenity_preferences = vec!["pool".into()];
+    assert!(m.evaluate(&q, now).is_ok());
+    m.substitution_tolerance = SubstitutionTolerance::ExactProperty;
+    assert!(m.evaluate(&q, now).is_err());
+    m.accommodation_ids = vec![q.accommodation.id.clone()];
+    assert!(m.evaluate(&q, now).is_ok());
+    q.accommodation.id = "another".into();
+    assert!(m.evaluate(&q, now).is_err());
+    m.substitution_tolerance = SubstitutionTolerance::WithinArea;
+    assert!(m.evaluate(&q, now).is_err());
+    m.accommodation_ids.clear();
+    assert!(m.evaluate(&q, now).is_ok());
+
+    let mut legacy = serde_json::to_value(mandate()).unwrap();
+    for key in [
+        "area",
+        "bed_type",
+        "substitution_tolerance",
+        "amenity_preferences",
+    ] {
+        legacy.as_object_mut().unwrap().remove(key);
+    }
+    let legacy: Mandate = serde_json::from_value(legacy).unwrap();
+    assert!(legacy.area.is_none() && legacy.bed_type.is_none());
+    assert_eq!(
+        legacy.substitution_tolerance,
+        SubstitutionTolerance::WithinArea
+    );
+    assert!(legacy.amenity_preferences.is_empty());
+}
+
+#[tokio::test]
+async fn duffel_search_uses_stored_area_in_kilometers_not_caller_location() {
+    use server::api::burrow::travel::duffel::Stays;
+    let f = Fake::new();
+    f.push("search", 200, json!({"data":{"results":[]}}));
+    let mut m = mandate();
+    m.area = Some(TravelArea {
+        latitude: 51.5,
+        longitude: -0.12,
+        radius_meters: 1750.0,
+    });
+    Duffel::new(f.clone())
+        .search(&m, f64::NAN, 180.0)
+        .await
+        .unwrap();
+    let wire = f.inner.lock().unwrap();
+    let body = wire.requests[0].1.as_ref().unwrap();
+    assert_eq!(
+        body["location"],
+        json!({"geographic_coordinates":{"latitude":51.5,"longitude":-0.12},"radius":1.75})
+    );
 }
 
 #[tokio::test]

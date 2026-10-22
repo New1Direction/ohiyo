@@ -86,7 +86,9 @@ pub async fn delete_account(
     let _lifecycle = state.instance_lifecycle.lock().await;
     let active_helper: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM burrow_agent_runs r JOIN burrow_tasks t ON t.id=r.task_id WHERE t.user_id=? AND r.phase!='finished')")
         .bind(&me).fetch_one(&state.db).await.map_err(internal)?;
-    if active_helper {
+    let travel_hold: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM burrow_travel_transactions WHERE user_id=? AND state IN ('booking_dispatched','booking_uncertain','reconciling','unresolved_needs_attention'))")
+        .bind(&me).fetch_one(&state.db).await.map_err(internal)?;
+    if active_helper || travel_hold {
         return Err((
             StatusCode::CONFLICT,
             "Stop Kikka's workspace tasks and resolve uncertain work before deleting your account."
@@ -309,6 +311,14 @@ async fn remove_everything(
 
     // Rows that point at them without cascading, or with no foreign key at all.
     for sql in [
+        "DELETE FROM burrow_travel_evidence WHERE transaction_id IN (SELECT id FROM burrow_travel_transactions WHERE user_id=?)",
+        "DELETE FROM burrow_travel_spend WHERE transaction_id IN (SELECT id FROM burrow_travel_transactions WHERE user_id=?)",
+        "DELETE FROM burrow_travel_actions WHERE task_id IN (SELECT id FROM burrow_tasks WHERE user_id=?)",
+        "DELETE FROM burrow_travel_fixture_bookings WHERE task_id IN (SELECT id FROM burrow_tasks WHERE user_id=?)",
+        "DELETE FROM burrow_travel_transactions WHERE user_id=?",
+        "DELETE FROM burrow_travel_mandates WHERE user_id=?",
+        "DELETE FROM burrow_travel_requests WHERE user_id=?",
+        "DELETE FROM burrow_travel_profiles WHERE user_id=?",
         "DELETE FROM discord_imports WHERE owner_id = ?",
         "DELETE FROM user_prefs WHERE user_id = ?",
         "DELETE FROM signal_one_time_prekeys WHERE user_id = ?",

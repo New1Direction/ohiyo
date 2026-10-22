@@ -3,6 +3,7 @@ import copy
 import io
 import json
 import os
+import tempfile
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -11,6 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from aiohttp.test_utils import TestClient, TestServer
 from service import Engine, create_app, bounded, cdp_url, hotel_markdown, HOTEL_QUERY, HTML_LIMIT
+from control import BrowserControl, PrivateControl
+from proxy import tunnel
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 URL = "https://hotels.example/shibuya"
@@ -35,6 +38,135 @@ def engine(fixture="css"):
 
 
 class Operations(unittest.IsolatedAsyncioTestCase):
+    async def test_proxy_injects_private_credentials_without_forwarding_headers_or_denial_bodies(self):
+        seen = []
+        async def gateway(reader, writer):
+            header = await reader.readuntil(b"\r\n\r\n")
+            seen.append(header)
+            if b"denied.example" in header:
+                writer.write(b"HTTP/1.1 403 Forbidden\r\n\r\nsecret-denial-body")
+            else:
+                writer.write(b"HTTP/1.1 200 OK\r\n\r\n")
+                await writer.drain()
+                writer.write(await reader.readexactly(4))
+            await writer.drain()
+            writer.close()
+        with tempfile.TemporaryDirectory() as directory:
+            credentials = Path(directory) / "egress.json"
+            upstream = await asyncio.start_server(gateway, "127.0.0.1", 0)
+            credentials.write_text(json.dumps({"HTTPS_PROXY": f"http://orb:runtime-secret@127.0.0.1:{upstream.sockets[0].getsockname()[1]}"}))
+            adapter = await asyncio.start_server(lambda r, w: tunnel(r, w, credentials), "127.0.0.1", 0, limit=16384)
+            async def connect(line, payload=b""):
+                reader, writer = await asyncio.open_connection("127.0.0.1", adapter.sockets[0].getsockname()[1])
+                writer.write(line + b"\r\nProxy-Authorization: hostile\r\n\r\n" + payload)
+                await writer.drain()
+                result = await asyncio.wait_for(reader.read(), 2)
+                writer.close(); await writer.wait_closed()
+                return result
+            try:
+                reply = await connect(b"CONNECT allowed.example:443 HTTP/1.1", b"ping")
+                self.assertTrue(reply.endswith(b"ping"))
+                self.assertIn(b"200", reply)
+                self.assertIn(b"Proxy-Authorization: Basic ", seen[0])
+                self.assertNotIn(b"hostile", seen[0])
+                for line in (b"CONNECT denied.example:443 HTTP/1.1", b"CONNECT allowed.example:80 HTTP/1.1", b"GET http://allowed.example/ HTTP/1.1"):
+                    reply = await connect(line)
+                    self.assertIn(b"502", reply)
+                    self.assertNotIn(b"secret", reply)
+                self.assertEqual(len(seen), 2)
+                credentials.unlink()
+                self.assertIn(b"502", await connect(b"CONNECT allowed.example:443 HTTP/1.1"))
+                self.assertEqual(len(seen), 2)
+            finally:
+                adapter.close(); upstream.close()
+                await adapter.wait_closed(); await upstream.wait_closed()
+
+    async def test_private_takeover_suppresses_reads_and_replays_across_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "control.sqlite")
+            e = engine()
+            e.control = BrowserControl(e, path)
+            e.page.keyboard = SimpleNamespace(insert_text=AsyncMock(), press=AsyncMock())
+            base = request()
+            def command(action, request_id="session-one", session="session-one", **extra):
+                return {"allocation": base["allocation"], "identity": {**base["identity"], "request_id": request_id},
+                        "command": {"action": action, "session_id": session, **extra}}
+            self.assertEqual((await e.control.call(command("status", session=None)))["phase"], "agent")
+            await e.execute(base)
+            self.assertEqual((await e.control.call(command("take_over")))["phase"], "human")
+            self.assertEqual((await e.control.call(command("status")))["phase"], "human")
+            for op, args in (("browser.read", {}), ("screenshot", {"surface": "browser"}), ("browser.tabs", {})):
+                with self.assertRaises(PrivateControl):
+                    await e.execute(request(op, args))
+            with self.assertRaises(PrivateControl):
+                await e.execute(base)  # cached observations are fenced too
+            typing = command("input", "type-one", input={"kind": "text", "text": "private-password-never-recorded"})
+            await e.control.call(typing)
+            with self.assertRaises(ValueError):
+                await e.control.call(typing)
+            self.assertIn("png", await e.control.call(command("frame")))
+            foreign = command("frame"); foreign["identity"]["task_id"] = "other"
+            with self.assertRaises(ValueError):
+                await e.control.call(foreign)
+            e.control.db.close()
+            e.control = BrowserControl(e, path)
+            with self.assertRaises(PrivateControl):
+                await e.execute(request("browser.read", {}))
+            with self.assertRaises(ValueError):
+                await e.control.call(typing)
+            self.assertEqual((await e.control.call(command("give_back")))["phase"], "agent")
+            self.assertEqual((await e.control.call(command("give_back")))["phase"], "agent")
+            self.assertEqual((await e.control.call(command("status")))["phase"], "agent")
+            with self.assertRaises(ValueError):
+                await e.control.call(command("frame"))
+            with self.assertRaises(ValueError):
+                await e.control.call(command("take_over"))
+            await e.control.call(command("take_over", "session-two", "session-two"))
+            await e.control.call(command("give_back", "return-two", "session-two"))
+            e.control.db.close(); e.control = BrowserControl(e, path)
+            with self.assertRaises(ValueError):
+                await e.control.call(command("take_over"))  # older than the most recent session
+            self.assertIn("markdown", await e.execute({**base, "identity": {**base["identity"], "request_id": "new-observation"}}))
+            e.control.db.close()
+            self.assertNotIn(b"private-password-never-recorded", Path(path).read_bytes())
+
+    async def test_private_tab_reattaches_then_recovers_blank_without_replaying_navigation(self):
+        e = engine(); e.control = BrowserControl(e, ":memory:")
+        existing, fresh = object(), object()
+        e.context.pages = [existing]
+        e.context.new_page = AsyncMock(return_value=fresh)
+        async def session(page):
+            return SimpleNamespace(send=AsyncMock(return_value={"targetInfo": {"targetId": "saved" if page is existing else "fresh"}}), detach=AsyncMock())
+        e.context.new_cdp_session = session
+        e.control.db.execute("INSERT INTO target VALUES('saved')")
+        e.control.db.execute("INSERT INTO control VALUES(1,'session','owner','human')")
+        self.assertIs(await e.control.attach_page(), existing)
+        e.context.new_page.assert_not_awaited()
+        e.context.pages = []
+        self.assertIs(await e.control.attach_page(), fresh)
+        self.assertTrue(e.control.private())
+        e.page.goto.assert_not_awaited()
+        e.control.db.close()
+
+    async def test_takeover_drains_inflight_read_without_releasing_result_or_closing_tab(self):
+        e = engine(); e.control = BrowserControl(e, ":memory:")
+        entered, finish = asyncio.Event(), asyncio.Event()
+        original = e.perform
+        async def held(body):
+            entered.set(); await finish.wait(); return await original(body)
+        e.perform = held
+        reading = asyncio.create_task(e.execute(request()))
+        await entered.wait()
+        takeover = asyncio.create_task(e.control.call({"allocation": request()["allocation"], "identity": request()["identity"],
+                                                       "command": {"action": "take_over", "session_id": "takeover"}}))
+        await asyncio.sleep(0)
+        finish.set()
+        with self.assertRaises(PrivateControl):
+            await reading
+        self.assertEqual((await takeover)["phase"], "human")
+        e.page.close.assert_not_awaited()
+        e.control.db.close()
+
     async def test_filtered_markdown_keeps_facts_not_boilerplate(self):
         e = engine("unknown")
         hotel = e.page.content.return_value
@@ -250,6 +382,18 @@ class Operations(unittest.IsolatedAsyncioTestCase):
         await e.route(route)
         route.abort.assert_awaited_once()
         route.fetch.assert_awaited_once_with(max_redirects=0, max_retries=0, timeout=10000)
+
+    async def test_private_human_login_uses_native_navigation_only_on_allowed_origins(self):
+        e = engine(); e.control = BrowserControl(e, ":memory:")
+        e.control.db.execute("INSERT INTO control VALUES(1,'session','owner','human')")
+        for url, allowed in (("https://hotels.example/login", True), ("https://evil.example/login", False), ("http://hotels.example/login", False)):
+            route = SimpleNamespace(request=SimpleNamespace(url=url, method="POST", is_navigation_request=lambda: True),
+                                    abort=AsyncMock(), continue_=AsyncMock(), fetch=AsyncMock())
+            await e.route(route)
+            self.assertEqual(route.continue_.await_count, int(allowed))
+            self.assertEqual(route.abort.await_count, int(not allowed))
+            route.fetch.assert_not_awaited()
+        e.control.db.close()
 
     async def test_mocked_cdp_attach_only(self):
         e = engine()

@@ -1,10 +1,72 @@
 # Typed Duffel Stays slice
 
-This is an internal Rust capability library, not an enabled travel workflow. It
-starts from the transferred `burrow-kikka-checkpoint` provider-audit baseline,
-not `origin/main`. Pi Durable remains the only execution owner. No routes, model
-tools, browser integration, scheduler, result-publisher changes, or live account
-operations are enabled by this slice.
+The typed capability library now has an **explicit, offline fixture workflow**.
+Pi Durable remains the only execution owner. `BURROW_TRAVEL_FIXTURES=1` enables
+authenticated trip admission and fixture capabilities, never a live Duffel
+transport. Browser integration and real purchases remain disabled.
+
+## Fixture workflow
+
+Save a document request, then POST `/api/v1/burrow/tasks/{id}/travel` with the
+current task version, mandate, explicit travelers, and `materials: true|false`.
+The immutable admission stores owner-scoped profiles and authority before research.
+Normal agent approval pins that mandate to the existing Pi root goal in the same
+transaction. No computer is allocated: its workspace ID is authorization scope only.
+
+The private worker uses `KIKKA_TRAVEL_URL` (loopback
+`/api/v1/burrow/internal/travel`) and its existing `KIKKA_WORKER_TOKEN`.
+Five strict tools expose research, select, book, status and reconcile. Only
+`rate_id` and a bounded selection reason are model inputs. Owner/task/root/workspace
+come from stored admission; a durable Pi tool ID identifies replay. No second
+reasoning loop or model budget exists. Model responses omit traveler PII.
+
+```text
+Request + immutable mandate + stored travelers
+  -> normal Pi approval -> fixture search/rates -> comparison + Materials
+  -> Pi selection -> fresh quote/policy -> spend fence -> fixture create
+  -> retrieve/verify -> existing saved results/revisions
+                       (uncertain -> bounded read-only reconciliation)
+```
+
+Materials use lowercase alphanumeric name tokens **in order**, coordinates and
+source timestamps. Exact normalized names within 100 m match at high confidence
+only when a unique accommodation ID qualifies. Shared-token overlap of at least
+0.5 within 500 m produces a low-confidence match; reordered names are never high.
+Ambiguous high candidates become low. Unmatched records remain context only.
+Low-confidence and unmatched facts remain visible to the owner but are excluded
+from the model's ranking response. Only admitted provider rate IDs can be selected.
+High-confidence research price is advisory; the saved result retains both prices
+and their same-currency difference. Property fees remain a separate liability.
+
+Fixtures use deliberately fictional Tokyo properties and `.example.test` sources,
+not real scraped hotel data. Without Materials the same booking flow works using
+provider fixtures alone. Fault injection is private disposable-database state,
+not an HTTP/model argument. No live network is used by these tests.
+
+Stop commits the local travel fence with the human's control request before
+waiting for Pi. In-flight research cannot authorize a later booking. Previously
+dispatched writes retain holds and uncertainty; Stop is not hotel cancellation.
+Only the human retry route can allow another quote after documented 503 rejection.
+An empty list never authorizes retry. Reconciliation is invoked through Pi's
+tool or the explicit owner route; no scheduler or automatic extra model turn is added.
+If Pi has ended, use the existing remaining-budget continuation to resume its work.
+
+Completed and exceptional snapshots use the normal result history/proposal system.
+Manual edits remain protected. Account erasure removes terminal fixture profiles,
+requests, actions and journal records; unresolved booking holds block erasure.
+Production retention obligations still require a separate decision.
+
+Wiring files: `server/migrations/0067_burrow_travel_workflow.sql`,
+`server/src/api/burrow/travel/{workflow,fixtures}.rs`, `server/src/api/{mod,account,burrow}.rs`,
+`server/src/api/burrow/agent.rs`, `server/src/lib.rs`,
+`worker/src/{runtime,server,travel}.mjs`, `client/src/api.ts`,
+`client/src/burrow/{Burrow,ResearchTask,Travel}.tsx`, `client/src/burrow/burrow.css`.
+Integration fixtures/tests: `server/tests/burrow_travel_workflow.rs`,
+`worker/test/travel.test.mjs`, `worker/test/fixtures/travel-worker.mjs`,
+`client/test/travel.test.ts`, `client/test/fixtures/travel.tsx`.
+Server CI installs the pinned worker dependencies to execute the real Pi bridge
+crash/recovery test. Only model completions are scripted there; HTTP, admission,
+SQLite transactions, spending fences, verification and result publishing are real.
 
 ## Files and ownership
 
@@ -12,7 +74,7 @@ operations are enabled by this slice.
 - `server/src/api/burrow/travel/duffel.rs`: Duffel v2 HTTP adapter and injected HTTP seam.
 - `server/src/api/burrow/travel/ledger.rs`: scoped transaction, spend and evidence journal.
 - `server/migrations/0066_burrow_travel.sql`: additive SQLite tables, immutable mandates.
-- `server/src/api/burrow.rs`: only `pub mod travel` registration.
+- `server/src/api/burrow.rs`: travel registration and explicit fixture capability flags.
 - `server/tests/burrow_travel.rs`: disposable SQLite + typed HTTP fixtures.
 - `server/examples/duffel_probe.rs`: opt-in, non-purchasing account probe.
 - This document.
@@ -21,7 +83,7 @@ The source thread owns browser-engine, crawl4ai-engine, hotel-research and brows
 wiring. None is a dependency of this library. Browser Materials are advisory
 research, never inventory, payment authority or an executable booking request.
 
-## Contracts for later wiring
+## Typed capability contracts
 
 `Scope` is **host-authenticated** account/workspace/task/root_goal identity. Resolve
 it from the existing Pi bridge and Burrow admission, never model arguments. Every
@@ -40,9 +102,11 @@ ID/version before its research. Another version never widens that transaction.
 The maximum is total liability: provider total **plus mandatory property fees**.
 No FX, date, room or guest substitutions are allowed. Property substitutions stay
 inside the exact city/country and optional property allowlist; an empty allowlist
-permits any property in that city. Rating is an optional minimum; preferences are
-ranking hints only. More precise geographic bounds require a later mandate
-version/contract extension, not inference from a browser's coordinates.
+permits any property in that city. The stored coordinate/radius further bounds
+the area; exact-property substitution requires an explicit nonempty allowlist.
+Bed requirements fail closed when unknown. Duffel bed facts remain unknown rather
+than inferred from room names. Rating is an optional minimum; amenities and other
+preferences are ranking hints only.
 
 Traveler profiles contain given_name, family_name, email, E.164 phone and born_on,
 separate from conversation. Begin snapshots owner-scoped profile IDs, requires a
@@ -70,8 +134,8 @@ Call sequence available to the later **Pi-owned** orchestration:
 7. `BookingResult` includes transaction/evidence identity, scope, mandate version,
    hotel/location, dates, room/rate, guests, final quote, verified booking, original
    research price and same-currency difference, selection reason and timestamps.
-   Publish it through Burrow's existing revision/proposal/manual-edit rules. This
-   slice deliberately does not write `burrow_tasks.result` or change memory.
+   The fixture workflow publishes it through Burrow's existing
+   revision/proposal/manual-edit rules; the ledger itself does not change memory.
 
 Keep existing cumulative **model** budgets/approvals and Pi uncertainty handling
 unchanged. A travel mandate is separate spending authority; a model-cost approval,
@@ -139,9 +203,9 @@ evidence. Organization-wide list responses are **not** copied into an account's
 receipts: only this transaction's matching records, page metadata and counts are
 saved. List parsing is conservative; an unparseable booking in a page prevents a
 definitive scan and needs support, not a retry. Treat provider text/HTML as untrusted
-display content. Existing task/account foreign keys intentionally prevent deleting
-referenced transaction evidence; retention/account-erasure policy needs explicit
-integration before exposing this slice in production.
+display content. The fixture workflow cleans up terminal account data and blocks
+erasure during uncertainty. Production financial retention policy still needs
+explicit review before live exposure.
 
 ## Authoritative Duffel findings (inspected 2026-10-21)
 
@@ -207,6 +271,8 @@ never charge or book again to repair a lost acknowledgement.
 
 ```sh
 cargo test --manifest-path server/Cargo.toml --test burrow_travel
+# Requires `npm ci --prefix worker`; runs the actual Pi process on loopback.
+cargo test --manifest-path server/Cargo.toml --test burrow_travel_workflow
 ```
 
 Fixtures cover search/rates filtering; successful quote/create/GET verification;

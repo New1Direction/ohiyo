@@ -52,3 +52,23 @@ test('a stop arriving during journal inspection prevents provider dispatch', asy
   assert.equal(calls, 0); assert.equal(gate.reserved(), 0);
   db.close();
 });
+
+test('private computer control holds generation before spending and Stop wins over handback', async () => {
+  for (const stop of [false, true]) {
+    const db = new DatabaseSync(':memory:');
+    let privateControl = true, stopped = false, calls = 0, entered, release;
+    const waiting = new Promise(r => { entered = r; });
+    const hold = new Promise(r => { release = r; });
+    const gate = spendingGate({ db, policy, budgetMicros: 30000,
+      identity: async () => 'same-durable-generation', stopped: () => stopped,
+      computerControl: { active: () => privateControl, wait: async () => { entered(); await hold; } },
+      blocked() {}, activity() {}, models: { completeSimple: async () => { calls++; return { stopReason: 'stop' }; } } });
+    const result = gate.models.completeSimple(model, {});
+    await waiting;
+    assert.equal(calls, 0); assert.equal(gate.reserved(), 0);
+    stopped = stop; privateControl = false; release();
+    assert.equal((await result).stopReason, stop ? 'error' : 'stop');
+    assert.equal(calls, stop ? 0 : 1); assert.equal(gate.reserved(), stop ? 0 : 21658);
+    db.close();
+  }
+});

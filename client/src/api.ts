@@ -643,6 +643,7 @@ export type BurrowTask = {
   routine_id?: string | null;
   routine_version?: number | null;
   comparison?: boolean;
+  travel?: boolean;
   manual_notes?: string;
   manual_edited?: boolean;
   proposed_result?: string;
@@ -650,7 +651,14 @@ export type BurrowTask = {
   created_at: number;
   updated_at: number;
 };
-export type BurrowWorkspace = { tasks: BurrowTask[]; can_run: boolean; service: string | null; can_research?: boolean; agent_task_ids?: string[] };
+export type BurrowWorkspace = { tasks: BurrowTask[]; can_run: boolean; service: string | null; can_research?: boolean; can_travel?: boolean; agent_task_ids?: string[] };
+export type TravelMoney = { minor: number; currency: string };
+export type Traveler = { given_name: string; family_name: string; email: string; phone: string; born_on: string };
+export type TravelGuest = { type: "adult" } | { type: "child"; age: number };
+export type TravelMandate = { maximum: TravelMoney; country_code: string; city: string; area: { latitude: number; longitude: number; radius_meters: number }; check_in: string; check_out: string; rooms: number; guests: TravelGuest[]; require_refundable: boolean; accommodation_ids: string[]; minimum_rating: number | null; preferences: string[]; amenity_preferences: string[]; bed_type: string | null; substitution_tolerance: "within_area" | "exact_property"; spend_capability_id: "fixture-balance" };
+export type TravelQuote = { room: string; accommodation: { name: string; address: string; latitude: number; longitude: number; id: string; city: string; country_code: string; rating: number | null }; total: TravelMoney; due_at_property: TravelMoney; cancellation: { before: number; refund: TravelMoney }[]; check_in: string; check_out: string; guests: TravelGuest[]; rooms: number; rate_id: string };
+export type TravelMaterial = { id: string; name: string; source_url: string; fetched_at: number; coords: { lat: number; lng: number } | null; displayed_price: string | null; currency: string | null; advisory: true };
+export type TravelView = { mode: "fixture"; stage: string; reason: string | null; root_goal_id: string | null; transaction_id: string | null; terminal: boolean; comparison: { options: { rate: TravelQuote; distance_meters: number; materials: { material: TravelMaterial; confidence: "high" | "low"; distance_meters: number }[] }[]; context: TravelMaterial[] }; selected_rate_id: string | null; result: { booking: { id: string; status: string; confirmed_at: number | null; reference: string | null; guests: { given_name: string; family_name: string }[] }; final_quote: TravelQuote; research_price: TravelMoney | null; research_to_quote_difference_minor: number | null; selection_reason: string; verified_at: number; scope: unknown } | null };
 export type BurrowMemory = { id: string; project: string | null; text: string; source_task: string; version: number; created_at: number; updated_at: number };
 export type BurrowContext = { memories: BurrowMemory[]; history: [string, string, string, number][]; routines: [string, number, string, string, string][] };
 export type ResearchFact = { label: string; value: string; evidence_id: string; quote: string; source_url: string; captured_at: string };
@@ -665,9 +673,12 @@ export type SubscriptionProvider = "claude" | "chatgpt";
 export type SubscriptionConnection = { state: "connected" | "disconnected" | "unavailable" | "awaiting_sign_in" | "verifying" | "failed" | "expired"; email?: string | null; plan?: string | null; attempt?: string; authorizationUrl?: string | null; userCode?: string | null; expiresAt?: number; usableForResearch: boolean; models?: (ModelCatalogEntry & { name?: string })[] };
 export type SubscriptionConnections = { claude: SubscriptionConnection; chatgpt: SubscriptionConnection };
 export type ModelRequestUsage = { id: string; role: ModelRole; canonicalModel: string; providerModelId: string; connectionId: string; fundedBy: "ohiyo" | "you"; reservationMicros: number; status: "dispatching" | "complete"; usage: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } | null; reportedCostMicros: number | null; costSource?: "sdk-estimate" | "subscription" };
+export type PrivateBrowserInput = { kind: "click"; x: number; y: number } | { kind: "text"; text: string } | { kind: "key"; key: string } | { kind: "scroll"; x: number; y: number };
+export type PrivateBrowserCommand = { action: "status" | "take_over" | "give_back" | "frame" | "input"; session_id?: string; input?: PrivateBrowserInput };
+export type PrivateBrowserStatus = { phase: "agent" | "taking_over" | "human" | "giving_back" | "input_uncertain"; session_id: string | null; generation?: number; png?: string };
 export type BurrowAgent = {
   task: BurrowTask;
-  agent: { id: string; phase: string; activity: string; runtime_id: string | null;
+  agent: { id: string; phase: string; activity: string; runtime_id: string | null; computer_workspace?: string | null;
     max_cost_cents?: number;
     role?: ModelRole; routing?: Partial<Record<ModelRole, ModelRoute>> | null; usage?: ModelRequestUsage[] | null };
   connected: boolean;
@@ -735,6 +746,8 @@ async function request<T>(
 
 export const api = {
   burrow: (token: string) => request<BurrowWorkspace>("/burrow", {}, token),
+  burrowTravel: (token: string, id: string) => request<TravelView>(`/burrow/tasks/${id}/travel`, {}, token),
+  attachBurrowTravel: (token: string, task: BurrowTask, mandate: TravelMandate, travelers: Traveler[], materials: boolean) => request<{ task: BurrowTask; workspace_id: string; mandate_id: string; mandate_version: number; mode: "fixture" }>(`/burrow/tasks/${task.id}/travel`, { method: "POST", body: JSON.stringify({ version: task.version, mandate, travelers, materials }) }, token),
   burrowContext: (token: string, task: string, q = "") => request<BurrowContext>(`/burrow/tasks/${task}/context?q=${encodeURIComponent(q)}`, {}, token),
   rememberBurrow: (token: string, task: string, text: string, personal: boolean) => request(`/burrow/tasks/${task}/memories`, { method: "POST", body: JSON.stringify({ text, personal }) }, token),
   changeBurrowMemory: (token: string, memory: BurrowMemory, text: string | null) => request(`/burrow/memories/${memory.id}`, { method: "PATCH", body: JSON.stringify({ version: memory.version, text }) }, token),
@@ -751,6 +764,9 @@ export const api = {
   saveModelConnection: (token: string, connection: ModelConnectionInput) => request("/burrow/model-routing/connections", { method: "POST", body: JSON.stringify(connection) }, token),
   deleteModelConnection: (token: string, id: string) => request(`/burrow/model-routing/connections/${encodeURIComponent(id)}`, { method: "DELETE" }, token),
   burrowAgent: (token: string, id: string) => request<BurrowAgent>(`/burrow/tasks/${id}/agent`, {}, token),
+  privateBrowser: (token: string, taskId: string, requestId: string, browser: PrivateBrowserCommand) => request<PrivateBrowserStatus>(`/burrow/tasks/${encodeURIComponent(taskId)}/computer`, {
+    method: "POST", body: JSON.stringify({ action: "browser_control", request_id: requestId, browser }),
+  }, token),
   startBurrowAgent: (token: string, task: BurrowTask, cents: number, role?: ModelRole, routing?: ModelRouting["preview"]) => request(`/burrow/tasks/${task.id}/agent`, {
     method: "POST", body: JSON.stringify({ version: task.version, allow_agent: true, max_cost_cents: cents, role, routing }),
   }, token),

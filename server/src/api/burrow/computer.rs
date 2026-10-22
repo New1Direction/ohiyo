@@ -8,7 +8,8 @@ use crate::{
 };
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{header::CACHE_CONTROL, StatusCode},
+    response::IntoResponse,
     Json,
 };
 use serde::Deserialize;
@@ -54,6 +55,17 @@ pub struct Command {
     action: String,
     request_id: String,
     mode: Option<String>,
+    browser: Option<BrowserCommand>,
+}
+
+#[derive(Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BrowserCommand {
+    action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input: Option<Value>,
 }
 
 pub async fn command(
@@ -61,7 +73,7 @@ pub async fn command(
     AuthUser(user, _): AuthUser,
     Path(id): Path<String>,
     Json(body): Json<Command>,
-) -> Result<Json<Value>, Error> {
+) -> Result<impl IntoResponse, Error> {
     owned(&s, &user, &id).await?;
     if !matches!(
         body.action.as_str(),
@@ -74,6 +86,7 @@ pub async fn command(
             | "release_workspace"
             | "live_view"
             | "receipt"
+            | "browser_control"
     ) || body.request_id.is_empty()
         || body.request_id.len() > 160
         || !body
@@ -87,6 +100,29 @@ pub async fn command(
     {
         return Err((StatusCode::BAD_REQUEST, "Invalid computer command.".into()));
     }
+    if (body.action == "browser_control") != body.browser.is_some()
+        || body.browser.as_ref().is_some_and(|b| {
+            !matches!(
+                b.action.as_str(),
+                "status" | "take_over" | "give_back" | "frame" | "input"
+            ) || (b.action == "input") != b.input.is_some()
+                || b.input
+                    .as_ref()
+                    .is_some_and(|v| v.to_string().len() > 12000)
+                || b.session_id.as_ref().is_some_and(|id| {
+                    id.is_empty()
+                        || id.len() > 160
+                        || !id
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b"-_:".contains(&b))
+                })
+        })
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invalid private browser command.".into(),
+        ));
+    }
     let k = agent::connected(&s, &user)?;
     let runtime: Option<String> = sqlx::query_scalar("SELECT r.runtime_id FROM (SELECT * FROM burrow_agent_runs WHERE task_id=? ORDER BY request_version DESC LIMIT 1) r JOIN burrow_computer_workspaces w ON w.id=r.computer_workspace WHERE w.user_id=?")
         .bind(&id).bind(&user).fetch_optional(&s.db).await.map_err(internal)?.flatten();
@@ -94,8 +130,9 @@ pub async fn command(
         StatusCode::NOT_FOUND,
         "No computer is attached to this task.".into(),
     ))?;
-    let bytes = k.pi_call(json!({"operation":"computer","owner":user,"run":runtime,"action":body.action,"request_id":body.request_id,"mode":body.mode})).await
+    let bytes = k.pi_call(json!({"operation":"computer","owner":user,"run":runtime,"action":body.action,"request_id":body.request_id,"mode":body.mode,"browser":body.browser})).await
         .map_err(|_|(StatusCode::CONFLICT,"Computer acknowledgement unavailable. Check saved status before repeating a lifecycle change.".into()))?;
-    let value = serde_json::from_slice(&bytes).map_err(internal)?;
-    Ok(Json(value))
+    let value: Value = serde_json::from_slice(&bytes).map_err(internal)?;
+    // Private frames/input acknowledgements are never task content or cacheable.
+    Ok(([(CACHE_CONTROL, "no-store")], Json(value)))
 }

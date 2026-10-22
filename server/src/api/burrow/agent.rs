@@ -277,6 +277,23 @@ pub async fn start(
     let _lifecycle = s.instance_lifecycle.lock().await;
     let task = owned(&s, &user, &id).await?;
     let kikka = connected(&s, &user)?;
+    let travel_workspace = super::travel::workflow::workspace(&s, &id).await?;
+    if task.travel && (!s.travel_fixtures || kikka.pi.is_none() || travel_workspace.is_none()) {
+        return Err((
+            StatusCode::CONFLICT,
+            "Fixture travel requires its saved mandate and Pi connection.".into(),
+        ));
+    }
+    if travel_workspace.is_some()
+        && body.computer_workspace.is_some()
+        && body.computer_workspace != travel_workspace
+    {
+        return Err((
+            StatusCode::CONFLICT,
+            "Travel uses its stored workspace scope.".into(),
+        ));
+    }
+    let computer_workspace = travel_workspace.or(body.computer_workspace.clone());
     if !body.allow_agent
         || !(0..=50).contains(&body.max_cost_cents)
         || (body.max_cost_cents == 0 && body.routing.is_none())
@@ -292,7 +309,7 @@ pub async fn start(
             "Start with a saved document request. Created pages keep their existing editor.".into(),
         ));
     }
-    if let Some(workspace) = &body.computer_workspace {
+    if let Some(workspace) = &computer_workspace {
         let authorized: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM burrow_computer_workspaces WHERE id=? AND user_id=?)",
         )
@@ -331,7 +348,7 @@ pub async fn start(
         if previous.max_cost_cents != body.max_cost_cents
             || previous.target != target
             || previous.role != role
-            || previous.computer_workspace != body.computer_workspace
+            || previous.computer_workspace != computer_workspace
             || !super::routing::same_snapshot(
                 previous.routing.as_ref().map(|v| &v.0),
                 body.routing.as_ref(),
@@ -411,7 +428,10 @@ pub async fn start(
     let run = crate::types::new_id();
     sqlx::query("INSERT INTO burrow_agent_runs(id,task_id,request_version,target,root_goal,goal,max_cost_cents,phase,activity,role,routing,computer_workspace) VALUES(?,?,?,?,?,?,?,'queued','Getting ready…',?,?,?)")
         .bind(&run).bind(&id).bind(body.version).bind(target).bind(format!("burrow-{run}"))
-        .bind(&task.request).bind(body.max_cost_cents).bind(role).bind(routing).bind(&body.computer_workspace).execute(&mut *tx).await.map_err(internal)?;
+        .bind(&task.request).bind(body.max_cost_cents).bind(role).bind(routing).bind(&computer_workspace).execute(&mut *tx).await.map_err(internal)?;
+    super::travel::workflow::admit(&mut tx, &id, &format!("burrow-{run}"))
+        .await
+        .map_err(internal)?;
     sqlx::query("INSERT INTO burrow_attempts(task_id,started_at) VALUES(?,?)")
         .bind(&id)
         .bind(now)
@@ -582,6 +602,9 @@ pub async fn control(
         ));
     }
     if body.action == "stop" {
+        super::travel::workflow::stop_in(&mut tx, &id)
+            .await
+            .map_err(internal)?;
         sqlx::query(
             "UPDATE burrow_agent_commands SET phase='discarded' WHERE run_id=? AND phase='queued'",
         )
@@ -618,10 +641,15 @@ pub async fn control(
         .map_err(internal)?;
     }
     tx.commit().await.map_err(internal)?;
+    if task.travel && body.action == "stop" {
+        super::travel::workflow::publish_snapshot(&s, &user, &id)
+            .await
+            .map_err(|e| internal(e.to_string()))?;
+    }
     owned(&s, &user, &id).await.map(Json)
 }
 
-async fn publish(
+pub(crate) async fn publish(
     s: &AppState,
     run: &Run,
     phase: &str,
@@ -631,7 +659,8 @@ async fn publish(
 ) -> Result<(), sqlx::Error> {
     let mut tx = s.db.begin().await?;
     // A new instruction may have arrived while status/watch were in flight.
-    let changed = sqlx::query("UPDATE burrow_agent_runs SET phase=?,activity=? WHERE id=? AND (?='review' OR NOT EXISTS(SELECT 1 FROM burrow_agent_commands WHERE run_id=? AND phase IN ('queued','dispatching')))")
+    // Capability snapshots may publish results but never change Pi's lifecycle.
+    let changed = sqlx::query("UPDATE burrow_agent_runs SET phase=CASE WHEN ?1='snapshot' THEN phase ELSE ?1 END,activity=?2 WHERE id=?3 AND (?4 IN ('review','snapshot') OR NOT EXISTS(SELECT 1 FROM burrow_agent_commands WHERE run_id=?5 AND phase IN ('queued','dispatching')))")
         .bind(phase).bind(activity).bind(&run.id).bind(phase).bind(&run.id).execute(&mut *tx).await?.rows_affected();
     if changed == 0 {
         return Ok(());
@@ -710,7 +739,9 @@ pub async fn tick(s: &AppState) -> Result<(), sqlx::Error> {
                     .await
                     .map_err(|e| sqlx::Error::Protocol(e.1))?;
                 let mut admission = json!({"owner":owner,"task":run.task_id,"root_goal":run.root_goal,"goal":run.goal,"max_cost_cents":run.max_cost_cents});
-                if let Some(workspace) = &run.computer_workspace {
+                if let Some(travel) = super::travel::workflow::descriptor(s, &run.task_id).await? {
+                    admission["travel"] = travel;
+                } else if let Some(workspace) = &run.computer_workspace {
                     admission["computer_workspace"] = json!(workspace);
                 }
                 admission["burrow_context"] = json!(super::context::prompt(s, &owner, &task)
@@ -938,6 +969,37 @@ async fn reconcile(s: &AppState, k: &Kikka, run: &Run) -> Result<(), String> {
         Some("Running"|"Verifying"|"Queued"|"Pending") => ("attached","Working…","working"),
         _ => return Err("The workspace reported an unfamiliar state. Nothing new was started.".into()),
     };
+    if super::travel::workflow::descriptor(s, &run.task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
+        let owner: String = sqlx::query_scalar("SELECT user_id FROM burrow_tasks WHERE id=?")
+            .bind(&run.task_id)
+            .fetch_one(&s.db)
+            .await
+            .map_err(|e| e.to_string())?;
+        let snapshot = super::travel::workflow::snapshot(s, &owner, &run.task_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let travel_state = if snapshot["terminal"] == true {
+            "draft_ready"
+        } else if phase == "finished" || state == "waiting" {
+            "waiting"
+        } else {
+            "working"
+        };
+        return publish(
+            s,
+            run,
+            phase,
+            snapshot["reason"].as_str().unwrap_or(activity),
+            travel_state,
+            Some(&snapshot.to_string()),
+        )
+        .await
+        .map_err(|e| e.to_string());
+    }
     // Never replace a saved result with a status message or an incomplete assistant turn.
     let result = if state == "draft_ready" {
         answer.as_deref()

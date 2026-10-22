@@ -307,12 +307,24 @@ button:disabled,
   to   { opacity: 1; transform: translateY(0); filter: blur(0); }
 }
 @keyframes ohiyo-onboarding-rise {
-  from { opacity: 0; transform: translateY(18px) scale(0.985); filter: blur(8px); }
-  to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes ohiyo-onboarding-glow-in {
-  from { opacity: 0; transform: scale(0.92); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: translateX(-50%) scale(0.92); }
+  to   { opacity: 0.72; transform: translateX(-50%) scale(1); }
+}
+@keyframes ohiyo-onboarding-dither-in {
+  from { opacity: 0; clip-path: inset(45% 0 45%); }
+  to { opacity: 0.6; clip-path: inset(0); }
+}
+@keyframes ohiyo-onboarding-draw {
+  from { stroke-dashoffset: 1; opacity: 1; }
+  to { stroke-dashoffset: 0; opacity: 0.45; }
+}
+@keyframes ohiyo-onboarding-mark-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.7) rotate(-14deg); }
+  to { opacity: 1; transform: none; }
 }
 .kc-message-in { animation: kc-message-in var(--dur-base) var(--ease-out) both; }
 .kc-fade-up { animation: kc-fade-up var(--dur-slow) var(--ease-out) both; }
@@ -905,6 +917,8 @@ button:disabled,
 
 .ohiyo-onboarding-screen {
   background-attachment: fixed;
+  isolation: isolate;
+  background: radial-gradient(ellipse at 50% 25%, color-mix(in oklch, var(--accent) 8%, var(--bg-base)), var(--bg-base) 70%);
 }
 .ohiyo-cursor-spotlight {
   position: fixed;
@@ -931,7 +945,7 @@ button:disabled,
 }
 .ohiyo-onboarding-glow {
   position: absolute;
-  inset: 12% auto auto 50%;
+  inset: 0 auto auto 50%;
   width: min(44rem, 76vw);
   height: min(32rem, 58vh);
   transform: translateX(-50%);
@@ -944,12 +958,66 @@ button:disabled,
   opacity: 0.72;
   animation: ohiyo-onboarding-glow-in 700ms var(--ease-out) both;
 }
-.ohiyo-onboarding-hero {
-  animation: ohiyo-onboarding-rise 560ms var(--ease-out) both;
+.ohiyo-onboarding-dither {
+  position: fixed;
+  top: max(-100px, calc(50% - 540px));
+  left: 50%;
+  width: min(1300px, 170vw);
+  height: auto;
+  transform: translateX(-50%);
+  color: var(--accent);
+  opacity: 0.6;
+  pointer-events: none;
+  animation: ohiyo-onboarding-dither-in 900ms steps(12, end) backwards;
+}
+@keyframes ohiyo-accent-spread {
+  from { transform: scale(0); }
+  to { transform: scale(1); }
+}
+@keyframes ohiyo-accent-edge {
+  from { opacity: 1; }
+  80% { opacity: 0.85; }
+  to { opacity: 0; }
+}
+.ohiyo-onboarding-color-wave, .ohiyo-onboarding-wave-edge {
+  animation: ohiyo-accent-spread 1100ms linear both;
+}
+.ohiyo-onboarding-wave-edge {
+  animation: ohiyo-accent-spread 1100ms linear both,
+    ohiyo-accent-edge 1100ms linear both;
+}
+.ohiyo-onboarding-hero > * {
+  animation: ohiyo-onboarding-rise 620ms cubic-bezier(.16, 1, .3, 1) backwards;
+}
+.ohiyo-onboarding-hero > :nth-child(2) { animation-delay: 70ms; }
+.ohiyo-onboarding-hero > :nth-child(3) { animation-delay: 120ms; }
+.ohiyo-onboarding-hero > :nth-child(4) { animation-delay: 170ms; }
+.ohiyo-onboarding-hero > :nth-child(5) { animation-delay: 220ms; }
+.ohiyo-onboarding-hero > :nth-child(6) { animation-delay: 290ms; }
+.ohiyo-onboarding-hero > :nth-child(7) { animation-delay: 350ms; }
+.ohiyo-onboarding-hero > :nth-child(8) { animation-delay: 400ms; }
+.ohiyo-onboarding-hero > :nth-child(9) { animation-delay: 440ms; }
+.ohiyo-onboarding-eyebrow {
+  margin: 18px 0 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
 }
 .ohiyo-onboarding-mark {
+  position: relative;
   line-height: 0;
   filter: drop-shadow(0 2px 6px rgba(0,0,0,0.18));
+  animation-name: ohiyo-onboarding-mark-in;
+}
+.ohiyo-onboarding-mark::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  border: 1px dashed color-mix(in oklch, var(--accent) 40%, transparent);
+  border-radius: 50%;
 }
 .ohiyo-first-space-card {
   position: relative;
@@ -973,6 +1041,33 @@ button:disabled,
   position: relative;
   z-index: 1;
 }
+.ohiyo-first-space-card > .ohiyo-onboarding-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.ohiyo-onboarding-outline rect {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1;
+  rx: var(--radius-xl);
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  opacity: 0.45;
+  animation: ohiyo-onboarding-draw 850ms 230ms cubic-bezier(.16, 1, .3, 1) backwards;
+}
+.ohiyo-onboarding-screen .kc-field {
+  transition: box-shadow 180ms, background-color 180ms;
+}
+.ohiyo-onboarding-screen .kc-accent-swatch {
+  transition: transform 180ms cubic-bezier(.2, .8, .2, 1), box-shadow 180ms;
+}
+.ohiyo-onboarding-screen .kc-accent-swatch:hover { transform: translateY(-4px) scale(1.12); }
+.ohiyo-onboarding-screen .kc-accent-swatch:active { transform: scale(0.92); }
+.ohiyo-onboarding-screen .kc-accent-swatch[aria-pressed="true"] { transform: translateY(-2px); }
 .ohiyo-suggestion-chip:hover {
   color: var(--text-primary) !important;
   border-color: color-mix(in oklch, var(--accent) 24%, transparent) !important;
@@ -1236,6 +1331,12 @@ button:disabled,
   .ohiyo-onboarding-glow, .ohiyo-onboarding-hero, .ohiyo-boot-mark, .ohiyo-boot-progress span {
     animation: none !important;
   }
+  .ohiyo-onboarding-hero > *, .ohiyo-onboarding-outline rect, .ohiyo-onboarding-dither {
+    animation: none !important;
+  }
+  .ohiyo-onboarding-dither-pulse { display: none; }
+  .ohiyo-onboarding-dither > path { fill: currentColor; }
+  .ohiyo-onboarding-screen .kc-accent-swatch { transition: none !important; transform: none !important; }
   body { transition: none !important; }
   .kc-interactive, .kc-cta, .kc-card {
     transition: background-color var(--dur-fast) linear, box-shadow var(--dur-fast) linear;
