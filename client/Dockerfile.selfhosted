@@ -1,0 +1,18 @@
+# Build from repository root; Burrow imports the shared brand asset.
+# docker buildx build --load -f client/Dockerfile.selfhosted \
+#   --build-arg VITE_SERVER_URL=https://api.example.com -t ohiyo-web .
+FROM node:22-bookworm-slim AS build
+COPY --from=oven/bun:1.4.3 /usr/local/bin/bun /usr/local/bin/bun
+WORKDIR /app/client
+COPY client/package.json client/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY client/ ./
+COPY brand/kikka-chinchilla-clean.png /app/brand/kikka-chinchilla-clean.png
+# Self-hosted builds must explicitly name their API; never silently ship Railway.
+ARG VITE_SERVER_URL
+RUN node --input-type=module -e 'const s = process.env.VITE_SERVER_URL; const u = new URL(s); if (!/^https?:\/\/[^\s/?#\\]+\/?$/.test(s) || s !== s.trim() || !["http:", "https:"].includes(u.protocol) || u.username || u.password || u.pathname !== "/" || u.search || u.hash) throw new Error("VITE_SERVER_URL must be an absolute HTTP(S) origin without credentials, path, query or hash");' \
+    && bun run build && rm -f dist/_headers
+
+FROM caddy:2-alpine
+COPY client/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/client/dist /srv

@@ -1,0 +1,21 @@
+# Allowlist: do not send credentials, databases, uploads or unrelated workloads.
+**
+!server/
+!server/Cargo.toml
+!server/Cargo.lock
+!server/src/
+!server/src/**
+!server/migrations/
+!server/migrations/**
+!server/docker-entrypoint.sh
+!server/litestream-config.sh
+!.agents/
+!.agents/skills/
+!.agents/skills/designing-burrow-pages/
+!.agents/skills/designing-burrow-pages/SKILL.md
+!.agents/skills/teaching-from-material/
+!.agents/skills/teaching-from-material/SKILL.md
+!.agents/skills/comparing-real-options/
+!.agents/skills/comparing-real-options/SKILL.md
+!.agents/skills/crafting-interactive-stories/
+!.agents/skills/crafting-interactive-stories/SKILL.md
