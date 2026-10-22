@@ -316,7 +316,7 @@ button:disabled,
 }
 @keyframes ohiyo-onboarding-dither-in {
   from { opacity: 0; clip-path: inset(45% 0 45%); }
-  to { opacity: 0.6; clip-path: inset(0); }
+  to { opacity: 1; clip-path: inset(0); }
 }
 @keyframes ohiyo-onboarding-draw {
   from { stroke-dashoffset: 1; opacity: 1; }
@@ -960,31 +960,19 @@ button:disabled,
 }
 .ohiyo-onboarding-dither {
   position: fixed;
-  top: max(-100px, calc(50% - 540px));
-  left: 50%;
-  width: min(1300px, 170vw);
-  height: auto;
-  transform: translateX(-50%);
-  color: var(--accent);
-  opacity: 0.6;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   animation: ohiyo-onboarding-dither-in 900ms steps(12, end) backwards;
 }
-@keyframes ohiyo-accent-spread {
-  from { transform: scale(0); }
-  to { transform: scale(1); }
-}
-@keyframes ohiyo-accent-edge {
-  from { opacity: 1; }
-  80% { opacity: 0.85; }
-  to { opacity: 0; }
-}
-.ohiyo-onboarding-color-wave, .ohiyo-onboarding-wave-edge {
-  animation: ohiyo-accent-spread 1100ms linear both;
-}
-.ohiyo-onboarding-wave-edge {
-  animation: ohiyo-accent-spread 1100ms linear both,
-    ohiyo-accent-edge 1100ms linear both;
+.ohiyo-onboarding-motion {
+  color: var(--text-secondary);
+  background: var(--bg-base);
+  border: 1px solid color-mix(in oklch, var(--text-primary) 12%, transparent);
+  border-radius: var(--radius-full);
+  padding: 6px 12px;
+  cursor: pointer;
 }
 .ohiyo-onboarding-hero > * {
   animation: ohiyo-onboarding-rise 620ms cubic-bezier(.16, 1, .3, 1) backwards;
@@ -1334,8 +1322,7 @@ button:disabled,
   .ohiyo-onboarding-hero > *, .ohiyo-onboarding-outline rect, .ohiyo-onboarding-dither {
     animation: none !important;
   }
-  .ohiyo-onboarding-dither-pulse { display: none; }
-  .ohiyo-onboarding-dither > path { fill: currentColor; }
+  .ohiyo-onboarding-motion { display: none; }
   .ohiyo-onboarding-screen .kc-accent-swatch { transition: none !important; transform: none !important; }
   body { transition: none !important; }
   .kc-interactive, .kc-cta, .kc-card {

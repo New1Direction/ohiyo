@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BirdMark } from "./BirdMark";
+import { OnboardingBackdrop, type AccentPulse } from "./OnboardingBackdrop";
 import { ACCENT_PRESETS, getActiveAccent } from "../lib/appearance";
 
 type Props = {
@@ -14,18 +15,6 @@ type Props = {
 };
 
 const SUGGESTIONS = ["My Crew", "Game Night", "Study Room"];
-
-// One static SVG path: ordered dithering, without a canvas loop or random particles.
-const DITHER = (() => {
-  const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  let path = "";
-  for (let y = 0; y < 110; y++) for (let x = 0; x < 160; x++) {
-    const radius = Math.hypot((x - 80) / 76, (y - 43) / 57);
-    const density = Math.max(0, 1 - radius) * 0.5 + Math.max(0, 1 - Math.abs(radius - 0.7) * 12) * 0.2;
-    if (density > (bayer[(y % 4) * 4 + x % 4] + 0.5) / 16) path += `M${x * 2} ${y * 2}h1v1h-1z`;
-  }
-  return path;
-})();
 
 const VALUE_BULLETS: { title: string; body: string }[] = [
   { title: "A place to chat", body: "#general comes with your space." },
@@ -44,65 +33,26 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
   const [sharedLink, setSharedLink] = useState("");
   const [linkError, setLinkError] = useState("");
   const [accent, setAccentSel] = useState<string>(getActiveAccent);
-  const [pulse, setPulse] = useState<{ id: number; from: string; color: string; x: number; y: number; radius: number } | null>(null);
+  const [pulse, setPulse] = useState<AccentPulse | null>(null);
+  const [motionPaused, setMotionPaused] = useState(false);
   const pulseSequence = useRef(0);
-  const ditherRef = useRef<SVGSVGElement>(null);
-  const ditherClipId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
-  const spotlightRef = useRef<HTMLDivElement>(null);
-  const pointerRef = useRef({ x: 0, y: 0, frame: 0 });
 
   function pickAccent(hex: string, button: HTMLButtonElement) {
-    const field = ditherRef.current?.getBoundingClientRect();
-    if (field?.width && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      const swatch = button.getBoundingClientRect();
-      // Use the swatch center for mouse, touch, and keyboard activation alike.
-      const x = (swatch.left + swatch.width / 2 - field.left) * 320 / field.width;
-      const y = (swatch.top + swatch.height / 2 - field.top) * 220 / field.height;
-      setPulse({ id: ++pulseSequence.current, from: accent, color: hex, x, y,
-        radius: Math.hypot(Math.max(x, 320 - x), Math.max(y, 220 - y)) });
-    } else {
-      setPulse(null);
-    }
+    const swatch = button.getBoundingClientRect();
+    // The ripple starts at the same swatch for mouse, touch, and keyboard input.
+    setPulse({ id: ++pulseSequence.current, x: swatch.left + swatch.width / 2, y: swatch.top + swatch.height / 2 });
     setAccentSel(hex);
     onPickAccent?.(hex); // applies live (recolors this screen) + syncs
   }
 
   useEffect(() => {
     inputRef.current?.focus();
-    const pointerState = pointerRef.current;
-    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const stopPulse = () => { if (motion.matches) setPulse(null); };
-    motion.addEventListener("change", stopPulse);
-    return () => {
-      if (pointerState.frame) window.cancelAnimationFrame(pointerState.frame);
-      motion.removeEventListener("change", stopPulse);
-    };
   }, []);
 
   const trimmed = name.trim();
   const firstName = (displayName || "there").split(/\s+/)[0];
-
-  function handlePointerMove(e: PointerEvent<HTMLDivElement>) {
-    if (e.pointerType !== "mouse" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    pointerRef.current.x = e.clientX;
-    pointerRef.current.y = e.clientY;
-    if (pointerRef.current.frame) return;
-    pointerRef.current.frame = window.requestAnimationFrame(() => {
-      pointerRef.current.frame = 0;
-      const { x, y } = pointerRef.current;
-      const spotlight = spotlightRef.current;
-      if (spotlight) {
-        spotlight.style.opacity = "1";
-        spotlight.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
-      }
-    });
-  }
-
-  function handlePointerLeave() {
-    if (spotlightRef.current) spotlightRef.current.style.opacity = "0";
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -133,28 +83,12 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
   return (
     <div
       className="ohiyo-onboarding-screen kc-screen relative flex w-screen overflow-x-hidden overflow-y-auto"
-      onPointerMove={handlePointerMove}
-      onPointerLeave={handlePointerLeave}
       style={{
         padding: "var(--space-6)",
       }}
     >
-      <div ref={spotlightRef} className="ohiyo-cursor-spotlight" aria-hidden="true" />
+      <OnboardingBackdrop accent={accent} pulse={pulse} paused={motionPaused} />
       <div className="ohiyo-onboarding-glow" aria-hidden="true" />
-      <svg ref={ditherRef} className="ohiyo-onboarding-dither" viewBox="0 0 320 220" aria-hidden="true" focusable="false">
-        <path d={DITHER} fill={pulse?.from ?? "currentColor"} />
-        {pulse && <>
-          <defs><clipPath id={ditherClipId}><path d={DITHER} /></clipPath></defs>
-          <g key={pulse.id} className="ohiyo-onboarding-dither-pulse" clipPath={`url(#${ditherClipId})`}>
-            <circle className="ohiyo-onboarding-color-wave" cx={pulse.x} cy={pulse.y} r={pulse.radius}
-              fill={pulse.color} style={{ transformOrigin: `${pulse.x}px ${pulse.y}px` }}
-              onAnimationEnd={() => setPulse(current => current?.id === pulse.id ? null : current)} />
-            <circle className="ohiyo-onboarding-wave-edge" cx={pulse.x} cy={pulse.y} r={pulse.radius}
-              fill="none" stroke="white" strokeWidth="18"
-              style={{ transformOrigin: `${pulse.x}px ${pulse.y}px` }} />
-          </g>
-        </>}
-      </svg>
       <div className="ohiyo-onboarding-hero relative z-10 m-auto flex w-full max-w-xl flex-col items-center text-center">
         <div className="ohiyo-onboarding-mark mb-1" style={{ color: "var(--accent)" }}>
           <BirdMark size={64} />
@@ -345,6 +279,10 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
           style={{ color: "var(--text-muted)", background: "none", border: "none" }}
         >
           I’m joining later — show the app
+        </button>
+        <button type="button" className="ohiyo-onboarding-motion mt-3 text-xs"
+          aria-pressed={motionPaused} onClick={() => setMotionPaused(value => !value)}>
+          {motionPaused ? "Resume background motion" : "Pause background motion"}
         </button>
       </div>
     </div>

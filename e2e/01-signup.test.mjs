@@ -86,6 +86,30 @@ try {
   log("ONBOARDING shown after register — cliff removed ✓");
   await shot(page, "03-onboarding-1440");
 
+  // Decorative motion must not interfere with the form or ignore motion controls.
+  const artwork = () => page.locator("canvas.ohiyo-onboarding-dither").evaluate(canvas => canvas.toDataURL());
+  let pixels = await artwork();
+  await settle(page, 250);
+  if (pixels === await artwork()) throw new Error("onboarding background is not moving");
+  await page.getByRole("button", { name: "Pause background motion", exact: true }).click();
+  await settle(page, 100);
+  pixels = await artwork();
+  await page.mouse.move(100, 300);
+  await settle(page, 250);
+  if (pixels !== await artwork()) throw new Error("paused background still changes");
+  await page.fill("#kc-space-name", "The Roost");
+  await page.getByRole("button", { name: "Accent Rose", exact: true }).click();
+  if (await page.getByRole("button", { name: "Accent Rose", exact: true }).getAttribute("aria-pressed") !== "true"
+    || await page.inputValue("#kc-space-name") !== "The Roost") throw new Error("accent selection changed form state");
+  await page.getByRole("button", { name: "Resume background motion", exact: true }).click();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await settle(page, 100);
+  pixels = await artwork();
+  await settle(page, 250);
+  if (pixels !== await artwork()) throw new Error("onboarding ignores reduced motion");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  log("onboarding motion, pause, accent selection and reduced motion ✓");
+
   // ── Create first space via onboarding → land in live channel ────
   await page.fill("#kc-space-name", "The Roost");
   await page.click('button:has-text("Let\'s go")');
