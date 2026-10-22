@@ -26,13 +26,21 @@ RUN git clone --depth 1 --branch "${DISCRAWL_VERSION}" https://github.com/steipe
     && test "$(git rev-parse HEAD)" = "${DISCRAWL_COMMIT}" \
     && GOMAXPROCS=2 go build -p 2 -o /usr/local/bin/discrawl ./cmd/discrawl
 
+# Litestream publishes no checksums, so each package is pinned to the sha256 we
+# verified; a replaced release file fails the build. Change version and sums together.
+FROM scratch AS litestream-amd64
+ADD --checksum=sha256:9b05043523c1fb1c4f9800623adf0015683da7fdd55e19b9fe5d28f63fae96b4 https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-amd64.deb /litestream.deb
+
+FROM scratch AS litestream-arm64
+ADD --checksum=sha256:073aceebd2bbd58213aad2e05fdf4667ff4ca1140d0be6df308859798c74e8e8 https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-arm64.deb /litestream.deb
+
+FROM litestream-${TARGETARCH} AS litestream-download
+
 FROM debian:bookworm-slim AS runtime-base
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-ARG TARGETARCH
-ARG LITESTREAM_VERSION=0.3.13
-ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-v${LITESTREAM_VERSION}-linux-${TARGETARCH}.deb /tmp/litestream.deb
+COPY --from=litestream-download /litestream.deb /tmp/litestream.deb
 RUN dpkg -i /tmp/litestream.deb && rm /tmp/litestream.deb
 WORKDIR /data
 COPY --from=builder /build/server/target/release/server /usr/local/bin/ohiyo-server
