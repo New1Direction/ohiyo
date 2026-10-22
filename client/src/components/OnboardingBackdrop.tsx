@@ -7,7 +7,13 @@ function palette(hex: string) {
   const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
   const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
   const hue = d === 0 ? 0 : 60 * (max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4);
-  return Array.from({ length: 256 }, (_, i) => `hsl(${hue + Math.sin(i / 256 * Math.PI * 2) * 110} 75% 68%)`);
+  return Array.from({ length: 256 }, (_, i) => {
+    const h = ((hue + Math.sin(i / 256 * Math.PI * 2) * 110) % 360 + 360) % 360 / 30;
+    return [0, 8, 4].map(n => {
+      const k = (n + h) % 12;
+      return Math.round((.68 - .24 * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255);
+    });
+  });
 }
 
 /** Decorative only: never intercepts input or rerenders the form on pointer movement. */
@@ -25,7 +31,10 @@ export function OnboardingBackdrop({ accent, pulse, paused }: {
     const canvas = canvasRef.current;
     const root = canvas?.parentElement;
     const ctx = canvas?.getContext("2d");
+    // Paint one small pixel buffer. CSS scales its intentionally pixelated art;
+    // full-resolution canvas drawing otherwise competes with the form's input.
     if (!canvas || !root || !ctx) return;
+    let pixels = ctx.createImageData(1, 1), step = 4;
     const state = scene.current;
     const preference = matchMedia("(prefers-reduced-motion: reduce)");
     let reduced = preference.matches, visible = true, frame = 0, last = 0;
@@ -47,8 +56,9 @@ export function OnboardingBackdrop({ accent, pulse, paused }: {
 
     function draw() {
       if (!ctx) return;
-      ctx.clearRect(0, 0, width, height);
-      const step = Math.max(4, Math.ceil(width / 240), Math.ceil(height / 160));
+      const data = pixels.data;
+      data.fill(0);
+      const stride = pixels.width * 4, t = state.time;
       const age = (state.time - state.pulseAt) / 1.6;
       const active = age >= 0 && age < 1;
       const radius = age * Math.hypot(Math.max(state.originX, width - state.originX), Math.max(state.originY, height - state.originY));
@@ -57,7 +67,7 @@ export function OnboardingBackdrop({ accent, pulse, paused }: {
           const hover = state.strength * (
             .8 * Math.exp(-((x - state.x) ** 2 + (y - state.y) ** 2) / 18000) +
             .35 * Math.exp(-((x - state.tailX) ** 2 + (y - state.tailY) ** 2) / 28000));
-          const u = x / width * 5, v = y / height * 4, t = state.time;
+          const u = x / width * 5, v = y / height * 4;
           const warp = Math.sin(v * 1.8 + t * .45) + .5 * Math.cos(u * 2 - t * .3) + hover * 1.4;
           const f = (Math.sin(u * 2 + warp + t * .25) + Math.cos(v * 2.4 + Math.sin(u - t * .35)) + 2) / 4;
           if (f * .8 + .15 <= (bayer[(row % 4) * 4 + col % 4] + .5) / 16) continue;
@@ -65,14 +75,19 @@ export function OnboardingBackdrop({ accent, pulse, paused }: {
           const edge = active && Math.abs(distance - radius) < 9;
           const colors = active && distance > radius ? state.previous : state.colors;
           const index = Math.floor((f * .8 + x / width * .25 + t * .035 + hover * .38) * 256) % 256;
-          ctx.fillStyle = edge ? "#f2f4f5" : colors[index];
+          const color = colors[index];
           // Keep the welcome copy readable without hiding the moving side fields.
           const quiet = Math.abs(x - width / 2) < Math.min(310, width * .35);
-          ctx.globalAlpha = Math.min(1, .6 + f * .4 + hover * .2) * (quiet ? .25 : .7);
-          ctx.fillRect(x, y, step - 1, step - 1);
+          const alpha = Math.round(255 * Math.min(1, .6 + f * .4 + hover * .2) * (quiet ? .25 : .7));
+          const start = row * 4 * stride + col * 16;
+          for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
+            const p = start + dy * stride + dx * 4;
+            data[p] = edge ? 242 : color[0]; data[p + 1] = edge ? 244 : color[1];
+            data[p + 2] = edge ? 245 : color[2]; data[p + 3] = alpha;
+          }
         }
       }
-      ctx.globalAlpha = 1;
+      ctx.putImageData(pixels, 0, 0);
     }
     function running() { return !paused && !reduced && visible && !document.hidden; }
     function tick(now: number) {
@@ -98,10 +113,11 @@ export function OnboardingBackdrop({ accent, pulse, paused }: {
     }
     function resize() {
       if (!canvas || !ctx) return;
-      const box = canvas.getBoundingClientRect(), scale = Math.min(devicePixelRatio || 1, 2);
+      const box = canvas.getBoundingClientRect();
       width = box.width; height = box.height;
-      canvas.width = Math.round(width * scale); canvas.height = Math.round(height * scale);
-      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      step = Math.max(4, Math.ceil(width / 180), Math.ceil(height / 120));
+      canvas.width = Math.ceil(width / step) * 4; canvas.height = Math.ceil(height / step) * 4;
+      pixels = ctx.createImageData(canvas.width, canvas.height);
       draw();
     }
     function move(e: PointerEvent) {

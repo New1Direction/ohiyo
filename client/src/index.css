@@ -963,6 +963,7 @@ button:disabled,
   inset: 0;
   width: 100%;
   height: 100%;
+  image-rendering: pixelated;
   pointer-events: none;
   animation: ohiyo-onboarding-dither-in 900ms steps(12, end) backwards;
 }
