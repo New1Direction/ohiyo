@@ -3,6 +3,11 @@
 Open `/burrow` in the existing browser client. `/` remains Ohiyo. Burrow is an
 explicit experimental surface, not a change to Ohiyo chat or encryption.
 
+Prompt composers use Enter to send and Shift+Enter for a new line. Ctrl/⌘ Enter
+also sends. IME composition and repeated Enter key events never send; empty, busy or
+disconnected prompts cannot bypass the disabled submit button. Saved-document
+editors keep normal multiline input and explicit Save actions.
+
 ## Backgrounds
 
 The small coloured dot beside Motion cycles nine looks: Ember, Neural bloom,
@@ -12,6 +17,11 @@ local storage; it is not account data. Enter and Space also activate the dot.
 Motion pauses animation, reduced-motion users get still frames, and hidden tabs
 and open tasks stop the animation loops. Backgrounds never capture clicks or
 change a task. The abstract patterns are decoration, not live AI activity.
+
+The small colour ring beside the pattern dot opens six colour choices: Original,
+Peach, Mint, Blue, Lilac and Rose. Colour stays independent of the pattern and is
+remembered locally. Escape closes the picker and returns focus to its toggle;
+clicking outside closes it too. Tints affect only the decorative layer.
 
 The original canvas sketches take visual inspiration from the
 [Teknium demo collection](https://webdev.teknium.io/). The two Paper looks use

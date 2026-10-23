@@ -27,14 +27,23 @@ test("background choices cycle, survive remounts, and work without local storage
       assert.equal(container.querySelector('[role="status"]')!.textContent, `Background: ${name}`);
     }
     next(); next();
+    const chooseColor = (name: string) => bundle.mod.act(() => [...container.querySelectorAll("button")].find(b => b.textContent === name)!.click());
+    chooseColor("Mint");
+    assert.equal(container.querySelector('button[aria-pressed="true"]')!.textContent, "Mint");
+    assert.match(label(), /Rainbow terrain\./, "colour does not change the pattern");
     unmount(); unmount = bundle.mod.mount(container);
     assert.match(label(), /Rainbow terrain\./);
+    assert.equal(container.querySelector('button[aria-pressed="true"]')!.textContent, "Mint");
+    next();
+    assert.equal(container.querySelector('button[aria-pressed="true"]')!.textContent, "Mint", "pattern changes keep the colour");
     unmount();
     Object.defineProperty(globalThis, "localStorage", { configurable: true, get() { throw new Error("Storage blocked"); } });
     unmount = bundle.mod.mount(container);
     assert.match(label(), /Ember\./);
     next();
     assert.match(label(), /Neural bloom\./);
+    chooseColor("Rose");
+    assert.equal(container.querySelector('button[aria-pressed="true"]')!.textContent, "Rose");
   } finally {
     unmount(); await bundle.cleanup(); await window.happyDOM.abort();
     for (const [key, descriptor] of originals) {

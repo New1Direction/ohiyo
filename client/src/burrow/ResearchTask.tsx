@@ -9,6 +9,7 @@ import Comparison from "./ResearchComparison";
 import PrivateBrowser from "./PrivateBrowser";
 import { SavedTravelText as SavedResearchText, TravelProgress, parseTravelResult } from "./Travel";
 import { followUpLabel, taskActionError, taskActivity } from "./taskLanguage";
+import { submitPromptOnEnter } from "./promptKeys";
 import "./research.css";
 
 type Tab = "result" | "sources" | "activity";
@@ -235,14 +236,15 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
     </div>
     {instructionAllowed && <form className="burrow-composer research-composer" onSubmit={e => { e.preventDefault(); void control(active ? "steer" : "continue"); }}>
       <label htmlFor="research-instruction">{active ? "Change what Kikka is researching" : "Ask for a revision"}</label>
-      <textarea ref={instructionInput} id="research-instruction" rows={2} maxLength={8000} value={instruction} onChange={e => setInstruction(e.target.value)} placeholder="Make this shorter and add minimum order quantities…" />
+      <textarea ref={instructionInput} id="research-instruction" rows={2} maxLength={8000} value={instruction} onChange={e => setInstruction(e.target.value)} onKeyDown={submitPromptOnEnter} aria-describedby="research-send-hint" placeholder="Make this shorter and add minimum order quantities…" />
+      <small className="burrow-small" id="research-send-hint">Enter to send · Shift+Enter for a new line</small>
       <div>
         <span>{active ? "Kikka will use this when the current step finishes." : "Uses the remaining approved work budget."}</span>
         <details ref={emojiPicker} className="research-emoji">
           <summary aria-label="Add emoji" onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); if (emojiPicker.current) emojiPicker.current.open = false; instructionInput.current?.focus(); } }}>☺</summary>
           <div role="group" aria-label="Choose an emoji">{[["😊", "Smile"], ["👍", "Thumbs up"], ["🎉", "Celebrate"], ["✨", "Sparkles"], ["❤️", "Heart"], ["🐾", "Paw prints"]].map(([emoji, label]) => <button key={label} type="button" aria-label={label} disabled={busy} onClick={() => insertEmoji(emoji)} onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); if (emojiPicker.current) emojiPicker.current.open = false; instructionInput.current?.focus(); } }}>{emoji}</button>)}</div>
         </details>
-        <button className="burrow-primary" disabled={busy || !instruction.trim()}>{busy ? "Sending…" : active ? "Send instruction" : "Allow & revise"}</button>
+        <button type="submit" className="burrow-primary" disabled={busy || !instruction.trim()}>{busy ? "Sending…" : active ? "Send instruction" : "Allow & revise"}</button>
       </div>
     </form>}
     <p className="research-scope-note">{task.travel ? "Fixture trip only. No real reservation or charge." : "Research only. Nothing is ordered or sent."}</p></section>

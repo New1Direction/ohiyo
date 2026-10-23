@@ -15,6 +15,19 @@ const looks = [
 ] as const;
 type Look = typeof looks[number][0];
 const storageKey = "burrow:backdrop";
+const tones = [
+  ["original", "Original", "conic-gradient(#eaa48e, #a4caba, #aaa0dc, #eaa48e)", "none"],
+  ["peach", "Peach", "#e8ad8e", "grayscale(1) sepia(1) saturate(2) hue-rotate(335deg)"],
+  ["mint", "Mint", "#9fd6bd", "grayscale(1) sepia(1) saturate(2) hue-rotate(95deg)"],
+  ["blue", "Blue", "#9ebfe8", "grayscale(1) sepia(1) saturate(2) hue-rotate(165deg)"],
+  ["lilac", "Lilac", "#baa7e5", "grayscale(1) sepia(1) saturate(2) hue-rotate(210deg)"],
+  ["rose", "Rose", "#df9ebc", "grayscale(1) sepia(1) saturate(2) hue-rotate(280deg)"],
+] as const;
+type Tone = typeof tones[number][0];
+function savedTone(): Tone {
+  try { return tones.find(([id]) => id === localStorage.getItem("burrow:backdrop-tone"))?.[0] ?? "original"; }
+  catch { return "original"; }
+}
 function savedLook(): Look {
   try { const stored = localStorage.getItem(storageKey); return looks.find(([id]) => id === stored)?.[0] ?? "ember"; }
   catch { return "ember"; }
@@ -22,6 +35,9 @@ function savedLook(): Look {
 
 export default function Backdrop({ paused, resting = false }: { paused: boolean; resting?: boolean }) {
   const [look, setLook] = useState(savedLook);
+  const [tone, setTone] = useState(savedTone);
+  const colors = useRef<HTMLDetailsElement>(null);
+  const tint = tones.find(([id]) => id === tone)!;
   const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [hidden, setHidden] = useState(() => document.hidden);
   const [fallback, setFallback] = useState(false);
@@ -36,6 +52,20 @@ export default function Backdrop({ paused, resting = false }: { paused: boolean;
   const index = looks.findIndex(([id]) => id === look);
   const [, name, color] = looks[index];
 
+  useEffect(() => {
+    function dismiss(event: PointerEvent) {
+      if (colors.current && !colors.current.contains(event.target as Node)) colors.current.open = false;
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape" && colors.current?.open) {
+        colors.current.open = false;
+        if (colors.current.contains(event.target as Node)) { event.preventDefault(); colors.current.querySelector("summary")?.focus(); }
+      }
+    }
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
+  }, []);
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const motion = () => setReduced(media.matches);
@@ -139,7 +169,7 @@ export default function Backdrop({ paused, resting = false }: { paused: boolean;
   }
   const description = `${name}${fallback ? " · dots fallback" : ""}. Tap for ${looks[(index + 1) % looks.length][1]}.`;
   return <>
-    <div ref={layer} className={`burrow-ambience${running ? "" : " backdrop-still"}`} data-backdrop={look} aria-hidden="true">
+    <div ref={layer} className={`burrow-ambience${running ? "" : " backdrop-still"}`} data-backdrop={look} data-tone={tone} style={{ filter: look === "off" ? "none" : tint[3] }} aria-hidden="true">
       {look === "ember" && <><pre className="burrow-ascii north">{"    +\n .     :\n    /    .\n :    +"}</pre><pre className="burrow-ascii east">{" .    /\n   :\n +   .\n    :   +"}</pre><pre className="burrow-ascii south">{"    .   +\n :    /\n   +    ."}</pre></>}
       {look !== "ember" && look !== "off" && <><canvas ref={canvas} className="backdrop-field" /><div ref={paper} className={`backdrop-paper${look === "paper-mesh" ? " dotted" : ""}`} /></>}
     </div>
@@ -148,5 +178,15 @@ export default function Backdrop({ paused, resting = false }: { paused: boolean;
       <span className="burrow-backdrop-tip" aria-hidden="true">{description}</span>
       <span className="sr-only" role="status">Background: {name}{fallback ? ". WebGL unavailable; showing dots instead." : ""}</span>
     </div>
+    <details className="burrow-backdrop-colors" ref={colors}>
+      <summary aria-label={`Background colour: ${tint[1]}`} title="Background colours"><span style={{ background: tint[2] }} aria-hidden="true" /></summary>
+      <div className="burrow-color-panel" role="group" aria-label="Background colours">
+        <strong>Background colour</strong><p>Keep the pattern. Set the mood.</p>
+        <div>{tones.map(([id, label, swatch]) => <button key={id} type="button" aria-pressed={tone === id} onClick={() => {
+          setTone(id);
+          try { localStorage.setItem("burrow:backdrop-tone", id); } catch { /* Colour still changes without storage. */ }
+        }}><i style={{ background: swatch }} aria-hidden="true" />{label}</button>)}</div>
+      </div>
+    </details>
   </>;
 }

@@ -16,7 +16,8 @@
 .burrow button, .burrow a, .burrow summary { -webkit-tap-highlight-color: transparent; }
 .burrow button { cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
 .burrow button:disabled { opacity: .5; cursor: not-allowed; }
-.burrow :is(button, a, input, textarea, select, summary):focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; box-shadow: none; }
+.burrow :is(button, a, summary, input[type=checkbox], input[type=radio]):focus-visible { outline: 2px solid #c7b9ad; outline-offset: 3px; box-shadow: none; }
+.burrow :where(input:not([type=checkbox]):not([type=radio]), textarea):focus, .burrow select:focus-visible { outline: 1px solid #8c8179; outline-offset: -1px; box-shadow: none; }
 .burrow :is(input, textarea)::placeholder { color: var(--muted); opacity: 1; }
 .burrow :is(input, textarea) { caret-color: var(--coral); }
 .burrow textarea { resize: vertical; }
@@ -131,6 +132,19 @@
 .burrow-backdrop-tip { position: absolute; top: calc(100% + 8px); right: 0; z-index: 10; width: max-content; max-width: min(260px, 80vw); padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); line-height: 1.6; box-shadow: var(--panel-shadow); pointer-events: none; visibility: hidden; }
 .burrow-backdrop-switch:has(:focus-visible) .burrow-backdrop-tip { visibility: visible; }
 @media (hover: hover) { .burrow-backdrop-switch:hover .burrow-backdrop-tip { visibility: visible; } }
+.burrow-backdrop-colors { position: relative; }
+.burrow-backdrop-colors summary { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid transparent; border-radius: 50%; cursor: pointer; list-style: none; }
+.burrow-backdrop-colors summary::-webkit-details-marker { display: none; }
+.burrow-backdrop-colors summary > span { width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 1px #786c65; }
+.burrow-backdrop-colors summary:hover, .burrow-backdrop-colors[open] summary { background: var(--raised); border-color: var(--line); }
+.burrow-color-panel { position: absolute; z-index: 20; right: 0; top: calc(100% + 10px); width: 244px; padding: 18px; border: 1px solid #514741; border-radius: 18px; background: var(--surface); box-shadow: 0 12px 40px #0006; color: var(--ink); }
+.burrow-color-panel strong { font-size: 12px; font-weight: 550; }
+.burrow-color-panel p { margin: 5px 0 14px; font-size: 11px; color: var(--muted); }
+.burrow-color-panel > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.burrow-color-panel button { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 8px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--muted); font-size: 11px; text-align: left; }
+.burrow-color-panel button:hover { background: var(--raised); color: var(--ink); }
+.burrow-color-panel button[aria-pressed=true] { border-color: #8c8179; background: var(--raised); color: var(--ink); }
+.burrow-color-panel i { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; }
 .burrow-ascii { position: absolute; margin: 0; color: #eeb897; font: 12px/2.2 var(--font-mono); letter-spacing: .3em; opacity: .24; animation: burrow-glyph-drift 18s ease-in-out infinite alternate; }
 .burrow-ascii.north { top: 8%; left: 5%; }
 .burrow-ascii.east { top: 20%; right: 4%; animation-delay: -7s; }
@@ -149,6 +163,7 @@
   .burrow-ambience[data-backdrop=ember]::before { width: 150vmin; height: 150vmin; left: -25%; top: 12%; }
   .burrow-ambience[data-backdrop=ember]::after { left: 8%; top: 22%; width: 90vmin; height: 65vmin; }
   .burrow-backdrop-tip { right: auto; left: 0; }
+  .burrow-color-panel { right: auto; left: -52px; }
   .burrow-ascii.east { right: 2%; }
   .burrow-ascii.south { top: 76%; left: 2%; }
 }
@@ -175,7 +190,7 @@
 .burrow-everyday-shortcuts small { font-size: 11px; color: var(--coral); }
 .burrow-everyday-shortcuts button:hover:not(:disabled) { border-color: #b8b98e; box-shadow: 0 3px 12px #646b4310; }
 .burrow-composer { padding: 22px; border: 1px solid #51443d; border-radius: var(--radius-panel); background: var(--panel-fill); box-shadow: var(--panel-shadow); transition: border-color .15s, box-shadow .15s; }
-.burrow :is(.burrow-composer, .creation-composer):focus-within { border-color: var(--coral); box-shadow: 0 0 0 1px var(--coral); }
+.burrow :is(.burrow-composer, .creation-composer):focus-within { border-color: #8c8179; box-shadow: var(--panel-shadow); }
 .burrow-composer > label:not(.sr-only) { display: block; margin-bottom: 10px; font-size: 12px; }
 .burrow-composer textarea { display: block; field-sizing: content; resize: vertical; min-height: 96px; max-height: 250px; width: 100%; padding: 4px 2px; border: none; border-radius: 0; background: transparent; color: var(--ink); line-height: 1.7; font-size: 16px; }
 /* Focus belongs to the containing composer, never a second box around its text. */
@@ -308,7 +323,7 @@
 .burrow-saved-table dt { color: var(--muted); font-size: 11px; }
 .burrow-saved-table dd { margin: 4px 0; overflow-wrap: anywhere; }
 .burrow-result textarea { display: block; padding: 24px; min-height: 280px; width: 100%; resize: vertical; border: 0; background: var(--surface); color: var(--ink); line-height: 1.9; font-size: 13px; }
-.burrow-result textarea:focus-visible { outline-offset: -3px; }
+.burrow-result textarea:focus-visible { outline-offset: -1px; }
 .burrow-result > footer { padding: 14px 22px; border-top: 1px solid var(--line); font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; }
 .burrow-editor-actions { padding: 14px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
 .burrow-editor-actions > span { margin-right: auto; }
@@ -360,8 +375,8 @@
   .burrow-sidebar > footer > div { margin: 0; }
   .burrow-main { overflow: visible; }
   .burrow-topbar { padding: 8px 18px; height: auto; min-height: 55px; font-size: 10px; gap: 8px; flex-wrap: wrap; }
-  .burrow-routing-actions { margin-left: 0; gap: 8px; }
-  .burrow-routing-actions > button { min-height: 44px; }
+  .burrow-routing-actions { margin-left: 0; gap: 4px; max-width: 100%; flex-wrap: wrap; }
+  .burrow-routing-actions > button { min-height: 44px; padding: 8px 10px; }
   .burrow-topbar .burrow-tag { display: none; }
   .burrow-welcome, .burrow-detail { padding: 28px 18px; }
   .burrow-mascot { width: 90px; height: 85px; margin-bottom: 16px; }

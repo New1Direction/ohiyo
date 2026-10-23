@@ -121,9 +121,13 @@ test("research restores account-scoped reading places without executing work and
     assert.match(container.querySelector('[role="alert"]')!.textContent!, /message is full/);
     bundle.mod.act(() => instruction.setSelectionRange(7998, 8000)); click("👍"); await settle();
     assert.equal(instruction.value, "x".repeat(7998) + "👍", "replacement still works at the message limit");
-    bundle.mod.act(() => { set.call(instruction, "Check minimum order quantities"); instruction.dispatchEvent(new window.Event("input", { bubbles: true })); instruction.closest("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })); });
+    bundle.mod.act(() => { set.call(instruction, "Check minimum order quantities"); instruction.dispatchEvent(new window.Event("input", { bubbles: true })); });
+    bundle.mod.act(() => instruction.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true, cancelable: true })));
+    assert.equal(writes.length, 1, "Shift+Enter never sends research instructions");
+    bundle.mod.act(() => instruction.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
     await settle();
     assert.match(container.querySelector('[role="alert"]')!.textContent!, /Couldn’t confirm that your instruction arrived/);
+    assert.equal(instruction.value, "Check minimum order quantities", "a failed keyboard send keeps the draft");
     click("Stop"); await settle();
     assert.match(container.querySelector('[role="alert"]')!.textContent!, /not confirmed stopped yet/);
     click("Stop"); await settle();

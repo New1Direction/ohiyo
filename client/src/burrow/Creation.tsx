@@ -3,6 +3,7 @@ import { api, type BurrowTask } from "../api";
 import GeneratedPage from "./GeneratedPage";
 import { taskActionError } from "./taskLanguage";
 import SelectionActions from "./SelectionActions";
+import { submitPromptOnEnter } from "./promptKeys";
 import kikka from "../../../brand/kikka-chinchilla-clean.png";
 import "./creation.css";
 
@@ -55,8 +56,8 @@ export default function Creation({ task, token, canRun, service, onUpdate, onDir
         <div className="creation-messages" ref={messages} role="log" aria-label="Conversation with Kikka" aria-live="polite">{result.messages.map((message, i) => <div key={i} className={`creation-message ${message.role}`}><strong>{message.role === "user" ? "You" : "Kikka"}</strong><p data-selection-content>{message.text}</p></div>)}{working && <p role="status" className="creation-working">Making your page. You can keep using your last saved version.</p>}</div>
         {(error || task.error) && <p role="alert" className="burrow-error">{error || `Kikka couldn’t finish this change. ${result.page ? "Your last saved page" : "Your request"} is still here. A previous attempt may already have cost money.`}</p>}
         {!canRun && <p className="creation-connection">Personal creation isn’t connected here yet. You can try the examples; your own requests stay saved.</p>}
-        <form className="creation-composer" onSubmit={e => { e.preventDefault(); void act("make"); }}><label className="sr-only" htmlFor="creation-message">{result.page ? "Ask Kikka for a change" : "Add details for Kikka"}</label><textarea id="creation-message" ref={composer} value={text} onChange={e => setText(e.target.value)} maxLength={8000} rows={3} placeholder={result.page ? "Make it more playful. Add a quiz. Try another layout…" : "Add your notes or a little more detail…"} onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing && !busy && !working && canRun && (task.state !== "draft_ready" || text.trim())) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
-          <div><span>Ctrl / ⌘ Enter to send</span><button className="burrow-primary" disabled={busy || working || !canRun || (task.state === "draft_ready" && !text.trim())}>{busy ? "Sending…" : working ? "Making…" : submitLabel}<span aria-hidden="true">↑</span></button></div>
+        <form className="creation-composer" onSubmit={e => { e.preventDefault(); if (!busy && !working && canRun && (task.state !== "draft_ready" || text.trim())) void act("make"); }}><label className="sr-only" htmlFor="creation-message">{result.page ? "Ask Kikka for a change" : "Add details for Kikka"}</label><textarea id="creation-message" ref={composer} value={text} onChange={e => setText(e.target.value)} maxLength={8000} rows={3} placeholder={result.page ? "Make it more playful. Add a quiz. Try another layout…" : "Add your notes or a little more detail…"} onKeyDown={submitPromptOnEnter} aria-describedby="creation-send-hint" />
+          <div><span id="creation-send-hint">Enter to send · Shift+Enter for a new line</span><button type="submit" className="burrow-primary" disabled={busy || working || !canRun || (task.state === "draft_ready" && !text.trim())}>{busy ? "Sending…" : working ? "Making…" : submitLabel}<span aria-hidden="true">↑</span></button></div>
         </form>
         {canRun && <p className="creation-consent">{submitLabel} shares your request and this page with {service}. Each attempt may cost money. No Ohiyo chats are included.</p>}
       </aside>}
