@@ -3,6 +3,23 @@
 Open `/burrow` in the existing browser client. `/` remains Ohiyo. Burrow is an
 explicit experimental surface, not a change to Ohiyo chat or encryption.
 
+## Backgrounds
+
+The small coloured dot beside Motion cycles nine looks: Ember, Neural bloom,
+Rainbow terrain, Dot mandala, Particle orbit, ASCII orbit, Paper dither swirl,
+Paper dotted aurora, and Quiet (no backdrop). The choice stays in this browser's
+local storage; it is not account data. Enter and Space also activate the dot.
+Motion pauses animation, reduced-motion users get still frames, and hidden tabs
+and open tasks stop the animation loops. Backgrounds never capture clicks or
+change a task. The abstract patterns are decoration, not live AI activity.
+
+The original canvas sketches take visual inspiration from the
+[Teknium demo collection](https://webdev.teknium.io/). The two Paper looks use
+[@paper-design/shaders](https://shaders.paper.design), pinned to 0.0.82 and loaded
+only when selected. They require WebGL2; unavailable WebGL falls back to orbital
+dots. No remote textures or scripts are fetched. Paper's Apache-2.0 license and
+NOTICE ship under `/licenses/paper-shaders/`.
+
 ## Kikka’s presence and voice
 
 Kikka’s reply shows actual work, unsaved edits that need you, and paused changes.

@@ -104,19 +104,33 @@
 .burrow-sidebar > footer > div { margin-top: 14px; display: flex; align-items: center; justify-content: space-between; }
 .burrow-sidebar > footer button { font-size: 10px; }
 .burrow-main { position: relative; isolation: isolate; overflow: auto; min-width: 0; background: radial-gradient(#c1a28c0c .7px, transparent .8px) 0 0 / 6px 6px; }
-/* One decorative layer; only transforms/opacity move, never the text or layout. */
+/* Decorative layers never intercept input or move the text/layout. */
 .burrow-ambience { position: fixed; inset: 78px 0 0 274px; z-index: -1; overflow: hidden; pointer-events: none; user-select: none; contain: strict; }
-.burrow-ambience::before {
+.burrow-ambience[data-backdrop=ember]::before {
   content: ""; position: absolute; width: 100vmin; height: 100vmin; left: 8%; top: -30vmin;
   background: radial-gradient(ellipse, #ef977b50, #a66c4320 38%, transparent 68%);
   mask-image: radial-gradient(circle, #000 1px, transparent 1.2px); mask-size: 5px 5px;
   animation: burrow-glow-drift 24s ease-in-out infinite alternate;
 }
-.burrow-ambience::after {
+.burrow-ambience[data-backdrop=ember]::after {
   content: ""; position: absolute; width: 76vmin; height: 48vmin; left: 14%; top: 3%;
   border: 1px dashed #ecac8530; border-radius: 50%;
   animation: burrow-orbit 36s ease-in-out infinite alternate;
 }
+.burrow-ambience:not([data-backdrop=ember]) { background: #101112; }
+.backdrop-field, .backdrop-paper { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .48; mask-image: radial-gradient(ellipse at 50% 32%, #0004, #000 70%); }
+.backdrop-paper { opacity: .3; }
+.backdrop-paper.dotted { opacity: .24; mask-image: radial-gradient(circle, #000 1px, transparent 1.3px); mask-size: 5px 5px; }
+.backdrop-paper canvas { display: block; width: 100%; height: 100%; }
+.backdrop-still::before, .backdrop-still::after, .backdrop-still .burrow-ascii { animation-play-state: paused !important; }
+.burrow-backdrop-switch { position: relative; flex-shrink: 0; }
+.burrow-backdrop-dot { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 50%; background: transparent; }
+.burrow-backdrop-dot > span { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 5px #ffffff08, 0 0 18px #bda5dc24; transition: transform .15s; }
+.burrow-backdrop-dot:hover, .burrow-backdrop-dot:focus-visible { border-color: var(--line); background: var(--raised); }
+.burrow-backdrop-dot:hover > span { transform: scale(1.18); }
+.burrow-backdrop-tip { position: absolute; top: calc(100% + 8px); right: 0; z-index: 10; width: max-content; max-width: min(260px, 80vw); padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); line-height: 1.6; box-shadow: var(--panel-shadow); pointer-events: none; visibility: hidden; }
+.burrow-backdrop-switch:has(:focus-visible) .burrow-backdrop-tip { visibility: visible; }
+@media (hover: hover) { .burrow-backdrop-switch:hover .burrow-backdrop-tip { visibility: visible; } }
 .burrow-ascii { position: absolute; margin: 0; color: #eeb897; font: 12px/2.2 var(--font-mono); letter-spacing: .3em; opacity: .24; animation: burrow-glyph-drift 18s ease-in-out infinite alternate; }
 .burrow-ascii.north { top: 8%; left: 5%; }
 .burrow-ascii.east { top: 20%; right: 4%; animation-delay: -7s; }
@@ -132,8 +146,9 @@
 @media (max-width: 850px) { .burrow-ambience { left: 225px; } }
 @media (max-width: 600px) {
   .burrow-ambience { inset: 0; }
-  .burrow-ambience::before { width: 150vmin; height: 150vmin; left: -25%; top: 12%; }
-  .burrow-ambience::after { left: 8%; top: 22%; width: 90vmin; height: 65vmin; }
+  .burrow-ambience[data-backdrop=ember]::before { width: 150vmin; height: 150vmin; left: -25%; top: 12%; }
+  .burrow-ambience[data-backdrop=ember]::after { left: 8%; top: 22%; width: 90vmin; height: 65vmin; }
+  .burrow-backdrop-tip { right: auto; left: 0; }
   .burrow-ascii.east { right: 2%; }
   .burrow-ascii.south { top: 76%; left: 2%; }
 }

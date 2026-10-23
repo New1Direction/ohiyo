@@ -20,6 +20,7 @@
   "dependencies": {
     "@json-render/core": "0.21.1",
     "@json-render/react": "0.21.1",
+    "@paper-design/shaders": "0.0.82",
     "@privacyresearch/libsignal-protocol-typescript": "^0.0.16",
     "@tailwindcss/vite": "^4.3.1",
     "@tauri-apps/api": "^2.12.3",

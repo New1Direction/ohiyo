@@ -10,6 +10,7 @@ import ResearchTask from "./ResearchTask";
 import Travel from "./Travel";
 import ModelSettings from "./ModelSettings";
 import SelectionActions from "./SelectionActions";
+import Backdrop from "./Backdrop";
 import { taskActionError } from "./taskLanguage";
 import type { ModelRouting } from "../api";
 import kikka from "../../../brand/kikka-chinchilla-clean.png";
@@ -166,12 +167,7 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: () => void 
       <footer><span>Private chats stay in Ohiyo.</span><div><a href="/">Open Ohiyo ↗</a><button className="burrow-link" onClick={() => { if (!dirty || window.confirm("Discard your unsaved draft edits and sign out?")) onSignOut(); }}>Sign out</button></div></footer>
     </aside>
     <main className={`burrow-main${ambiencePaused ? " ambience-paused" : ""}`}>
-      <div className="burrow-ambience" aria-hidden="true">
-        <pre className="burrow-ascii north">{"    +\n .     :\n    /    .\n :    +"}</pre>
-        <pre className="burrow-ascii east">{" .    /\n   :\n +   .\n    :   +"}</pre>
-        <pre className="burrow-ascii south">{"    .   +\n :    /\n   +    ."}</pre>
-      </div>
-      <header className="burrow-topbar"><span>Kikka’s corner <span aria-hidden>/</span> {task?.format === "creation" ? "Your creation" : task?.template === "bill" ? "Your shared bill" : task?.template === "packing" ? "Your next trip" : task?.kind === "tracker" ? "Your launch" : task ? "Your request" : "A fresh start"}</span><div className="burrow-routing-actions"><button className="burrow-link burrow-motion-control" aria-pressed={ambiencePaused} aria-label="Pause background motion" onClick={() => setAmbiencePaused(!ambiencePaused)}><span aria-hidden="true">{ambiencePaused ? "Ⅱ" : "~"}</span> Motion</button><button className="burrow-link" aria-expanded={settingsOpen} aria-controls="model-settings" onClick={() => { setSettingsOpen(!settingsOpen); if (!settingsOpen) void refreshRouting().catch(() => setRouting(null)); }}>Connections {settingsOpen ? "−" : "+"}</button><span className="burrow-tag">EARLY ACCESS</span></div></header>
+      <header className="burrow-topbar"><span>Kikka’s corner <span aria-hidden>/</span> {task?.format === "creation" ? "Your creation" : task?.template === "bill" ? "Your shared bill" : task?.template === "packing" ? "Your next trip" : task?.kind === "tracker" ? "Your launch" : task ? "Your request" : "A fresh start"}</span><div className="burrow-routing-actions"><Backdrop paused={ambiencePaused} resting={!!task || travelGoal !== null} /><button className="burrow-link burrow-motion-control" aria-pressed={ambiencePaused} aria-label="Pause background motion" onClick={() => setAmbiencePaused(!ambiencePaused)}><span aria-hidden="true">{ambiencePaused ? "Ⅱ" : "~"}</span> Motion</button><button className="burrow-link" aria-expanded={settingsOpen} aria-controls="model-settings" onClick={() => { setSettingsOpen(!settingsOpen); if (!settingsOpen) void refreshRouting().catch(() => setRouting(null)); }}>Connections {settingsOpen ? "−" : "+"}</button><span className="burrow-tag">EARLY ACCESS</span></div></header>
       {settingsOpen && <ModelSettings key={routing ? "loaded" : "unavailable"} token={token} data={routing} onRefresh={refreshRouting} onDone={() => { setSettingsOpen(false); selectTask(null); }} />}
       {refreshError && <p role="alert" className="burrow-error burrow-refresh-error">{refreshError}</p>}
       {error && <p role="alert" className="burrow-error burrow-refresh-error">{error}</p>}
