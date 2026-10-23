@@ -1,0 +1,62 @@
+# BuildKit is required for the allowlisted Dockerfile-specific context and to
+# skip the optional Discrawl stage. Build from the repository root:
+#   docker buildx build --load -f server/Dockerfile.selfhosted -t ohiyo-api .
+# Optional managed Discord imports: add --target runtime-discrawl.
+# The default runtime omits Discrawl (and does not fetch its Go toolchain).
+FROM rust:1-bookworm AS builder
+WORKDIR /build/server
+ENV CARGO_BUILD_JOBS=2
+COPY server/Cargo.toml server/Cargo.lock ./
+RUN mkdir src && echo 'fn main() {}' > src/main.rs \
+    && cargo build --release --locked && rm -rf src
+COPY server/src ./src
+COPY server/migrations ./migrations
+# Preserve include_str! paths relative to server/src/api/burrow/skills.rs.
+COPY .agents/skills/designing-burrow-pages/SKILL.md /build/.agents/skills/designing-burrow-pages/SKILL.md
+COPY .agents/skills/teaching-from-material/SKILL.md /build/.agents/skills/teaching-from-material/SKILL.md
+COPY .agents/skills/comparing-real-options/SKILL.md /build/.agents/skills/comparing-real-options/SKILL.md
+COPY .agents/skills/crafting-interactive-stories/SKILL.md /build/.agents/skills/crafting-interactive-stories/SKILL.md
+RUN touch src/main.rs && cargo build --release --locked
+
+FROM golang:1.27-bookworm AS discrawl-builder
+ARG DISCRAWL_VERSION=v0.15.6
+ARG DISCRAWL_COMMIT=cd7fa1ce5eb762891b84a334e8eecff2f3e67600
+WORKDIR /discrawl
+RUN git clone --depth 1 --branch "${DISCRAWL_VERSION}" https://github.com/steipete/discrawl.git . \
+    && test "$(git rev-parse HEAD)" = "${DISCRAWL_COMMIT}" \
+    && GOMAXPROCS=2 go build -p 2 -o /usr/local/bin/discrawl ./cmd/discrawl
+
+# Litestream publishes no checksums, so each package is pinned to the sha256 we
+# verified; a replaced release file fails the build. Change version and sums together.
+FROM scratch AS litestream-amd64
+ADD --checksum=sha256:9b05043523c1fb1c4f9800623adf0015683da7fdd55e19b9fe5d28f63fae96b4 https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-amd64.deb /litestream.deb
+
+FROM scratch AS litestream-arm64
+ADD --checksum=sha256:073aceebd2bbd58213aad2e05fdf4667ff4ca1140d0be6df308859798c74e8e8 https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-arm64.deb /litestream.deb
+
+FROM litestream-${TARGETARCH} AS litestream-download
+
+FROM debian:bookworm-slim AS runtime-base
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=litestream-download /litestream.deb /tmp/litestream.deb
+RUN dpkg -i /tmp/litestream.deb && rm /tmp/litestream.deb
+WORKDIR /data
+COPY --from=builder /build/server/target/release/server /usr/local/bin/ohiyo-server
+COPY server/docker-entrypoint.sh server/litestream-config.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/litestream-config.sh \
+    && useradd -r -u 10001 -m ohiyo \
+    && chown -R ohiyo /data
+USER ohiyo
+ENV BIND_ADDR=0.0.0.0:3000 \
+    DATABASE_URL=sqlite:/data/ohiyo.db \
+    RUST_LOG=server=info,tower_http=warn
+EXPOSE 3000
+ENTRYPOINT ["docker-entrypoint.sh"]
+
+FROM runtime-base AS runtime-discrawl
+COPY --from=discrawl-builder /usr/local/bin/discrawl /usr/local/bin/discrawl
+ENV OHIYO_DISCRAWL_BIN=/usr/local/bin/discrawl
+
+FROM runtime-base AS runtime

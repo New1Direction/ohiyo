@@ -7,11 +7,15 @@ set -euo pipefail
 # live DB.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKDIR="${WORKDIR:-$(mktemp -d)}"
+# WORKDIR is a parent directory, never a directory this script owns or deletes.
+# Backup files may contain private data; create a private child for this drill.
+umask 077
+WORKDIR="$(mktemp -d "${WORKDIR:-${TMPDIR:-/tmp}}/ohiyo-restore-drill.XXXXXX")"
 RESTORE_DB="$WORKDIR/ohiyo-restore-drill.db"
 DB_URL="${DATABASE_URL:-sqlite:$ROOT/server/kikkacord.db}"
 DB_FILE="${DB_URL#sqlite:}"
 DB_FILE="${DB_FILE#//}"
+DB_FILE="${DB_FILE%%\?*}"
 
 cleanup() {
   if [[ "${KEEP_RESTORE_DRILL:-0}" != "1" ]]; then rm -rf "$WORKDIR"; fi
@@ -40,8 +44,13 @@ if [[ -n "${LITESTREAM_REPLICA_URL:-}" ]]; then
     exit 1
   fi
 elif [[ -f "$DB_FILE" ]]; then
-  echo "copying local DB: $DB_FILE"
-  cp "$DB_FILE" "$RESTORE_DB"
+  echo "taking a consistent SQLite snapshot"
+  python3 - "$DB_FILE" "$RESTORE_DB" <<'PY'
+import pathlib, sqlite3, sys
+source = pathlib.Path(sys.argv[1]).resolve().as_uri() + '?mode=ro'
+with sqlite3.connect(source, uri=True) as original, sqlite3.connect(sys.argv[2]) as snapshot:
+    original.backup(snapshot)
+PY
 else
   echo "no LITESTREAM_REPLICA_URL and DB file not found at $DB_FILE" >&2
   exit 1

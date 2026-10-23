@@ -6,8 +6,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -119,4 +120,37 @@ test("database options in the URL are not part of the file name", (t) => {
   const run = boot({ ...R2, DATABASE_URL: "sqlite:/data/ohiyo.db?mode=rwc" });
   t.after(() => rmSync(run.dir, { recursive: true, force: true }));
   assert.match(run.config ?? "", /path: "\/data\/ohiyo\.db"\n/);
+});
+
+test("restore drill includes committed WAL data and never deletes its caller's directory", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "ohiyo-drill-"));
+  const source = join(dir, "source.db");
+  const db = new DatabaseSync(source);
+  t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+  db.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;");
+  for (const name of ["users", "servers", "channels", "messages", "hosted_instances"]) {
+    db.exec(`CREATE TABLE ${name}(id TEXT PRIMARY KEY);`);
+  }
+  db.exec("PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO messages VALUES ('committed-in-wal');");
+  writeFileSync(join(dir, "unrelated-file"), "preserve me");
+  const result = spawnSync("bash", [join(dirname(entrypoint), "..", "scripts", "backup-restore-drill.sh")], {
+    env: { PATH: process.env.PATH, WORKDIR: dir, DATABASE_URL: `sqlite:${source}` }, encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.match(result.stdout, /integrity_check=ok/);
+  assert.match(result.stdout, /messages=1/);
+  assert.equal(readFileSync(join(dir, "unrelated-file"), "utf8"), "preserve me");
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM messages").get()?.count, 1);
+  assert.equal(readdirSync(dir).some(name => name.startsWith("ohiyo-restore-drill.")), false);
+});
+
+test("a failed restore drill also preserves the caller's directory", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "ohiyo-drill-failure-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "unrelated-file"), "preserve me");
+  const result = spawnSync("bash", [join(dirname(entrypoint), "..", "scripts", "backup-restore-drill.sh")], {
+    env: { PATH: process.env.PATH, WORKDIR: dir, DATABASE_URL: `sqlite:${join(dir, "missing.db")}` }, encoding: "utf8",
+  });
+  assert.notEqual(result.status, 0);
+  assert.deepEqual(readdirSync(dir), ["unrelated-file"]);
 });

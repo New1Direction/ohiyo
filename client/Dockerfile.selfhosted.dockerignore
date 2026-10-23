@@ -1,0 +1,18 @@
+# Send only build inputs, not the repository's credentials or runtime state.
+**
+!client/
+client/**
+!client/package.json
+!client/bun.lock
+!client/index.html
+!client/.env.production
+!client/tsconfig*.json
+!client/vite.config.ts
+!client/Caddyfile
+!client/src/
+!client/src/**
+!client/public/
+!client/public/**
+!brand/
+brand/**
+!brand/kikka-chinchilla-clean.png
