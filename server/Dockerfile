@@ -2,20 +2,23 @@
 # Compiles the axum server to a single static-ish binary. sqlx uses runtime
 # queries (no compile-time `query!` macros) so NO database is needed at build
 # time; migrations are embedded into the binary via `sqlx::migrate!`.
+# Build from the repository root: docker build -f server/Dockerfile .
 FROM rust:1-bookworm AS builder
-WORKDIR /build
+WORKDIR /build/server
 
 # 1) Cache dependency compilation: copy manifests, build a dummy crate so the
 #    (slow) dependency layer is reused whenever only our own source changes.
-COPY Cargo.toml Cargo.lock ./
+COPY server/Cargo.toml server/Cargo.lock ./
 RUN mkdir src && echo 'fn main() {}' > src/main.rs \
     && cargo build --release \
     && rm -rf src
 
 # 2) Build the real binary. `migrations/` must be present — sqlx::migrate!
-#    embeds it at compile time.
-COPY src ./src
-COPY migrations ./migrations
+#    embeds it at compile time. Burrow embeds the trusted skills too, preserving
+#    their repository-relative paths for include_str!.
+COPY server/src ./src
+COPY server/migrations ./migrations
+COPY .agents/skills /build/.agents/skills
 RUN touch src/main.rs && cargo build --release
 
 # ── Discrawl stage ────────────────────────────────────────────────────────────
@@ -51,9 +54,9 @@ ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VE
 RUN dpkg -i /tmp/litestream.deb && rm /tmp/litestream.deb
 
 WORKDIR /data
-COPY --from=builder /build/target/release/server /usr/local/bin/ohiyo-server
+COPY --from=builder /build/server/target/release/server /usr/local/bin/ohiyo-server
 COPY --from=discrawl-builder /usr/local/bin/discrawl /usr/local/bin/discrawl
-COPY docker-entrypoint.sh litestream-config.sh /usr/local/bin/
+COPY server/docker-entrypoint.sh server/litestream-config.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/litestream-config.sh
 
 # Run as a dedicated non-root user. /data (the volume mount, holding the SQLite DB,

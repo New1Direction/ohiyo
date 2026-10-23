@@ -32,8 +32,8 @@
 .research-studio h2 { font-size: 15px; font-weight: 500; }
 .research-update p, .research-empty p { margin: 8px 0 16px; font-size: 12px; color: var(--muted); line-height: 1.8; }
 .research-update .burrow-secondary { padding: 10px 12px; font-size: 12px; }
-.research-composer { flex-shrink: 0; margin: 12px 20px 0; padding: 14px; border-radius: 10px; box-shadow: none; }
-.research-studio .research-composer textarea { min-height: 58px; max-height: 140px; font-size: 12px; }
+.research-composer { flex-shrink: 0; margin: 12px 20px 0; padding: 16px; border-radius: var(--radius-panel); }
+.research-studio .research-composer textarea { min-height: 72px; max-height: 160px; font-size: 14px; }
 .research-studio .research-composer > div { margin-top: 4px; padding-top: 8px; }
 .research-scope-note { flex-shrink: 0; padding: 12px 20px; font-size: 10px; color: var(--muted); }
 .research-result-tabs { display: flex; gap: 20px; flex-shrink: 0; padding: 0 24px; border-bottom: 1px solid var(--line); }
@@ -70,11 +70,11 @@
 .research-receipt > span { color: var(--green); }
 .research-receipt small { display: block; font-size: 10px; }
 .research-emoji { position: relative; flex-shrink: 0; }
-.research-emoji summary { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 7px; cursor: pointer; list-style: none; color: var(--muted); font-size: 20px; }
+.research-emoji summary { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-pill); cursor: pointer; list-style: none; color: var(--muted); font-size: 20px; }
 .research-emoji summary::-webkit-details-marker { display: none; }
 .research-emoji summary:hover, .research-emoji[open] summary { color: var(--coral); border-color: var(--coral); }
-.research-emoji > div { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 3; display: grid; grid-template-columns: repeat(3, 44px); padding: 8px; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px #0005; }
-.research-emoji button { display: grid; place-items: center; width: 44px; height: 44px; background: transparent; border: 0; border-radius: 6px; font-size: 22px; }
+.research-emoji > div { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 3; display: grid; grid-template-columns: repeat(3, 44px); padding: 8px; gap: 4px; background: var(--panel-fill); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 8px 24px #0005; }
+.research-emoji button { display: grid; place-items: center; width: 44px; height: 44px; background: transparent; border: 0; border-radius: var(--radius-control); font-size: 22px; }
 .research-emoji button:hover { background: var(--hover); }
 .research-emoji summary:focus-visible, .research-emoji button:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
 .research-notice { color: var(--green); font-size: 12px; line-height: 1.8; margin-top: 16px !important; }

@@ -19,8 +19,10 @@ if [[ -n "${RAILWAY_PROJECT_ID:-}" ]]; then
   target=(--project "$RAILWAY_PROJECT_ID" --environment "${RAILWAY_ENVIRONMENT:-production}")
 fi
 
-# Builds client/Dockerfile on Railway and waits for the deploy to finish.
-railway up "$root/client" --path-as-root --service "$SERVICE" --ci "${target[@]}"
+# Upload the repository root: the client imports shared brand assets outside client/.
+# In Railway, leave Root Directory at / and set Config File to /client/railway.json
+# (see DEPLOY.md). The config selects client/Dockerfile and its health check.
+railway up "$root" --path-as-root --service "$SERVICE" --ci "${target[@]}"
 
 # Read the asset names the live site now serves.
 page="$(curl -fsS --max-time 20 "$APP_URL/")"

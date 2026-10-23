@@ -1,4 +1,5 @@
 # Fly.io deploy config for the Ohiyo backend.
+# Deploy from the repository root: fly deploy --config server/fly.toml
 #
 # IMPORTANT: app names are globally unique on Fly. Change `app` below to your own
 # (e.g. "ohiyo-acme"), then point the desktop client at it by setting
@@ -12,7 +13,7 @@ app = "ohiyo"
 primary_region = "iad"
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "server/Dockerfile"
 
 [env]
   BIND_ADDR = "0.0.0.0:3000"

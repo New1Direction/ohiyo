@@ -27,10 +27,31 @@ Ohiyo needs exactly **one** running server and **one** persistent volume mounted
 `/data` (the SQLite database and uploads). Any host that runs a Docker image with a
 volume works; both paths below build `server/Dockerfile`.
 
+Both Dockerfiles require the **repository root as their build context**: the client
+imports `brand/kikka-chinchilla-clean.png`, and the server embeds `.agents/skills/`.
+For local builds, run `docker build -f server/Dockerfile .` or
+`docker build -f client/Dockerfile .` from the repo root. The root `.dockerignore`
+and `.railwayignore` allow only build inputs, excluding local secrets, databases,
+uploads and build artifacts. Keep their allowlists in sync when adding build inputs;
+`client/.env.production` is deliberately included and must contain only public config.
+
 ### Railway (what ohiyo.gg runs on)
 
 From the repo root, with the Railway CLI logged in. Create a project, a service for the
-server and a volume mounted at `/data` (`railway volume add`, or the dashboard), then:
+server and a volume mounted at `/data` (`railway volume add`, or the dashboard).
+In each service's **Settings**, leave **Root Directory** at `/` (not `server/` or
+`client/`) and set **Railway Config File** explicitly:
+
+| Service | Railway Config File | Dockerfile selected by that config |
+| --- | --- | --- |
+| `ohiyo-server` | `/server/railway.json` | `server/Dockerfile` |
+| `ohiyo-web` | `/client/railway.json` | `client/Dockerfile` |
+
+Clear any old `RAILWAY_DOCKERFILE_PATH` override pointing to `Dockerfile`. If using
+Git-triggered deploys with watch paths, include `.agents/skills/**` for the server
+and `brand/**` for the web app, as well as each service's own directory and the root
+ignore files. These service settings are required even for CLI uploads; Railway
+does not automatically choose a nested config from the `--service` name. Then:
 
 ```bash
 # Required: the server REFUSES to start in release without JWT_SECRET and PUBLIC_BASE_URL.
@@ -41,7 +62,7 @@ railway variable set --service ohiyo-server \
   RAILWAY_RUN_UID=0 PORT=3000 BIND_ADDR=0.0.0.0:3000 TRUSTED_PROXY_HOPS=2
 
 # Build server/Dockerfile on Railway and wait for the health check (/healthz).
-railway up server --path-as-root --service ohiyo-server --ci
+railway up . --path-as-root --service ohiyo-server --ci
 
 curl https://<your-service>.up.railway.app/healthz     # -> ok
 ```
@@ -53,7 +74,8 @@ other variables are set the way they are is under
 
 ### Fly.io (alternative)
 
-The repo also ships a `fly.toml`. Everything here runs from `server/`.
+The repo also ships `server/fly.toml`. Management commands below run from `server/`;
+the deploy command switches to the repo root for the shared build context.
 
 ```bash
 cd server
@@ -86,8 +108,8 @@ fly secrets set OHIYO_TOTP_KEY="$(openssl rand -base64 48)"
 # Discord imports or change an Instant Server's tier. Unset means nobody can.
 fly secrets set OHIYO_OPERATOR_USER_IDS="<your-user-id>"
 
-# Ship it. fly.toml + Dockerfile do the rest.
-fly deploy
+# Ship it with the repository root as context, preserving the service config.
+(cd .. && fly deploy --config server/fly.toml)
 
 # Verify.
 curl https://ohiyo-<you>.fly.dev/healthz     # → ok
@@ -161,7 +183,7 @@ with Caddy, which sets the same security headers as `client/public/_headers` doe
 Cloudflare Pages. To ship an app update:
 
 ```bash
-scripts/deploy-web.sh    # builds and deploys client/, then updates OHIYO_EXPECTED_APP_BUNDLE
+scripts/deploy-web.sh    # uploads repo root, builds client/Dockerfile, updates OHIYO_EXPECTED_APP_BUNDLE
 ```
 
 `app.ohiyo.gg` is a custom domain on that service; its DNS records live at the

@@ -76,9 +76,9 @@ the moment `FLY_API_TOKEN` is present.
 1. **Fly app for instances:** `fly apps create ohiyo-instances`.
 2. **Push the server image** to Fly's registry so machines can boot it:
    ```bash
-   cd server
+   # Run from the repository root (the server embeds .agents/skills/).
    fly auth docker
-   docker build -t registry.fly.io/ohiyo-instances:latest .
+   docker build -f server/Dockerfile -t registry.fly.io/ohiyo-instances:latest .
    docker push registry.fly.io/ohiyo-instances:latest
    ```
 3. **Wildcard DNS** in Cloudflare: add `*.ohiyo.gg` → a `CNAME` to your Fly app's hostname

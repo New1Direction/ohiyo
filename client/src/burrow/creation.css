@@ -20,11 +20,11 @@
 .creation-working, .creation-connection { font-size: 11px; line-height: 1.8; color: var(--muted); padding: 12px; }
 .creation-connection { background: var(--raised); border: 1px solid var(--line); border-radius: 8px; margin: 12px 0 !important; }
 .creation-chat .burrow-error { font-size: 11px; padding: 10px; margin: 8px 0; max-height: 140px; overflow: auto; }
-.creation-composer { border: 1px solid #51443d; border-radius: 14px; padding: 13px; background: var(--surface); }
-.creation-composer textarea { width: 100%; resize: vertical; min-height: 75px; max-height: 160px; padding: 2px; border: 0; background: transparent; font-size: 13px; line-height: 1.7; color: var(--ink); }
+.creation-composer { border: 1px solid #51443d; border-radius: var(--radius-panel); padding: 16px; background: var(--panel-fill); box-shadow: var(--panel-shadow); transition: border-color .15s, box-shadow .15s; }
+.creation-composer textarea { display: block; field-sizing: content; width: 100%; resize: vertical; min-height: 85px; max-height: 180px; padding: 2px; border: 0; border-radius: 0; background: transparent; font-size: 14px; line-height: 1.7; color: var(--ink); }
 .creation-composer > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
-.creation-composer > div > span { font-size: 9px; color: var(--muted); }
-.creation-composer button { padding: 8px 12px; font-size: 11px; }
+.creation-composer > div > span { font-size: 10px; line-height: 1.6; color: var(--muted); }
+.creation-composer button { padding: 10px 14px; font-size: 12px; flex-shrink: 0; }
 .creation-consent { font-size: 10px; line-height: 1.7; color: var(--muted); padding-top: 9px; }
 .creation-checks { background: var(--raised); padding: 18px 24px; border-bottom: 1px solid var(--line); }
 .creation-checks h2 { font-size: 13px; margin-bottom: 8px; }
@@ -33,8 +33,8 @@
 .creation-preview > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
 .creation-preview > header > strong { font-size: 11px; font-weight: 500; }
 .creation-preview > header > span { font-size: 8px; letter-spacing: .08em; color: var(--muted); }
-.creation-preview [role=group] { display: flex; background: var(--base); border-radius: 6px; padding: 3px; }
-.creation-preview [role=group] button { border: 0; background: transparent; border-radius: 4px; padding: 5px 9px; color: var(--muted); font-size: 10px; }
+.creation-preview [role=group] { display: flex; background: var(--base); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 3px; }
+.creation-preview [role=group] button { border: 0; background: transparent; border-radius: var(--radius-pill); min-height: 36px; padding: 7px 12px; color: var(--muted); font-size: 11px; }
 .creation-preview [role=group] [aria-pressed=true] { color: var(--ink); background: var(--hover); }
 .creation-example-note { font-size: 10px; line-height: 1.6; background: var(--amber-bg); color: var(--amber); padding: 9px 20px; border-bottom: 1px solid var(--line); }
 .creation-preview-scroll { overflow: auto; flex: 1; min-height: 0; padding: 24px; scrollbar-width: thin; }
