@@ -4,8 +4,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Window } from "happy-dom";
 import { bundleEntry, fixtures, type Bundle } from "./fixtures/bundle.ts";
+import type { BurrowTask } from "../src/api.ts";
 
-type Mod = { act: (fn: () => void) => void; parsePage: (value: unknown) => unknown; schema: unknown; mount: (element: unknown, value: unknown) => () => void };
+type Mod = { act: (fn: () => void) => void; parsePage: (value: unknown) => unknown; schema: unknown; mount: (element: unknown, value: unknown) => () => void; mountCreation: (element: unknown, task: BurrowTask) => () => void };
 const window = new Window({ url: "http://localhost" });
 const document = window.document;
 const originals = new Map<string, PropertyDescriptor | undefined>();
@@ -57,6 +58,46 @@ test("generated controls play, score asymmetric answers, branch, go back, and re
     bundle.mod.act(() => container.querySelector<HTMLButtonElement>(".gen-story-choices button")!.click());
     button("Start over");
     assert.equal(container.querySelector(".gen-story h3")!.textContent, heading);
+  } finally { unmount(); container.remove(); }
+});
+
+test("creation preview toggles preserve drafts and play progress; new requests start in conversation", () => {
+  const container = document.createElement("div"); document.body.append(container);
+  const task: BurrowTask = { id: "study", kind: "writing", format: "creation", template: null, request: "Help me study", state: "draft_ready", error: null, version: 1, created_at: 0, updated_at: 0, result: JSON.stringify({ ...load("examples/quiz.json"), messages: [], can_undo: false, example: true }) };
+  const button = (text: string) => {
+    const found = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent!.startsWith(text));
+    assert.ok(found, `missing button ${text}`);
+    bundle.mod.act(() => found.click());
+  };
+  let unmount = bundle.mod.mountCreation(container, task);
+  try {
+    const preview = container.querySelector<HTMLElement>('[aria-label="Page preview"]')!;
+    assert.equal(preview.hidden, false);
+    const answer = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent!.includes("Keeping a regular wake-up time"))!;
+    bundle.mod.act(() => answer.click());
+    assert.match(preview.textContent!, /You got it/);
+    button("Next question");
+    button("Conversation");
+    assert.equal(preview.hidden, true);
+    const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
+    bundle.mod.act(() => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Keep my notes\nAdd a recap");
+      input.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
+    button("Preview");
+    assert.equal(preview.hidden, false);
+    assert.match(preview.textContent!, /Question 2 of 4/);
+    button("Preview");
+    assert.equal(container.querySelector<HTMLTextAreaElement>("textarea")!.value, "Keep my notes\nAdd a recap");
+    assert.equal(preview.hidden, true);
+    unmount();
+    unmount = bundle.mod.mountCreation(container, { ...task, state: "waiting", result: JSON.stringify({ page: null, messages: [{ role: "user", text: task.request }], can_undo: false, example: false }) });
+    assert.equal(container.querySelector<HTMLElement>('[aria-label="Page preview"]')!.hidden, true);
+    assert.match(container.querySelector('[role="log"]')!.textContent!, /Help me study/);
+    button("Preview");
+    assert.equal(container.querySelector<HTMLElement>('[aria-label="Page preview"]')!.hidden, false);
+    button("Back to conversation");
+    assert.equal(container.querySelector<HTMLElement>('[aria-label="Page preview"]')!.hidden, true);
   } finally { unmount(); container.remove(); }
 });
 

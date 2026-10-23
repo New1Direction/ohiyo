@@ -13,6 +13,7 @@ test("background choices cycle, survive remounts, and work without local storage
   }
   const bundle = await bundleEntry<{ act: (fn: () => void) => void; mount: (el: unknown) => () => void }>(join(fixtures, "backdrop.tsx"));
   const container = window.document.createElement("main");
+  container.className = "burrow";
   window.document.body.append(container);
   let unmount = () => {};
   const label = () => container.querySelector("button")!.getAttribute("aria-label")!;
@@ -27,23 +28,29 @@ test("background choices cycle, survive remounts, and work without local storage
       assert.equal(container.querySelector('[role="status"]')!.textContent, `Background: ${name}`);
     }
     next(); next();
-    const chooseColor = (name: string) => bundle.mod.act(() => [...container.querySelectorAll("button")].find(b => b.textContent === name)!.click());
-    chooseColor("Mint");
-    assert.equal(container.querySelector('button[aria-pressed="true"]')!.textContent, "Mint");
+    const colorButton = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Change colour."]')!;
+    assert.equal(container.querySelector("details"), null, "colour changes need no menu");
+    for (const name of ["Peach", "Mint", "Blue", "Lilac", "Rose", "Original"]) {
+      bundle.mod.act(() => colorButton().click());
+      assert.ok(colorButton().getAttribute("aria-label")!.startsWith(`Change colour. ${name}.`));
+      assert.equal(container.dataset.tone, name.toLowerCase(), "whole workspace receives the palette");
+    }
+    bundle.mod.act(() => { colorButton().click(); colorButton().click(); });
+    assert.equal(container.dataset.tone, "mint", "rapid taps each advance the colour");
     assert.match(label(), /Rainbow terrain\./, "colour does not change the pattern");
     unmount(); unmount = bundle.mod.mount(container);
     assert.match(label(), /Rainbow terrain\./);
-    assert.equal(container.querySelector('button[aria-pressed="true"]')!.textContent, "Mint");
+    assert.equal(container.dataset.tone, "mint");
     next();
-    assert.equal(container.querySelector('button[aria-pressed="true"]')!.textContent, "Mint", "pattern changes keep the colour");
+    assert.equal(container.dataset.tone, "mint", "pattern changes keep the colour");
     unmount();
     Object.defineProperty(globalThis, "localStorage", { configurable: true, get() { throw new Error("Storage blocked"); } });
     unmount = bundle.mod.mount(container);
     assert.match(label(), /Ember\./);
     next();
     assert.match(label(), /Neural bloom\./);
-    chooseColor("Rose");
-    assert.equal(container.querySelector('button[aria-pressed="true"]')!.textContent, "Rose");
+    bundle.mod.act(() => colorButton().click());
+    assert.equal(container.dataset.tone, "peach");
   } finally {
     unmount(); await bundle.cleanup(); await window.happyDOM.abort();
     for (const [key, descriptor] of originals) {

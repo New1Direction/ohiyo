@@ -6,6 +6,7 @@ import { modelRoles, RouteDisclosure } from "./ModelSettings";
 import TaskContext, { type MemoryDraft } from "./TaskContext";
 import SelectionActions from "./SelectionActions";
 import Comparison from "./ResearchComparison";
+import ResearchWorkspace from "./ResearchWorkspace";
 import PrivateBrowser from "./PrivateBrowser";
 import { SavedTravelText as SavedResearchText, TravelProgress, parseTravelResult } from "./Travel";
 import { followUpLabel, taskActionError, taskActivity } from "./taskLanguage";
@@ -64,6 +65,7 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
   const emojiPicker = useRef<HTMLDetailsElement>(null);
   const [editor, setEditor] = useState<{ text: string; version: number } | null>(null);
   const [contextDirty, setContextDirty] = useState(false);
+  const [workspaceDirty, setWorkspaceDirty] = useState(false);
   const [tab, setTab] = useState<Tab>("result");
   const [mobilePane, setMobilePane] = useState<"conversation" | "result">("conversation");
   const [review, setReview] = useState<{ before?: string; after: string; version: number } | null>(null);
@@ -83,7 +85,7 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
   useEffect(() => {
     if (runId && seenSeq !== null && seenSeq !== returnSeq) savePlace({ run: runId, seq: seenSeq, tab: "result", pane: "conversation", conversation: conversationPane.current?.scrollTop ?? 0, result: resultPane.current?.scrollTop ?? 0 });
   }, [runId, seenSeq, returnSeq, savePlace]);
-  const dirty = contextDirty || !!instruction.trim() || (!!editor && editor.text !== task.result);
+  const dirty = contextDirty || workspaceDirty || !!instruction.trim() || (!!editor && editor.text !== task.result);
   useLayoutEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
   useEffect(() => {
     if (!dirty) return;
@@ -131,21 +133,23 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
     catch (e) { setError(taskActionError(e, "Couldn’t confirm whether work started. Reopen the task before trying again.")); }
     finally { setBusy(false); }
   }
-  async function control(action: "steer" | "stop" | "continue") {
+  async function control(action: "steer" | "stop" | "continue", requirementsRevision?: number): Promise<boolean> {
     // An uncertain instruction must not prevent the owner from requesting Stop.
     const queue = action === "stop" ? pendingStop : pending;
-    if (queue.current && (queue.current.action !== action || queue.current.message !== (action === "stop" ? "" : instruction))) {
-      setError("Kikka hasn’t confirmed your previous instruction. Reopen this task before sending a different one. You can still choose Stop."); return;
+    const message = action === "stop" ? "" : requirementsRevision === undefined ? instruction : `Update the comparison using saved brief ${requirementsRevision}.`;
+    if (queue.current && (queue.current.action !== action || queue.current.message !== message)) {
+      setError("Kikka hasn’t confirmed your previous instruction. Reopen this task before sending a different one. You can still choose Stop."); return false;
     }
-    queue.current ??= { id: crypto.randomUUID(), action, message: action === "stop" ? "" : instruction };
+    queue.current ??= { id: crypto.randomUUID(), action, message };
     setBusy(true); setError(""); setNotice("");
     try {
       const p = queue.current;
-      onUpdate(await api.controlBurrowAgent(token, task, p.id, p.action, p.message));
-      queue.current = null;
-      if (action === "stop") pending.current = null; else setInstruction("");
+      onUpdate(await api.controlBurrowAgent(token, task, p.id, p.action, p.message, requirementsRevision));
       const next = await api.burrowAgent(token, task.id); setView(next); onUpdate(next.task);
-    } catch (e) { setError(taskActionError(e, action === "stop" ? "Couldn’t confirm that Stop arrived. Trying Stop again checks the same request. Kikka is not confirmed stopped yet." : "Couldn’t confirm that your instruction arrived. Trying again checks the same request rather than sending a new one.")); }
+      queue.current = null;
+      if (action === "stop") pending.current = null; else if (requirementsRevision === undefined) setInstruction("");
+      return true;
+    } catch (e) { setError(taskActionError(e, action === "stop" ? "Couldn’t confirm that Stop arrived. Trying Stop again checks the same request. Kikka is not confirmed stopped yet." : "Couldn’t confirm that your instruction arrived. Trying again checks the same request rather than sending a new one.")); return false; }
     finally { setBusy(false); }
   }
   async function showEvidence(id: string) {
@@ -213,7 +217,8 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
       requestAnimationFrame(() => { instructionInput.current?.focus(); instructionInput.current?.setSelectionRange(next.length, next.length); });
     } : undefined} />
     <header className="research-toolbar"><div><p className="burrow-small">{task.project ?? "Your research"}</p><h1>{task.request.length > 100 ? `${task.request.slice(0, 100)}…` : task.request}</h1></div><span className={`burrow-status ${task.state}`} role="status">{status}</span><button className="burrow-secondary" disabled={!active || busy || stopping || !view?.connected || view?.agent.phase === "review"} onClick={() => void control("stop")}>{stopping ? "Stopping…" : "Stop"}</button></header>
-    <div className="research-controls"><details><summary>Brief</summary><p>{task.request}</p></details><details><summary>Scope</summary><p>Kikka can only read the public pages allowed for this task. No signing in, contacting suppliers, purchases or account changes. Saved choices do not give permission to take action.</p></details><button className="burrow-link" onClick={() => { openTab("result"); requestAnimationFrame(() => { context.current?.scrollIntoView({ block: "start" }); context.current?.focus(); }); }}>Saved choices</button><span className="research-budget">{subscriptionOnly ? "Your plan · Up to 20 requests for this task" : budget == null ? "Choose a work budget before starting" : `Work limit USD ${(budget / 100).toFixed(2)}`}</span></div>
+    <div className="research-controls"><details><summary>Original request</summary><p>{task.request}</p></details><details><summary>Scope</summary><p>Kikka can only read the public pages allowed for this task. No signing in, contacting suppliers, purchases or account changes. Saved choices do not give permission to take action.</p></details><button className="burrow-link" onClick={() => { openTab("result"); requestAnimationFrame(() => { context.current?.scrollIntoView({ block: "start" }); context.current?.focus(); }); }}>Saved choices</button><span className="research-budget">{subscriptionOnly ? "Your plan · Up to 20 requests for this task" : budget == null ? "Choose a work budget before starting" : `Work limit USD ${(budget / 100).toFixed(2)}`}</span></div>
+    <p className="research-current-activity" role="status">{!view && !canRun ? "Research worker not connected. Your saved workspace is still available." : activity}</p>
     {(error || failure || notice) && <div className="research-notices">{failure && <p className="research-failure" role="alert"><strong>Needs attention</strong>{failure}</p>}{error && <p className="burrow-error" role="alert">{error}</p>}{notice && <p className="research-notice" role="status">{notice}</p>}</div>}
     <div className="research-mobile-tabs" role="group" aria-label="Task view"><button aria-pressed={mobilePane === "conversation"} onClick={() => setMobilePane("conversation")}>Conversation</button><button aria-pressed={mobilePane === "result"} onClick={() => setMobilePane("result")}>Result{hasNewResult || task.proposed_result ? " · New" : ""}</button></div>
     <div className="research-layout">
@@ -228,7 +233,8 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
     {lastInstruction && <p className="research-receipt" role="status"><span aria-hidden="true">{lastInstruction[3] === "sent" ? "✓ " : ""}</span>Your last instruction · {followUpLabel(lastInstruction[3])}{lastInstruction[3] === "sent" && <small>Delivery confirmed. Read status isn’t available yet.</small>}</p>}
     {!!view?.commands.filter(c => c[1] !== "stop").length && <details className="burrow-request-details"><summary>Your follow-ups</summary>{view.commands.filter(c => c[1] !== "stop").map(c => <div className="research-user-message" key={c[0]}><span>Your instruction · {followUpLabel(c[3])}</span><p>{c[2]}</p></div>)}</details>}
     {(baseline || task.proposed_result) && <div className="research-update"><h2>{task.proposed_result ? "Your edits are protected" : "A saved result you can change"}</h2><p>{task.proposed_result ? "Compare both versions before choosing which to keep." : "See the exact differences between saved versions."}</p><button className="burrow-secondary" onClick={showChanges}>What changed?</button></div>}
-    {!view && <section className="burrow-permission"><h2>{task.travel ? "Run this fixture trip?" : "Research public pages?"}</h2>
+    {!view && !canRun && <section className="research-empty"><h2>Your workspace is ready</h2><p>You can save requirements and questions now. A connected research worker is needed before Kikka can read public pages. Saving these records does not start a model call.</p></section>}
+    {!view && canRun && <section className="burrow-permission"><h2>{task.travel ? "Run this fixture trip?" : "Research public pages?"}</h2>
       {task.travel && <p><strong>Fixture demo — no real booking.</strong> Allow &amp; start runs the normal approved model work, then the server-controlled fixture travel workflow under your saved mandate and traveler profiles. The work budget below is separate from the trip maximum. No real purchase or additional spend permission is granted here.</p>}
       <p>{routing?.preview[role] ? `Your request, source information and relevant saved choices are shared with ${new URL(routing.preview[role].endpoint).hostname}.` : routing?.catalog.length ? "Your request, source information and relevant saved choices are shared with the service chosen for this task." : routing ? "Your request, source information and relevant saved choices are shared with OpenAI." : "We can’t confirm which service will receive your request, so Kikka can’t start yet."} Saved choices include your personal preferences, this project’s requirements and your notes—not your Ohiyo chats. {task.travel ? "This trip uses simulated inventory and research only. Traveler profiles stay on this server; the model cannot change your mandate or authorize spending." : "You can review them in From our previous work. Kikka can read the allowed public pages and save screenshots. No signing in, purchases or account changes."}</p>
       {!!routing?.catalog.length && <details><summary>Advanced model details</summary><label>Model role<select value={role} onChange={e => setRole(e.target.value as ModelRole)}>{modelRoles.map(r => <option key={r} value={r}>{r}</option>)}</select></label>{routing.preview[role] ? <RouteDisclosure route={routing.preview[role]} /> : <p className="burrow-small">No resolved route for this role. Funding unavailable.</p>}{role !== "summary" && routing.preview.summary && <details><summary>Summary model · same spending cap</summary><RouteDisclosure route={routing.preview.summary} /></details>}</details>}
@@ -263,8 +269,10 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
       {review.before ? parseTravelResult(review.before) || parseTravelResult(review.after) ? <><h3>Earlier saved version</h3><SavedResearchText text={review.before} /><h3>Revised saved version</h3><SavedResearchText text={review.after} /></> : <RevisionDiff before={review.before} after={review.after} /> : <p>The earlier result is unavailable. Review the full proposal below.</p>}
       {task.proposed_result && <details><summary>Full proposed revision</summary><SavedResearchText text={review.after} /></details>}
     </section>}
+    <ResearchWorkspace key={`${token}:${task.id}`} enabled={!!task.comparison && !task.travel} hasManualEdits={!!task.manual_edited} token={token} taskId={task.id} canUpdate={!!view?.connected && view.agent.phase === "finished" && task.state === "draft_ready" && !busy} running={active} onResearch={revision => control("continue", revision)} onDirtyChange={setWorkspaceDirty}>
     {task.result && <section className="burrow-result"><header><div><p className="burrow-eyebrow">SAVED FOR YOU</p><h2>Your comparison</h2></div>{task.state === "draft_ready" && !editor && <button className="burrow-secondary" onClick={() => setEditor({ text: task.result, version: task.version })}>Edit result</button>}</header>{editor ? <><label className="sr-only" htmlFor="research-result">Edit saved comparison</label><textarea id="research-result" value={editor.text} maxLength={100000} onChange={e => setEditor({ ...editor, text: e.target.value })} /><div className="burrow-editor-actions"><button className="burrow-secondary" onClick={() => setEditor(null)}>Cancel</button><button className="burrow-primary" disabled={busy || !editor.text.trim()} onClick={() => { setBusy(true); void api.saveBurrowResult(token, { ...task, version: editor.version }, editor.text).then(t => { onUpdate(t); setEditor(null); }).catch(e => setError(taskActionError(e, "Couldn’t confirm your save. Your edits are still here; refresh before trying again."))).finally(() => setBusy(false)); }}>Save edits</button></div></> : comparison ? <Comparison value={comparison} /> : <SavedResearchText text={task.result} />}{task.manual_notes && <div className="burrow-document"><strong>Your notes</strong><p>{task.manual_notes}</p></div>}<footer>{task.manual_edited ? "Your manual edits are protected. New revisions need your review." : "Sources may change. Review eligibility and tax details before acting."}</footer></section>}
     {!task.result && <div className="research-empty"><h2>{task.state === "working" ? "The research is underway" : "Your result will live here"}</h2><p>No saved comparison yet. Kikka’s actual activity is shown in the conversation.</p></div>}
+    </ResearchWorkspace>
     <div ref={context} tabIndex={-1}><TaskContext ref={memoryDraft} task={task} token={token} onUpdate={onUpdate} onDirtyChange={setContextDirty} /></div>
     {!!view?.history.length && <details className="burrow-request-details"><summary>Previous versions ({view.history.length})</summary>{view.history.map(([id, result], index) => <details key={id}><summary>Previous version {view.history.length - index}</summary><SavedResearchText text={result} /></details>)}</details>}
     </div>

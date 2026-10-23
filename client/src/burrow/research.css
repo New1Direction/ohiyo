@@ -14,6 +14,7 @@
 .research-controls details p { max-height: 180px; overflow-y: auto; padding-top: 12px; line-height: 1.8; overflow-wrap: anywhere; color: var(--muted); }
 .research-budget { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.7; }
 .research-controls > .research-budget { margin-left: auto; }
+.research-current-activity { flex-shrink: 0; padding: 8px 24px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); line-height: 1.7; }
 .research-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr); flex: 1; min-height: 0; }
 .research-conversation, .research-result-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .research-conversation { border-right: 1px solid var(--line); }
@@ -83,6 +84,46 @@
 .research-source small { display: block; font-size: 10px; color: var(--muted); margin: 10px 0; }
 .research-source .burrow-secondary { padding: 8px 12px; font-size: 11px; }
 .research-empty { padding: 12px 0 28px; }
+.research-workspace { font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.research-workspace > section[hidden] { display: none; }
+.research-workspace-tabs { display: flex; gap: 6px; margin-bottom: 24px; padding: 4px; width: fit-content; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--surface); }
+.research-workspace-tabs button { min-height: 36px; padding: 6px 18px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--muted); font-size: 12px; }
+.research-workspace-tabs button[aria-pressed=true] { background: var(--hover); color: var(--ink); }
+.research-workspace button:focus-visible, .research-workspace summary:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; }
+.research-workspace-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-bottom: 16px; }
+.research-workspace h3 { font-size: 13px; font-weight: 500; }
+.research-workspace .burrow-secondary, .research-workspace .burrow-primary { padding: 8px 14px; font-size: 11px; }
+.research-workspace .burrow-link { font-size: 11px; }
+.research-preserved-text, .research-decision dd { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; }
+.research-workspace-editor { border: 1px solid var(--line); border-radius: var(--radius-panel); padding: 20px; margin: 16px 0 24px; background: var(--surface); }
+.research-workspace-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.research-workspace-editor h3 { margin-bottom: 16px; }
+.research-workspace-editor label { display: block; margin: 14px 0; font-size: 11px; color: var(--muted); }
+.research-workspace-editor input:not([type=checkbox]), .research-workspace-editor textarea, .research-comparison-tools input { display: block; width: 100%; padding: 12px 14px; margin-top: 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--base); color: var(--ink); font-family: inherit; font-size: 13px; line-height: 1.7; }
+.research-workspace-editor textarea { resize: vertical; min-height: 72px; }
+.research-workspace-editor input:focus, .research-workspace-editor textarea:focus, .research-comparison-tools input:focus { outline: none; box-shadow: none; border-color: var(--muted); }
+.research-workspace-editor .research-check { display: flex; align-items: center; gap: 10px; min-height: 44px; color: var(--ink); }
+.research-check input { width: 18px; height: 18px; accent-color: var(--coral); }
+.research-workspace-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; }
+.research-basis { padding: 14px 16px; border-left: 2px solid var(--coral); background: var(--surface); border-radius: 0 var(--radius-control) var(--radius-control) 0; margin: 20px 0; }
+.research-basis .burrow-small { margin: 5px 0; }
+.research-basis button { margin-top: 12px; }
+.research-basis-earlier { border-color: var(--muted); }
+.research-comparison-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.research-comparison-tools input { margin: 0; flex: 1; min-width: 120px; }
+.research-comparison-tools [aria-pressed=true] { color: var(--coral); border-color: var(--coral); }
+.research-candidate-notes { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.research-contributions, .research-decision { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
+.research-contribution { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.research-contribution strong { font-weight: 500; }
+.research-decision dt { font-size: 11px; color: var(--muted); margin-top: 16px; }
+.research-decision dd { margin: 4px 0 16px; }
+.research-history-item { display: block; text-align: left; padding: 10px 0; }
+.research-history-item[aria-pressed=true] { color: var(--coral); }
+.research-workspace-activity { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); }
+.research-workspace-activity ol { list-style: none; padding: 0; }
+.research-workspace-activity li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.research-workspace-activity small { display: block; color: var(--muted); font-size: 10px; }
 .research-mobile-tabs { display: none; }
 @media (max-width: 1100px) {
   .research-layout { grid-template-columns: minmax(0, 1fr); }
@@ -104,6 +145,9 @@
   .research-return { margin-bottom: 18px; padding-bottom: 16px; }
   .research-result-tabs { padding: 0 18px; }
   .research-changes { padding: 14px; }
+  .research-workspace-tabs button, .research-workspace .burrow-secondary, .research-workspace .burrow-primary, .research-workspace .burrow-link, .research-workspace summary { min-height: 44px; }
+  .research-workspace-editor { padding: 14px; }
+  .research-workspace-editor input:not([type=checkbox]), .research-workspace-editor textarea, .research-comparison-tools input { font-size: 16px; }
   .research-controls summary, .research-controls > button, .research-mobile-tabs button, .research-result-tabs button { min-height: 44px; display: inline-flex; align-items: center; }
 }
 @media (prefers-reduced-motion: reduce) { .research-studio * { scroll-behavior: auto; } }

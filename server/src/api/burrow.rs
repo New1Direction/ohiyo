@@ -5,6 +5,7 @@ pub mod computer;
 pub mod context;
 pub mod creation;
 pub mod everyday;
+pub mod research;
 pub mod routing;
 mod skills;
 pub mod subscriptions;

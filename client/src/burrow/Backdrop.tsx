@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { drawField, type DotField } from "./backdropFields";
 import type { ShaderMount } from "@paper-design/shaders";
 
@@ -36,7 +37,9 @@ function savedLook(): Look {
 export default function Backdrop({ paused, resting = false }: { paused: boolean; resting?: boolean }) {
   const [look, setLook] = useState(savedLook);
   const [tone, setTone] = useState(savedTone);
-  const colors = useRef<HTMLDetailsElement>(null);
+  const requestedTone = useRef(tone);
+  const pulse = useRef<HTMLDivElement>(null);
+  const pulseAnimation = useRef<Animation | null>(null);
   const tint = tones.find(([id]) => id === tone)!;
   const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [hidden, setHidden] = useState(() => document.hidden);
@@ -52,20 +55,13 @@ export default function Backdrop({ paused, resting = false }: { paused: boolean;
   const index = looks.findIndex(([id]) => id === look);
   const [, name, color] = looks[index];
 
-  useEffect(() => {
-    function dismiss(event: PointerEvent) {
-      if (colors.current && !colors.current.contains(event.target as Node)) colors.current.open = false;
-    }
-    function escape(event: KeyboardEvent) {
-      if (event.key === "Escape" && colors.current?.open) {
-        colors.current.open = false;
-        if (colors.current.contains(event.target as Node)) { event.preventDefault(); colors.current.querySelector("summary")?.focus(); }
-      }
-    }
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", escape);
-    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
-  }, []);
+  useLayoutEffect(() => {
+    const root = layer.current?.closest<HTMLElement>(".burrow");
+    if (root) root.dataset.tone = tone;
+    return () => { if (root) delete root.dataset.tone; };
+  }, [tone]);
+  useEffect(() => () => pulseAnimation.current?.cancel(), []);
+  useEffect(() => { if (reduced || paused || hidden) pulseAnimation.current?.cancel(); }, [reduced, paused, hidden]);
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const motion = () => setReduced(media.matches);
@@ -167,8 +163,28 @@ export default function Backdrop({ paused, resting = false }: { paused: boolean;
     setLook(value); setFallback(false);
     try { localStorage.setItem(storageKey, value); } catch { /* Still usable when storage is blocked. */ }
   }
+  function nextTone(event: MouseEvent<HTMLButtonElement>) {
+    const value = tones[(tones.findIndex(([id]) => id === requestedTone.current) + 1) % tones.length][0];
+    requestedTone.current = value;
+    setTone(value);
+    try { localStorage.setItem("burrow:backdrop-tone", value); } catch { /* Still usable when storage is blocked. */ }
+    pulseAnimation.current?.cancel();
+    if (reduced || paused || hidden || !pulse.current?.animate) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+    const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    Object.assign(pulse.current.style, { width: `${radius * 2}px`, height: `${radius * 2}px`, left: `${x - radius}px`, top: `${y - radius}px` });
+    pulse.current.style.setProperty("--pulse-colour", value === "original" ? "#f49b87" : tones.find(([id]) => id === value)![2]);
+    pulseAnimation.current = pulse.current.animate([
+      { transform: "scale(0)", opacity: 0 },
+      { opacity: .3, offset: .18 },
+      { transform: "scale(1)", opacity: 0 },
+    ], { duration: 700, easing: "cubic-bezier(.2,.7,.2,1)" });
+  }
   const description = `${name}${fallback ? " · dots fallback" : ""}. Tap for ${looks[(index + 1) % looks.length][1]}.`;
+  const toneDescription = `${tint[1]}. Tap for ${tones[(tones.findIndex(([id]) => id === tone) + 1) % tones.length][1]}.`;
   return <>
+    {createPortal(<div ref={pulse} className="burrow-colour-pulse" aria-hidden="true" />, document.body)}
     <div ref={layer} className={`burrow-ambience${running ? "" : " backdrop-still"}`} data-backdrop={look} data-tone={tone} style={{ filter: look === "off" ? "none" : tint[3] }} aria-hidden="true">
       {look === "ember" && <><pre className="burrow-ascii north">{"    +\n .     :\n    /    .\n :    +"}</pre><pre className="burrow-ascii east">{" .    /\n   :\n +   .\n    :   +"}</pre><pre className="burrow-ascii south">{"    .   +\n :    /\n   +    ."}</pre></>}
       {look !== "ember" && look !== "off" && <><canvas ref={canvas} className="backdrop-field" /><div ref={paper} className={`backdrop-paper${look === "paper-mesh" ? " dotted" : ""}`} /></>}
@@ -178,15 +194,10 @@ export default function Backdrop({ paused, resting = false }: { paused: boolean;
       <span className="burrow-backdrop-tip" aria-hidden="true">{description}</span>
       <span className="sr-only" role="status">Background: {name}{fallback ? ". WebGL unavailable; showing dots instead." : ""}</span>
     </div>
-    <details className="burrow-backdrop-colors" ref={colors}>
-      <summary aria-label={`Background colour: ${tint[1]}`} title="Background colours"><span style={{ background: tint[2] }} aria-hidden="true" /></summary>
-      <div className="burrow-color-panel" role="group" aria-label="Background colours">
-        <strong>Background colour</strong><p>Keep the pattern. Set the mood.</p>
-        <div>{tones.map(([id, label, swatch]) => <button key={id} type="button" aria-pressed={tone === id} onClick={() => {
-          setTone(id);
-          try { localStorage.setItem("burrow:backdrop-tone", id); } catch { /* Colour still changes without storage. */ }
-        }}><i style={{ background: swatch }} aria-hidden="true" />{label}</button>)}</div>
-      </div>
-    </details>
+    <div className="burrow-backdrop-switch">
+      <button type="button" className="burrow-backdrop-dot burrow-tone-dot" aria-label={`Change colour. ${toneDescription}`} onClick={nextTone}><span style={{ background: tint[2] }} aria-hidden="true" /></button>
+      <span className="burrow-backdrop-tip" aria-hidden="true">{toneDescription}</span>
+      <span className="sr-only" role="status">Colour: {tint[1]}</span>
+    </div>
   </>;
 }

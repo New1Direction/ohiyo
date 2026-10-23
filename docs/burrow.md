@@ -18,10 +18,15 @@ Motion pauses animation, reduced-motion users get still frames, and hidden tabs
 and open tasks stop the animation loops. Backgrounds never capture clicks or
 change a task. The abstract patterns are decoration, not live AI activity.
 
-The small colour ring beside the pattern dot opens six colour choices: Original,
-Peach, Mint, Blue, Lilac and Rose. Colour stays independent of the pattern and is
-remembered locally. Escape closes the picker and returns focus to its toggle;
-clicking outside closes it too. Tints affect only the decorative layer.
+The small colour ring beside the pattern dot cycles Original, Peach, Mint, Blue,
+Lilac and Rose on each click (or Enter/Space), without a menu. Colour stays
+independent of the pattern and is remembered locally. Palettes apply to the
+background, sidebar, inputs, buttons and generated-page accents together; error
+and success colours keep their meaning. Original restores the page's own theme.
+A soft colour pulse expands from the button as the palette changes. It never
+blocks input. Paused/reduced motion and browsers without Web Animations switch
+without a pulse. Repeated taps restart the pulse and apply every colour step.
+Changing colour never replaces a draft or resets page progress.
 
 The original canvas sketches take visual inspiration from the
 [Teknium demo collection](https://webdev.teknium.io/). The two Paper looks use
@@ -54,7 +59,13 @@ ready-made examples: a playable study space, a branching story and a birthday
 page. Examples work without a configured service and are never presented as
 newly generated work. Previously saved trackers and everyday pages still open.
 
-New requests create owner-scoped **creations**. In the chat-and-preview view,
+New requests create owner-scoped **creations** and open a full-width conversation
+with the composer at the bottom. **Preview** toggles the page beside the
+conversation on wide screens, or switches panes on smaller screens. Existing
+pages open with their preview visible. Hiding either pane preserves the unsent
+draft and temporary preview progress; leaving the creation or replacing its page
+still resets preview progress.
+
 **Make it** approves one generation attempt; **Send** approves one revision.
 The destination and possible cost are disclosed beside the composer. The service
 receives only the original request, current page and latest instruction, not
@@ -273,6 +284,49 @@ Stop can be requested even after an instruction's delivery becomes uncertain.
 An uncertain Stop retry uses the same request ID. **Stopping** is not **Stopped**:
 the latter requires the worker's terminal acknowledgement, and saved work stays
 available. Stop is not a rollback of work already performed.
+
+### Durable research workspace
+
+**Research workspace** saves a comparison task even without a connected worker.
+The task reopens in research mode independently of worker availability. Brief,
+Compare and Decision are views of saved application records, not regenerated
+pages. Execution status, scope, allowance and Stop remain outside those views.
+
+- **Brief** saves versioned requirements and a separate item budget, plus questions,
+  answers and resolved state. Saving never dispatches research. Once a Pi run has
+  finished successfully, **Allow research update** sends the exact saved brief
+  through the existing follow-up path, under the original goal and allowance.
+  In-flight work keeps its original basis; save changes now and request the update
+  after it finishes. Free-form steering has an unrecorded requirements basis.
+- **Compare** keeps claim-level quotes, original URLs, capture times and unknowns.
+  Filter by name or shortlist and change name/research order without changing data.
+  Candidate notes and shortlist flags use application-generated IDs. Reconciliation
+  matches only an unambiguous normalized name and exact source URL set; changed,
+  duplicate or source-less identities become new candidates. Earlier notes remain
+  available, including for options absent from the selected comparison.
+- **Decision** saves a candidate, rationale, accepted tradeoffs and uncertainty
+  against an immutable comparison and its original brief. Later briefs or research
+  prompt reconsideration without rewriting the decision. Saving is not purchasing.
+
+`GET/POST /burrow/tasks/{id}/research` is owner-scoped and has a workspace version
+independent of task/execution versions. Stale writes return 409; the UI retains the
+draft and requires review of the latest records before another save. Comparison
+snapshots survive bounded event views and edited documents. Legacy results without
+an admitted revision stay unattributed. A late lower-revision result cannot replace
+a newer attributed one; unversioned results can be explicitly opened from history.
+Existing manually edited documents remain available separately from source evidence.
+
+The initial pilot retains at most 200 briefs, 100 questions, 200 decisions and 201
+comparisons per workspace, rejecting rather than evicting history at the limit.
+Text limits are UTF-8 bytes: 6,000 for a revised brief, 500 for the item budget,
+200 for question labels, and 4,000 per note, answer or decision field.
+
+Automated coverage uses public HTTP APIs, real SQLite/Pi journals and fixture
+model/browser responses. These checks cover isolation, stale edits, candidate
+identity, revision fencing, Stop/publication races and recovery without allowance
+reset. They do **not** qualify the new workspace as a live research pilot. That gate
+still needs an approved model/URL allowance and the fresh-account workflow with
+actual research, logout/reopen, requirement changes and worker interruption.
 
 ## Proposed shopping direction — not implemented capabilities
 

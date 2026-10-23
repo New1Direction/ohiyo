@@ -219,6 +219,7 @@ pub struct Run {
     pub routing: Option<sqlx::types::Json<Value>>,
     pub usage: Option<sqlx::types::Json<Value>>,
     pub computer_workspace: Option<String>,
+    pub requirements: Option<sqlx::types::Json<Value>>,
 }
 
 #[derive(Deserialize)]
@@ -426,9 +427,29 @@ pub async fn start(
         ));
     }
     let run = crate::types::new_id();
-    sqlx::query("INSERT INTO burrow_agent_runs(id,task_id,request_version,target,root_goal,goal,max_cost_cents,phase,activity,role,routing,computer_workspace) VALUES(?,?,?,?,?,?,?,'queued','Getting ready…',?,?,?)")
+    let requirements = if task.comparison {
+        Some(
+            super::research::load(&mut tx, &task)
+                .await
+                .map_err(internal)?["brief"]
+                .clone(),
+        )
+    } else {
+        None
+    };
+    let goal = requirements
+        .as_ref()
+        .map(|brief| {
+            if kikka.pi.is_some() {
+                brief["text"].as_str().unwrap_or("").to_owned()
+            } else {
+                super::research::instruction(brief)
+            }
+        })
+        .unwrap_or_else(|| task.request.clone());
+    sqlx::query("INSERT INTO burrow_agent_runs(id,task_id,request_version,target,root_goal,goal,max_cost_cents,phase,activity,role,routing,computer_workspace,requirements) VALUES(?,?,?,?,?,?,?,'queued','Getting ready…',?,?,?,?)")
         .bind(&run).bind(&id).bind(body.version).bind(target).bind(format!("burrow-{run}"))
-        .bind(&task.request).bind(body.max_cost_cents).bind(role).bind(routing).bind(&computer_workspace).execute(&mut *tx).await.map_err(internal)?;
+        .bind(goal).bind(body.max_cost_cents).bind(role).bind(routing).bind(&computer_workspace).bind(requirements.map(|v| v.to_string())).execute(&mut *tx).await.map_err(internal)?;
     super::travel::workflow::admit(&mut tx, &id, &format!("burrow-{run}"))
         .await
         .map_err(internal)?;
@@ -522,6 +543,7 @@ pub struct Control {
     message: String,
     #[serde(default)]
     allow_spending: bool,
+    requirements_revision: Option<i64>,
 }
 
 pub async fn control(
@@ -546,6 +568,11 @@ pub async fn control(
         )
         || message.chars().count() > 8000
         || (matches!(body.action.as_str(), "steer" | "continue") && message.is_empty())
+        || (body.requirements_revision.is_some()
+            && (body.action != "continue"
+                || !body.allow_spending
+                || !task.comparison
+                || kikka.pi.is_none()))
     {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -564,15 +591,19 @@ pub async fn control(
         StatusCode::NOT_FOUND,
         "Kikka hasn't started this task in a workspace.".into(),
     ))?;
-    let previous: Option<(String, String)> =
-        sqlx::query_as("SELECT action,message FROM burrow_agent_commands WHERE run_id=? AND id=?")
-            .bind(&run.id)
-            .bind(&body.request_id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(internal)?;
-    if let Some((action, saved)) = previous {
-        if action != body.action || saved != message {
+    let previous: Option<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT action,message,requirements FROM burrow_agent_commands WHERE run_id=? AND id=?",
+    )
+    .bind(&run.id)
+    .bind(&body.request_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(internal)?;
+    if let Some((action, saved, requirements)) = previous {
+        let revision = requirements
+            .and_then(|v| serde_json::from_str::<Value>(&v).ok())
+            .and_then(|v| v["revision"].as_i64());
+        if action != body.action || saved != message || revision != body.requirements_revision {
             return Err((
                 StatusCode::CONFLICT,
                 "That request ID already has a different instruction.".into(),
@@ -580,11 +611,26 @@ pub async fn control(
         }
         return Ok(Json(task));
     }
+    let requirements = if let Some(revision) = body.requirements_revision {
+        let w = super::research::load(&mut tx, &task)
+            .await
+            .map_err(internal)?;
+        if w["brief"]["revision"] != revision {
+            return Err((
+                StatusCode::CONFLICT,
+                "Requirements changed. Refresh before updating research.".into(),
+            ));
+        }
+        Some(w["brief"].to_string())
+    } else {
+        None
+    };
     let busy: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM burrow_agent_runs WHERE target=? AND id!=? AND phase IN ('attached','dispatching','review'))")
         .bind(&run.target).bind(&run.id).fetch_one(&mut *tx).await.map_err(internal)?;
     if task.version != body.version
         || run.target != kikka.target()
         || run.phase == "review"
+        || (body.requirements_revision.is_some() && task.state != "draft_ready")
         || (body.action == "continue" && (!body.allow_spending || run.phase != "finished"))
         || (body.action == "continue" && busy && kikka.pi.is_none())
         || (body.action != "continue"
@@ -613,8 +659,8 @@ pub async fn control(
         .await
         .map_err(internal)?;
     }
-    sqlx::query("INSERT INTO burrow_agent_commands(id,run_id,action,message,phase) VALUES(?,?,?,?,'queued')")
-        .bind(&body.request_id).bind(&run.id).bind(&body.action).bind(message).execute(&mut *tx).await.map_err(internal)?;
+    sqlx::query("INSERT INTO burrow_agent_commands(id,run_id,action,message,phase,requirements) VALUES(?,?,?,?,'queued',?)")
+        .bind(&body.request_id).bind(&run.id).bind(&body.action).bind(message).bind(requirements).execute(&mut *tx).await.map_err(internal)?;
     if run.phase == "queued" && body.action == "stop" {
         sqlx::query("UPDATE burrow_agent_commands SET phase='sent' WHERE run_id=? AND id=?")
             .bind(&run.id)
@@ -739,6 +785,9 @@ pub async fn tick(s: &AppState) -> Result<(), sqlx::Error> {
                     .await
                     .map_err(|e| sqlx::Error::Protocol(e.1))?;
                 let mut admission = json!({"owner":owner,"task":run.task_id,"root_goal":run.root_goal,"goal":run.goal,"max_cost_cents":run.max_cost_cents});
+                if let Some(requirements) = &run.requirements {
+                    admission["requirements"] = requirements.0.clone();
+                }
                 if let Some(travel) = super::travel::workflow::descriptor(s, &run.task_id).await? {
                     admission["travel"] = travel;
                 } else if let Some(workspace) = &run.computer_workspace {
@@ -851,7 +900,7 @@ async fn reconcile(s: &AppState, k: &Kikka, run: &Run) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
         return Ok(());
     }
-    let commands: Vec<(String,String,String)> = sqlx::query_as("SELECT id,action,message FROM burrow_agent_commands WHERE run_id=? AND phase='queued' ORDER BY rowid")
+    let commands: Vec<(String,String,String,Option<String>)> = sqlx::query_as("SELECT id,action,message,requirements FROM burrow_agent_commands WHERE run_id=? AND phase='queued' ORDER BY rowid")
         .bind(&run.id).fetch_all(&s.db).await.map_err(|e|e.to_string())?;
     // Controls are submitted only after validating this runtime's identity below.
     let status = k.cli(&["status", runtime]).await?;
@@ -873,7 +922,7 @@ async fn reconcile(s: &AppState, k: &Kikka, run: &Run) -> Result<(), String> {
                 .map_err(|_| "Usage could not be saved.")?;
         }
     }
-    if let Some((id, action, message)) = commands.first() {
+    if let Some((id, action, message, requirements)) = commands.first() {
         let changed = sqlx::query("UPDATE burrow_agent_commands SET phase='dispatching' WHERE run_id=? AND id=? AND phase='queued'")
             .bind(&run.id).bind(id).execute(&s.db).await.map_err(|e|e.to_string())?.rows_affected();
         if changed != 1 {
@@ -896,7 +945,15 @@ async fn reconcile(s: &AppState, k: &Kikka, run: &Run) -> Result<(), String> {
             let context = super::context::prompt(s, &owner, &task)
                 .await
                 .map_err(|e| e.1)?;
-            k.pi_call(json!({"operation":"control","run":runtime,"command":{"request_id":id,"action":action,"message":message,"burrow_context":context}})).await.map(|_| ())
+            let mut command =
+                json!({"request_id":id,"action":action,"message":message,"burrow_context":context});
+            if let Some(requirements) = requirements {
+                command["requirements"] = serde_json::from_str(requirements)
+                    .map_err(|_| "Invalid saved requirements.")?;
+            }
+            k.pi_call(json!({"operation":"control","run":runtime,"command":command}))
+                .await
+                .map(|_| ())
         } else {
             k.cli(&args).await.map(|_| ())
         };
@@ -923,7 +980,16 @@ async fn reconcile(s: &AppState, k: &Kikka, run: &Run) -> Result<(), String> {
         return Ok(());
     }
     let stream = k.cli(&["watch", runtime, "--json"]).await?;
-    let mut tx = s.db.begin().await.map_err(|e| e.to_string())?;
+    let owner: String = sqlx::query_scalar("SELECT user_id FROM burrow_tasks WHERE id=?")
+        .bind(&run.task_id)
+        .fetch_one(&s.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    let task = owned(s, &owner, &run.task_id).await.map_err(|e| e.1)?;
+    let mut tx =
+        s.db.begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(|e| e.to_string())?;
     let mut seq = run.last_seq;
     let mut answer = None;
     for line in stream.lines().filter(|l| !l.trim().is_empty()) {
@@ -945,6 +1011,9 @@ async fn reconcile(s: &AppState, k: &Kikka, run: &Run) -> Result<(), String> {
             .await
             .map_err(|e| e.to_string())?;
         if event["type"] == "final_message" {
+            super::research::ingest(&mut tx, &task, &run.id, current, &event["data"])
+                .await
+                .map_err(|e| e.to_string())?;
             if let Some(text) = event["data"]["content"]
                 .as_str()
                 .filter(|t| !t.trim().is_empty() && t.len() <= 100_000)
@@ -952,6 +1021,19 @@ async fn reconcile(s: &AppState, k: &Kikka, run: &Run) -> Result<(), String> {
                 answer = Some(text.to_owned());
             }
         }
+    }
+    let workspace = super::research::load(&mut tx, &task)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(preferred) = super::research::preferred(&workspace) {
+        // Late older answers cannot replace a newer attributed comparison.
+        answer = sqlx::query_scalar(
+            "SELECT content FROM burrow_research_ingested WHERE comparison_id=? AND content!=''",
+        )
+        .bind(preferred["id"].as_str())
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
     }
     sqlx::query("UPDATE burrow_agent_runs SET last_seq=? WHERE id=?")
         .bind(seq)

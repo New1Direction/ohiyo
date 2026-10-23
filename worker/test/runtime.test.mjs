@@ -289,3 +289,92 @@ test('webpage instructions cannot expand approved pages or replace explicit memo
     assert.doesNotMatch(JSON.stringify(packet), /polyester/);
   }
 });
+
+test('immutable requirements follow-ups retain the same allowance; in-flight updates are refused and unversioned steer is unattributed', async t => {
+  let release;
+  const hold = new Promise(r => { release = r; });
+  const { worker, calls, browserCalls } = await setup(t, { browser: () => hold });
+  const requirements = { revision: 1, text: 'Light gaming laptop', purchase_budget: 'GBP 900', created_at: 1 };
+  const revised = { ...requirements, revision: 2, text: 'Battery life matters most' };
+  const id = await worker.start({ ...admission('requirements'), requirements });
+  await until(() => browserCalls() === 1);
+  await assert.rejects(worker.control(id, { request_id: 'too-early', action: 'continue', message: 'Update', requirements: revised }), /completed generation/);
+  await assert.rejects(worker.control(id, { request_id: 'wrong-action', action: 'steer', message: 'Update', requirements: revised }), /completed generation/);
+  release();
+  await until(async () => (await worker.status(id)).state === 'Completed');
+  assert.equal((await worker.events(id)).findLast(e => e.type === 'final_message').data.requirements_revision, 1);
+  const reserved = worker.runs.get(id).gate.reserved();
+  await worker.control(id, { request_id: 'revision-two', action: 'continue', message: 'Use saved requirements.', requirements: revised });
+  await until(async () => (await worker.status(id)).state === 'Completed');
+  assert.equal((await worker.events(id)).findLast(e => e.type === 'final_message').data.requirements_revision, 2);
+  assert.ok(worker.runs.get(id).gate.reserved() > reserved);
+  const before = calls(), spent = worker.runs.get(id).gate.reserved();
+  await worker.close(); await worker.recover();
+  assert.equal((await worker.status(id)).state, 'Completed');
+  assert.equal(calls(), before);
+  assert.equal(worker.runs.get(id).gate.reserved(), spent);
+  assert.equal(worker.runs.get(id).admission.max_cost_cents, 25);
+  await worker.control(id, { request_id: 'legacy-steer', action: 'steer', message: 'Prefer annual' });
+  await until(async () => (await worker.status(id)).state === 'Completed');
+  assert.equal((await worker.events(id)).findLast(e => e.type === 'final_message').data.requirements_revision, null);
+});
+
+test('async final-message receipt validation cannot race follow-up attribution or publish a duplicate', async t => {
+  const inputs = [];
+  const { worker, calls } = await setup(t, { reply: async (_model, input) => {
+    inputs.push(JSON.stringify(input.messages));
+    const receipt = input.messages.find(m => m.role === 'toolResult');
+    if (!receipt) return answer([{ type: 'toolCall', id: 'source', name: 'read_public_page', arguments: { url: urls[0] } }], 'toolUse');
+    const evidenceId = JSON.parse(receipt.content[0].text).evidenceId;
+    return answer([{ type: 'text', text: JSON.stringify({ title: 'Evidence-backed fixture', requirements: [], options: [
+      { name: 'Option', evidence_ids: [evidenceId], unknowns: ['Battery life'], attributes: [], price: null },
+    ] }) }]);
+  } });
+  const requirements = { revision: 1, text: 'Original immutable brief', purchase_budget: 'GBP 900', created_at: 1 };
+  const id = await worker.start({ ...admission('publication-race'), comparison: true, requirements });
+  const run = worker.runs.get(id);
+  await until(async () => (await (await run.harness.submission(run.get('submission'), context)).status(context)).status === 'done');
+  let release, entered = false;
+  const hold = new Promise(r => { release = r; });
+  const receipt = worker.receipt.bind(worker);
+  worker.receipt = async (...args) => { entered = true; await hold; return receipt(...args); };
+  const publishing = worker.status(id);
+  await until(() => entered);
+  const duplicateRead = worker.status(id);
+  const followUp = worker.control(id, { request_id: 'revision-two', action: 'continue', message: 'Update research',
+    requirements: { ...requirements, revision: 2, text: 'New immutable battery brief' } });
+  release();
+  await Promise.all([publishing, duplicateRead, followUp]);
+  await until(async () => (await worker.status(id)).state === 'Completed');
+  const finals = (await worker.events(id)).filter(e => e.type === 'final_message');
+  assert.deepEqual(finals.map(e => e.data.requirements_revision), [1, 2]);
+  assert.deepEqual(finals[1].data.comparison.options[0].unknowns, ['Battery life']);
+  assert.match(inputs.at(-1), /New immutable battery brief/);
+  assert.match(inputs.at(-1), /Purchasing budget \(NOT research allowance\): GBP 900/);
+  const before = calls(), reserved = run.gate.reserved();
+  await worker.close(); await worker.recover();
+  await worker.status(id);
+  assert.equal(calls(), before);
+  assert.equal(worker.runs.get(id).gate.reserved(), reserved);
+  assert.deepEqual((await worker.events(id)).filter(e => e.type === 'final_message'), finals);
+});
+
+test('Stop does not wait for async final-message reads and late publication cannot undo it', async t => {
+  const { worker, calls } = await setup(t, { reply: async () => answer([{ type: 'text', text: 'Finished fixture' }]) });
+  const id = await worker.start({ ...admission('stop-publication'), requirements: { revision: 1, text: 'Original brief', purchase_budget: '' } });
+  const run = worker.runs.get(id);
+  await until(async () => (await (await run.harness.submission(run.get('submission'), context)).status(context)).status === 'done');
+  let release, entered = false;
+  const hold = new Promise(r => { release = r; });
+  const entries = run.conversation.entries.bind(run.conversation);
+  run.conversation.entries = async (...args) => { entered = true; await hold; return entries(...args); };
+  const publishing = worker.status(id);
+  await until(() => entered);
+  await worker.control(id, { request_id: 'stop-now', action: 'stop' });
+  assert.equal(run.get('stop'), true);
+  release();
+  await publishing;
+  await until(async () => (await worker.status(id)).state === 'Cancelled');
+  assert.equal((await worker.events(id)).filter(e => e.type === 'final_message').length, 0);
+  assert.equal(calls(), 1);
+});

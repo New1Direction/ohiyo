@@ -662,7 +662,21 @@ export type TravelView = { mode: "fixture"; stage: string; reason: string | null
 export type BurrowMemory = { id: string; project: string | null; text: string; source_task: string; version: number; created_at: number; updated_at: number };
 export type BurrowContext = { memories: BurrowMemory[]; history: [string, string, string, number][]; routines: [string, number, string, string, string][] };
 export type ResearchFact = { label: string; value: string; evidence_id: string; quote: string; source_url: string; captured_at: string };
-export type ResearchComparison = { title: string; requirements: string[]; options: { name: string; sources?: { evidence_id: string; url: string; captured_at: string; limitations: string[] }[]; unknowns?: string[]; annualized_monthly?: { amount: string; currency: string } | null; attributes: ResearchFact[]; price: null | { amount: ResearchFact; currency: ResearchFact; billing: ResearchFact; shipping: ResearchFact | null; tax: ResearchFact | null } }[] };
+export type ResearchComparison = { title: string; requirements: string[]; options: { id?: string; name: string; sources?: { evidence_id: string; url: string; captured_at: string; limitations: string[] }[]; unknowns?: string[]; annualized_monthly?: { amount: string; currency: string } | null; attributes: ResearchFact[]; price: null | { amount: ResearchFact; currency: ResearchFact; billing: ResearchFact; shipping: ResearchFact | null; tax: ResearchFact | null } }[] };
+export type ResearchBrief = { revision: number; text: string; purchase_budget: string; created_at: number };
+export type ResearchSnapshot = { id: string; requirements_revision: number | null; created_at: number; comparison: Omit<ResearchComparison, "options"> & { options: (ResearchComparison["options"][number] & { id: string })[] } };
+export type ResearchCandidate = { id: string; name: string; note: string; shortlisted: boolean };
+export type ResearchContribution = { id: string; label: string; answer: string; done: boolean };
+export type ResearchDecision = { id: string; candidate_id: string; comparison_id: string; requirements_revision: number | null; rationale: string; tradeoffs: string; uncertainties: string; created_at: number };
+export type ResearchWorkspace = {
+  version: number; brief: ResearchBrief; briefs: ResearchBrief[]; comparisons: ResearchSnapshot[];
+  candidates: ResearchCandidate[]; contributions: ResearchContribution[]; decisions: ResearchDecision[];
+  activity: { id: string; kind: string; text: string; created_at: number }[];
+};
+export type ResearchChange = { action: "brief"; text: string; purchase_budget: string }
+  | { action: "candidate"; candidate_id: string; note: string; shortlisted: boolean }
+  | { action: "contribution"; id?: string; label: string; answer: string; done: boolean }
+  | { action: "decision"; candidate_id: string; comparison_id: string; rationale: string; tradeoffs: string; uncertainties: string };
 export type ModelRole = "general" | "research" | "review" | "summary";
 export type ModelCatalogEntry = { id: string; providerModelId: string; contextWindow: number; maxOutputTokens: number; inputUsdPerMillion: number | null; outputUsdPerMillion: number | null };
 export type ModelConnection = { id: string; name: string; templateId: string; modelMapping: string; active: boolean; priority: number; scope: "personal" | "ohiyo"; hasKey: boolean };
@@ -763,6 +777,10 @@ export const api = {
   saveModelRoles: (token: string, roles: ModelRouting["roles"]) => request("/burrow/model-routing/roles", { method: "PUT", body: JSON.stringify(roles) }, token),
   saveModelConnection: (token: string, connection: ModelConnectionInput) => request("/burrow/model-routing/connections", { method: "POST", body: JSON.stringify(connection) }, token),
   deleteModelConnection: (token: string, id: string) => request(`/burrow/model-routing/connections/${encodeURIComponent(id)}`, { method: "DELETE" }, token),
+  researchWorkspace: (token: string, id: string) => request<ResearchWorkspace>(`/burrow/tasks/${id}/research`, {}, token),
+  saveResearchWorkspace: (token: string, id: string, version: number, change: ResearchChange) => request<ResearchWorkspace>(`/burrow/tasks/${id}/research`, {
+    method: "POST", body: JSON.stringify({ version, ...change }),
+  }, token),
   burrowAgent: (token: string, id: string) => request<BurrowAgent>(`/burrow/tasks/${id}/agent`, {}, token),
   privateBrowser: (token: string, taskId: string, requestId: string, browser: PrivateBrowserCommand) => request<PrivateBrowserStatus>(`/burrow/tasks/${encodeURIComponent(taskId)}/computer`, {
     method: "POST", body: JSON.stringify({ action: "browser_control", request_id: requestId, browser }),
@@ -770,8 +788,8 @@ export const api = {
   startBurrowAgent: (token: string, task: BurrowTask, cents: number, role?: ModelRole, routing?: ModelRouting["preview"]) => request(`/burrow/tasks/${task.id}/agent`, {
     method: "POST", body: JSON.stringify({ version: task.version, allow_agent: true, max_cost_cents: cents, role, routing }),
   }, token),
-  controlBurrowAgent: (token: string, task: BurrowTask, requestId: string, action: "steer" | "stop" | "continue", message: string) => request<BurrowTask>(`/burrow/tasks/${task.id}/agent/control`, {
-    method: "POST", body: JSON.stringify({ version: task.version, request_id: requestId, action, message, allow_spending: action === "continue" }),
+  controlBurrowAgent: (token: string, task: BurrowTask, requestId: string, action: "steer" | "stop" | "continue", message: string, requirementsRevision?: number) => request<BurrowTask>(`/burrow/tasks/${task.id}/agent/control`, {
+    method: "POST", body: JSON.stringify({ version: task.version, request_id: requestId, action, message, allow_spending: action === "continue", requirements_revision: requirementsRevision }),
   }, token),
   burrowEvidence: async (token: string, id: string, evidence: string) => {
     const r = await fetch(`${getApiBase()}/burrow/tasks/${id}/agent/evidence/${encodeURIComponent(evidence)}`, { headers: { Authorization: `Bearer ${token}` } });

@@ -802,7 +802,7 @@ async fn stop_before_dispatch_or_existing_pi_stop_prevents_research_and_booking(
         let f = Fake::new();
         let p = Duffel::new(f.clone());
         if pi_stop {
-            sqlx::query("INSERT INTO burrow_agent_commands VALUES('stop-id','run-owner','stop','','queued')").execute(&h.server.state.db).await.unwrap();
+            sqlx::query("INSERT INTO burrow_agent_commands(id,run_id,action,message,phase) VALUES('stop-id','run-owner','stop','','queued')").execute(&h.server.state.db).await.unwrap();
         } else {
             h.ledger.stop(&h.scope, &h.id).await.unwrap();
         }

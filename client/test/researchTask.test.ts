@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { Window } from "happy-dom";
 import { bundleEntry, fixtures } from "./fixtures/bundle.ts";
-import type { BurrowAgent, BurrowTask } from "../src/api.ts";
+import type { BurrowAgent, BurrowTask, ResearchWorkspace, ResearchChange } from "../src/api.ts";
 
 test("research restores account-scoped reading places without executing work and reviews the exact revision", async () => {
   const window = new Window({ url: "http://localhost/burrow" });
@@ -272,6 +272,105 @@ test("research restores account-scoped reading places without executing work and
     view = bundle.mod.mount(container, props()); await settle();
     assert.equal(container.querySelector(".burrow-saved-table"), null, "tables inside a code block remain literal");
     assert.equal(writes.length, writeCount, "presentation does not rewrite or re-research saved answers");
+  } finally {
+    view!.unmount(); await bundle.cleanup(); await window.happyDOM.close();
+    for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
+  }
+});
+
+test("research workspace preserves candidate identity, decision basis and drafts without silently authorizing research", async () => {
+  const window = new Window({ url: "http://localhost/burrow" });
+  const originals = new Map<string, PropertyDescriptor | undefined>();
+  const task: BurrowTask = { id: "laptops", kind: "writing", format: "document", template: null, request: "Compare laptops", comparison: true, state: "draft_ready", result: "Original comparison", error: null, version: 4, created_at: 10, updated_at: 20 };
+  const agent: BurrowAgent = { task, agent: { id: "same-goal", runtime_id: "runtime", phase: "finished", activity: "Comparison saved", max_cost_cents: 23 }, connected: true, commands: [], events: [], history: [] };
+  const brief = { revision: 1, text: "Portable laptop for school", purchase_budget: "CAD 1200", created_at: 10 };
+  let saved: ResearchWorkspace = { version: 1, brief, briefs: [brief], comparisons: [{ id: "comparison-1", requirements_revision: 1, created_at: 20, comparison: { title: "School laptops", requirements: [brief.text], options: [
+    { id: "zinc", name: "Zinc 13", attributes: [{ label: "Weight", value: "1.2 kg", evidence_id: "capture-zinc", quote: "Weight: 1.2 kg", source_url: "https://example.com/zinc", captured_at: "2026-10-23T12:00:00Z" }], unknowns: ["Battery runtime"], sources: [], price: null },
+    { id: "alder", name: "Alder 14", attributes: [], unknowns: ["Price", "Battery runtime"], sources: [], price: null },
+  ] } }], candidates: [{ id: "zinc", name: "Zinc 13", note: "", shortlisted: false }, { id: "alder", name: "Alder 14", note: "", shortlisted: false }], contributions: [], decisions: [], activity: [] };
+  const writes: { url: string; body: Record<string, unknown> }[] = [];
+  let rejectSave = false;
+  const fetcher = async (url: string, init: RequestInit = {}) => {
+    if (init.method && init.method !== "GET") {
+      const body = JSON.parse(String(init.body)); writes.push({ url, body });
+      if (url.endsWith("/control")) return Response.json(task);
+      assert.ok(url.endsWith("/research"));
+      if (rejectSave || body.version !== saved.version) return new Response("Changed", { status: 409 });
+      const change = body as ResearchChange;
+      if (change.action === "candidate") saved.candidates = saved.candidates.map(c => c.id === change.candidate_id ? { ...c, note: change.note, shortlisted: change.shortlisted } : c);
+      if (change.action === "brief") { saved.brief = { revision: saved.brief.revision + 1, text: change.text, purchase_budget: change.purchase_budget, created_at: 30 }; saved.briefs.push(saved.brief); }
+      if (change.action === "decision") saved.decisions.push({ ...change, id: "choice", requirements_revision: 1, created_at: 25 });
+      saved.version++; return Response.json(saved);
+    }
+    if (url.endsWith("/research")) return Response.json(saved);
+    if (url.endsWith("/agent")) return Response.json(agent);
+    if (url.includes("/context")) return Response.json({ memories: [], routines: [], history: [] });
+    if (url.includes("/model-routing")) return Response.json({ catalog: [], roles: {}, preview: {}, connections: [] });
+    throw new Error(`Unexpected read: ${url}`);
+  };
+  for (const [key, value] of Object.entries({ window, document: window.document, navigator: window.navigator, HTMLElement: window.HTMLElement, Node: window.Node, sessionStorage: window.sessionStorage, fetch: fetcher, requestAnimationFrame: (fn: FrameRequestCallback) => setTimeout(() => fn(0), 0) })) {
+    originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  }
+  const bundle = await bundleEntry<{ act: (fn: () => void) => void; mount: (el: unknown, props: unknown) => { render: (props: unknown) => void; unmount: () => void } }>(join(fixtures, "researchTask.tsx"));
+  const container = window.document.createElement("div"); window.document.body.append(container);
+  let dirty = false;
+  const props = { token: "owner", task, canRun: true, onUpdate() {}, onDirtyChange(value: boolean) { dirty = value; } };
+  let view: ReturnType<typeof bundle.mod.mount>;
+  const click = (text: string, root = container) => bundle.mod.act(() => { const b = [...root.querySelectorAll("button")].find(b => b.textContent === text); assert.ok(b, text); b.click(); });
+  const settle = () => new Promise(resolve => setTimeout(resolve, 120));
+  const fill = (selector: string, text: string) => bundle.mod.act(() => {
+    const input = container.querySelector(selector)!;
+    Object.getOwnPropertyDescriptor(input.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype, "value")!.set!.call(input, text);
+    input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+  const option = (name: string) => [...container.querySelectorAll(".research-workspace .burrow-comparison > section")].find(s => s.querySelector("h3")?.textContent === name)! as typeof container;
+  try {
+    view = bundle.mod.mount(container, props); await settle();
+    assert.equal(writes.length, 0);
+    assert.match(option("Zinc 13").textContent!, /Weight: 1.2 kg.*Captured 2026-10-23T12:00:00Z/s);
+    assert.match(option("Zinc 13").textContent!, /Still unknown: Battery runtime/);
+    click("Order: research");
+    assert.equal(container.querySelector('.research-workspace table tbody th')!.textContent, "Alder 14");
+    click("Notes & shortlist", option("Zinc 13"));
+    fill(".research-workspace-editor textarea", "I prefer this keyboard");
+    bundle.mod.act(() => container.querySelector<HTMLInputElement>('.research-workspace-editor input[type="checkbox"]')!.click());
+    assert.equal(dirty, true);
+    click("Save to workspace"); await settle();
+    assert.equal(writes.at(-1)!.body.candidate_id, "zinc", "sorting never changes the candidate being annotated");
+    assert.equal(dirty, false);
+    click("Shortlist (1)"); assert.equal(container.querySelectorAll('.research-workspace table tbody tr').length, 1);
+    click("Choose this option", option("Zinc 13"));
+    fill(".research-workspace-editor textarea", "The keyboard suits long writing sessions");
+    click("Save to workspace"); await settle();
+    assert.equal(writes.at(-1)!.body.comparison_id, "comparison-1");
+    click("Brief"); click("Edit brief");
+    fill(".research-workspace-editor textarea", "Battery life matters most now");
+    rejectSave = true; saved.version++;
+    click("Save to workspace"); await settle();
+    assert.equal(container.querySelector<HTMLTextAreaElement>(".research-workspace-editor textarea")!.value, "Battery life matters most now");
+    assert.equal(dirty, true);
+    assert.match(container.querySelector('.research-workspace [role="alert"]')!.textContent!, /draft is still here/);
+    rejectSave = false; click("Load latest for review"); await settle(); click("Save to workspace"); await settle();
+    assert.equal(writes.filter(w => w.url.endsWith("/control")).length, 0, "saving requirements, notes and choices cannot dispatch work");
+    assert.match(container.querySelector('.research-workspace [role="status"]')!.textContent!, /No research started/);
+    click("Decision"); assert.match(container.querySelector(".research-decision")!.textContent!, /consider revisiting.*keyboard suits/s);
+    assert.match(container.querySelector(".research-decision")!.textContent!, /Portable laptop for school/);
+    const original = saved.comparisons[0];
+    saved.comparisons.push({ ...original, id: "comparison-2", requirements_revision: 2, comparison: { ...original.comparison, title: "Updated research", options: [...original.comparison.options].reverse() } });
+    saved.comparisons.push({ ...original, id: "late-old", comparison: { ...original.comparison, title: "Late old result" } }); saved.version++;
+    view.unmount(); view = bundle.mod.mount(container, props); await settle();
+    assert.match(container.querySelector('[aria-label="Saved comparisons"]')!.textContent!, /Updated research/);
+    assert.doesNotMatch(container.querySelector('[aria-label="Saved comparisons"] > .burrow-comparison')!.textContent!, /Late old result/);
+    assert.match(option("Zinc 13").textContent!, /On your shortlist.*I prefer this keyboard/s);
+    assert.equal(writes.filter(w => w.url.endsWith("/control")).length, 0, "returning attaches without executing");
+    // A later brief is saved separately from the existing allowance.
+    saved = { ...saved, brief: { ...saved.brief, revision: 3, text: "Need a touchscreen" }, version: saved.version + 1 };
+    view.unmount(); view = bundle.mod.mount(container, props); await settle(); click("Brief");
+    click("Allow research update · brief 3"); await settle();
+    assert.equal(writes.at(-1)!.body.requirements_revision, 3);
+    assert.equal(writes.at(-1)!.body.action, "continue");
+    assert.equal(writes.at(-1)!.body.allow_spending, true);
+    assert.equal(writes.at(-1)!.body.max_cost_cents, undefined, "the update cannot reset the original allowance");
   } finally {
     view!.unmount(); await bundle.cleanup(); await window.happyDOM.close();
     for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }

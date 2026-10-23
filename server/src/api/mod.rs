@@ -71,6 +71,7 @@ pub fn router() -> Router<AppState> {
         .route("/burrow/tasks/{id}/run", post(burrow::run))
         .route("/burrow/tasks/{id}/result", patch(burrow::edit))
         .route("/burrow/tasks/{id}/context", get(burrow::context::get))
+        .route("/burrow/tasks/{id}/research", get(burrow::research::get).post(burrow::research::change))
         .route("/burrow/tasks/{id}/memories", post(burrow::context::remember))
         .route("/burrow/memories/{id}", patch(burrow::context::change_memory))
         .route("/burrow/tasks/{id}/routine", post(burrow::context::save_routine))
