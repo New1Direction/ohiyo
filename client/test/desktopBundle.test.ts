@@ -4,6 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,8 +34,29 @@ test("the app is entitled to audio input and the camera, and the build uses that
   assert.equal(conf.bundle.macOS.entitlements, "./Entitlements.plist");
 });
 
-test("Mac builds stay ad-hoc signed until there is an Apple account", () => {
+test("local Mac development builds need no Apple identity", () => {
   assert.equal(conf.bundle.macOS.signingIdentity, "-");
+});
+
+test("release preflight rejects missing signing instead of producing an untrusted installer", () => {
+  const workflow = readFileSync(join(tauri, "..", "..", ".github", "workflows", "release.yml"), "utf8");
+  const block = /- name: Require trusted release signing\n        shell: bash\n        run: \|\n((?:          .+\n)+)/.exec(workflow)?.[1];
+  assert.ok(block, "release preflight must run before builds");
+  const script = block.replace(/^          /gm, "");
+  for (const [os, apple, update, succeeds] of [
+    ["macOS", "true", "true", true],
+    ["macOS", "false", "true", false],
+    ["macOS", "true", "false", false],
+    ["Linux", "false", "true", true],
+    ["Linux", "false", "false", false],
+  ] as const) {
+    const result = spawnSync("bash", ["-e", "-c", script], {
+      encoding: "utf8", env: { PATH: process.env.PATH, RUNNER_OS: os, HAS_APPLE_SIGNING: apple, HAS_UPDATE_KEY: update },
+    });
+    assert.equal(result.status === 0, succeeds, `${os}: Apple=${apple}, update=${update}: ${result.stdout}${result.stderr}`);
+  }
+  assert.ok(workflow.indexOf("Require trusted release signing") < workflow.indexOf("uses: actions/checkout@"));
+  assert.doesNotMatch(workflow, /name: Build desktop installers \(macOS ad-hoc/);
 });
 
 test("updates come from the newest published release and must carry our signature", () => {
@@ -50,7 +72,7 @@ test("a plain local build needs no signing key: only the release workflow makes 
   const workflow = readFileSync(join(tauri, "..", "..", ".github", "workflows", "release.yml"), "utf8");
   assert.ok(workflow.includes("c.bundle.createUpdaterArtifacts=true"), "the workflow switches update bundles on");
   const builds = workflow.split("uses: tauri-apps/tauri-action@").length - 1;
-  assert.equal(builds, 3, "Mac signed, Mac ad-hoc and Linux");
+  assert.equal(builds, 2, "Mac signed and Linux; development builds are not release downloads");
   assert.equal(workflow.split("TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}").length - 1, builds);
   assert.equal(workflow.split("TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}").length - 1, builds);
 });

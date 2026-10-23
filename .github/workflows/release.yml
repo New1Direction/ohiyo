@@ -1,11 +1,10 @@
 name: Release
 
 # Build the desktop installers on every version tag (and on manual dispatch), and
-# attach them to a DRAFT GitHub Release. macOS builds prefer Developer ID signing
-# + notarization when Apple secrets are present. Without those secrets, the
-# workflow still produces ad-hoc-signed Mac beta DMGs; users may need Finder →
-# right-click → Open until notarization is added. See DEPLOY.md §4 for the
-# notarized path.
+# attach them to a DRAFT GitHub Release. Release downloads must support signed
+# updates; macOS additionally requires Developer ID signing and notarization.
+# Missing credentials stop the build, never fall back to an untrusted download.
+# Plain local builds remain available for development. See DEPLOY.md §4–5.
 on:
   push:
     tags: ["v*"]
@@ -35,6 +34,18 @@ jobs:
       HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
       HAS_UPDATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
+      - name: Require trusted release signing
+        shell: bash
+        run: |
+          if [[ "$HAS_UPDATE_KEY" != 'true' ]]; then
+            echo "::error::Release downloads require TAURI_SIGNING_PRIVATE_KEY so installed apps can receive signed updates."
+            exit 1
+          fi
+          if [[ "$RUNNER_OS" == 'macOS' && "$HAS_APPLE_SIGNING" != 'true' ]]; then
+            echo "::error::Mac release downloads require Developer ID signing and Apple notarization. Configure the Apple secrets in DEPLOY.md; no ad-hoc fallback will be published."
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -74,16 +85,6 @@ jobs:
         working-directory: client
         run: |
           node -e "const fs=require('fs'); const p='src-tauri/tauri.conf.json'; const c=JSON.parse(fs.readFileSync(p,'utf8')); c.bundle.createUpdaterArtifacts=true; fs.writeFileSync(p, JSON.stringify(c,null,2)+'\n');"
-
-      - name: Warn when update bundles are unavailable
-        if: env.HAS_UPDATE_KEY != 'true'
-        run: |
-          echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. Building installers without update bundles, so installed copies cannot be offered this release. See DEPLOY.md §5."
-
-      - name: Warn when macOS notarization is unavailable
-        if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING != 'true'
-        run: |
-          echo "::warning::Apple Developer ID signing/notarization secrets are missing. Building ad-hoc-signed Mac beta DMGs; Gatekeeper may require Finder → right-click → Open. Set APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID for smooth public Mac installs."
 
       - name: Enable macOS Developer ID signing
         if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING == 'true'
@@ -144,23 +145,6 @@ jobs:
             xcrun stapler validate "$dmg"
             spctl -a -vvv -t install "$dmg"
           done
-
-      - name: Build desktop installers (macOS ad-hoc beta fallback)
-        if: matrix.platform == 'macos-latest' && env.HAS_APPLE_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          VITE_DESKTOP_UPDATES: ${{ env.HAS_UPDATE_KEY == 'true' && '1' || '' }}
-        with:
-          projectPath: client
-          tauriScript: bun run tauri
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
-          releaseName: "Ohiyo v__VERSION__"
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
       - name: Build desktop installers (Linux)
         if: matrix.platform == 'ubuntu-22.04'

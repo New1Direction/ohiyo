@@ -55,9 +55,10 @@ read-aloud presentation, not conversational voice input or background speech.
 ## Make an interactive page
 
 The home screen now starts with an open request and three explicitly labelled
-ready-made examples: a playable study space, a branching story and a birthday
-page. Examples work without a configured service and are never presented as
-newly generated work. Previously saved trackers and everyday pages still open.
+ready-made examples: an ideal spring experiment with a three-question check,
+a harbour mystery with four endings, and a web-request journey with empty/fresh
+DNS-cache scenarios. Examples work without a configured service and are never
+presented as newly generated work. Previously saved pages still open unchanged.
 
 New requests create owner-scoped **creations** and open a full-width conversation
 with the composer at the bottom. **Preview** toggles the page beside the
@@ -72,9 +73,13 @@ receives only the original request, current page and latest instruction, not
 Ohiyo conversations or other tasks. Saving a request alone makes no service call.
 
 This uses `@json-render/core` and `@json-render/react`: the model composes a
-declarative page from 13 trusted React controls and layouts, not a fixed template.
+declarative page from 15 trusted React controls and layouts, not a fixed template.
 Supported parts include quizzes with scoring, branching stories, checklists,
-tables, charts, figures, cards and expandable explanations. No model-authored
+tables, charts, figures, cards and expandable explanations. `SpringLab` and
+`RequestJourney` are fixed, subject-specific controls with empty props, not
+general-purpose simulation engines. They make no network/model calls; the spring
+shows ideal static equilibrium, and the request journey is not a live trace.
+Their preview state is temporary, like quiz answers. No model-authored
 HTML, JavaScript, expressions, network actions, remote images or events execute.
 React escapes text. Both client and server validate the shared strict schema,
 connected layout, answer indices, story targets and table dimensions. Pages cap
@@ -127,6 +132,24 @@ Do not assume a public GitHub file is licensed for reuse. In particular, the
 reviewed Anthropic document skills have restrictive per-directory licenses.
 Check each license before importing code, prompts or assets; do not bulk-install
 unknown skills or their bundled servers into the production runtime.
+
+### Project authoring skills
+
+The project also includes pinned source repositories for **Anatomy**, **Archify**,
+**Learn Anything**, **Emil Kowalski's skills** and **Impeccable**, with discoverable
+entry points in `.agents/skills/`. See the [authoring skill guide](../.agents/skills/README.md)
+for setup, upstream licenses and side-effect restrictions. Impeccable is used in
+guidance-only mode; no engine, hooks or telemetry are enabled.
+
+These help developers build and review examples and components. They do not add
+runtime skill identifiers or enable arbitrary generated HTML/scripts. Installing
+them alone does not change bundled examples. The new spring bench, web-request
+journey and practice questions apply their authoring guidance in trusted controls
+and example JSON. No upstream renderer code is bundled in these components.
+The production router still uses only the four skills above. Other rich figures
+need a reviewed component or an explicitly designed isolated renderer before
+they can be offered inside a creation. Server Survival is a learning-design
+reference, not a bundled game or dependency.
 
 ### Output-quality evaluation is separate from tests
 

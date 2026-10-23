@@ -23,6 +23,8 @@ export const catalog = defineCatalog(schema, {
     Checklist: { props: z.strictObject({ title: short, items: z.array(z.strictObject({ text: short, done: z.boolean() })).min(1).max(30) }), description: "Interactive checkboxes; preview interactions are temporary." },
     Quiz: { props: z.strictObject({ questions: z.array(questionSchema).min(2).max(12) }), description: "Playable quiz with explanations and scoring. answer is a zero-based index within options." },
     Story: { props: z.strictObject({ scenes: z.array(sceneSchema).min(2).max(12) }), description: "A playable branching story. First scene starts the story. All scenes reachable, all targets exist, at least one ending with choices:[]." },
+    SpringLab: { props: z.strictObject({}), description: "Fixed ideal spring equilibrium experiment with mass and stiffness controls. Only for Hooke's law lessons. No custom content or physics." },
+    RequestJourney: { props: z.strictObject({}), description: "Fixed HTTPS request explainer with empty/fresh DNS cache scenarios. Only for web request lessons. Not a live network trace." },
     Reveal: { props: z.strictObject({ label: short, text: body }), description: "Expandable explanation with a familiar disclosure control." },
   },
   actions: {},

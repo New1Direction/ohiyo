@@ -114,7 +114,7 @@ export function spendingGate({ db, models, identity, budgetMicros, policy, block
     if (free || routing) db.prepare('INSERT INTO model_trace VALUES(?,?,?,NULL)').run(id, new Date().toISOString(),
       canonical({ model: model.id, context, ...(route ? { route, role: selectedRole } : {}),
         ...(eligibility ? { endpoint: selectedEndpoint, restrictions: providerRestrictions, eligibility } : {}) }));
-    activity('Reading and comparing the saved information…');
+    activity(admission?.coding ? 'Working on the repository task…' : 'Reading and comparing the saved information…');
     let response;
     try {
       response = await models.completeSimple(model, context, {

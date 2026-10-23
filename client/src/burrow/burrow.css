@@ -102,7 +102,6 @@
 .burrow-comparison-sources code, .burrow-comparison-original pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; }
 .burrow-task-list { flex: 1; overflow-y: auto; min-height: 0; }
 .burrow-empty-list { text-align: center; padding: 45px 0; color: var(--muted); }
-.burrow-empty-list > span { font-size: 25px; color: #9b9f86; }
 .burrow-empty-list p { font-size: 13px; line-height: 1.7; margin: 15px 0 6px; }
 .burrow-empty-list small { font-size: 10px; }
 .burrow-group { margin-bottom: 26px; }
@@ -182,7 +181,6 @@
 .burrow-hello { text-align: center; }
 .burrow-mascot { width: 130px; height: 121px; margin: 0 auto 25px; position: relative; }
 .burrow-mascot img { width: 115px; height: 115px; object-fit: contain; }
-.burrow-mascot > span { position: absolute; top: 4px; right: -4px; color: #baad80; font-size: 22px; }
 .burrow-hello h1 { font-size: clamp(30px, 4vw, 44px); margin: 16px 0; }
 .burrow-hello > p:last-child { font-size: 13px; line-height: 1.85; color: var(--muted); }
 .burrow-everyday-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 32px 0 22px; }
@@ -193,15 +191,18 @@
 .burrow-everyday-shortcuts p { color: var(--muted); font-size: 11px; line-height: 1.8; margin: 10px 0 19px; }
 .burrow-everyday-shortcuts small { font-size: 11px; color: var(--coral); }
 .burrow-everyday-shortcuts button:hover:not(:disabled) { border-color: #b8b98e; box-shadow: 0 3px 12px #646b4310; }
-.burrow-composer { padding: 22px; border: 1px solid var(--control-line); border-radius: var(--radius-panel); background: var(--panel-fill); box-shadow: none; }
+.burrow-composer { max-width: 640px; margin-inline: auto; padding: 16px; border: 1px solid var(--control-line); border-radius: var(--radius-panel); background: var(--panel-fill); box-shadow: none; }
 .burrow-composer > label:not(.sr-only) { display: block; margin-bottom: 10px; font-size: 12px; }
-.burrow-composer textarea { display: block; field-sizing: content; resize: vertical; min-height: 96px; max-height: 250px; width: 100%; padding: 4px 2px; border: none; border-radius: 0; background: transparent; color: var(--ink); line-height: 1.7; font-size: 16px; }
+.burrow-composer textarea { display: block; field-sizing: content; resize: vertical; min-height: 48px; max-height: 160px; width: 100%; padding: 4px 2px; border: none; border-radius: 0; background: transparent; color: var(--ink); line-height: 1.5; font-size: 16px; }
 /* Text focus uses the caret, without a glowing panel or a second box. */
 .burrow :is(.burrow-composer, .creation-composer) textarea:is(:focus, :focus-visible) { outline: none; box-shadow: none; }
 .burrow-composer textarea::placeholder { color: var(--muted); }
-.burrow-composer > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line); }
+.burrow-composer > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .burrow-composer > div > span { font-size: 11px; line-height: 1.6; color: var(--muted); }
 .burrow-composer .burrow-primary { padding: 10px 18px; font-size: 12px; flex-shrink: 0; }
+.burrow-welcome > .burrow-research-start { max-width: 640px; margin: 12px auto 0; gap: 8px; }
+.burrow-welcome > .burrow-research-start:has(label) { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.burrow-welcome > .burrow-research-start > span { grid-column: 1 / -1; font-size: 11px; line-height: 1.5; color: var(--muted); }
 .burrow-disclosure { text-align: center; margin-top: 18px !important; font-size: 10px; }
 .burrow-hello + .burrow-composer { margin-top: 30px; }
 .burrow-creation-examples { margin-top: 32px; }
@@ -214,17 +215,10 @@
 .burrow-example-grid p { font-size: 10px; line-height: 1.9; color: var(--muted); margin: 9px 0 14px; }
 .burrow-example-grid small { font-size: 10px; color: var(--coral); }
 .burrow-example-art { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; height: 110px; border-radius: 12px; background: #302938; color: #c5afdf; }
-.burrow-example-art b { font-weight: 500; font-size: 18px; letter-spacing: .12em; }
-.burrow-example-art.study i { height: 5px; width: 55%; background: #c5afdf40; border-radius: 3px; }
-.burrow-example-art.study i:last-child { width: 40%; align-self: flex-start; margin-left: 23%; }
+.burrow-example-art svg { width: 160px; max-width: 100%; height: 90px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .burrow-example-art.story { background: var(--green-bg); color: var(--green); }
-.burrow-example-art.story b { font-size: 42px; line-height: 1; }
-.burrow-example-art.story i { font-size: 7px; font-style: normal; letter-spacing: .09em; }
-.burrow-example-art.invite { background: #3a2923; color: var(--coral); }
-.burrow-example-art.invite b { font-family: Georgia,serif; font-style: italic; letter-spacing: -.03em; }
-.burrow-example-art.invite i { font-size: 13px; font-style: normal; }
+.burrow-example-art.journey { background: #3a2923; color: var(--coral); }
 .burrow[data-tone]:not([data-tone=original]) .burrow-example-art { background: var(--accent-tint); color: var(--coral); }
-.burrow[data-tone]:not([data-tone=original]) .burrow-example-art.study i { background: color-mix(in srgb, var(--coral) 30%, transparent); }
 @media (hover: hover) and (pointer: fine) { .burrow-example-grid > button:hover:not(:disabled) { border-color: #746055; background: var(--raised); } }
 .burrow button:active:not(:disabled) { transform: translateY(1px); }
 .burrow-detail { padding: 36px 42px; max-width: 920px; margin: 0 auto; }
@@ -244,8 +238,6 @@
 .kikka-presence img { width: 100%; height: 100%; object-fit: contain; }
 .kikka-presence i { position: absolute; right: 0; bottom: 0; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--base); background: var(--green); }
 .kikka-activity { display: block; color: var(--muted); font-size: 10px; margin-top: 5px; }
-.kikka-reply.ready .kikka-presence img { animation: kikka-idle 6s ease-in-out infinite; transform-origin: 50% 80%; }
-.kikka-reply.working .kikka-presence img { animation: kikka-attentive 2.8s ease-in-out infinite; }
 .kikka-working-dots { display: inline-flex; gap: 3px; margin-left: 7px; vertical-align: middle; }
 .kikka-working-dots i { width: 3px; height: 3px; background: currentColor; border-radius: 50%; animation: kikka-dot 1.4s ease-in-out infinite; }
 .kikka-working-dots i:nth-child(2) { animation-delay: .18s; }
@@ -261,9 +253,7 @@
 .kikka-reply.stopped .kikka-presence i { background: #8b8d82; }
 .kikka-reply.talking .kikka-presence { box-shadow: 0 0 0 4px #82906a18; }
 .kikka-reply.talking .kikka-presence i { animation: burrow-pulse .8s ease-in-out infinite; }
-.ambience-paused .kikka-reply .kikka-presence img, .ambience-paused .kikka-reply .kikka-presence i, .ambience-paused .kikka-reply .kikka-working-dots i { animation-play-state: paused; }
-@keyframes kikka-idle { 0%, 100% { transform: translateY(0) rotate(0); } 45% { transform: translateY(-2px) rotate(-3deg); } 65% { transform: translateY(-1px) rotate(2deg); } }
-@keyframes kikka-attentive { 0%, 100% { transform: rotate(-3deg); } 50% { transform: translateY(-2px) rotate(3deg); } }
+.ambience-paused .kikka-reply .kikka-presence i, .ambience-paused .kikka-reply .kikka-working-dots i { animation-play-state: paused; }
 @keyframes kikka-dot { 0%, 70%, 100% { opacity: .3; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-2px); } }
 .kikka-reply-text { font-size: 12px; line-height: 1.8; margin: 12px 0 !important; overflow-wrap: anywhere; }
 .kikka-voice { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
@@ -297,7 +287,7 @@
 .burrow-connection-row > div { flex: 1; min-width: 0; }
 .burrow-connection-row .burrow-small { margin: 4px 0 !important; }
 .burrow-provider-mark { width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; font-size: 27px; }
-.burrow-provider-mark.claude { color: #d8a68d; }
+.burrow-provider-mark.claude { visibility: hidden; }
 .burrow-connection-state { color: var(--muted); font-size: 11px; }
 .burrow-connect-panel { margin: 20px 0; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--base); font-size: 12px; line-height: 1.85; }
 .burrow-subscriptions > button { margin-top: 18px; }

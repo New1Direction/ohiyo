@@ -52,10 +52,9 @@ async fn create(s: &TestServer, token: &str, request: &str) -> String {
         .post_json_auth("/api/v1/burrow/tasks", token, json!({"request":request}))
         .await;
     assert_eq!(r.status(), 200);
-    r.json::<Value>().await.unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_owned()
+    let task: Value = r.json().await.unwrap();
+    assert_eq!(task["coding"], false);
+    task["id"].as_str().unwrap().to_owned()
 }
 
 fn route(id: &str) -> String {
@@ -81,6 +80,504 @@ async fn start(s: &TestServer, token: &str, id: &str) -> Value {
 
 fn runtime(home: &Home) -> Value {
     serde_json::from_slice(&std::fs::read(home.0.join("runtime.json")).unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn saved_coding_intent_survives_reload_without_granting_or_downgrading_approval() {
+    let (s, owner, other, _home) = configured_runtime(Some(agent::Pi {
+        endpoint: "http://127.0.0.1:1/command".into(),
+        token: "f".repeat(32),
+    }))
+    .await;
+    let draft =
+        json!({"request":"Fix the repository tests when I approve a computer.","coding":true});
+    for (field, value) in [
+        ("kind", json!("tracker")),
+        ("format", json!("creation")),
+        ("template", json!("checklist")),
+        ("comparison", json!(true)),
+        ("travel", json!(true)),
+        ("routine_id", json!("routine")),
+    ] {
+        let mut invalid = draft.clone();
+        invalid[field] = value;
+        assert_eq!(
+            s.post_json_auth("/api/v1/burrow/tasks", &owner, invalid)
+                .await
+                .status(),
+            400,
+            "{field}"
+        );
+    }
+    let response = s
+        .post_json_auth("/api/v1/burrow/tasks", &owner, draft)
+        .await;
+    assert_eq!(response.status(), 200);
+    let task: Value = response.json().await.unwrap();
+    let id = task["id"].as_str().unwrap();
+    assert_eq!(task["coding"], true);
+    assert_eq!(task["kind"], "writing");
+    assert_eq!(task["format"], "document");
+    assert_eq!(task["state"], "waiting");
+    assert_eq!(task["comparison"], false);
+    assert_eq!(task["travel"], false);
+    assert_eq!(s.get_auth(&route(id), &owner).await.status(), 404);
+
+    // A fresh pool and HTTP app retain intent, but recovery/tick find no approval.
+    let mut reopened = server::build_state(server::db::connect(s.db_url()).await.unwrap());
+    reopened.kikka = s.state.kikka.clone();
+    burrow::recover(&reopened.db).await.unwrap();
+    agent::recover(&reopened.db).await.unwrap();
+    agent::tick(&reopened).await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let app = server::build_app(reopened);
+    let process = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    for (token, tasks) in [(&owner, json!([task])), (&other, json!([]))] {
+        let response = s
+            .client
+            .get(format!("{base}/api/v1/burrow"))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let listed: Value = response.json().await.unwrap();
+        assert_eq!(listed["tasks"], tasks);
+        assert_eq!(listed["agent_task_ids"], json!([]));
+    }
+    let workspace: Value = s
+        .post_json_auth(
+            "/api/v1/burrow/computer-workspaces",
+            &owner,
+            json!({"name":"Repository"}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let mut approval = json!({"version":0,"allow_agent":true,"max_cost_cents":37,"computer_workspace":workspace["id"]});
+    // Both omitted and explicit false must fail before any run/attempt is recorded.
+    for coding in [None, Some(false)] {
+        if let Some(coding) = coding {
+            approval["coding"] = json!(coding);
+        }
+        let response = s
+            .client
+            .post(format!("{base}{}", route(id)))
+            .bearer_auth(&owner)
+            .json(&approval)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 409);
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM burrow_agent_runs")
+            .fetch_one(&s.state.db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM burrow_attempts")
+            .fetch_one(&s.state.db)
+            .await
+            .unwrap(),
+        0
+    );
+    approval["coding"] = json!(true);
+    approval["allow_agent"] = json!(false);
+    assert_eq!(
+        s.post_json_auth(&route(id), &owner, approval.clone())
+            .await
+            .status(),
+        400
+    );
+    approval["allow_agent"] = json!(true);
+    let response = s.post_json_auth(&route(id), &owner, approval).await;
+    assert_eq!(response.status(), 200);
+    let run: Value = response.json().await.unwrap();
+    assert_eq!(run["coding"], true);
+    assert_eq!(run["phase"], "queued");
+    assert_eq!(run["runtime_id"], Value::Null);
+    assert_eq!(view(&s, &owner, id).await["task"]["coding"], true);
+    process.abort();
+}
+
+#[tokio::test]
+async fn coding_admission_is_explicit_owned_immutable_and_forwarded_after_recovery() {
+    use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
+    let journal = Arc::new(tokio::sync::Mutex::new(
+        json!({"starts":0,"commands":[],"state":"Running"}),
+    ));
+    async fn worker(
+        State(journal): State<Arc<tokio::sync::Mutex<Value>>>,
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> Json<Value> {
+        assert_eq!(
+            headers["authorization"],
+            format!("Bearer {}", "f".repeat(32))
+        );
+        let mut j = journal.lock().await;
+        Json(match body["operation"].as_str().unwrap() {
+            "start" => {
+                j["admission"] = body["admission"].clone();
+                j["starts"] = json!(j["starts"].as_i64().unwrap() + 1);
+                json!("run-coding-fixture")
+            }
+            "status" => {
+                json!({"run":"run-coding-fixture","root_goal_id":j["admission"]["root_goal"],"orb":"pi","state":j["state"]})
+            }
+            "watch" => json!([]),
+            "control" => {
+                assert_eq!(body["run"], "run-coding-fixture");
+                assert_eq!(body["command"]["action"], "stop");
+                j["commands"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(body["command"].clone());
+                j["state"] = json!("Cancelled");
+                json!({"acknowledged":true})
+            }
+            _ => panic!("unsupported coding operation"),
+        })
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}/command", listener.local_addr().unwrap());
+    let app = Router::new()
+        .route("/command", post(worker))
+        .with_state(journal.clone());
+    let process = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let (s, owner, other, _home) = configured_runtime(Some(agent::Pi {
+        endpoint,
+        token: "f".repeat(32),
+    }))
+    .await;
+    let mut workspaces = Vec::new();
+    let scopes_path = "/api/v1/burrow/computer-workspaces";
+    assert_eq!(s.get(scopes_path).await.status(), 401);
+    assert_eq!(
+        s.get_auth(scopes_path, &owner)
+            .await
+            .json::<Value>()
+            .await
+            .unwrap(),
+        json!([])
+    );
+    for (token, name) in [
+        (&owner, "Zeta repository"),
+        (&owner, "Alpha repository"),
+        (&other, "Private repository"),
+    ] {
+        let response = s
+            .post_json_auth(scopes_path, token, json!({"name":name}))
+            .await;
+        assert_eq!(response.status(), 200);
+        workspaces.push(response.json::<Value>().await.unwrap()["id"].clone());
+    }
+    // Only names and IDs: a saved scope is not a provisioning/readiness claim.
+    for _ in 0..2 {
+        let response = s.get_auth(scopes_path, &owner).await;
+        assert_eq!(response.status(), 200);
+        assert_eq!(
+            response.json::<Value>().await.unwrap(),
+            json!([
+                {"id":workspaces[1],"name":"Alpha repository"},
+                {"id":workspaces[0],"name":"Zeta repository"}
+            ])
+        );
+    }
+    assert_eq!(
+        s.get_auth(scopes_path, &other)
+            .await
+            .json::<Value>()
+            .await
+            .unwrap(),
+        json!([
+            {"id":workspaces[2],"name":"Private repository"}
+        ])
+    );
+    let goal = "Fix the failing test in the operator-provisioned repository.";
+    let id = create(&s, &owner, goal).await;
+    let approval = json!({"version":0,"allow_agent":true,"max_cost_cents":37,"coding":true,"computer_workspace":workspaces[0]});
+    assert_eq!(
+        s.post_json_auth(&route(&id), &other, approval.clone())
+            .await
+            .status(),
+        404
+    );
+    for (field, value, status) in [
+        ("computer_workspace", Value::Null, 400),
+        ("computer_workspace", json!("missing-workspace"), 404),
+        ("computer_workspace", workspaces[2].clone(), 404),
+        ("allow_agent", json!(false), 400),
+        ("max_cost_cents", json!(-1), 400),
+        ("max_cost_cents", json!(0), 400),
+        ("max_cost_cents", json!(51), 400),
+        ("coding", json!("true"), 422),
+        (
+            "requirements",
+            json!({"revision":1,"text":"Research instead"}),
+            422,
+        ),
+        (
+            "repository_url",
+            json!("https://example.com/repository.git"),
+            422,
+        ),
+    ] {
+        let mut invalid = approval.clone();
+        invalid[field] = value;
+        assert_eq!(
+            s.post_json_auth(&route(&id), &owner, invalid)
+                .await
+                .status(),
+            status,
+            "{field}"
+        );
+    }
+    assert_eq!(s.get_auth(&route(&id), &owner).await.status(), 404);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM burrow_attempts")
+            .fetch_one(&s.state.db)
+            .await
+            .unwrap(),
+        0
+    );
+    let response = s
+        .post_json_auth(&route(&id), &owner, approval.clone())
+        .await;
+    assert_eq!(response.status(), 200);
+    let run: Value = response.json().await.unwrap();
+    assert_eq!(run["coding"], true);
+    assert_eq!(run["role"], "general");
+    assert_eq!(run["requirements"], Value::Null);
+    assert_eq!(run["computer_workspace"], workspaces[0]);
+    assert_eq!(run["phase"], "queued");
+    assert_eq!(
+        journal.lock().await["starts"],
+        0,
+        "admission only queues work"
+    );
+    let retry: Value = s
+        .post_json_auth(&route(&id), &owner, approval.clone())
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(retry, run);
+    for (field, value) in [
+        ("coding", json!(false)),
+        ("computer_workspace", workspaces[1].clone()),
+        ("role", json!("research")),
+        ("max_cost_cents", json!(38)),
+    ] {
+        let mut changed = approval.clone();
+        // Hold the role constant so changing coding alone tests its approval term.
+        changed["role"] = json!("general");
+        changed[field] = value;
+        assert_eq!(
+            s.post_json_auth(&route(&id), &owner, changed)
+                .await
+                .status(),
+            409,
+            "{field}"
+        );
+    }
+    let mut omitted = approval.clone();
+    omitted.as_object_mut().unwrap().remove("coding");
+    omitted["role"] = json!("general");
+    assert_eq!(
+        s.post_json_auth(&route(&id), &owner, omitted)
+            .await
+            .status(),
+        409
+    );
+
+    // A later task edit must not widen the saved approval goal on dispatch.
+    sqlx::query("UPDATE burrow_tasks SET request='Changed after approval' WHERE id=?")
+        .bind(&id)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+    let mut reopened = server::build_state(server::db::connect(s.db_url()).await.unwrap());
+    reopened.kikka = s.state.kikka.clone();
+    burrow::recover(&reopened.db).await.unwrap();
+    agent::recover(&reopened.db).await.unwrap();
+    agent::tick(&reopened).await.unwrap();
+    {
+        let j = journal.lock().await;
+        let admission = &j["admission"];
+        assert_eq!(admission["coding"], true);
+        assert_eq!(admission["role"], "general");
+        assert_eq!(admission["owner"], "pilot");
+        assert_eq!(admission["task"], id);
+        assert_eq!(
+            admission["root_goal"],
+            format!("burrow-{}", run["id"].as_str().unwrap())
+        );
+        assert_eq!(admission["goal"], goal);
+        assert_eq!(admission["max_cost_cents"], 37);
+        assert_eq!(admission["computer_workspace"], workspaces[0]);
+        assert_eq!(admission["comparison"], false);
+        for key in ["requirements", "routine", "travel", "repository_url"] {
+            assert!(admission.get(key).is_none(), "unexpected {key}");
+        }
+    }
+    agent::recover(&reopened.db).await.unwrap();
+    agent::tick(&reopened).await.unwrap();
+    let attached = view(&s, &owner, &id).await;
+    assert_eq!(attached["agent"]["coding"], true);
+    assert_eq!(attached["agent"]["runtime_id"], "run-coding-fixture");
+    assert_eq!(s.post_json_auth(&format!("{}/control", route(&id)), &owner, json!({"version":attached["task"]["version"],"request_id":"coding-stop","action":"stop"})).await.status(), 200);
+    agent::tick(&reopened).await.unwrap();
+    agent::tick(&reopened).await.unwrap();
+    let stopped = view(&s, &owner, &id).await;
+    assert_eq!(stopped["agent"]["phase"], "finished");
+    assert_eq!(stopped["commands"][0][3], "sent");
+    assert_eq!(
+        journal.lock().await["commands"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(journal.lock().await["starts"], 1);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM burrow_attempts")
+            .fetch_one(&s.state.db)
+            .await
+            .unwrap(),
+        1
+    );
+
+    // Workspace selection alone retains research mode; it never opts into coding.
+    let research = create(&s, &owner, "Read the supplied notes.").await;
+    let legacy = json!({"version":0,"allow_agent":true,"max_cost_cents":37,"computer_workspace":workspaces[0]});
+    let response = s
+        .post_json_auth(&route(&research), &owner, legacy.clone())
+        .await;
+    assert_eq!(response.status(), 200);
+    let legacy_run: Value = response.json().await.unwrap();
+    assert_eq!(legacy_run["coding"], false);
+    assert_eq!(legacy_run["role"], "research");
+    let mut changed = legacy;
+    changed["coding"] = json!(true);
+    changed["role"] = json!("research");
+    assert_eq!(
+        s.post_json_auth(&route(&research), &owner, changed)
+            .await
+            .status(),
+        409
+    );
+    process.abort();
+}
+
+#[tokio::test]
+async fn coding_rejects_cli_and_incompatible_task_modes_without_admission() {
+    let (cli, owner, _, home) = configured().await;
+    let id = create(&cli, &owner, "Edit the repository.").await;
+    let workspace: Value = cli
+        .post_json_auth(
+            "/api/v1/burrow/computer-workspaces",
+            &owner,
+            json!({"name":"Repository"}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(cli.post_json_auth(&route(&id), &owner, json!({"version":0,"allow_agent":true,"max_cost_cents":37,"coding":true,"computer_workspace":workspace["id"]})).await.status(), 400);
+    agent::tick(&cli.state).await.unwrap();
+    assert!(!home.0.join("runtime.json").exists());
+    assert_eq!(cli.get_auth(&route(&id), &owner).await.status(), 404);
+
+    let (s, owner, _, _home) = configured_runtime(Some(agent::Pi {
+        endpoint: "http://127.0.0.1:1/command".into(),
+        token: "f".repeat(32),
+    }))
+    .await;
+    let workspace: Value = s
+        .post_json_auth(
+            "/api/v1/burrow/computer-workspaces",
+            &owner,
+            json!({"name":"Repository"}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    for mode in [
+        "comparison",
+        "travel",
+        "routine_id",
+        "routine_version",
+        "creation",
+        "tracker",
+    ] {
+        let mut task = json!({"request":"A separate request"});
+        match mode {
+            "comparison" => task["comparison"] = json!(true),
+            "creation" => task["format"] = json!("creation"),
+            "tracker" => task["kind"] = json!("tracker"),
+            _ => {}
+        }
+        let response = s.post_json_auth("/api/v1/burrow/tasks", &owner, task).await;
+        assert_eq!(response.status(), 200);
+        let task: Value = response.json().await.unwrap();
+        let id = task["id"].as_str().unwrap();
+        // Seed independent legacy flags to prove none rely on comparison=true.
+        match mode {
+            "travel" => {
+                sqlx::query("UPDATE burrow_tasks SET travel=1 WHERE id=?")
+                    .bind(id)
+                    .execute(&s.state.db)
+                    .await
+                    .unwrap();
+            }
+            "routine_id" => {
+                sqlx::query("UPDATE burrow_tasks SET routine_id='legacy-routine' WHERE id=?")
+                    .bind(id)
+                    .execute(&s.state.db)
+                    .await
+                    .unwrap();
+            }
+            "routine_version" => {
+                sqlx::query("UPDATE burrow_tasks SET routine_version=1 WHERE id=?")
+                    .bind(id)
+                    .execute(&s.state.db)
+                    .await
+                    .unwrap();
+            }
+            _ => {}
+        }
+        if mode == "comparison" {
+            assert_eq!(s.post_json_auth(&format!("/api/v1/burrow/tasks/{id}/research"), &owner, json!({"version":0,"action":"brief","text":"Saved research requirements","purchase_budget":"GBP 900"})).await.status(), 200);
+        }
+        let response = s.post_json_auth(&route(id), &owner, json!({"version":0,"allow_agent":true,"max_cost_cents":37,"coding":true,"computer_workspace":workspace["id"]})).await;
+        assert_eq!(response.status(), 400, "{mode}");
+        assert_eq!(s.get_auth(&route(id), &owner).await.status(), 404);
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM burrow_attempts")
+            .fetch_one(&s.state.db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM burrow_agent_runs")
+            .fetch_one(&s.state.db)
+            .await
+            .unwrap(),
+        0
+    );
 }
 
 #[tokio::test]

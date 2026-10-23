@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Window } from "happy-dom";
 import { bundleEntry, fixtures, type Bundle } from "./fixtures/bundle.ts";
 
-type Props = { text: string; activity: "ready" | "working" | "needs-you" | "stopped" | "error"; revision: number };
+type Props = { text: string; activity: "ready" | "working" | "needs-you" | "stopped" | "error"; revision: number; motion?: boolean };
 type Mod = { act: (callback: () => void) => void; mount: (el: unknown, props: Props) => { update: (next: Props) => void; unmount: () => void } };
 const window = new Window({ url: "http://localhost" });
 const document = window.document;
@@ -55,18 +55,23 @@ async function setup() {
 test("speech is explicit, on-device only, and stopping or typing leaves the reply intact", async () => {
   const f = await setup();
   try {
+    const image = () => f.container.querySelector("img")!.getAttribute("src");
+    const idle = image();
     assert.equal(playing, null, "opening a reply never speaks automatically");
     f.click();
     const first = playing!;
     assert.equal(first.text, f.props.text);
     assert.equal(first.voice, local, "remote default must not win over a local voice");
     assert.match(f.container.textContent, /Getting voice ready/);
+    assert.equal(image(), idle, "preparing speech must not look like actual speaking");
     bundle.mod.act(() => first.onstart!());
     assert.match(f.container.textContent, /Reading aloud/);
+    assert.notEqual(image(), idle, "the mascot speaks only once the voice actually starts");
     for (const key of ["Enter", " "]) {
       bundle.mod.act(() => f.button().dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true })));
       assert.match(f.button().textContent, /Stop talking/, "keyboard activation must not turn Stop into Read before the click");
       f.click(); assert.equal(playing, null);
+      assert.equal(image(), idle, "stopping speech restores the idle mascot");
       f.click(); assert.ok(playing);
     }
     f.click();
@@ -79,6 +84,24 @@ test("speech is explicit, on-device only, and stopping or typing leaves the repl
     bundle.mod.act(() => { first.onend!(); second.onerror!(); });
     assert.match(f.button().textContent, /Stop talking/, "late events cannot stop a newer reply");
     assert.equal(f.container.querySelector('[role="alert"]'), null);
+  } finally { f.cleanup(); }
+});
+
+test("pausing motion keeps a still mascot through activity and speech changes", async () => {
+  const f = await setup();
+  try {
+    f.update({ ...f.props, motion: false });
+    const still = f.container.querySelector("img")!.getAttribute("src");
+    for (const activity of ["working", "needs-you", "error", "stopped", "ready"] as const) {
+      f.update({ ...f.props, activity, motion: false });
+      assert.equal(f.container.querySelector("img")!.getAttribute("src"), still);
+    }
+    f.click();
+    bundle.mod.act(() => playing!.onstart!());
+    assert.match(f.container.textContent, /Reading aloud/);
+    assert.equal(f.container.querySelector("img")!.getAttribute("src"), still);
+    f.update({ ...f.props, motion: true });
+    assert.notEqual(f.container.querySelector("img")!.getAttribute("src"), still);
   } finally { f.cleanup(); }
 });
 

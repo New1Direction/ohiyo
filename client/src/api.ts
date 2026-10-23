@@ -644,6 +644,7 @@ export type BurrowTask = {
   routine_version?: number | null;
   comparison?: boolean;
   travel?: boolean;
+  coding: boolean;
   manual_notes?: string;
   manual_edited?: boolean;
   proposed_result?: string;
@@ -690,14 +691,19 @@ export type ModelRequestUsage = { id: string; role: ModelRole; canonicalModel: s
 export type PrivateBrowserInput = { kind: "click"; x: number; y: number } | { kind: "text"; text: string } | { kind: "key"; key: string } | { kind: "scroll"; x: number; y: number };
 export type PrivateBrowserCommand = { action: "status" | "take_over" | "give_back" | "frame" | "input"; session_id?: string; input?: PrivateBrowserInput };
 export type PrivateBrowserStatus = { phase: "agent" | "taking_over" | "human" | "giving_back" | "input_uncertain"; session_id: string | null; generation?: number; png?: string };
+export type BurrowComputerWorkspace = { id: string; name: string };
+export type BurrowCommandReceipt = {
+  status: string; operation: string; reason?: string;
+  output?: { argv?: string[]; exit_code: number | null; stdout: string; stderr: string; timed_out: boolean; truncated: boolean; spawn_error: boolean } | null;
+};
 export type BurrowAgent = {
   task: BurrowTask;
-  agent: { id: string; phase: string; activity: string; runtime_id: string | null; computer_workspace?: string | null;
+  agent: { id: string; phase: string; activity: string; runtime_id: string | null; computer_workspace?: string | null; coding: boolean;
     max_cost_cents?: number;
     role?: ModelRole; routing?: Partial<Record<ModelRole, ModelRoute>> | null; usage?: ModelRequestUsage[] | null };
   connected: boolean;
   commands: [string, string, string, string][];
-  events: { seq: number; type: string; data: { id?: string; url?: string; capturedAt?: string; content?: string; verification?: string; comparison?: ResearchComparison } }[];
+  events: { seq: number; type: string; data: { id?: string; url?: string; capturedAt?: string; content?: string; verification?: string; comparison?: ResearchComparison; operation?: string; request_id?: string; phase?: string; status?: string } }[];
   history: [number, string][];
 };
 
@@ -782,11 +788,15 @@ export const api = {
     method: "POST", body: JSON.stringify({ version, ...change }),
   }, token),
   burrowAgent: (token: string, id: string) => request<BurrowAgent>(`/burrow/tasks/${id}/agent`, {}, token),
+  burrowComputerWorkspaces: (token: string) => request<BurrowComputerWorkspace[]>("/burrow/computer-workspaces", {}, token),
+  burrowCommandReceipt: (token: string, taskId: string, requestId: string) => request<BurrowCommandReceipt>(`/burrow/tasks/${encodeURIComponent(taskId)}/computer`, {
+    method: "POST", body: JSON.stringify({ action: "receipt", request_id: requestId }),
+  }, token),
   privateBrowser: (token: string, taskId: string, requestId: string, browser: PrivateBrowserCommand) => request<PrivateBrowserStatus>(`/burrow/tasks/${encodeURIComponent(taskId)}/computer`, {
     method: "POST", body: JSON.stringify({ action: "browser_control", request_id: requestId, browser }),
   }, token),
-  startBurrowAgent: (token: string, task: BurrowTask, cents: number, role?: ModelRole, routing?: ModelRouting["preview"]) => request(`/burrow/tasks/${task.id}/agent`, {
-    method: "POST", body: JSON.stringify({ version: task.version, allow_agent: true, max_cost_cents: cents, role, routing }),
+  startBurrowAgent: (token: string, task: BurrowTask, cents: number, role?: ModelRole, routing?: ModelRouting["preview"], coding?: { coding: true; computer_workspace: string }) => request(`/burrow/tasks/${task.id}/agent`, {
+    method: "POST", body: JSON.stringify({ version: task.version, allow_agent: true, max_cost_cents: cents, role, routing, ...coding }),
   }, token),
   controlBurrowAgent: (token: string, task: BurrowTask, requestId: string, action: "steer" | "stop" | "continue", message: string, requirementsRevision?: number) => request<BurrowTask>(`/burrow/tasks/${task.id}/agent/control`, {
     method: "POST", body: JSON.stringify({ version: task.version, request_id: requestId, action, message, allow_spending: action === "continue", requirements_revision: requirementsRevision }),
@@ -796,7 +806,7 @@ export const api = {
     if (!r.ok) throw new Error("Saved screenshot is unavailable. Please try again.");
     return r.blob();
   },
-  createBurrowTask: (token: string, text: string, kind: BurrowTask["kind"] = "writing", template?: "bill" | "packing", context?: { project?: string; routine_id?: string; comparison?: boolean }) => request<BurrowTask>("/burrow/tasks", {
+  createBurrowTask: (token: string, text: string, kind: BurrowTask["kind"] = "writing", template?: "bill" | "packing", context?: { project?: string; routine_id?: string; comparison?: boolean; coding?: true }) => request<BurrowTask>("/burrow/tasks", {
     method: "POST", body: JSON.stringify({ request: text, kind, template, ...context }),
   }, token),
   createBurrowPage: (token: string, text: string, example?: "quiz" | "story" | "page") => request<BurrowTask>("/burrow/tasks", {

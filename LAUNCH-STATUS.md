@@ -1,7 +1,53 @@
 # Ohiyo launch status
 
-_Last full check: 2026-07-03. Open problems and new settings added 2026-10-03; the
-list under "Web beta ready" has not been re-verified since July._
+_Latest family-release qualification: 2026-10-23. Not cleared for daily-driver
+distribution. The older dated sections below are historical, not current certification._
+
+## Family release is blocked (2026-10-23)
+
+- The actual public v0.3.1 Apple Silicon DMG was inspected on an arm64 Mac with
+  Gatekeeper enabled. Its ad-hoc signature passes integrity verification, but
+  Gatekeeper rejects the app and no notarization ticket is present. The Mac mini
+  has no valid code-signing identity; the six Apple signing/notarization secrets
+  are also absent from the user-owned GitHub repository. Developer ID credentials
+  must be configured privately before a trusted Mac release can be produced.
+- Release workflow source now rejects missing update signing, and Mac jobs reject
+  missing Apple signing instead of producing an ad-hoc fallback. This is a local
+  change, not a repair to the existing published downloads. Local development
+  builds remain possible. See [signing setup](DEPLOY.md#5-code-signing--auto-update-required-for-release-downloads).
+- The published ARM update archive verifies against the configured public key;
+  an altered archive is rejected. An actual installed-app upgrade and relaunch
+  remain untested. The ARM executable requires macOS 11.0 while its Info.plist
+  advertises 10.13; align packaging metadata before the next release.
+- Windows installers remain disabled. Phone-width browser tests are not native
+  iOS or Android qualification. Confirm the family's target platforms before
+  promising downloads.
+- Public web/API health, bundle asset availability and Web Push configuration
+  checks pass. Both the served web bundle and released ARM client still target
+  `https://ohiyo-server-production.up.railway.app`. No production accounts were
+  created and no real-network calls or notification deliveries were tested.
+- The local restore drill had omitted committed SQLite WAL transactions. Its
+  replacement uses SQLite's read-only-source backup API; a regression proves
+  committed messages are restored, pending writes excluded and the source left
+  unchanged. This does **not** establish production backup configuration or a
+  successful production-replica restore. That restore is still a release gate.
+- A lost password cannot currently be reset. Linking from an already signed-in
+  device is a limited workaround, not account recovery after all sessions are lost.
+  Resolve this before recommending Ohiyo as a family's only messenger.
+- Burrow coding remains an operator-provisioned pilot. No live-model coding or
+  isolated production-computer qualification has been completed. Ohiyo remains
+  chat; Burrow is a separate agent surface.
+
+Local checks passed: 599 Rust tests, 980 client unit tests, client lint/types/build,
+and 63 browser E2E suites against a production web build and disposable database.
+The browser run also exposed a logged onboarding canvas error despite passing its
+assertions. A new zero-size-layout regression reproduced it; the fix passed the
+signup-to-chat journey with uncaught errors now treated as failures. These checks
+do not substitute for installed-native-app, production-backup or live-model tests.
+
+No release tag, installer publication, production migration or deployment was
+performed during this qualification. Existing uncommitted work must be included
+in a reviewed, versioned candidate and matched with its backend before shipping.
 
 ## Hosting moved to Railway (2026-10-03)
 

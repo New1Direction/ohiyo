@@ -1,0 +1,15 @@
+[submodule "burrow-anatomy"]
+	path = .agents/skill-sources/anatomy
+	url = https://github.com/wheresryan22/anatomy.git
+[submodule "burrow-archify"]
+	path = .agents/skill-sources/archify
+	url = https://github.com/tt-a1i/archify.git
+[submodule "burrow-learn-anything"]
+	path = .agents/skill-sources/learn-anything
+	url = https://github.com/ChenChenyaqi/learn-anything.git
+[submodule "burrow-emil"]
+	path = .agents/skill-sources/emil
+	url = https://github.com/emilkowalski/skills.git
+[submodule "burrow-impeccable"]
+	path = .agents/skill-sources/impeccable
+	url = https://github.com/pbakaus/impeccable.git

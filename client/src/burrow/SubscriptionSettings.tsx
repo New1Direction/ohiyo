@@ -48,7 +48,7 @@ export default function SubscriptionSettings({ token, routing, onRefresh, onDone
     </div>
     <p className="burrow-small">Bring a plan you already have. Connect your account, choose a model, then make your first ask. Current tasks won’t switch accounts.</p>
     {(["chatgpt", "claude"] as const).map(provider => <div className="burrow-connection-row" key={provider}>
-      <span className={`burrow-provider-mark ${provider}`} aria-hidden="true">{provider === "claude" ? "✳" : "◎"}</span>
+      <span className={`burrow-provider-mark ${provider}`} aria-hidden="true">{provider === "chatgpt" ? "◎" : null}</span>
       <div><strong>{provider === "claude" ? "Claude" : "ChatGPT"}</strong><p className="burrow-small">{data?.[provider]?.email ?? (provider === "claude" ? "Your Claude plan" : "Your ChatGPT plan")}</p></div>
       <span className="burrow-connection-state">{data?.[provider] ? labels[data[provider].state] : "Not checked"}</span>
       <button className="burrow-secondary" disabled={busy} onClick={() => { setSelected(provider); setChoosing(false); }}>{data?.[provider]?.state === "connected" ? "Manage" : "Connect"}</button>

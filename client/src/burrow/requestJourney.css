@@ -1,0 +1,32 @@
+.request-journey { min-width: 0; container: request-journey / inline-size; }
+.request-journey-scenario { margin: 0 0 20px; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.request-journey-scenario legend { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+.request-journey-scenario label { display: flex; align-items: center; gap: 8px; padding: 10px 12px; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--base); font-size: 12px; cursor: pointer; }
+.request-journey-scenario label:has(input:checked) { border-color: var(--gen-accent); background: var(--gen-tint); }
+.request-journey-scenario input { accent-color: var(--gen-accent); width: 16px; height: 16px; margin: 0; }
+.request-journey-route { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.request-journey-route button { display: flex; width: 100%; min-height: 60px; align-items: center; gap: 14px; padding: 12px 16px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--base); color: var(--ink); }
+.request-journey-route button[aria-pressed=true] { border-color: var(--gen-accent); background: var(--gen-tint); }
+.request-journey-number { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 50%; color: var(--gen-accent); font-size: 12px; }
+.request-journey-route strong { display: block; font-size: 13px; font-weight: 500; }
+.request-journey-route small { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
+.request-journey-arrow { margin-left: auto; color: var(--gen-accent); }
+.request-journey-detail { margin-top: 18px; border-left: 2px solid var(--gen-accent); padding: 4px 0 4px 18px; }
+.request-journey-detail h3 { font-size: 21px; line-height: 1.35; letter-spacing: -.025em; margin: 12px 0; }
+.request-journey-detail > p:not(.gen-kicker) { font-size: 13px; line-height: 1.8; color: var(--ink); }
+.request-journey-detail .request-journey-note { margin-top: 12px; color: var(--muted) !important; }
+.request-journey-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
+.request-journey-controls .burrow-link { min-height: 44px; }
+.request-journey-scope { color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 16px; }
+.request-journey button, .request-journey label { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.request-journey button:active { background: var(--gen-tint); }
+.request-journey :is(button,input):focus-visible { outline: 2px solid var(--gen-accent); outline-offset: 3px; box-shadow: none; }
+@container request-journey (min-width: 440px) {
+  .request-journey-workspace { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 20px; align-items: start; }
+  .request-journey-route button { gap: 8px; padding: 12px 10px; }
+  .request-journey-arrow { display: none; }
+  .request-journey-detail { margin-top: 0; padding-left: 16px; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .request-journey-route button:hover, .request-journey-scenario label:hover { border-color: var(--gen-accent); }
+}

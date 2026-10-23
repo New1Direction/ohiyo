@@ -120,3 +120,44 @@ test("database options in the URL are not part of the file name", (t) => {
   t.after(() => rmSync(run.dir, { recursive: true, force: true }));
   assert.match(run.config ?? "", /path: "\/data\/ohiyo\.db"\n/);
 });
+
+test("local restore drill includes committed WAL messages but excludes pending writes", () => {
+  const drill = join(dirname(entrypoint), "..", "scripts", "backup-restore-drill.sh");
+  const result = spawnSync("python3", ["-", drill], {
+    encoding: "utf8",
+    env: { PATH: process.env.PATH },
+    input: `
+import os, pathlib, sqlite3, subprocess, sys, tempfile
+with tempfile.TemporaryDirectory(prefix='ohiyo-restore-wal-') as directory:
+    root = pathlib.Path(directory)
+    source = root / 'family chat.db'
+    writer = sqlite3.connect(source)
+    try:
+        writer.execute('PRAGMA journal_mode=WAL')
+        writer.execute('PRAGMA wal_autocheckpoint=0')
+        for table in ['users', 'servers', 'channels', 'messages', 'hosted_instances']:
+            writer.execute(f'CREATE TABLE {table}(content TEXT)')
+        writer.commit()
+        writer.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        writer.execute("INSERT INTO messages VALUES ('committed family message')")
+        writer.commit()
+        writer.execute("INSERT INTO messages VALUES ('not committed')")
+        for options in ['', '?mode=rwc']:
+            destination = root / ('with-options' if options else 'plain')
+            destination.mkdir()
+            env = dict(os.environ, DATABASE_URL=f'sqlite:{source}{options}',
+                WORKDIR=str(destination), KEEP_RESTORE_DRILL='1')
+            run = subprocess.run(['bash', sys.argv[1]], env=env, capture_output=True, text=True, timeout=15)
+            assert run.returncode == 0, run.stdout + run.stderr
+            with sqlite3.connect(destination / 'ohiyo-restore-drill.db') as restored:
+                assert restored.execute('SELECT content FROM messages').fetchall() == [('committed family message',)], 'restore lost committed WAL data or included an uncommitted message'
+            assert writer.execute('SELECT content FROM messages').fetchall() == [('committed family message',), ('not committed',)], 'drill changed the source transaction'
+        print('committed WAL message restored; pending write excluded; source unchanged')
+    finally:
+        writer.rollback()
+        writer.close()
+`,
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /committed WAL message restored; pending write excluded; source unchanged/);
+});

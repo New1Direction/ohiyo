@@ -8,6 +8,7 @@ import { once } from 'node:events';
 import { ComputerProvider } from '../src/computer-provider.mjs';
 import { COMPUTER_CONTRACT_VERSION, ComputerNotDispatched } from '../src/computer-contract.mjs';
 import { ImOrbComputerBackend } from '../src/imorb-computer.mjs';
+import { CodingEngine } from '../src/coding-engine.mjs';
 
 const identity = { account: 'alice', workspace_id: 'work', task_id: 'task', root_goal_id: 'root', request_id: 'open' };
 const grant = { account: 'alice', workspace_id: 'work', features: ['files.read', 'files.write', 'files.ensure_directory'] };
@@ -186,4 +187,54 @@ test('registry deletion is not release proof: leftover containers remain tracked
   await writeFile(join(f.config.home, 'containers.json'), JSON.stringify([orphan, 'someone-elses-orb']));
   await p.reconcile();
   assert.deepEqual(JSON.parse(await readFile(join(f.config.home, 'containers.json'))), ['someone-elses-orb']);
+});
+
+test('coding engine runs real repository commands, retains failures, bounds output, and reuses receipts', async t => {
+  const codingGrant = { ...grant, features: [...grant.features, 'shell'], shell: true };
+  const f = await setup(t, { grants: [codingGrant] });
+  f.config.engines = [new CodingEngine({ transport: new ImOrbComputerBackend(f.config) })];
+  const p = await f.reopen(); const computer = await p.open(identity);
+  assert.ok(computer.capabilities.features.includes('shell'));
+  const shell = argv => action('shell', { argv }, 'non_idempotent_effect');
+  const run = (id, argv) => p.execute({ ...identity, request_id: id }, shell(argv));
+  const initialized = await run('init', ['git', 'init', '-q']);
+  assert.equal(initialized.output.exit_code, 0);
+  await p.execute({ ...identity, request_id: 'file' }, action('files.write', { path: 'value.txt', content: 'old\n' }, 'non_idempotent_effect'));
+  assert.equal((await run('index', ['git', 'add', 'value.txt'])).output.exit_code, 0);
+  await p.execute({ ...identity, request_id: 'edit' }, action('files.write', { path: 'value.txt', content: 'new\n' }, 'non_idempotent_effect'));
+  const diff = await run('diff', ['git', 'diff', '--', 'value.txt']);
+  assert.match(diff.output.stdout, /-old\n\+new/);
+  const failure = await run('fail', ['sh', '-c', 'printf failed >&2; exit 7']);
+  assert.equal(failure.status, 'complete'); assert.equal(failure.output.exit_code, 7);
+  assert.equal(failure.output.stderr, 'failed');
+  const args = ['sh', '-c', 'printf x >> counter.txt; printf "%s" "${OPENAI_API_KEY-unset}"'];
+  const first = await run('once', args), second = await run('once', args);
+  assert.deepEqual(first, second); assert.equal(first.output.stdout, 'unset');
+  assert.equal(await readFile(join(f.config.home, computer.computer_id, 'files/counter.txt'), 'utf8'), 'x');
+  const flood = await run('output', ['sh', '-c', 'head -c 70000 /dev/zero']);
+  assert.equal(flood.output.stdout.length, 65536); assert.equal(flood.output.truncated, true);
+  const missing = await run('missing', ['/nonexistent-burrow-command']);
+  assert.equal(missing.status, 'complete'); assert.equal(missing.output.spawn_error, true);
+  assert.notEqual(missing.output.exit_code, 0);
+  const started = Date.now();
+  const detached = await run('descendant', ['sh', '-c', 'sleep 120 & printf parent-finished; exit 0']);
+  assert.equal(detached.status, 'complete'); assert.equal(detached.output.exit_code, 0);
+  assert.equal(detached.output.stdout, 'parent-finished');
+  assert.equal(detached.output.timed_out, false, 'an exited parent must not time out waiting for descendant pipes');
+  assert.ok(Date.now() - started < 10000, 'remaining same-group descendants are cleaned up promptly');
+  await assert.rejects(p.execute({ ...identity, account: 'bob', request_id: 'foreign' }, shell(['git', 'status'])), /authorized/);
+  const noShell = await setup(t); const restricted = await noShell.reopen(); await restricted.open(identity);
+  await assert.rejects(restricted.execute(identity, shell(['git', 'status'])), /authorized|permission/);
+});
+
+test('coding command timeout is acknowledged and kills its process group', { timeout: 65000 }, async t => {
+  const f = await setup(t, { grants: [{ ...grant, features: [...grant.features, 'shell'], shell: true }] });
+  f.config.engines = [new CodingEngine({ transport: new ImOrbComputerBackend(f.config) })];
+  const p = await f.reopen(); await p.open(identity);
+  const receipt = await p.execute({ ...identity, request_id: 'timeout' }, action('shell',
+    { argv: ['sh', '-c', 'printf "%s\\n" "$$"; exec sleep 120'] }, 'non_idempotent_effect'));
+  assert.equal(receipt.status, 'complete'); assert.equal(receipt.output.timed_out, true);
+  assert.notEqual(receipt.output.exit_code, 0);
+  const pid = Number(receipt.output.stdout.trim()); assert.ok(pid > 0);
+  assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
 });

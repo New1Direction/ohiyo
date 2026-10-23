@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 import { defineRegistry, JSONUIProvider, Renderer } from "@json-render/react";
 import { z } from "zod";
 import { catalog, parsePage, questionSchema, sceneSchema } from "./catalog";
+import SpringLab from "./SpringLab";
+import RequestJourney from "./RequestJourney";
 
 export function Quiz({ questions }: { questions: z.infer<typeof questionSchema>[] }) {
   const [index, setIndex] = useState(0);
@@ -52,6 +54,8 @@ const { registry } = defineRegistry(catalog, {
     Checklist: ({ props }) => <Checklist {...props} />,
     Quiz: ({ props }) => <Quiz {...props} />,
     Story: ({ props }) => <Story {...props} />,
+    SpringLab: () => <SpringLab />,
+    RequestJourney: () => <RequestJourney />,
     Reveal: ({ props }) => <details className="gen-reveal"><summary>{props.label}</summary><p>{props.text}</p></details>,
   },
 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import kikka from "../../../brand/kikka-chinchilla-clean.png";
+import KikkaMascot from "./KikkaMascot";
 
 type Activity = "ready" | "working" | "needs-you" | "stopped" | "error";
 const activityLabels: Record<Activity, string> = {
@@ -76,7 +76,7 @@ export default function KikkaReply({ text, activity, revision }: { text: string;
   const talking = playback !== "quiet";
   const status = playback === "speaking" ? "Reading aloud" : playback === "starting" ? "Getting voice ready…" : activityLabels[activity];
   return <div className={`kikka-reply ${activity} ${talking ? "talking" : ""}`}>
-    <div className="kikka-reply-heading"><div className="kikka-presence" aria-hidden="true"><img src={kikka} alt="" /><i>{activity === "error" ? "!" : ""}</i></div><div><strong>Kikka</strong><span className="kikka-activity" role="status">{status}{activity === "working" && !talking && <span className="kikka-working-dots" aria-hidden="true"><i /><i /><i /></span>}</span></div></div>
+    <div className="kikka-reply-heading"><div className="kikka-presence" aria-hidden="true"><KikkaMascot state={playback === "speaking" ? "speaking" : activity === "ready" ? "idle" : activity === "needs-you" ? "confused" : activity === "stopped" ? "neutral" : activity} /><i>{activity === "error" ? "!" : ""}</i></div><div><strong>Kikka</strong><span className="kikka-activity" role="status">{status}{activity === "working" && !talking && <span className="kikka-working-dots" aria-hidden="true"><i /><i /><i /></span>}</span></div></div>
     <p className="kikka-reply-text" role="status">{text}</p>
     <div className="kikka-voice"><button type="button" className="burrow-secondary" disabled={!talking && (!voice || activity === "working")} onClick={talking ? stop : read}>
       <span className="kikka-voice-mark" aria-hidden="true">{talking ? "■" : "♪"}</span>{talking ? "Stop talking" : "Read aloud"}

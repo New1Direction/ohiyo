@@ -21,6 +21,24 @@ pub struct Workspace {
     name: String,
 }
 
+/// Saved authorization scopes only; listing does not provision or inspect computers.
+pub async fn list(
+    State(s): State<AppState>,
+    AuthUser(user, _): AuthUser,
+) -> Result<Json<Value>, Error> {
+    let scopes: Vec<(String, String)> = sqlx::query_as(
+        "SELECT id,name FROM burrow_computer_workspaces WHERE user_id=? ORDER BY name,id",
+    )
+    .bind(&user)
+    .fetch_all(&s.db)
+    .await
+    .map_err(internal)?;
+    Ok(Json(json!(scopes
+        .into_iter()
+        .map(|(id, name)| json!({"id":id,"name":name}))
+        .collect::<Vec<_>>())))
+}
+
 pub async fn create(
     State(s): State<AppState>,
     AuthUser(user, _): AuthUser,

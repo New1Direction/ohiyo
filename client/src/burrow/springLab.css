@@ -1,0 +1,58 @@
+.spring-lab { container: spring-lab / inline-size; min-width: 0; color: var(--ink); font-size: 12px; line-height: 1.7; }
+.spring-lab *, .spring-lab *::before, .spring-lab *::after { box-sizing: border-box; }
+.spring-lab .spring-lab-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.spring-lab .spring-lab-eyebrow { color: var(--muted); font-size: 9px; letter-spacing: .12em; margin: 0 0 5px; }
+.spring-lab h3 { font-size: 20px; line-height: 1.3; font-weight: 550; letter-spacing: -.035em; margin: 0; }
+.spring-lab .spring-lab-reset { min-height: 44px; border: 1px solid var(--line); border-radius: 999px; padding: 8px 17px; background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; touch-action: manipulation; user-select: none; transition: none; }
+.spring-lab .spring-lab-reset:active { background: var(--gen-tint); }
+.spring-lab .spring-lab-prediction { margin: 0 0 18px; padding: 14px 16px; border-radius: 16px; background: var(--gen-tint); color: var(--ink); }
+.spring-lab-prediction strong { font-weight: 600; }
+.spring-lab-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: center; }
+.spring-lab-figure { min-width: 0; margin: 0; background: var(--base); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
+.spring-lab-plate-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 14px 16px 0; font-size: 9px; color: var(--muted); letter-spacing: .04em; }
+.spring-lab-figure svg { display: block; width: 100%; max-height: 460px; }
+.spring-lab-figure figcaption { border-top: 1px solid var(--line); padding: 12px 16px; color: var(--muted); font-size: 11px; }
+.spring-lab-key { display: inline-block; width: 18px; border-top: 1px dashed var(--muted); vertical-align: middle; margin-right: 6px; }
+.spring-lab-solid { stroke: color-mix(in srgb, var(--muted) 60%, var(--base)); stroke-width: .9; stroke-linejoin: round; }
+.spring-lab-top { fill: color-mix(in srgb, var(--ink) 13%, var(--surface)); }
+.spring-lab-side { fill: var(--surface); }
+.spring-lab-end { fill: color-mix(in srgb, var(--ink) 7%, var(--base)); }
+.spring-lab-shadow { fill: var(--ink); opacity: .035; }
+.spring-lab-detail { fill: none; stroke: var(--muted); stroke-width: .7; opacity: .7; }
+.spring-lab-fastener { fill: var(--base); stroke: var(--muted); stroke-width: .9; }
+.spring-lab-brace { fill: var(--surface); stroke: var(--muted); stroke-width: 1; }
+.spring-lab-ruler { fill: var(--surface); stroke: var(--muted); stroke-width: 1; }
+.spring-lab-scale-number { fill: var(--ink); font: 16px ui-monospace, monospace; }
+.spring-lab-unit { fill: var(--muted); font-size: 12px; }
+.spring-lab-tick { fill: none; stroke: var(--muted); stroke-width: 1; }
+.spring-lab-zero { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 4; }
+.spring-lab-wire { fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.spring-lab-collar, .spring-lab-pan { fill: var(--surface); stroke: var(--muted); stroke-width: 1; }
+.spring-lab-coil-shadow { fill: none; stroke: var(--base); stroke-width: 5; stroke-linecap: round; }
+.spring-lab-coil { fill: none; stroke: var(--gen-accent); stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+.spring-lab-pointer { fill: var(--gen-accent); }
+.spring-lab-weight-side { fill: color-mix(in srgb, var(--gen-accent) 25%, var(--surface)); stroke: var(--muted); stroke-width: .7; }
+.spring-lab-weight-top { fill: var(--gen-tint); stroke: var(--muted); stroke-width: .7; }
+.spring-lab-screw { fill: var(--muted); }
+.spring-lab-console { min-width: 0; display: grid; gap: 18px; }
+.spring-lab-control label { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; font-weight: 550; }
+.spring-lab-control label span { font-variant-numeric: tabular-nums; color: var(--gen-accent); }
+.spring-lab .spring-lab-control input { display: block; width: 100%; min-width: 0; height: 44px; margin: 0; padding: 0; accent-color: var(--gen-accent); cursor: pointer; background: transparent; border: 0; box-shadow: none; }
+.spring-lab .spring-lab-control input:focus-visible, .spring-lab .spring-lab-reset:focus-visible, .spring-lab .spring-lab-explanation summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 8px; box-shadow: none; }
+.spring-lab-range-ends { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }
+.spring-lab-readouts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 16px; margin: 0; overflow: hidden; }
+.spring-lab-readouts > div { padding: 12px 10px; min-width: 0; }
+.spring-lab-readouts > div + div { border-left: 1px solid var(--line); background: var(--gen-tint); }
+.spring-lab-readouts dt { font-size: 10px; color: var(--muted); }
+.spring-lab-readouts dd { font-size: 24px; line-height: 1.4; font-weight: 500; letter-spacing: -.04em; margin: 5px 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.spring-lab-readouts dd span { font-size: 12px; letter-spacing: 0; }
+.spring-lab-equation { padding: 0 2px; }
+.spring-lab-equation strong { font-family: ui-monospace, monospace; font-size: 17px; font-weight: 500; }
+.spring-lab .spring-lab-equation p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+.spring-lab-explanation { margin-top: 20px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; }
+.spring-lab-explanation summary { cursor: pointer; color: var(--ink); min-height: 28px; touch-action: manipulation; }
+.spring-lab .spring-lab-explanation p { margin: 12px 0 0; }
+.spring-lab .spring-lab-limits { font-size: 10px; line-height: 1.8; color: var(--muted); margin: 16px 0 0; }
+@container spring-lab (min-width: 440px) { .spring-lab-workspace { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; } }
+@container spring-lab (min-width: 570px) { .spring-lab-workspace { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 26px; } }
+@media (hover: hover) and (pointer: fine) { .spring-lab .spring-lab-reset:hover { background: var(--gen-tint); border-color: var(--muted); } }

@@ -3,15 +3,243 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { Window } from "happy-dom";
 import { bundleEntry, fixtures } from "./fixtures/bundle.ts";
-import type { BurrowAgent, BurrowTask, ResearchWorkspace, ResearchChange } from "../src/api.ts";
+import type { BurrowAgent, BurrowCommandReceipt, BurrowTask, ResearchWorkspace, ResearchChange } from "../src/api.ts";
+
+test("coding command evidence reads existing receipts only on demand and distinguishes completion from command success", async () => {
+  const window = new Window({ url: "http://localhost/burrow" });
+  const originals = new Map<string, PropertyDescriptor | undefined>();
+  const requests: Record<string, unknown>[] = [];
+  const task: BurrowTask = { id: "code-evidence", kind: "writing", format: "document", template: null, coding: true, request: "Check tests", state: "draft_ready", result: "Model says all tests passed.", error: null, version: 2, created_at: 10, updated_at: 20 };
+  const event = (seq: number, id: string, phase = "returned"): BurrowAgent["events"][number] => ({ seq, type: "computer", data: { operation: "shell", request_id: id, phase, status: phase === "returned" ? "complete" : "pending" } });
+  const agent: BurrowAgent = { task, agent: { id: "run-evidence", runtime_id: "runtime", phase: "finished", activity: "Ready", coding: true }, connected: true, commands: [], history: [], events: [event(1, "exit-seven", "requested"), event(2, "exit-zero"), event(3, "exit-seven"), event(4, "uncertain"), event(5, "timeout"), event(6, "unavailable"), event(7, "spawn"), { seq: 8, type: "computer", data: { operation: "read", request_id: "not-shell" } }] };
+  const output = { argv: ["node", "test.js", "<unsafe>"], exit_code: 7, stdout: "<img src=x onerror=alert(1)>\nTest output", stderr: "Assertion failed\n", timed_out: false, truncated: false, spawn_error: false };
+  const receipts: Record<string, BurrowCommandReceipt> = {
+    "exit-seven": { status: "complete", operation: "shell", output },
+    "exit-zero": { status: "complete", operation: "shell", output: { ...output, exit_code: 0, stdout: "ok", stderr: "" } },
+    uncertain: { status: "uncertain", operation: "shell", reason: "Execution outcome is unknown." },
+    timeout: { status: "complete", operation: "shell", output: { ...output, exit_code: null, timed_out: true, truncated: true } },
+    spawn: { status: "complete", operation: "shell", output: { ...output, argv: undefined, exit_code: null, spawn_error: true } },
+  };
+  const fetcher = async (url: string, init: RequestInit = {}) => {
+    if (init.method && init.method !== "GET") {
+      assert.ok(url.endsWith("/burrow/tasks/code-evidence/computer"));
+      assert.equal((init.headers as Record<string, string>).Authorization, "Bearer evidence-owner");
+      const body = JSON.parse(String(init.body)); requests.push(body);
+      assert.deepEqual(Object.keys(body).sort(), ["action", "request_id"]);
+      assert.equal(body.action, "receipt", "review must never send shell, open, reconnect or other lifecycle calls");
+      return receipts[body.request_id] ? Response.json(receipts[body.request_id]) : new Response("Unavailable", { status: 404 });
+    }
+    if (url.endsWith("/agent")) return Response.json(agent);
+    if (url.includes("/context")) return Response.json({ memories: [], routines: [], history: [] });
+    if (url.endsWith("/model-routing")) return Response.json({ catalog: [], roles: {}, preview: {}, connections: [] });
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  for (const [key, value] of Object.entries({ window, document: window.document, navigator: window.navigator, HTMLElement: window.HTMLElement, Node: window.Node, sessionStorage: window.sessionStorage, fetch: fetcher, requestAnimationFrame: (fn: FrameRequestCallback) => setTimeout(() => fn(0), 0) })) {
+    originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  }
+  const bundle = await bundleEntry<{ act: (fn: () => void) => void; mount: (el: unknown, props: unknown) => { unmount: () => void } }>(join(fixtures, "researchTask.tsx"));
+  const container = window.document.createElement("div"); window.document.body.append(container);
+  const props = { token: "evidence-owner", task, canRun: true, onUpdate() {}, onDirtyChange() {} };
+  let view = bundle.mod.mount(container, props);
+  const settle = () => new Promise(resolve => setTimeout(resolve, 100));
+  const command = (id: string) => container.querySelector(`[aria-label="Command ${id}"]`)!;
+  const inspect = async (id: string) => { bundle.mod.act(() => command(id).querySelector("button")!.click()); await settle(); };
+  try {
+    await settle();
+    assert.equal(requests.length, 0, "opening a coding result does not fetch receipts");
+    bundle.mod.act(() => [...container.querySelectorAll("button")].find(b => b.textContent === "Activity")!.click());
+    await settle();
+    assert.equal(requests.length, 0, "opening Activity does not fetch receipts");
+    assert.equal(container.querySelectorAll('[aria-label="Recent commands"] > section').length, 6, "requested and returned events are one command; non-shell events are excluded");
+    assert.match(container.querySelector('[aria-label="Recent commands"]')!.textContent!, /not a complete history/);
+    assert.match(command("exit-seven").textContent!, /Returned · Event status: complete/);
+    await inspect("exit-seven");
+    assert.deepEqual(requests[0], { action: "receipt", request_id: "exit-seven" });
+    assert.match(command("exit-seven").textContent!, /Receipt status: complete.*Exit code: 7.*command failed/s);
+    const blocks = command("exit-seven").querySelectorAll("pre");
+    assert.equal(blocks[0].textContent, JSON.stringify(output.argv, null, 2));
+    assert.equal(blocks[1].textContent, output.stdout);
+    assert.equal(blocks[2].textContent, output.stderr);
+    assert.equal(command("exit-seven").querySelector("img"), null, "command output is escaped text, not executable markup");
+    await inspect("exit-zero");
+    assert.match(command("exit-zero").textContent!, /Exit code: 0.*Zero exit reported/);
+    assert.doesNotMatch(command("exit-zero").textContent!, /command failed|tests passed/);
+    await inspect("uncertain");
+    assert.match(command("uncertain").textContent!, /Receipt status: uncertain.*outcome is uncertain; no success is confirmed.*Execution outcome is unknown.*Shell output unavailable/s);
+    await inspect("timeout");
+    assert.match(command("timeout").textContent!, /Exit code: unavailable.*Command timed out.*Output was truncated/s);
+    await inspect("spawn");
+    assert.match(command("spawn").textContent!, /Arguments unavailable.*Command could not start\./s);
+    await inspect("unavailable");
+    assert.match(command("unavailable").textContent!, /Output unavailable.*outcome is not confirmed/s);
+    assert.equal(requests.length, 6);
+    await new Promise(resolve => setTimeout(resolve, 2100));
+    assert.equal(requests.length, 6, "ordinary task polling must not poll receipts");
+    await inspect("uncertain");
+    assert.deepEqual(requests.at(-1), { action: "receipt", request_id: "uncertain" }, "explicit recheck uses the original action ID");
+    view.unmount(); view = bundle.mod.mount(container, props); await settle();
+    assert.equal(requests.length, 7, "reopening never refetches output automatically");
+    view.unmount(); agent.agent.coding = false;
+    view = bundle.mod.mount(container, props); await settle();
+    assert.equal(container.querySelector('[aria-label="Recent commands"]'), null, "research runs do not expose coding command review");
+    assert.equal(requests.length, 7);
+  } finally {
+    view.unmount(); await bundle.cleanup(); await window.happyDOM.close();
+    for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
+  }
+});
+
+test("Code repository saves an ordinary task, requires explicit scope approval, and restores coding controls from the admitted run", async () => {
+  const window = new Window({ url: "http://localhost/burrow" });
+  const originals = new Map<string, PropertyDescriptor | undefined>();
+  const writes: { url: string; body: Record<string, unknown> }[] = [];
+  const reads: string[] = [];
+  let task: BurrowTask = { id: "code-task", kind: "writing", format: "document", template: null, coding: false, request: "Fix the failing parser test", state: "waiting", result: "", error: null, version: 1, created_at: 10, updated_at: 10 };
+  let created = false;
+  let canResearch = true;
+  let agent: BurrowAgent | null = null;
+  let computerStatus = 503;
+  let computers: { id: string; name: string }[] = [];
+  let startStatus = 503;
+  const fetcher = async (url: string, init: RequestInit = {}) => {
+    assert.equal((init.headers as Record<string, string>).Authorization, "Bearer coding-owner");
+    if (init.method && init.method !== "GET") {
+      const body = JSON.parse(String(init.body)); writes.push({ url, body });
+      if (url.endsWith("/burrow/tasks")) { created = true; task = { ...task, coding: body.coding === true }; return Response.json(task); }
+      if (url.endsWith("/agent")) {
+        if (startStatus !== 200) return new Response("Coding engine unavailable", { status: startStatus });
+        task = { ...task, state: "working", version: task.version + 1 };
+        agent = { task, agent: { id: "coding-run", runtime_id: "runtime", phase: "attached", activity: "Working", coding: body.coding === true, computer_workspace: typeof body.computer_workspace === "string" ? body.computer_workspace : null, max_cost_cents: Number(body.max_cost_cents) }, connected: true, commands: [], events: [], history: [] };
+        return Response.json(agent.agent);
+      }
+      if (url.endsWith("/control")) {
+        assert.ok(agent);
+        agent.commands.push([String(body.request_id), String(body.action), String(body.message), "sent"]);
+        return Response.json(task);
+      }
+      throw new Error(`Unexpected write: ${url}`);
+    }
+    reads.push(url);
+    if (url.endsWith("/burrow")) return Response.json({ tasks: created ? [task] : [], can_run: true, can_research: canResearch, service: "OpenAI", agent_task_ids: agent ? [task.id] : [] });
+    if (url.endsWith("/computer-workspaces")) return computerStatus === 200 ? Response.json(computers) : new Response("Unavailable", { status: computerStatus });
+    if (url.endsWith("/agent")) return agent ? Response.json({ ...agent, task }) : new Response("No run", { status: 404 });
+    if (url.includes("/context")) return Response.json({ memories: [], routines: [], history: [] });
+    if (url.endsWith("/model-routing")) return Response.json({ catalog: [], roles: {}, preview: {}, connections: [] });
+    if (url.endsWith("/research")) return new Response("No research", { status: 404 });
+    if (url.endsWith("/travel")) return new Response("No trip", { status: 404 });
+    throw new Error(`Unexpected read: ${url}`);
+  };
+  for (const [key, value] of Object.entries({ window, document: window.document, navigator: window.navigator, HTMLElement: window.HTMLElement, Node: window.Node, sessionStorage: window.sessionStorage, fetch: fetcher, requestAnimationFrame: (fn: FrameRequestCallback) => setTimeout(() => fn(0), 0) })) {
+    originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  }
+  const bundle = await bundleEntry<{ act: (fn: () => void) => void; mountBurrow: (el: unknown, token: string) => { unmount: () => void }; mount: (el: unknown, props: unknown) => { unmount: () => void } }>(join(fixtures, "researchTask.tsx"));
+  const container = window.document.createElement("div"); window.document.body.append(container);
+  let view: { unmount: () => void } | undefined;
+  const settle = () => new Promise(resolve => setTimeout(resolve, 100));
+  const button = (label: string) => { const b = [...container.querySelectorAll("button")].find(b => b.textContent === label); assert.ok(b, label); return b; };
+  const click = (label: string) => bundle.mod.act(() => button(label).click());
+  const fill = (selector: string, value: string) => bundle.mod.act(() => {
+    const field = container.querySelector(selector)!; assert.ok(field, selector);
+    const prototype = field.tagName === "SELECT" ? window.HTMLSelectElement.prototype : window.HTMLTextAreaElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(field, value);
+    field.dispatchEvent(new window.Event(field.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
+  });
+  try {
+    view = bundle.mod.mountBurrow(container, "coding-owner"); await settle();
+    assert.equal(button("Code repository").disabled, true);
+    fill("#burrow-request", task.request); click("Code repository"); await settle();
+    assert.equal(writes.length, 1, "creating a coding task cannot authorize paid work");
+    assert.deepEqual(writes[0].body, { request: task.request, kind: "writing", coding: true });
+    assert.match(container.textContent!, /Work on this repository/);
+    assert.match(container.textContent!, /Saved repository computers are unavailable/);
+    assert.equal(button("Allow & start").disabled, true);
+    view.unmount(); canResearch = false;
+    view = bundle.mod.mountBurrow(container, "coding-owner"); await settle();
+    assert.match(container.textContent!, /Work on this repository/);
+    assert.match(container.textContent!, /Coding is unavailable: no connected worker/);
+    assert.doesNotMatch(container.textContent!, /Research public pages/);
+    assert.equal(button("Allow & start").disabled, true);
+    assert.equal(writes.length, 1, "reopening an unadmitted task restores persisted intent without any work or component memory");
+    assert.equal(agent, null);
+    view.unmount(); canResearch = true;
+    view = bundle.mod.mountBurrow(container, "coding-owner"); await settle();
+    assert.match(container.textContent!, /Work on this repository/);
+    computerStatus = 200; click("Check computers again"); await settle();
+    assert.match(container.textContent!, /No repository computers are configured/);
+    assert.equal(button("Allow & start").disabled, true);
+    computers = [{ id: "owned-repo", name: "Parser repository" }, { id: "second-repo", name: "Website repository" }];
+    click("Check computers again"); await settle();
+    assert.equal(container.querySelector("select")!.value, "", "never silently select a repository");
+    assert.equal(button("Allow & start").disabled, true);
+    assert.match(container.textContent!, /not proof that a coding engine is ready/);
+    assert.match(container.textContent!, /editing repository files and running test commands/);
+    assert.match(container.textContent!, /No publishing, pushing or deploying/);
+    assert.match(container.textContent!, /File contents and command output.*approved model service/);
+    assert.match(container.textContent!, /Follow-ups and summaries share this same limit/);
+    fill("select", "second-repo"); fill("select", "owned-repo");
+    assert.equal(writes.length, 1, "selecting a named scope cannot provision it or start work");
+    assert.equal(button("Allow & start").disabled, false);
+    click("Allow & start"); await settle();
+    assert.match(container.textContent!, /saved computer does not mean its coding engine is ready/);
+    assert.deepEqual(writes.at(-1)!.body, { version: 1, allow_agent: true, max_cost_cents: 25, coding: true, computer_workspace: "owned-repo" });
+    startStatus = 200; click("Allow & start"); await settle();
+    assert.match(container.textContent!, /Change what Kikka is coding/);
+    assert.equal(container.querySelector(".burrow-permission"), null);
+    assert.equal(reads.some(url => url.endsWith("/computer")), false);
+    const count = writes.length;
+    view.unmount();
+    task = { ...task, coding: false };
+    view = bundle.mod.mountBurrow(container, "coding-owner"); await settle();
+    assert.equal(writes.length, count, "reopening uses admitted agent.coding, not task intent, and cannot start work");
+    assert.match(container.textContent!, /Change what Kikka is coding/);
+    assert.doesNotMatch(container.textContent!, /Research only|read the public pages|minimum order quantities/);
+    assert.equal(container.querySelector("#research-instruction")!.getAttribute("placeholder"), "Focus on the failing test and explain the changes…");
+    fill("#research-instruction", "Add a regression test"); click("Send instruction"); await settle();
+    assert.equal(writes.at(-1)!.body.action, "steer");
+    assert.equal(writes.at(-1)!.body.allow_spending, false);
+    click("Stop"); await settle();
+    assert.equal(writes.at(-1)!.body.action, "stop");
+    assert.equal(writes.at(-1)!.body.allow_spending, false);
+    view.unmount();
+    task = { ...task, state: "draft_ready", result: "Changed parser.ts; regression test passed.", version: 3 };
+    agent = { ...agent!, task, agent: { ...agent!.agent, phase: "finished" }, commands: [] };
+    view = bundle.mod.mountBurrow(container, "coding-owner"); await settle();
+    assert.match(container.querySelector(".burrow-result")!.textContent!, /Your coding report.*Changed parser.ts/s);
+    fill("#research-instruction", "Cover empty input too"); click("Allow & revise"); await settle();
+    assert.equal(writes.at(-1)!.body.action, "continue");
+    assert.equal(writes.at(-1)!.body.allow_spending, true);
+    assert.equal(writes.at(-1)!.body.max_cost_cents, undefined, "follow-ups cannot reset the shared model budget");
+    assert.equal(writes.some(w => w.url.endsWith("/computer")), false, "coding never invokes PrivateBrowser");
+    view.unmount();
+    agent = null; task = { ...task, state: "waiting", result: "", coding: true };
+    const props = { token: "coding-owner", task, canRun: true, onUpdate() {}, onDirtyChange() {} };
+    view = bundle.mod.mount(container, { ...props, canRun: false }); await settle();
+    assert.match(container.textContent!, /Coding is unavailable: no connected worker/);
+    assert.equal(button("Allow & start").disabled, true);
+    view.unmount();
+    for (const excluded of [{ comparison: true }, { travel: true }, { routine_id: "routine" }, { routine_version: 1 }, { kind: "tracker" }, { format: "creation" }, { template: "bill" }]) {
+      view = bundle.mod.mount(container, { ...props, task: { ...task, ...excluded } }); await settle();
+      assert.doesNotMatch(container.textContent!, /Work on this repository/);
+      view.unmount();
+    }
+    view = bundle.mod.mount(container, { ...props, task: { ...task, coding: false } }); await settle();
+    assert.match(container.textContent!, /Research public pages/);
+    click("Allow & start"); await settle();
+    assert.equal(writes.at(-1)!.body.coding, undefined, "research keeps its existing API request");
+    assert.equal(writes.at(-1)!.body.computer_workspace, undefined);
+  } finally {
+    view?.unmount(); await bundle.cleanup(); await window.happyDOM.close();
+    for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
+  }
+});
 
 test("research restores account-scoped reading places without executing work and reviews the exact revision", async () => {
   const window = new Window({ url: "http://localhost/burrow" });
   const originals = new Map<string, PropertyDescriptor | undefined>();
   const writes: { url: string; body: Record<string, unknown> }[] = [];
-  let task: BurrowTask = { id: "supplier-task", kind: "writing", format: "document", template: null, request: "Compare cotton suppliers for Canada", project: "Shirts", comparison: true, state: "draft_ready", result: "Comparison\nQuote CAD 1,050\nCanada delivery", error: null, version: 2, created_at: 10, updated_at: 20 };
+  let task: BurrowTask = { id: "supplier-task", kind: "writing", format: "document", template: null, coding: false, request: "Compare cotton suppliers for Canada", project: "Shirts", comparison: true, state: "draft_ready", result: "Comparison\nQuote CAD 1,050\nCanada delivery", error: null, version: 2, created_at: 10, updated_at: 20 };
   const first = task.result;
-  let agent: BurrowAgent = { task, agent: { id: "run-one", runtime_id: "runtime", phase: "finished", activity: "Saved comparison", max_cost_cents: 17 }, connected: true, commands: [], events: [{ seq: 1, type: "final_message", data: { content: first } }], history: [] };
+  let agent: BurrowAgent = { task, agent: { id: "run-one", runtime_id: "runtime", phase: "finished", activity: "Saved comparison", max_cost_cents: 17, coding: false }, connected: true, commands: [], events: [{ seq: 1, type: "final_message", data: { content: first } }], history: [] };
   const memory = { id: "cotton-memory", project: "Shirts", text: "100% cotton; delivery to Canada", source_task: task.id, version: 1, created_at: 10, updated_at: 20 };
   let stopAttempts = 0;
   let saveStatus = 409;
@@ -281,8 +509,8 @@ test("research restores account-scoped reading places without executing work and
 test("research workspace preserves candidate identity, decision basis and drafts without silently authorizing research", async () => {
   const window = new Window({ url: "http://localhost/burrow" });
   const originals = new Map<string, PropertyDescriptor | undefined>();
-  const task: BurrowTask = { id: "laptops", kind: "writing", format: "document", template: null, request: "Compare laptops", comparison: true, state: "draft_ready", result: "Original comparison", error: null, version: 4, created_at: 10, updated_at: 20 };
-  const agent: BurrowAgent = { task, agent: { id: "same-goal", runtime_id: "runtime", phase: "finished", activity: "Comparison saved", max_cost_cents: 23 }, connected: true, commands: [], events: [], history: [] };
+  const task: BurrowTask = { id: "laptops", kind: "writing", format: "document", template: null, coding: false, request: "Compare laptops", comparison: true, state: "draft_ready", result: "Original comparison", error: null, version: 4, created_at: 10, updated_at: 20 };
+  const agent: BurrowAgent = { task, agent: { id: "same-goal", runtime_id: "runtime", phase: "finished", activity: "Comparison saved", max_cost_cents: 23, coding: false }, connected: true, commands: [], events: [], history: [] };
   const brief = { revision: 1, text: "Portable laptop for school", purchase_budget: "CAD 1200", created_at: 10 };
   let saved: ResearchWorkspace = { version: 1, brief, briefs: [brief], comparisons: [{ id: "comparison-1", requirements_revision: 1, created_at: 20, comparison: { title: "School laptops", requirements: [brief.text], options: [
     { id: "zinc", name: "Zinc 13", attributes: [{ label: "Weight", value: "1.2 kg", evidence_id: "capture-zinc", quote: "Weight: 1.2 kg", source_url: "https://example.com/zinc", captured_at: "2026-10-23T12:00:00Z" }], unknowns: ["Battery runtime"], sources: [], price: null },

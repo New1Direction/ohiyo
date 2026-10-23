@@ -1,19 +1,16 @@
 {
   "page": {
-    "title": "A little party. A very good time.",
-    "description": "Maya's birthday · Saturday 18 July · 4–8 pm · At home. A fictional invitation to try.",
+    "title": "What happens after Enter?",
+    "description": "Follow a web request from a name in the address bar to pixels on your screen. Change the DNS cache and spot what changes — and what doesn't.",
     "theme": "coral",
     "spec": {
       "root":"root",
       "elements": {
-        "root":{"type":"Stack","props":{},"children":["welcome","columns","reminder"]},
-        "welcome":{"type":"Callout","props":{"title":"Come as you are","text":"Good people, a long table, and absolutely no speeches. We're making a little room for an afternoon together."},"children":[]},
-        "columns":{"type":"Columns","props":{},"children":["schedule","bring"]},
-        "schedule":{"type":"Table","props":{"columns":["When","The plan"],"rows":[{"cells":["4 pm","Drinks in the garden"]},{"cells":["5 pm","Pizza and whatever everyone's brought"]},{"cells":["7 pm","Cake, obviously"]}]},"children":[]},
-        "bring":{"type":"Checklist","props":{"title":"Bring one little thing","items":[{"text":"Something to drink","done":false},{"text":"A favourite song for the playlist","done":false},{"text":"A layer for when the sun goes down","done":false}]},"children":[]},
-        "reminder":{"type":"Text","props":{"text":"This is a fictional sample, not a real event. No invitations have been sent. Nothing is published outside Burrow."},"children":[]}
+        "root":{"type":"Stack","props":{},"children":["journey","check"]},
+        "journey":{"type":"RequestJourney","props":{},"children":[]},
+        "check":{"type":"Reveal","props":{"label":"Check yourself: does cached DNS mean no server request?","text":"No. A DNS cache stores the address for a name, not the web page. In this model, a fresh DNS answer avoids asking the resolver again, but the browser still opens a connection and requests the page. A page cache or an existing connection could avoid other work; those are separate mechanisms."},"children":[]}
       }
     }
   },
-  "reply":"This ready-made example combines an invitation, schedule, and checklist. Nothing has been sent or published. Personal versions need Kikka to be connected."
+  "reply":"A ready-made explainer, not a live trace. Select the DNS step, switch between an empty and fresh cache, then follow the request to the server. No network calls or model connection are needed to explore it."
 }

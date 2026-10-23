@@ -1,10 +1,55 @@
-# Kikka public-research worker
+# Kikka task worker
 
 One actual Pi Durable agent loop, behind Burrow's existing runtime boundary.
 No second agent loop runs inside its optional computer. The legacy ImOrb task
 bridge remains separate; Pi can now attach an ImOrb resource through the
 [versioned ComputerProvider contract](COMPUTERS.md). Browser/desktop engines
 remain unavailable until installed and explicitly authorized.
+
+## Repository coding pilot
+
+Burrow's **Code repository** action saves `coding: true` intent on an ordinary
+document task. It does not start a model or grant shell access. An explicit agent
+approval must additionally bind `coding: true`, an owned `computer_workspace`,
+the selected model route and the existing cumulative budget. Coding defaults to
+the general role. It cannot be combined with comparison, travel or routine tasks.
+Saved coding intent survives reload and cannot silently downgrade to research.
+
+The same Pi loop exposes only computer open/reconnect/action tools for coding.
+It can inspect and edit files, execute commands, run tests and obtain a Git diff.
+Research tasks cannot execute shell commands, even if their computer has a shell
+grant. ComputerProvider still authorizes every action and journals it before
+dispatch. Nonzero command exits are completed receipts **with failed exit codes**,
+not successes or transport failures. Lost acknowledgements remain uncertain and
+fence later effects; changing the action ID does not authorize a retry.
+
+Enable `computer.coding.enabled: true` in the private worker configuration and
+add `"shell"` to the chosen workspace's `features`, plus `"shell": true` to its
+grant. The machine must have Bun, Git and the repository's toolchain installed by
+the operator. Shell and file tools share `/orb/state/burrow-computer/files`; put
+the disposable repository checkout there. A saved workspace name is **not** proof
+of provisioning, repository contents or a ready engine. The new engine runs a
+fixed helper via ImOrb resource exec, never commands on the application host and
+never a second coding agent inside the computer.
+
+This is a trusted-operator pilot, not a hardened multi-tenant shell service.
+Shell authority covers the entire disposable container; the working directory
+is not a filesystem sandbox. Provision no personal files, host sockets or secrets
+inside it. Child commands get an explicit minimal environment, not model/provider
+credentials. Existing upstream isolation and egress policy must enforce network
+boundaries; the prompt's no-push/no-deploy instruction is not a network firewall.
+Commands have a 45-second deadline, no interactive stdin, and a 64 KiB combined
+stdout/stderr cap. Receipts retain argv, exit code, timeout and truncation flags.
+Process-group termination is attempted on timeout/completion; Stop fences new
+work but cannot prove a disconnected remote process stopped or undo edits.
+Background services and durable process handles are not implemented.
+
+Validation uses the actual Pi journal and fixed shell/file helpers with a
+scripted model and disposable resource transport: a real Git fixture is read,
+its regression check fails, the code is fixed, the same checks pass, and the diff
+is returned. Recovery makes no new model calls. This proves plumbing, not model
+coding quality, actual container isolation or parity with another coding agent.
+No live model, production computer, push or deployment is implied.
 
 ## Admitted travel tasks
 

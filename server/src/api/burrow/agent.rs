@@ -220,6 +220,7 @@ pub struct Run {
     pub usage: Option<sqlx::types::Json<Value>>,
     pub computer_workspace: Option<String>,
     pub requirements: Option<sqlx::types::Json<Value>>,
+    pub coding: bool,
 }
 
 #[derive(Deserialize)]
@@ -231,6 +232,8 @@ pub struct Start {
     role: Option<String>,
     routing: Option<Value>,
     computer_workspace: Option<String>,
+    #[serde(default)]
+    coding: bool,
 }
 
 pub(super) fn connected(s: &AppState, user: &str) -> Result<Kikka, Error> {
@@ -277,8 +280,35 @@ pub async fn start(
     // Serialize admission with account deletion, as hosted-machine mutations do.
     let _lifecycle = s.instance_lifecycle.lock().await;
     let task = owned(&s, &user, &id).await?;
+    if task.coding && !body.coding {
+        return Err((
+            StatusCode::CONFLICT,
+            "This is a saved coding request. Explicitly approve coding and a computer workspace before starting.".into(),
+        ));
+    }
     let kikka = connected(&s, &user)?;
     let travel_workspace = super::travel::workflow::workspace(&s, &id).await?;
+    if body.coding {
+        // Coding is explicit computer authority, never a research/travel extension.
+        // Research requirements are snapshotted only for comparison tasks below.
+        if task.comparison
+            || task.travel
+            || travel_workspace.is_some()
+            || task.routine_id.is_some()
+            || task.routine_version.is_some()
+        {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Coding cannot be combined with comparison, travel, research requirements or routines. Start a separate document request.".into(),
+            ));
+        }
+        if kikka.pi.is_none() || body.computer_workspace.is_none() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Coding requires a Pi connection and an owned computer workspace.".into(),
+            ));
+        }
+    }
     if task.travel && (!s.travel_fixtures || kikka.pi.is_none() || travel_workspace.is_none()) {
         return Err((
             StatusCode::CONFLICT,
@@ -333,7 +363,10 @@ pub async fn start(
         }
     }
     let target = kikka.target();
-    let role = body.role.as_deref().unwrap_or("research");
+    let role = body
+        .role
+        .as_deref()
+        .unwrap_or(if body.coding { "general" } else { "research" });
     if !super::routing::ROLES.contains(&role) {
         return Err((StatusCode::BAD_REQUEST, "Unknown research role.".into()));
     }
@@ -350,6 +383,7 @@ pub async fn start(
             || previous.target != target
             || previous.role != role
             || previous.computer_workspace != computer_workspace
+            || previous.coding != body.coding
             || !super::routing::same_snapshot(
                 previous.routing.as_ref().map(|v| &v.0),
                 body.routing.as_ref(),
@@ -447,9 +481,9 @@ pub async fn start(
             }
         })
         .unwrap_or_else(|| task.request.clone());
-    sqlx::query("INSERT INTO burrow_agent_runs(id,task_id,request_version,target,root_goal,goal,max_cost_cents,phase,activity,role,routing,computer_workspace,requirements) VALUES(?,?,?,?,?,?,?,'queued','Getting ready…',?,?,?,?)")
+    sqlx::query("INSERT INTO burrow_agent_runs(id,task_id,request_version,target,root_goal,goal,max_cost_cents,phase,activity,role,routing,computer_workspace,requirements,coding) VALUES(?,?,?,?,?,?,?,'queued','Getting ready…',?,?,?,?,?)")
         .bind(&run).bind(&id).bind(body.version).bind(target).bind(format!("burrow-{run}"))
-        .bind(goal).bind(body.max_cost_cents).bind(role).bind(routing).bind(&computer_workspace).bind(requirements.map(|v| v.to_string())).execute(&mut *tx).await.map_err(internal)?;
+        .bind(goal).bind(body.max_cost_cents).bind(role).bind(routing).bind(&computer_workspace).bind(requirements.map(|v| v.to_string())).bind(body.coding).execute(&mut *tx).await.map_err(internal)?;
     super::travel::workflow::admit(&mut tx, &id, &format!("burrow-{run}"))
         .await
         .map_err(internal)?;
@@ -784,7 +818,7 @@ pub async fn tick(s: &AppState) -> Result<(), sqlx::Error> {
                 let task = owned(s, &owner, &run.task_id)
                     .await
                     .map_err(|e| sqlx::Error::Protocol(e.1))?;
-                let mut admission = json!({"owner":owner,"task":run.task_id,"root_goal":run.root_goal,"goal":run.goal,"max_cost_cents":run.max_cost_cents});
+                let mut admission = json!({"owner":owner,"task":run.task_id,"root_goal":run.root_goal,"goal":run.goal,"max_cost_cents":run.max_cost_cents,"coding":run.coding});
                 if let Some(requirements) = &run.requirements {
                     admission["requirements"] = requirements.0.clone();
                 }
@@ -802,8 +836,10 @@ pub async fn tick(s: &AppState) -> Result<(), sqlx::Error> {
                         .bind(id).bind(version).bind(&owner).bind(&task.project).fetch_one(&s.db).await?;
                     admission["routine"] = json!({"id":id,"version":version,"definition":serde_json::from_str::<Value>(&definition).unwrap_or(Value::Null)});
                 }
-                if let Some(routes) = &run.routing {
+                if run.coding || run.routing.is_some() {
                     admission["role"] = json!(run.role);
+                }
+                if let Some(routes) = &run.routing {
                     admission["routing"] = routes.0.clone();
                 }
                 match k

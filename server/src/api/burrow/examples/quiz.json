@@ -1,24 +1,24 @@
 {
   "page": {
-    "title": "A little science. A better night's sleep.",
-    "description": "Turn a page of notes into something that actually sticks. A sample study space with a playable quiz and a little plan.",
+    "title": "A tiny physics lab",
+    "description": "A tiny physics bench. Predict, change one thing, and see what happens. Then try three questions without the controls.",
     "theme": "violet",
     "spec": {
       "root": "root",
       "elements": {
-        "root": {"type":"Stack","props":{},"children":["intro","quiz","lower"]},
-        "intro": {"type":"Callout","props":{"title":"Your five-minute study break","text":"Try an answer. Find out why. Come back to the bits you missed. This is general information, not medical advice."},"children":[]},
+        "root": {"type":"Stack","props":{},"children":["lab","intro","quiz","lower"]},
+        "lab": {"type":"SpringLab","props":{},"children":[]},
+        "intro": {"type":"Text","props":{"text":"Your turn: leave the controls alone for these three questions. Each uses the same ideal spring model, at rest, with gravity 9.8 m/s²."},"children":[]},
         "quiz": {"type":"Quiz","props":{"questions":[
-          {"question":"Which everyday habit helps your body clock stay consistent?","options":["A different bedtime every night","Keeping a regular wake-up time","Only sleeping when exhausted"],"answer":1,"explanation":"A regular wake-up time helps anchor your body's daily rhythm."},
-          {"question":"What is a circadian rhythm?","options":["Your body's roughly 24-hour clock","The number of dreams you have","A measure of how loudly you snore"],"answer":0,"explanation":"Circadian rhythms coordinate daily changes, including sleepiness and wakefulness."},
-          {"question":"Why can late coffee make falling asleep harder?","options":["It makes your room warmer","It removes your need for sleep","Caffeine blocks signals that help you feel sleepy"],"answer":2,"explanation":"Caffeine blocks adenosine receptors. Its effects can last for hours; sensitivity varies."},
-          {"question":"Which bedroom setup generally supports sleep?","options":["Bright, noisy, and warm","Dark, quiet, and comfortably cool","Notifications turned up"],"answer":1,"explanation":"Reducing light and noise and keeping a comfortable temperature can make settling down easier."}
+          {"question":"Double the mass on the same spring. What happens to its extension at rest?","options":["The extension halves","The extension stays the same","The extension doubles"],"answer":2,"explanation":"Doubling mass doubles weight. With stiffness unchanged, x = mg/k doubles too. Try 0.5 kg, then 1 kg; compare the extension, not the spring's total length."},
+          {"question":"Keep the mass at 1 kg, but double the stiffness. What happens to the spring's upward force at rest?","options":["It stays at 9.8 N","It doubles to 19.6 N","It halves to 4.9 N"],"answer":0,"explanation":"At rest, the upward force must still balance the same 9.8 N weight. A stiffer spring produces that force with less extension, not a larger force at equilibrium. Keep mass fixed and compare two stiffnesses."},
+          {"question":"A 0.5 kg mass hangs from a 200 N/m spring. How much does it extend?","options":["4.9 cm","2.45 cm","9.8 cm"],"answer":1,"explanation":"Weight = 0.5 × 9.8 = 4.9 N. Extension = 4.9 ÷ 200 = 0.0245 m = 2.45 cm. The 4.9 is a force in newtons, not a length in centimetres. Check the units before using the controls."}
         ]},"children":[]},
         "lower": {"type":"Columns","props":{},"children":["checklist","recap"]},
-        "checklist": {"type":"Checklist","props":{"title":"Make it stick","items":[{"text":"Try the quiz without looking at notes","done":false},{"text":"Read the explanations I missed","done":false},{"text":"Explain one idea in my own words","done":false}]},"children":[]},
-        "recap": {"type":"Reveal","props":{"label":"Give me the short version","text":"Your body follows a roughly 24-hour clock. Consistent routines, less late caffeine, and a comfortable bedroom can support sleep."},"children":[]}
+        "checklist": {"type":"Checklist","props":{"title":"One more experiment","items":[{"text":"Predict what happens if mass and stiffness both double","done":false},{"text":"Test 0.5 kg / 100 N/m, then 1 kg / 200 N/m","done":false},{"text":"Explain why the extension is unchanged","done":false}]},"children":[]},
+        "recap": {"type":"Reveal","props":{"label":"Show the reasoning","text":"At equilibrium, spring force kx balances weight mg, so x = mg/k. Doubling both mass and stiffness leaves their ratio unchanged. Extension is measured from the unloaded length. This ideal model omits the spring's own weight, oscillation and elastic limits."},"children":[]}
       }
     }
   },
-  "reply": "This is a ready-made example, not a newly generated result. It combines a quiz, study checklist, and expandable summary. Try an answer to see it work."
+  "reply": "A ready-made spring experiment, not a generated simulation. Change the mass or stiffness, compare the extension, then try the three-question check. The controls and quiz work without a model; preview progress is temporary."
 }

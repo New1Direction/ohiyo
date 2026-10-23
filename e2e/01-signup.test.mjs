@@ -110,6 +110,19 @@ try {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   log("onboarding motion, pause, accent selection and reduced motion ✓");
 
+  // A hidden/detached canvas has no layout area during screen transitions.
+  // ResizeObserver must not allocate a zero-size buffer, and painting must resume.
+  const errorsBeforeHide = warnings;
+  await page.locator("canvas.ohiyo-onboarding-dither").evaluate(canvas => { canvas.style.display = "none"; });
+  await settle(page, 100);
+  await page.locator("canvas.ohiyo-onboarding-dither").evaluate(canvas => { canvas.style.removeProperty("display"); });
+  await settle(page, 100);
+  if (warnings !== errorsBeforeHide) throw new Error("onboarding background threw while hidden");
+  pixels = await artwork();
+  await settle(page, 250);
+  if (pixels === await artwork()) throw new Error("onboarding background did not resume after becoming visible");
+  log("onboarding survives zero-size layout and resumes painting ✓");
+
   // ── Create first space via onboarding → land in live channel ────
   await page.fill("#kc-space-name", "The Roost");
   await page.click('button:has-text("Let\'s go")');
@@ -288,7 +301,8 @@ try {
   await page.waitForSelector('input[autocomplete="username"]', { timeout: 8000 });
   await shot(page, "10-auth-768");
 
-  console.log(`\n✅ FULL FLOW PASSED${warnings ? ` (with ${warnings} warning(s))` : ""}`);
+  if (warnings) throw new Error(`${warnings} uncaught browser error(s) during signup and chat`);
+  console.log("\n✅ FULL FLOW PASSED");
 } catch (err) {
   console.error("\n❌ FLOW FAILED:", err.message);
   try { await page.screenshot({ path: `${SHOTS}/FAIL.png` }); } catch {}

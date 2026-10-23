@@ -87,6 +87,7 @@ pub struct Task {
     pub routine_version: Option<i64>,
     pub comparison: bool,
     pub travel: bool,
+    pub coding: bool,
     pub manual_notes: String,
     pub manual_edited: bool,
     pub proposed_result: String,
@@ -143,6 +144,11 @@ pub struct NewTask {
     routine_id: Option<String>,
     #[serde(default)]
     comparison: bool,
+    #[serde(default)]
+    coding: bool,
+    // Travel authority is saved separately; this flag only rejects mixed coding intent.
+    #[serde(default)]
+    travel: bool,
 }
 
 fn document_format() -> String {
@@ -163,6 +169,19 @@ pub async fn create(
         return Err((
             StatusCode::BAD_REQUEST,
             "Describe the task in 1–8,000 characters.".into(),
+        ));
+    }
+    if body.coding
+        && (body.kind != "writing"
+            || body.format != "document"
+            || body.template.is_some()
+            || body.comparison
+            || body.travel
+            || body.routine_id.is_some())
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Save coding as a separate document request without templates, comparison, travel or routines.".into(),
         ));
     }
     if !matches!(body.kind.as_str(), "writing" | "tracker") {
@@ -224,8 +243,8 @@ pub async fn create(
         None
     };
     // One statement makes the storage cap atomic under concurrent submissions.
-    let inserted = sqlx::query("INSERT INTO burrow_tasks (id,user_id,request,kind,template,format,state,result,created_at,updated_at,project,routine_id,routine_version,comparison) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT count(*) FROM burrow_tasks WHERE user_id=?) < 200")
-        .bind(&id).bind(&user).bind(request).bind(&body.kind).bind(&body.template).bind(&body.format).bind(state).bind(result).bind(now).bind(now).bind(project).bind(&body.routine_id).bind(routine_version).bind(body.comparison).bind(&user)
+    let inserted = sqlx::query("INSERT INTO burrow_tasks (id,user_id,request,kind,template,format,state,result,created_at,updated_at,project,routine_id,routine_version,comparison,coding) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT count(*) FROM burrow_tasks WHERE user_id=?) < 200")
+        .bind(&id).bind(&user).bind(request).bind(&body.kind).bind(&body.template).bind(&body.format).bind(state).bind(result).bind(now).bind(now).bind(project).bind(&body.routine_id).bind(routine_version).bind(body.comparison).bind(body.coding).bind(&user)
         .execute(&s.db).await.map_err(internal)?.rows_affected();
     if inserted == 0 {
         return Err((

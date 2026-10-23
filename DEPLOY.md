@@ -378,17 +378,17 @@ paths private on the server/deployment only.
 
 ---
 
-## 5. Code signing & auto-update (the "later" path)
+## 5. Code signing & auto-update (required for release downloads)
 
-Installers can build with **ad-hoc macOS signing** when Apple Developer ID
-secrets are missing. That keeps downloaded `.dmg` files structurally valid and
-avoids the worst "app is damaged" failure, but normal users may still see Apple's
-"could not verify Ohiyo is free of malware" Gatekeeper warning.
+Release jobs fail before building if the update signing key is missing. Mac jobs
+also require all six Apple signing/notarization secrets; there is no ad-hoc release
+fallback. Local `bun run tauri build` still permits ad-hoc development builds, but
+those are not family-ready downloads and must not be represented as Apple verified.
 
-For the beta, `v*` tag releases can publish ad-hoc-signed Mac DMGs as long as the
-site and release notes clearly say they are **not Apple-notarized yet** and may
-require Finder → right-click → Open. For a smooth customer download, use official
-signing:
+The published v0.3.1 Mac beta predates this gate. Its ARM download was checked on a
+Mac on 2026-10-23: signature integrity passed, but Gatekeeper rejected it and no
+notarization ticket was present. This workflow change does not repair that existing
+download. A new signed, notarized version must be built and tested before publication.
 
 ### macOS notarization
 1. Join the Apple Developer Program ($99/yr), create a **Developer ID
@@ -400,8 +400,8 @@ signing:
    - `APPLE_ID` — Apple ID email
    - `APPLE_PASSWORD` — app-specific password
    - `APPLE_TEAM_ID` — Apple Developer Team ID
-3. Push a `v*` tag or run the Release workflow manually. CI switches to Developer
-   ID signing + notarization automatically when all six secrets are present.
+3. Once release publication is authorized, push a `v*` tag or run the Release
+   workflow manually. Missing credentials stop the corresponding release job.
 4. Before claiming the Mac download is Apple verified, download the `.dmg` on a
    clean Mac and confirm it opens without the "Apple could not verify" warning.
 

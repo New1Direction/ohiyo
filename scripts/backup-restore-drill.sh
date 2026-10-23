@@ -12,6 +12,7 @@ RESTORE_DB="$WORKDIR/ohiyo-restore-drill.db"
 DB_URL="${DATABASE_URL:-sqlite:$ROOT/server/kikkacord.db}"
 DB_FILE="${DB_URL#sqlite:}"
 DB_FILE="${DB_FILE#//}"
+DB_FILE="${DB_FILE%%\?*}"
 
 cleanup() {
   if [[ "${KEEP_RESTORE_DRILL:-0}" != "1" ]]; then rm -rf "$WORKDIR"; fi
@@ -41,7 +42,18 @@ if [[ -n "${LITESTREAM_REPLICA_URL:-}" ]]; then
   fi
 elif [[ -f "$DB_FILE" ]]; then
   echo "copying local DB: $DB_FILE"
-  cp "$DB_FILE" "$RESTORE_DB"
+  # A file copy omits committed WAL transactions. Take a consistent SQLite snapshot
+  # through a read-only source connection instead, without checkpointing the live DB.
+  python3 - "$DB_FILE" "$RESTORE_DB" <<'PY'
+import pathlib, sqlite3, sys
+source = sqlite3.connect(pathlib.Path(sys.argv[1]).resolve().as_uri() + '?mode=ro', uri=True)
+destination = sqlite3.connect(sys.argv[2])
+try:
+    source.backup(destination)
+finally:
+    destination.close()
+    source.close()
+PY
 else
   echo "no LITESTREAM_REPLICA_URL and DB file not found at $DB_FILE" >&2
   exit 1

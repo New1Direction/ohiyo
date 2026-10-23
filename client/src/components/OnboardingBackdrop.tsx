@@ -114,6 +114,8 @@ export function OnboardingBackdrop({ accent, pulse, paused }: {
     function resize() {
       if (!canvas || !ctx) return;
       const box = canvas.getBoundingClientRect();
+      // Hidden or detached canvases have no drawable area during screen changes.
+      if (box.width === 0 || box.height === 0) return;
       width = box.width; height = box.height;
       step = Math.max(4, Math.ceil(width / 180), Math.ceil(height / 120));
       canvas.width = Math.ceil(width / step) * 4; canvas.height = Math.ceil(height / step) * 4;

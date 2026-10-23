@@ -14,7 +14,7 @@ import Backdrop from "./Backdrop";
 import { submitPromptOnEnter } from "./promptKeys";
 import { taskActionError } from "./taskLanguage";
 import type { ModelRouting } from "../api";
-import kikka from "../../../brand/kikka-chinchilla-clean.png";
+import KikkaMascot, { KikkaMotion } from "./KikkaMascot";
 import "../index.css";
 import "./burrow.css";
 
@@ -59,7 +59,7 @@ function SignIn({ onAuth }: { onAuth: (token: string) => void }) {
   }
   return <main className="burrow-door">
     <a className="burrow-wordmark" href="/">burrow<span>by Ohiyo</span></a>
-    <div className="burrow-intro"><img src={kikka} alt="Kikka, your chinchilla Helper" /><p className="burrow-eyebrow">A LITTLE HELP. A LOT OF POSSIBILITY.</p>
+    <div className="burrow-intro"><KikkaMascot alt="Kikka, your chinchilla Helper" /><p className="burrow-eyebrow">A LITTLE HELP. A LOT OF POSSIBILITY.</p>
       <h1>Good things start<br />with a little ask.</h1><p>Meet Kikka. A place for your plans, your drafts,<br />and the things you want to move forward.</p></div>
     <form className="burrow-login" onSubmit={submit}>
       <span className="burrow-tag">EARLY ACCESS</span><h2>{challenge ? "One more step" : register ? "Make yourself at home." : "Welcome to the Burrow."}</h2>
@@ -130,6 +130,14 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: () => void 
     try { const task = await api.createBurrowTask(token, request, "writing", undefined, { project: project.trim() || undefined, comparison: true }); update(task); setSelected(task.id); setRequest(""); }
     catch (e) { setError(message(e)); } finally { setBusy(false); }
   }
+  async function codeRepository() {
+    if (!request.trim() || busy || !data) return;
+    setBusy(true); setError("");
+    try {
+      const task = await api.createBurrowTask(token, request, "writing", undefined, { project: project.trim() || undefined, coding: true });
+      update(task); setSelected(task.id); setNavOpen(false); setRequest("");
+    } catch (e) { setError(message(e)); } finally { setBusy(false); }
+  }
   async function createRequest(text: string, example?: "quiz" | "story" | "page") {
     if (!text.trim() || busy || !data) return;
     setBusy(true); setError("");
@@ -151,12 +159,12 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: () => void 
     <aside className={`burrow-sidebar ${navOpen ? "mobile-open" : ""}`}>
       <a className="burrow-wordmark" href="/burrow">burrow<span>EARLY ACCESS</span></a>
       <button className="burrow-secondary burrow-mobile-nav" aria-expanded={navOpen} aria-controls="burrow-saved" onClick={() => setNavOpen(!navOpen)}>Saved</button>
-      <div className="burrow-kikka"><img src={kikka} alt="" /><div><strong>Kikka</strong><span><i />{active ? `Working on ${active} ${active === 1 ? "task" : "tasks"}` : "Your Helper"}</span></div></div>
+      <div className="burrow-kikka"><KikkaMascot state="neutral" /><div><strong>Kikka</strong><span><i />{active ? `Working on ${active} ${active === 1 ? "task" : "tasks"}` : "Your Helper"}</span></div></div>
       <button className="burrow-primary" onClick={newTask}><span aria-hidden>＋</span> New creation</button>
       <label className="burrow-search"><span className="sr-only">Find something saved</span><input placeholder="Find something saved…" value={search} onChange={e => setSearch(e.target.value)} /></label>
       <nav id="burrow-saved" aria-label="Your tasks" className="burrow-task-list">
         {!data && <p className="burrow-small">Loading your workspace…</p>}
-        {data && data.tasks.length === 0 && <div className="burrow-empty-list"><span aria-hidden>✳</span><p>A little room for<br />your next big thing.</p><small>Your tasks will live here.</small></div>}
+        {data && data.tasks.length === 0 && <div className="burrow-empty-list"><p>A little room for<br />your next big thing.</p><small>Your tasks will live here.</small></div>}
         {data && data.tasks.length > 0 && filtered.length === 0 && <p className="burrow-small">No matching tasks.</p>}
         {groups.map(state => {
           const tasks = filtered.filter(t => t.state === state);
@@ -167,27 +175,28 @@ function Workspace({ token, onSignOut }: { token: string; onSignOut: () => void 
       </nav>
       <footer><span>Private chats stay in Ohiyo.</span><div><a href="/">Open Ohiyo ↗</a><button className="burrow-link" onClick={() => { if (!dirty || window.confirm("Discard your unsaved draft edits and sign out?")) onSignOut(); }}>Sign out</button></div></footer>
     </aside>
-    <main className={`burrow-main${ambiencePaused ? " ambience-paused" : ""}`}>
+    <KikkaMotion.Provider value={!ambiencePaused}><main className={`burrow-main${ambiencePaused ? " ambience-paused" : ""}`}>
       <header className="burrow-topbar"><span>Kikka’s corner <span aria-hidden>/</span> {task?.format === "creation" ? "Your creation" : task?.template === "bill" ? "Your shared bill" : task?.template === "packing" ? "Your next trip" : task?.kind === "tracker" ? "Your launch" : task ? "Your request" : "A fresh start"}</span><div className="burrow-routing-actions"><Backdrop paused={ambiencePaused} resting={!!task || travelGoal !== null} /><button className="burrow-link burrow-motion-control" aria-pressed={ambiencePaused} aria-label="Pause background motion" onClick={() => setAmbiencePaused(!ambiencePaused)}><span aria-hidden="true">{ambiencePaused ? "Ⅱ" : "~"}</span> Motion</button><button className="burrow-link" aria-expanded={settingsOpen} aria-controls="model-settings" onClick={() => { setSettingsOpen(!settingsOpen); if (!settingsOpen) void refreshRouting().catch(() => setRouting(null)); }}>Connections {settingsOpen ? "−" : "+"}</button><span className="burrow-tag">EARLY ACCESS</span></div></header>
       {settingsOpen && <ModelSettings key={routing ? "loaded" : "unavailable"} token={token} data={routing} onRefresh={refreshRouting} onDone={() => { setSettingsOpen(false); selectTask(null); }} />}
       {refreshError && <p role="alert" className="burrow-error burrow-refresh-error">{refreshError}</p>}
       {error && <p role="alert" className="burrow-error burrow-refresh-error">{error}</p>}
-      {travelGoal !== null ? <Travel token={token} goal={travelGoal} onDirtyChange={setDirty} onCancel={() => { if (window.confirm("Discard this trip draft?")) setTravelGoal(null); }} onCreated={next => { update(next); setSelected(next.id); setTravelGoal(null); setRequest(""); }} /> : task?.format === "creation" ? <Creation key={task.id} task={task} token={token} canRun={data?.can_run ?? false} service={data?.service ?? null} onUpdate={update} onDirtyChange={setDirty} /> : task?.template ? <Everyday key={task.id} task={task} token={token} onUpdate={update} onDirtyChange={setDirty} /> : task?.kind === "tracker" ? <Tracker key={task.id} task={task} token={token} onUpdate={next => { update(next); if (next.id !== task.id) setSelected(next.id); }} onDirtyChange={setDirty} /> : task && (task.comparison || task.travel || data?.agent_task_ids?.includes(task.id) || (data?.can_research && !task.result)) ? <ResearchTask key={task.id} task={task} token={token} canRun={data?.can_research ?? false} onUpdate={update} onDirtyChange={setDirty} /> : task ? <TaskView key={task.id} task={task} token={token} canRun={data?.can_run ?? false} service={data?.service ?? null} onUpdate={update} onDirtyChange={setDirty} /> : <div className="burrow-welcome">
-        <div className="burrow-hello"><div className="burrow-mascot"><img src={kikka} alt="Kikka, ready to help" /><span aria-hidden>✳</span></div>
+      {travelGoal !== null ? <Travel token={token} goal={travelGoal} onDirtyChange={setDirty} onCancel={() => { if (window.confirm("Discard this trip draft?")) setTravelGoal(null); }} onCreated={next => { update(next); setSelected(next.id); setTravelGoal(null); setRequest(""); }} /> : task?.format === "creation" ? <Creation key={task.id} task={task} token={token} canRun={data?.can_run ?? false} service={data?.service ?? null} onUpdate={update} onDirtyChange={setDirty} /> : task?.template ? <Everyday key={task.id} task={task} token={token} onUpdate={update} onDirtyChange={setDirty} /> : task?.kind === "tracker" ? <Tracker key={task.id} task={task} token={token} onUpdate={next => { update(next); if (next.id !== task.id) setSelected(next.id); }} onDirtyChange={setDirty} /> : task && (task.coding || task.comparison || task.travel || data?.agent_task_ids?.includes(task.id) || (data?.can_research && !task.result)) ? <ResearchTask key={task.id} task={task} token={token} canRun={data?.can_research ?? false} onUpdate={update} onDirtyChange={setDirty} /> : task ? <TaskView key={task.id} task={task} token={token} canRun={data?.can_run ?? false} service={data?.service ?? null} onUpdate={update} onDirtyChange={setDirty} /> : <div className="burrow-welcome">
+        <div className="burrow-hello"><div className="burrow-mascot"><KikkaMascot state={busy ? "working" : error ? "error" : request.trim() ? "listening" : "idle"} alt="Kikka, ready to help" /></div>
           <p className="burrow-eyebrow">HEY, I’M KIKKA.</p><h1>What if you could just make it?</h1><p>Your notes, turned into something you can play.<br />An idea, turned into a page you can actually use.</p></div>
-        <form onSubmit={create} className="burrow-composer"><label className="sr-only" htmlFor="burrow-request">New task for Kikka</label><textarea id="burrow-request" ref={input} value={request} onChange={e => setRequest(e.target.value)} onKeyDown={submitPromptOnEnter} aria-describedby="burrow-send-hint" placeholder="Kikka, can you help me with…" maxLength={8000} required rows={3} />
+        <form onSubmit={create} className="burrow-composer"><label className="sr-only" htmlFor="burrow-request">New task for Kikka</label><textarea id="burrow-request" ref={input} value={request} onChange={e => setRequest(e.target.value)} onKeyDown={submitPromptOnEnter} aria-describedby="burrow-send-hint" placeholder="Kikka, can you help me with…" maxLength={8000} required rows={2} />
           <div><span id="burrow-send-hint">Enter to send · Shift+Enter for a new line</span><button type="submit" className="burrow-primary" disabled={busy || !data || !request.trim()}>{busy ? "Saving…" : "Continue"}<span aria-hidden>↑</span></button></div>
-          {data && <section className="burrow-research-start"><label>Project (optional)<input maxLength={80} value={project} onChange={e => setProject(e.target.value)} placeholder="Cotton suppliers" /></label><button type="button" className="burrow-secondary" disabled={busy || !request.trim()} onClick={() => void research()}>Research workspace</button>{!data.can_research && <span>Save a brief now. Research needs a connected worker.</span>}</section>}
-          {data?.can_travel === true && <section className="burrow-research-start"><button type="button" className="burrow-secondary" disabled={busy || !request.trim()} onClick={() => setTravelGoal(request)}>Plan a trip</button><span>Fixture demo — no real booking</span></section>}
         </form>
+        {data && <section className="burrow-research-start"><label>Project (optional)<input maxLength={80} value={project} onChange={e => setProject(e.target.value)} placeholder="Cotton suppliers" /></label><button type="button" className="burrow-secondary" disabled={busy || !request.trim()} onClick={() => void research()}>Research workspace</button>{!data.can_research && <span>Save a brief now. Research needs a connected worker.</span>}</section>}
+        {data && <section className="burrow-research-start"><button type="button" className="burrow-secondary" disabled={busy || !request.trim()} onClick={() => void codeRepository()}>Code repository</button><span>Choose a saved repository computer and review permissions next. No model work starts yet.</span></section>}
+        {data?.can_travel === true && <section className="burrow-research-start"><button type="button" className="burrow-secondary" disabled={busy || !request.trim()} onClick={() => setTravelGoal(request)}>Plan a trip</button><span>Fixture demo — no real booking</span></section>}
         <div className="burrow-creation-examples"><div className="burrow-example-heading"><h2>A few things you can play with</h2><span>READY-MADE EXAMPLES</span></div><div className="burrow-example-grid">
-          <button disabled={busy || !data} onClick={() => void createRequest("Turn my notes into a study space", "quiz")}><span className="burrow-example-art study" aria-hidden="true"><b>A B C</b><i /><i /><i /></span><strong>Make it stick</strong><p>Notes become a quiz.<br />Find out what you actually know.</p><small>Try study example →</small></button>
-          <button disabled={busy || !data} onClick={() => void createRequest("Make a story where I choose what happens", "story")}><span className="burrow-example-art story" aria-hidden="true"><b>☾</b><i>← YOUR CHOICE →</i></span><strong>Choose what happens</strong><p>A story you don’t just read.<br />You decide how it ends.</p><small>Try story example →</small></button>
-          <button disabled={busy || !data} onClick={() => void createRequest("Make a birthday page that feels like me", "page")}><span className="burrow-example-art invite" aria-hidden="true"><b>you’re invited.</b><i>✦ &nbsp; ✦ &nbsp; ✦</i></span><strong>Make it your own</strong><p>A birthday. A big idea.<br />A little page with personality.</p><small>Try page example →</small></button>
+          <button disabled={busy || !data} onClick={() => void createRequest("Explore an ideal spring with mass and stiffness controls", "quiz")}><span className="burrow-example-art study" aria-hidden="true"><svg viewBox="0 0 160 90"><path d="M44 76V12H103M34 76H57M96 12V22l-8 5 16 6-16 6 16 6-8 5v8" /><rect x="84" y="58" width="24" height="18" rx="4" /><path d="M122 25v49m-4-49h8m-8 49h8" opacity=".4" /></svg></span><strong>A tiny physics lab</strong><p>Change the weight. Stretch a spring.<br />Test your prediction.</p><small>Try the experiment →</small></button>
+          <button disabled={busy || !data} onClick={() => void createRequest("Play the missing harbour bell mystery", "story")}><span className="burrow-example-art story" aria-hidden="true"><svg viewBox="0 0 160 90"><path d="M59 57c8-8 4-27 21-27s13 19 21 27l5 6H54zM73 68q7 9 14 0M76 29v-6h8v6M34 77h92" /><path d="M34 39l-7-4m99 4 7-4M42 21l-4-7m80 7 4-7" opacity=".5" /></svg></span><strong>The missing harbour bell</strong><p>Follow a clue. Make a tradeoff.<br />Find four different endings.</p><small>Enter the mystery →</small></button>
+          <button disabled={busy || !data} onClick={() => void createRequest("Explore what happens during a web request", "page")}><span className="burrow-example-art journey" aria-hidden="true"><svg viewBox="0 0 160 90"><rect x="16" y="29" width="32" height="28" rx="5" /><rect x="64" y="29" width="32" height="28" rx="5" /><rect x="112" y="29" width="32" height="28" rx="5" /><path d="M48 43h16m32 0h16m-60-4 5 4-5 4m48-8 5 4-5 4M25 67h110" /><circle cx="80" cy="43" r="5" /></svg></span><strong>Behind the address bar</strong><p>Follow a request across the web.<br />See what a cache changes.</p><small>Explore the journey →</small></button>
         </div></div>
         <p className="burrow-small burrow-disclosure">{data?.can_run ? "Your request stays private until you choose Make it. No accounts to connect." : "Examples work now. Personal creation isn’t connected on this server yet; your requests stay saved."}</p>
       </div>}
-    </main>
+    </main></KikkaMotion.Provider>
   </div>;
 }
 
