@@ -15,6 +15,6 @@ export default function KikkaMascot({ state = "idle", alt = "" }: { state?: keyo
   const motion = useContext(KikkaMotion);
   return <picture>
     <source media="(prefers-reduced-motion: reduce)" srcSet={neutral} />
-    <img src={motion ? images[state] : neutral} alt={alt} width={512} height={512} />
+    <img className="kikka-mascot-image" src={motion ? images[state] : neutral} alt={alt} width={512} height={512} />
   </picture>;
 }

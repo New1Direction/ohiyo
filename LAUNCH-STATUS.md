@@ -1,7 +1,54 @@
 # Ohiyo launch status
 
-_Latest family-release qualification: 2026-10-23. Not cleared for daily-driver
+_Latest family-release qualification: 2026-10-24. Not cleared for daily-driver
 distribution. The older dated sections below are historical, not current certification._
+
+## Web-first candidate; production recovery gate remains open (2026-10-24)
+
+- The family path is the browser app, not an unsigned Mac download. No Apple
+  enrollment or native release is planned for this candidate. The landing page
+  favors opening/installing the web app; its manifest now includes correctly sized
+  192/512 icons and a separate padded maskable icon. Browser installation still
+  needs device-specific qualification.
+- The candidate adds single-use account recovery codes in **Settings → Account**
+  and a **Forgot password?** flow. Recovery ends existing sessions and pending
+  device links, requires the existing second factor when enabled, and does not
+  unlock or delete encrypted chat backups. Codes must be saved in advance; there
+  is no email reset. New passwords invalidate old account recovery codes.
+- Kikka follows Burrow's selected color live, including animated states and the
+  reduced-motion fallback. The original palette remains unchanged; selections
+  persist across reloads.
+- A fresh temporary Chrome 156 profile on macOS 26.5.1 passed signup, chat,
+  recovery setup, signout/reset and signing back in with the original message
+  preserved. Old passwords and consumed codes returned 401. Live Kikka colors
+  and reload persistence also passed. This was headless Chrome, not Safari or a
+  phone. The protected preview's anonymous manifest request returns 401, so
+  actual install/launch remains unqualified there. On the local production build,
+  a fresh non-incognito Chromium profile reports no manifest/installability
+  errors and an activated service worker; this does not qualify the public origin.
+- The two failing baseline CI gates have candidate fixes: patched Zod/Happy DOM
+  dependencies and a calendar E2E that uses the scheduled date across midnight
+  rather than assuming the event is today. This is not a claim of deployed fixes.
+- A fresh Rust audit also reports `RUSTSEC-2026-0387` in `crypto-bigint 0.5.5`,
+  pulled through elliptic-curve/JWT/Web Push dependencies. The same audit fails
+  against the unchanged `origin/main` lockfile; the candidate does not fix or
+  suppress this advisory. Passing application tests does not clear that gate.
+- A private restore of the existing production Litestream replica succeeded:
+  SQLite integrity was `ok` and foreign-key violations were zero. All 17 restored
+  upload references matched live paths and sizes (404,603,754 bytes total).
+  **This was not an uploads restore or content-hash verification.** The shipped
+  Litestream path backs up SQLite only (10-second sync, daily snapshots,
+  72-hour retention). An independent uploads/volume backup schedule has not been
+  established. Locate and restore a matched uploads backup, or obtain approval
+  to establish coverage, before declaring recovery qualified.
+- Production still runs the October 13 backend/web deployments. Their metadata
+  does not identify a Git revision. Deployed Dockerfile manifests differ from
+  current Railway build settings; apply the repository-root config paths in
+  `DEPLOY.md` as part of an explicitly coordinated deployment, not by assuming
+  that the current settings reproduce the deployed images.
+- No production migration, deployment, restart or configuration change was made
+  during this qualification. Burrow coding remains gated until live-model and
+  isolated-computer qualification passes; local tests are not that evidence.
 
 ## Family release is blocked (2026-10-23)
 

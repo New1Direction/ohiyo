@@ -4,9 +4,13 @@ use std::time::Duration;
 use axum::{
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
+    response::IntoResponse,
     Json,
 };
+use base64::Engine as _;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::{
     auth::{create_token, hash_password, jwt_secret, verify_password, AuthUser},
@@ -365,6 +369,12 @@ pub async fn register(
     if body.password.len() < 8 {
         return Err((StatusCode::BAD_REQUEST, "password must be ≥8 chars".into()));
     }
+    if body.password.len() > NEW_PASSWORD_MAX {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "password must be ≤1024 bytes".into(),
+        ));
+    }
     if let Some(name) = &body.display_name {
         crate::api::limits::check_len("display name", name, crate::api::limits::DISPLAY_NAME)?;
     }
@@ -487,6 +497,16 @@ pub async fn login(
         ));
     }
 
+    // Bind password verification to the generation it read, never a generation minted
+    // after a concurrent password reset. The hash predicate closes the earlier read gap.
+    let token_version: i64 =
+        sqlx::query_scalar("SELECT token_version FROM users WHERE id = ? AND password_hash = ?")
+            .bind(&user.id)
+            .bind(&user.password_hash)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?
+            .ok_or_else(invalid_recovery)?;
     let (password, hash) = (body.password, user.password_hash.clone());
     if !run_argon2(move || verify_password(&password, &hash)).await? {
         return Err((StatusCode::UNAUTHORIZED, "invalid credentials".into()));
@@ -495,11 +515,21 @@ pub async fn login(
     // With two-factor sign-in on, the password alone gets no session: a challenge instead.
     if crate::api::two_factor::is_enabled(&state, &user.id).await? {
         let challenge = crate::api::two_factor::start_challenge(&state, &user.id).await?;
+        if current_token_version(&state, &user.id).await? != token_version {
+            sqlx::query("DELETE FROM two_factor_challenges WHERE token_hash = ?")
+                .bind(format!(
+                    "{:x}",
+                    Sha256::digest(challenge.challenge.as_bytes())
+                ))
+                .execute(&state.db)
+                .await
+                .map_err(crate::api::error::internal)?;
+            return Err(invalid_recovery());
+        }
         return Ok(Json(LoginResponse::TwoFactor(challenge)));
     }
 
     let secret = jwt_secret();
-    let token_version = current_token_version(&state, &user.id).await?;
     let token =
         create_token(&user.id, token_version, &secret).map_err(crate::api::error::internal)?;
 
@@ -635,6 +665,12 @@ pub async fn change_password(
     if body.new_password.len() < 8 {
         return Err((StatusCode::BAD_REQUEST, "password must be ≥8 chars".into()));
     }
+    if body.new_password.len() > NEW_PASSWORD_MAX
+        || body.two_factor_code.as_ref().is_some_and(|c| c.len() > 128)
+    {
+        return Err((StatusCode::BAD_REQUEST, "input too long".into()));
+    }
+    let factor = recovery_factor(&state.db, &auth.0).await?;
     let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
         .bind(&auth.0)
         .fetch_optional(&state.db)
@@ -655,9 +691,10 @@ pub async fn change_password(
 
     let mut tx = state
         .db
-        .begin()
+        .begin_with("BEGIN IMMEDIATE")
         .await
         .map_err(crate::api::error::internal)?;
+    check_recovery_generation(&mut tx, &auth.0, auth.1, &factor).await?;
     let token_version: i64 = sqlx::query_scalar(
         "UPDATE users SET password_hash = ?, token_version = token_version + 1
          WHERE id = ? RETURNING token_version",
@@ -668,6 +705,11 @@ pub async fn change_password(
     .await
     .map_err(crate::api::error::internal)?;
     drop_link_codes(&mut tx, &auth.0).await?;
+    sqlx::query("DELETE FROM account_recovery WHERE user_id = ?")
+        .bind(&auth.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::api::error::internal)?;
     tx.commit().await.map_err(crate::api::error::internal)?;
     state
         .sessions
@@ -681,6 +723,230 @@ pub async fn change_password(
         token,
         user: user.into(),
     }))
+}
+
+// Account recovery is deliberately independent of chat-key backups and 2FA backup codes.
+// Bound newly set passwords, not verification of existing (possibly longer) passwords.
+const NEW_PASSWORD_MAX: usize = 1024;
+
+fn invalid_recovery() -> (StatusCode, String) {
+    (StatusCode::UNAUTHORIZED, "invalid credentials".into())
+}
+
+fn account_recovery_hash(user_id: &str, code: &str) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"ohiyo-account-recovery-v1\0");
+    hash.update(user_id.as_bytes());
+    hash.update(b"\0");
+    hash.update(code.as_bytes());
+    format!("{:x}", hash.finalize())
+}
+
+/// Include the configured factor, not its changing replay counter. A factor enabled or
+/// replaced during step-up must not be bypassed. A key reseal can require a retry.
+async fn recovery_factor<'e>(
+    db: impl sqlx::SqliteExecutor<'e>,
+    user_id: &str,
+) -> Result<Option<(Vec<u8>, i64)>, (StatusCode, String)> {
+    sqlx::query_as(
+        "SELECT secret_enc, enabled_at FROM two_factor WHERE user_id = ? AND enabled_at IS NOT NULL",
+    )
+    .bind(user_id)
+    .fetch_optional(db)
+    .await
+    .map_err(crate::api::error::internal)
+}
+
+/// Called with the SQLite write lock held. Slow password/code checks happen before the
+/// transaction; this closes their TOCTOU window against reset, logout and factor changes.
+async fn check_recovery_generation(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    user_id: &str,
+    version: i64,
+    factor: &Option<(Vec<u8>, i64)>,
+) -> Result<(), (StatusCode, String)> {
+    let current: Option<i64> = sqlx::query_scalar("SELECT token_version FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    if current != Some(version) || &recovery_factor(&mut **tx, user_id).await? != factor {
+        return Err(invalid_recovery());
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct AccountRecoveryStatus {
+    pub enabled: bool,
+}
+
+pub async fn account_recovery_status(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<AccountRecoveryStatus>, (StatusCode, String)> {
+    let enabled: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM account_recovery WHERE user_id = ?)")
+            .bind(&auth.0)
+            .fetch_one(&state.db)
+            .await
+            .map_err(crate::api::error::internal)?;
+    Ok(Json(AccountRecoveryStatus { enabled }))
+}
+
+#[derive(Deserialize)]
+pub struct AccountRecoveryBody {
+    pub password: String,
+    pub two_factor_code: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct AccountRecoveryCode {
+    pub recovery_code: String,
+}
+
+/// Issue once over authenticated HTTPS; there is no endpoint to retrieve the secret.
+pub async fn issue_account_recovery(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<AccountRecoveryBody>,
+) -> Result<axum::response::Response, (StatusCode, String)> {
+    if body.two_factor_code.as_ref().is_some_and(|c| c.len() > 128) {
+        return Err((StatusCode::BAD_REQUEST, "input too long".into()));
+    }
+    let factor = recovery_factor(&state.db, &auth.0).await?;
+    require_password(&state, &auth.0, Some(body.password)).await?;
+    crate::api::two_factor::require_second_factor(&state, &auth.0, body.two_factor_code).await?;
+    let mut raw = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut raw);
+    let recovery_code = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(raw);
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
+    check_recovery_generation(&mut tx, &auth.0, auth.1, &factor).await?;
+    sqlx::query(
+        "INSERT INTO account_recovery (user_id, code_hash, created_at) VALUES (?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET code_hash = excluded.code_hash, created_at = excluded.created_at",
+    )
+    .bind(&auth.0)
+    .bind(account_recovery_hash(&auth.0, &recovery_code))
+    .bind(now_unix())
+    .execute(&mut *tx)
+    .await
+    .map_err(crate::api::error::internal)?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(AccountRecoveryCode { recovery_code }),
+    )
+        .into_response())
+}
+
+#[derive(Deserialize)]
+pub struct RecoverAccountBody {
+    pub username: String,
+    pub recovery_code: String,
+    pub new_password: String,
+    pub two_factor_code: Option<String>,
+}
+
+/// Consume the account recovery secret and end all sessions. Never signs the caller in,
+/// never disables 2FA, and never modifies encrypted chat backups.
+pub async fn recover_account(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<RecoverAccountBody>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    check_auth_rate(&state, &headers, &addr)?;
+    if body.username.len() > 32
+        || body.recovery_code.len() > 128
+        || body.two_factor_code.as_ref().is_some_and(|c| c.len() > 128)
+    {
+        return Err(invalid_recovery());
+    }
+    // Unlike login, count absent accounts too: neither the response nor the throttle
+    // reveals account existence. The existing bounded unauthenticated map caps memory.
+    let limit = state.login_limit_per_username_per_minute;
+    if limit > 0
+        && !state.rate.check_unauth(
+            &format!("recover-user:{}", body.username.to_ascii_lowercase()),
+            limit,
+            Duration::from_secs(60),
+        )
+    {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many attempts — give it a moment and try again".into(),
+        ));
+    }
+    if body.new_password.len() < 8 || body.new_password.len() > NEW_PASSWORD_MAX {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "password must be 8–1024 bytes".into(),
+        ));
+    }
+    let user = login_account(&state.db, &body.username)
+        .await
+        .map_err(crate::api::error::internal)?
+        .ok_or_else(invalid_recovery)?;
+    let code_hash = account_recovery_hash(&user.id, &body.recovery_code);
+    let version: Option<i64> = sqlx::query_scalar(
+        "SELECT u.token_version FROM users u JOIN account_recovery r ON r.user_id = u.id
+         WHERE u.id = ? AND r.code_hash = ?",
+    )
+    .bind(&user.id)
+    .bind(&code_hash)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+    let version = version.ok_or_else(invalid_recovery)?;
+    let factor = recovery_factor(&state.db, &user.id).await?;
+    crate::api::two_factor::require_second_factor(&state, &user.id, body.two_factor_code)
+        .await
+        .map_err(|e| {
+            if e.0 == StatusCode::FORBIDDEN {
+                invalid_recovery()
+            } else {
+                e
+            }
+        })?;
+    let hash = run_argon2(move || hash_password(&body.new_password))
+        .await?
+        .map_err(crate::api::error::internal)?;
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
+    check_recovery_generation(&mut tx, &user.id, version, &factor).await?;
+    let consumed = sqlx::query("DELETE FROM account_recovery WHERE user_id = ? AND code_hash = ?")
+        .bind(&user.id)
+        .bind(&code_hash)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    if consumed.rows_affected() != 1 {
+        return Err(invalid_recovery());
+    }
+    sqlx::query(
+        "UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?",
+    )
+    .bind(hash)
+    .bind(&user.id)
+    .execute(&mut *tx)
+    .await
+    .map_err(crate::api::error::internal)?;
+    drop_link_codes(&mut tx, &user.id).await?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
+    state
+        .sessions
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&user.id);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ── Device linking (QR / one-time code) ─────────────────────────────────────────
@@ -756,9 +1022,22 @@ pub async fn link_start(
     }
     // One active code per user: clear any previous ones first (caps the table per user
     // and means a fresh request supersedes an unused old code).
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
+    let version: i64 = sqlx::query_scalar("SELECT token_version FROM users WHERE id = ?")
+        .bind(&auth.0)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    if version != auth.1 {
+        return Err((StatusCode::UNAUTHORIZED, "invalid session".into()));
+    }
     sqlx::query("DELETE FROM device_link_tokens WHERE user_id = ?")
         .bind(&auth.0)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "db error clearing link codes");
@@ -770,12 +1049,13 @@ pub async fn link_start(
         .bind(&code)
         .bind(&auth.0)
         .bind(expires_at)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "db error minting link code");
             (StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
         })?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
     Ok(Json(LinkStartResponse { code, expires_at }))
 }
 
@@ -817,11 +1097,17 @@ pub async fn link_complete(
         return Err((StatusCode::BAD_REQUEST, "missing code".into()));
     }
     // Atomically claim the code (delete + return its row) so it can't be redeemed twice.
+    // Read the token generation under the same write lock, not after a reset could run.
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
     let row: Option<(String, i64)> = sqlx::query_as(
         "DELETE FROM device_link_tokens WHERE code = ? RETURNING user_id, expires_at",
     )
     .bind(&code)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!(error = %e, "db error redeeming link code");
@@ -835,15 +1121,21 @@ pub async fn link_complete(
     let invalid = || (StatusCode::NOT_FOUND, "invalid or expired code".to_owned());
     let (user_id, expires_at) = row.ok_or_else(invalid)?;
     if expires_at < now_unix() {
+        tx.commit().await.map_err(crate::api::error::internal)?;
         return Err(invalid());
     }
     let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
         .bind(&user_id)
-        .fetch_one(&state.db)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|_| invalid())?;
     let secret = jwt_secret();
-    let token_version = current_token_version(&state, &user.id).await?;
+    let token_version: i64 = sqlx::query_scalar("SELECT token_version FROM users WHERE id = ?")
+        .bind(&user.id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
     let token = create_token(&user.id, token_version, &secret).map_err(|e| {
         tracing::error!(error = %e, "token error in link_complete");
         (

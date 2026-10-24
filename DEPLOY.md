@@ -1,8 +1,14 @@
 # Shipping Ohiyo to real people
 
-Ohiyo has two halves. A desktop installer is worthless on its own — like
-Discord, it needs a **server in the cloud** to connect to. This guide takes you
-from "runs on my localhost" to "my friends download an app and it just works."
+The family distribution path is **web-first**: open `https://app.ohiyo.gg` in a
+browser, with an optional browser-managed home-screen/Dock installation. The web
+client and backend must be deployed from the same tested revision. Native Mac
+downloads remain experimental and are not a recommended family installation path.
+See [current readiness gates](LAUNCH-STATUS.md) before changing production.
+
+Ohiyo needs a **server in the cloud** whether people use the browser or desktop
+client. The native packaging instructions below are for a future signed release;
+Apple Developer enrollment is not required to use the web app.
 
 ```
 ┌─────────────────────────┐         ┌──────────────────────────────────┐
@@ -16,8 +22,10 @@ from "runs on my localhost" to "my friends download an app and it just works."
 - **Backend host:** any host that runs a Docker image with one persistent volume.
   ohiyo.gg runs on Railway ([§1](#1-deploy-the-backend)); the repo also ships a
   `fly.toml` for Fly.io. Either way it is a single machine with a persistent volume.
-- **Signing:** Mac installers are ad-hoc signed for now (not Apple-notarized); see
-  [§5](#5-code-signing--auto-update-the-later-path). Auto-update is on and has its own key.
+- **Signing:** the published v0.3.1 Mac installers fail Gatekeeper. New native
+  releases require Developer ID signing and notarization; see
+  [§5](#5-code-signing--auto-update-required-for-release-downloads). The updater's
+  separate verification key does not substitute for Apple signing.
 
 ---
 

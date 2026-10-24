@@ -1,28 +1,39 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { codeKind } from "../../lib/twoFactor";
 
 type Props = {
   /** What the confirm button says, e.g. "Back up my keys". */
   confirmLabel: string;
   busy?: boolean;
-  onConfirm: (password: string) => void | Promise<void>;
+  needsCode?: boolean;
+  onConfirm: (password: string, twoFactorCode?: string) => void | Promise<void>;
   onCancel: () => void;
 };
 
 /** Asks for the account's password again before an action a stolen session must not take
  *  on its own; the server checks it. Shown in place, under the button that asked. */
-export function ConfirmWithPassword({ confirmLabel, busy = false, onConfirm, onCancel }: Props) {
+export function ConfirmWithPassword({ confirmLabel, busy = false, needsCode = false, onConfirm, onCancel }: Props) {
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  const ready = password.length > 0 && !busy;
+  const codeInput = useRef<HTMLInputElement>(null);
+  const previouslyNeededCode = useRef(needsCode);
+  const ready = password.length > 0 && !busy && (!needsCode || codeKind(code) !== null);
 
   // Opened by a button just pressed: put the cursor where the password goes.
   useLayoutEffect(() => {
     input.current?.focus();
   }, []);
 
+  useLayoutEffect(() => {
+    if (needsCode && !previouslyNeededCode.current) codeInput.current?.focus();
+    previouslyNeededCode.current = needsCode;
+  }, [needsCode]);
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (ready) void onConfirm(password);
+    const typed = codeKind(code) === "totp" ? code.replace(/[\s-]/g, "") : code.trim();
+    if (ready) void onConfirm(password, needsCode ? typed : undefined);
   }
 
   return (
@@ -38,6 +49,24 @@ export function ConfirmWithPassword({ confirmLabel, busy = false, onConfirm, onC
         className="rounded px-3 py-1.5 text-sm outline-none"
         style={{ background: "var(--bg-input)", color: "var(--text-primary)", minWidth: 180 }}
       />
+      {needsCode && (
+        <label className="flex w-full flex-col gap-1 text-xs">
+          Authenticator code or two-factor backup code
+          <input
+            ref={codeInput}
+            type="text"
+            autoComplete="one-time-code"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Authenticator code or two-factor backup code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className="w-full rounded px-3 py-2 text-base outline-none"
+            style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
+          />
+        </label>
+      )}
       <button
         type="submit"
         disabled={!ready}

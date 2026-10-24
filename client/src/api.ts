@@ -852,6 +852,20 @@ export const api = {
       body: JSON.stringify({ challenge, code }),
     }),
 
+  // Account recovery is separate from two-factor backup codes and encrypted-chat keys.
+  accountRecoveryStatus: (token: string) =>
+    request<{ enabled: boolean }>("/users/@me/account-recovery", {}, token),
+  createAccountRecoveryCode: (token: string, password: string, twoFactorCode?: string) =>
+    request<{ recovery_code: string }>("/users/@me/account-recovery", {
+      method: "POST",
+      body: JSON.stringify({ password, two_factor_code: twoFactorCode || undefined }),
+    }, token),
+  recoverAccount: (username: string, recoveryCode: string, newPassword: string, twoFactorCode?: string) =>
+    request<void>("/auth/recover", {
+      method: "POST",
+      body: JSON.stringify({ username, recovery_code: recoveryCode, new_password: newPassword, two_factor_code: twoFactorCode || undefined }),
+    }),
+
   // ── Two-factor sign-in (Settings) ──
   twoFactorStatus: (token: string) => request<TwoFactorStatus>("/users/@me/two-factor", {}, token),
   twoFactorSetup: (token: string, password: string) =>

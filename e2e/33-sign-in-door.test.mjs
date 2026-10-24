@@ -62,10 +62,25 @@ try {
   await phone.page.waitForSelector("text=Join Ohiyo", { timeout: 4000 });
   await phone.page.getByRole("button", { name: "Sign in" }).last().click();
   await phone.page.waitForSelector(".ohiyo-door__greeting:has-text('Good evening.')", { timeout: 4000 });
-  // The long explanation about passwords is one tap away, not a wall of text.
-  await phone.page.locator(".ohiyo-door__forgot summary").click();
-  await phone.page.getByRole("button", { name: "start a new account" }).click();
-  await phone.page.waitForSelector("text=Join Ohiyo", { timeout: 4000 });
+  // Password recovery replaces the old explanation. Both returning to sign-in and
+  // linking an existing device remain reachable even on the smallest phone.
+  await phone.page.getByRole("button", { name: "Forgot your password?" }).click();
+  await phone.page.getByRole("heading", { name: "Reset your password" }).waitFor();
+  await phone.page.getByRole("textbox", { name: "Username", exact: true }).fill("recovery_preview");
+  await phone.page.getByLabel("Account recovery code", { exact: true }).fill("not-a-real-code");
+  await phone.page.getByLabel("New password", { exact: true }).fill("not-a-real-password");
+  await phone.page.getByLabel("New password again", { exact: true }).fill("not-a-real-password");
+  const reset = phone.page.getByRole("button", { name: "Reset password", exact: true });
+  await reset.scrollIntoViewIfNeeded();
+  if (!(await reset.isEnabled())) throw new Error("the recovery form cannot be submitted");
+  const recoveryWidth = await phone.page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  if (recoveryWidth > 1) throw new Error(`the recovery form spills ${recoveryWidth}px sideways`);
+  await phone.page.getByRole("button", { name: "Back to sign in", exact: true }).click();
+  await phone.page.getByRole("button", { name: "Forgot your password?" }).click();
+  if (await phone.page.getByLabel("Account recovery code", { exact: true }).inputValue()) throw new Error("reopening recovery retained its secret");
+  if (await phone.page.getByLabel("New password", { exact: true }).inputValue()) throw new Error("reopening recovery retained its password");
+  await phone.page.getByRole("button", { name: "Link a device instead" }).click();
+  await phone.page.getByRole("heading", { name: "Link this device" }).waitFor();
   await phone.ctx.close();
   log("door: on a small phone nothing spills sideways and every path is reachable ✓");
 

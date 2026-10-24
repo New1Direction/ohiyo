@@ -615,3 +615,314 @@ async fn setting_its_own_key_later_keeps_codes_working_and_reseals_the_secret() 
         "a wrong key still opens nothing"
     );
 }
+
+/// A second real HTTP application over the same disposable database, with exactly one
+/// connection. Pause one acquisition after the old request's authentication/step-up.
+/// Recovery uses the original application's independent pool, so it can commit before
+/// we release the old request. No production hooks, sleeps or mocked auth/SQL.
+async fn paused_factor_request(
+    srv: &TestServer,
+    me: &AuthOk,
+    action: &str,
+    body: Value,
+    pause_at: usize,
+) -> (
+    tokio::task::JoinHandle<reqwest::Response>,
+    std::sync::Arc<tokio::sync::Semaphore>,
+    tokio::task::JoinHandle<()>,
+) {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    let acquisitions = Arc::new(AtomicUsize::new(0));
+    let reached = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let (count, signal, wait) = (acquisitions.clone(), reached.clone(), release.clone());
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .min_connections(1)
+        .acquire_timeout(Duration::from_secs(30))
+        .before_acquire(move |_, _| {
+            let (count, signal, wait) = (count.clone(), signal.clone(), wait.clone());
+            Box::pin(async move {
+                if count.fetch_add(1, Ordering::SeqCst) + 1 == pause_at {
+                    signal.notify_one();
+                    wait.acquire().await.unwrap().forget();
+                }
+                Ok(true)
+            })
+        })
+        .connect(srv.db_url())
+        .await
+        .unwrap();
+    // Pool initialization itself may check out the new connection once. Count only
+    // acquisitions made by the HTTP request, not that connectivity check.
+    acquisitions.store(0, Ordering::SeqCst);
+    let mut state = srv.state.clone();
+    state.db = pool;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let serving = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            server::build_app(state).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    let (client, token) = (srv.client.clone(), me.token.clone());
+    let url = format!("http://{addr}/api/v1/users/@me/two-factor/{action}");
+    let request = tokio::spawn(async move {
+        client
+            .post(url)
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await
+            .unwrap()
+    });
+    tokio::time::timeout(Duration::from_secs(10), reached.notified())
+        .await
+        .expect("old operation reached the post-step-up pause");
+    assert_eq!(acquisitions.load(Ordering::SeqCst), pause_at);
+    assert!(!request.is_finished(), "old operation remains suspended");
+    (request, release, serving)
+}
+
+async fn factor_snapshot(
+    srv: &TestServer,
+    id: &str,
+) -> (
+    Option<(String, Option<i64>, i64, i64)>,
+    Vec<(String, Option<i64>)>,
+) {
+    let factor = sqlx::query_as("SELECT hex(secret_enc), enabled_at, last_step, created_at FROM two_factor WHERE user_id = ?")
+        .bind(id).fetch_optional(&srv.state.db).await.unwrap();
+    let codes = sqlx::query_as("SELECT code_hash, used_at FROM two_factor_recovery_codes WHERE user_id = ? ORDER BY code_hash")
+        .bind(id).fetch_all(&srv.state.db).await.unwrap();
+    (factor, codes)
+}
+
+async fn old_factor_mutation_after_recovery(action: &str) {
+    let srv = TestServer::start().await;
+    let name = format!("stale_{action}").replace('-', "_");
+    let (me, codes, body, pause_at) = match action {
+        "setup" => (
+            srv.register(&name, PASS).await,
+            vec![],
+            json!({"password":PASS}),
+            3,
+        ),
+        "enable" => {
+            let me = srv.register(&name, PASS).await;
+            let (secret, _) = setup(&srv, &me.token).await;
+            (
+                me,
+                vec![],
+                json!({"code":code_for_step(&secret, step_at(now()))}),
+                4,
+            )
+        }
+        _ => {
+            let (me, _, codes) = turn_on(&srv, &name).await;
+            let body = json!({"password":PASS,"code":codes[1]});
+            (me, codes, body, 7)
+        }
+    };
+    let issued = srv
+        .post_json_auth(
+            "/api/v1/users/@me/account-recovery",
+            &me.token,
+            json!({"password":PASS,"two_factor_code":codes.first()}),
+        )
+        .await;
+    assert_eq!(issued.status(), 200);
+    let issued: Value = issued.json().await.unwrap();
+    // Setup: auth + password read, paused after password verification. Enable: auth,
+    // code budget and pending secret read, paused after TOTP verification. Disable/
+    // regeneration: auth, password, factor checks, code budget and backup-code consume.
+    let (old, release, serving) = paused_factor_request(&srv, &me, action, body, pause_at).await;
+    if !codes.is_empty() {
+        let used: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM two_factor_recovery_codes WHERE user_id = ? AND used_at IS NOT NULL")
+            .bind(&me.id).fetch_one(&srv.state.db).await.unwrap();
+        assert_eq!(
+            used, 2,
+            "issuance and old mutation both passed step-up before recovery"
+        );
+    }
+    let reset = srv
+        .post_json(
+            "/api/v1/auth/recover",
+            json!({"username":name,
+        "recovery_code":issued["recovery_code"],"new_password":"after-account-recovery",
+        "two_factor_code":codes.get(2)}),
+        )
+        .await;
+    assert_eq!(
+        reset.status(),
+        204,
+        "recovery commits while old operation is held"
+    );
+    assert_eq!(
+        srv.get_auth("/api/v1/users/@me", &me.token).await.status(),
+        401
+    );
+    let before = factor_snapshot(&srv, &me.id).await;
+    release.add_permits(1);
+    let response = tokio::time::timeout(Duration::from_secs(10), old)
+        .await
+        .unwrap()
+        .unwrap();
+    let after = factor_snapshot(&srv, &me.id).await;
+    serving.abort();
+    assert_eq!(
+        after,
+        before,
+        "stale {action} changed factors after recovery; HTTP {}",
+        response.status()
+    );
+    assert_eq!(
+        response.status(),
+        401,
+        "stale {action} must fail its generation fence"
+    );
+}
+
+#[tokio::test]
+async fn stale_setup_cannot_mutate_after_account_recovery() {
+    old_factor_mutation_after_recovery("setup").await;
+}
+
+#[tokio::test]
+async fn stale_enable_cannot_mutate_after_account_recovery() {
+    old_factor_mutation_after_recovery("enable").await;
+}
+
+#[tokio::test]
+async fn stale_disable_cannot_mutate_after_account_recovery() {
+    old_factor_mutation_after_recovery("disable").await;
+}
+
+#[tokio::test]
+async fn stale_backup_code_rotation_cannot_mutate_after_account_recovery() {
+    old_factor_mutation_after_recovery("recovery-codes").await;
+}
+
+#[tokio::test]
+async fn second_factor_login_checks_address_budget_once_before_touching_the_database() {
+    let srv = TestServer::start().await;
+    for _ in 0..40 {
+        assert_eq!(second_step(&srv, "absent", "123456").await.status(), 401);
+    }
+    srv.state.db.close().await;
+    assert_eq!(
+        second_step(&srv, "absent", "123456").await.status(),
+        429,
+        "an exhausted address must not query even an unavailable database"
+    );
+}
+
+#[tokio::test]
+async fn oversized_second_factor_login_inputs_are_rejected_before_database_access() {
+    let srv = TestServer::start().await;
+    srv.state.db.close().await;
+    assert_eq!(
+        second_step(&srv, &"x".repeat(129), "123456").await.status(),
+        400
+    );
+    assert_eq!(
+        second_step(&srv, "absent", &"x".repeat(129)).await.status(),
+        400
+    );
+}
+
+#[tokio::test]
+async fn an_old_enable_cannot_enable_a_replacement_pending_secret() {
+    let srv = TestServer::start().await;
+    let me = srv.register("pending_replacement", PASS).await;
+    let (secret, _) = setup(&srv, &me.token).await;
+    let (old, release, serving) = paused_factor_request(
+        &srv,
+        &me,
+        "enable",
+        json!({"code":code_for_step(&secret, step_at(now()))}),
+        4,
+    )
+    .await;
+    // Same session generation, but a different pending factor has replaced the one
+    // whose code the paused request verified. The generation fence alone cannot help.
+    let (replacement, _) = setup(&srv, &me.token).await;
+    assert_ne!(secret, replacement);
+    let before = factor_snapshot(&srv, &me.id).await;
+    release.add_permits(1);
+    let res = old.await.unwrap();
+    serving.abort();
+    assert_eq!(res.status(), 409);
+    assert_eq!(factor_snapshot(&srv, &me.id).await, before);
+    assert_eq!(
+        enable(
+            &srv,
+            &me.token,
+            &code_for_step(&replacement, step_at(now()))
+        )
+        .await
+        .status(),
+        200,
+        "the replacement's own code still works"
+    );
+}
+
+async fn old_mutation_cannot_change_replacement_factor(action: &str) {
+    let srv = TestServer::start().await;
+    let (me, _, codes) = turn_on(&srv, "factor_replacement").await;
+    let (old, release, serving) = paused_factor_request(
+        &srv,
+        &me,
+        action,
+        json!({"password":PASS,"code":codes[0]}),
+        7,
+    )
+    .await;
+    assert_eq!(
+        srv.post_json_auth(
+            "/api/v1/users/@me/two-factor/disable",
+            &me.token,
+            json!({"password":PASS,"code":codes[1]})
+        )
+        .await
+        .status(),
+        204
+    );
+    let (replacement, _) = setup(&srv, &me.token).await;
+    assert_eq!(
+        enable(
+            &srv,
+            &me.token,
+            &code_for_step(&replacement, step_at(now()))
+        )
+        .await
+        .status(),
+        200
+    );
+    let before = factor_snapshot(&srv, &me.id).await;
+    release.add_permits(1);
+    let res = old.await.unwrap();
+    serving.abort();
+    assert_eq!(res.status(), 409);
+    assert_eq!(
+        factor_snapshot(&srv, &me.id).await,
+        before,
+        "old {action} must not modify a replacement factor or its backup codes"
+    );
+}
+
+#[tokio::test]
+async fn an_old_disable_cannot_remove_a_replacement_factor() {
+    old_mutation_cannot_change_replacement_factor("disable").await;
+}
+
+#[tokio::test]
+async fn an_old_code_rotation_cannot_replace_a_replacement_factors_codes() {
+    old_mutation_cannot_change_replacement_factor("recovery-codes").await;
+}

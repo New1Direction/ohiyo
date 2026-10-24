@@ -10,7 +10,7 @@ import type { OhiyoHome } from "../lib/homes";
 import { BirdMark } from "./BirdMark";
 import { markActivation } from "../lib/activation";
 import { apiStatus, rateLimitMessage } from "../lib/apiErrors";
-import { codeKind, isTwoFactorChallenge, signInCodeMessage } from "../lib/twoFactor";
+import { codeKind, isTwoFactorChallenge, signInCodeMessage, stepUpCodeMessage } from "../lib/twoFactor";
 import { takeSignInNotice } from "../lib/sessionNotice";
 import {
   friendlyAuthError,
@@ -77,6 +77,7 @@ function EyeIcon({ off }: { off: boolean }) {
 
 export function AuthScreen({ home, onAuth }: Props) {
   const [mode, setMode] = useState<Mode>("login");
+  const [recovering, setRecovering] = useState(false);
   // The hour is read once, when the door opens.
   const [scene] = useState(() => doorScene(new Date().getHours()));
   const [username, setUsername] = useState(() => localStorage.getItem(LAST_USERNAME_KEY) ?? "");
@@ -223,9 +224,16 @@ export function AuthScreen({ home, onAuth }: Props) {
   }, []);
 
   function switchMode(next: Mode) {
+    setRecovering(false);
     setMode(next);
     setError("");
     setNotice("");
+    setPassword("");
+    setShowPassword(false);
+    setLinkCode("");
+    setChallenge(null);
+    setCode("");
+    setUseRecovery(false);
   }
 
   function onPasswordKey(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -255,14 +263,14 @@ export function AuthScreen({ home, onAuth }: Props) {
             <BirdMark size={30} />
             <span>o<b>Hi</b>Yo</span>
           </div>
-          <div key={challenge !== null ? "two-factor" : mode} className="ohiyo-auth-mode-copy">
+          <div key={recovering ? "recover" : challenge !== null ? "two-factor" : mode} className="ohiyo-auth-mode-copy">
             <h1 className="ohiyo-door__greeting">
-              {challenge !== null
+              {recovering ? "Reset your password" : challenge !== null
                 ? "One more step"
                 : mode === "login" ? scene.greeting : mode === "register" ? "Join Ohiyo" : "Link this device"}
             </h1>
             <p className="ohiyo-door__line">
-              {challenge !== null
+              {recovering ? "Use the account recovery code you saved in Settings → My account." : challenge !== null
                 ? useRecovery
                   ? "Type one of the recovery codes you saved when you turned on two-factor sign-in."
                   : "Open your authenticator app and type the 6-digit code for Ohiyo."
@@ -274,10 +282,23 @@ export function AuthScreen({ home, onAuth }: Props) {
             </p>
             <div className="ohiyo-auth-status-pill" title={home.url}>
               <span aria-hidden className="ohiyo-door__dot" />
-              <span>{mode === "login" ? "Secure Ohiyo sign-in" : mode === "register" ? "Private account setup" : "Safe device link"}</span>
+              <span>{recovering ? "Account recovery" : mode === "login" ? "Secure Ohiyo sign-in" : mode === "register" ? "Private account setup" : "Safe device link"}</span>
             </div>
           </div>
         <div className="ohiyo-auth-form-zone">
+        {recovering && (
+          <AccountRecoveryForm
+            initialUsername={username}
+            onCancel={() => { switchMode("login"); window.requestAnimationFrame(() => usernameRef.current?.focus()); }}
+            onLink={() => switchMode("link")}
+            onRecovered={(name) => {
+              switchMode("login");
+              setUsername(name);
+              setNotice("Password reset. Sign in with your new password, then save a new account recovery code in Settings → Account. All previous sessions and pending device links have ended.");
+              window.requestAnimationFrame(() => document.getElementById("kc-password")?.focus());
+            }}
+          />
+        )}
         {challenge !== null && (
           <form key="two-factor" onSubmit={handleCodeSubmit} className="ohiyo-auth-mode-panel flex flex-col gap-3" aria-label="Two-factor code" autoComplete="off">
             <input
@@ -350,7 +371,7 @@ export function AuthScreen({ home, onAuth }: Props) {
             </div>
           </form>
         )}
-        {challenge === null && mode !== "link" && (
+        {!recovering && challenge === null && mode !== "link" && (
         <form
           key={mode}
           onSubmit={handleSubmit}
@@ -499,6 +520,7 @@ export function AuthScreen({ home, onAuth }: Props) {
               <a href={TERMS_URL} target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-secondary)" }}>Terms</a>
               {" "}and the{" "}
               <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-secondary)" }}>Privacy Policy</a>.
+              {" "}After joining, save an account recovery code in Settings → Account.
             </p>
           )}
         </form>
@@ -563,7 +585,7 @@ export function AuthScreen({ home, onAuth }: Props) {
         )}
         </div>
 
-          <div className="ohiyo-door__links" hidden={challenge !== null}>
+          <div className="ohiyo-door__links" hidden={challenge !== null || recovering}>
             {mode === "login" ? (
               <>
                 <p>
@@ -578,20 +600,11 @@ export function AuthScreen({ home, onAuth }: Props) {
                     Link a device
                   </button>
                 </p>
-                <details className="ohiyo-door__forgot">
-                  <summary>Forgot your password?</summary>
-                  <p>
-                    Ohiyo can't reset it. If you're still signed in on another device, you can{" "}
-                    <button type="button" onClick={() => switchMode("link")} className="ohiyo-door__link">
-                      link this device
-                    </button>{" "}
-                    from there, which signs you in here for 30 days. If not, you can{" "}
-                    <button type="button" onClick={() => switchMode("register")} className="ohiyo-door__link">
-                      start a new account
-                    </button>
-                    .
-                  </p>
-                </details>
+                <p>
+                  <button type="button" disabled={loading} onClick={() => { switchMode("login"); setRecovering(true); }} className="ohiyo-door__link">
+                    Forgot your password?
+                  </button>
+                </p>
               </>
             ) : (
               <p>
@@ -612,5 +625,96 @@ export function AuthScreen({ home, onAuth }: Props) {
         {AUTH_FACTS[factIndex]}
       </p>
     </main>
+  );
+}
+
+/** Unmounting this form drops every secret; a late response cannot sign in or navigate. */
+function AccountRecoveryForm({ initialUsername, onCancel, onLink, onRecovered }: {
+  initialUsername: string;
+  onCancel: () => void;
+  onLink: () => void;
+  onRecovered: (username: string) => void;
+}) {
+  const [username, setUsername] = useState(initialUsername);
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [repeat, setRepeat] = useState("");
+  const [secondFactor, setSecondFactor] = useState("");
+  const [codeAsked, setCodeAsked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [unsupported, setUnsupported] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const secondFactorInput = useRef<HTMLInputElement>(null);
+  const alive = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    input.current?.focus();
+    return () => { alive.current = false; };
+  }, []);
+
+  const validCode = codeKind(secondFactor);
+  const ready = username.trim().length > 0 && recoveryCode.trim().length > 0 && password.length >= MIN_PASSWORD
+    && password === repeat && (!codeAsked && !secondFactor.trim() || validCode !== null) && !busy && !unsupported;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ready) return;
+    setBusy(true);
+    setError("");
+    try {
+      const code = validCode === "totp" ? secondFactor.replace(/[\s-]/g, "") : secondFactor.trim();
+      await api.recoverAccount(username.trim(), recoveryCode.trim(), password, code || undefined);
+      if (alive.current) onRecovered(username.trim()); // No token is returned, and no onAuth call.
+    } catch (err) {
+      if (!alive.current) return;
+      const status = apiStatus(err);
+      const codeProblem = stepUpCodeMessage(err)?.replace("a recovery code", "a two-factor backup code");
+      if (codeProblem && status === 403) {
+        setCodeAsked(true);
+        secondFactorInput.current?.focus();
+      }
+      const unavailable = [404, 405, 501].includes(status ?? 0);
+      setUnsupported(unavailable);
+      setError(unavailable ? "Account recovery isn't available on this server yet. You can still link from a signed-in device."
+        : codeProblem ?? rateLimitMessage(err) ?? (status === 401 || status === 403
+          ? "Check your username, account recovery code, and second factor (if enabled). The account recovery code may already have been used or replaced."
+          : status === 400 ? `Check your details and use at least ${MIN_PASSWORD} characters for the new password.`
+            : "Couldn't confirm the reset. Check your connection. If your code no longer works, try signing in with the new password; the reset may have completed."));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
+
+  const field = "kc-field w-full px-3.5 py-3 text-base outline-none";
+  return (
+    <form onSubmit={submit} className="ohiyo-auth-mode-panel flex flex-col gap-3" aria-label="Recover account" autoComplete="off">
+      <label className="text-xs">Username
+        <input ref={input} type="text" name="username" aria-label="Username" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} required value={username} onChange={(e) => setUsername(e.target.value)} className={field} />
+      </label>
+      <label className="text-xs">Account recovery code
+        <input type="password" aria-label="Account recovery code" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} required value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} className={field} />
+      </label>
+      <label className="text-xs">New password
+        <input type="password" name="new-password" aria-label="New password" autoComplete="new-password" required minLength={MIN_PASSWORD} value={password} onChange={(e) => setPassword(e.target.value)} className={field} />
+      </label>
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>Use at least {MIN_PASSWORD} characters.</p>
+      <label className="text-xs">New password again
+        <input type="password" aria-label="New password again" autoComplete="new-password" required minLength={MIN_PASSWORD} value={repeat} onChange={(e) => setRepeat(e.target.value)} className={field} />
+      </label>
+      {repeat && repeat !== password && <p role="status" className="text-xs">The two new passwords don't match.</p>}
+      <label className="text-xs">Authenticator code or two-factor backup code (if enabled)
+        <input ref={secondFactorInput} type="text" aria-label="Authenticator code or two-factor backup code" autoComplete="one-time-code" autoCapitalize="none" autoCorrect="off" spellCheck={false} required={codeAsked} value={secondFactor} onChange={(e) => setSecondFactor(e.target.value)} className={field} />
+      </label>
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+        Your account recovery code works once. This signs out all devices and cancels pending device links, but keeps two-factor sign-in on.
+        Encrypted-chat recovery keys are separate; your encrypted backups stay unchanged.
+      </p>
+      {error && <p role="alert" className="text-xs" style={{ color: "var(--danger)" }}>{error}</p>}
+      <button type="submit" disabled={!ready} aria-busy={busy} className="kc-cta py-3 text-base" style={{ opacity: ready ? 1 : 0.65 }}>{busy ? "Resetting password…" : "Reset password"}</button>
+      <button type="button" disabled={busy} onClick={onCancel} className="ohiyo-door__link">Back to sign in</button>
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>No saved account recovery code? If you're signed in elsewhere, you can still link this device. Ohiyo can't retrieve a lost code.</p>
+      <button type="button" disabled={busy} onClick={onLink} className="ohiyo-door__link">Link a device instead</button>
+    </form>
   );
 }

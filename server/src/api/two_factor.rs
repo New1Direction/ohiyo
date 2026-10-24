@@ -194,23 +194,26 @@ async fn use_code(state: &AppState, user_id: &str, typed: &str) -> Result<bool, 
             format!("{UNAVAILABLE} right now — use a recovery code"),
         ));
     };
-    if opened.stale {
-        reseal(state, secret_box, user_id, &sealed, &opened.plaintext).await;
-    }
     let secret = opened.plaintext;
     let Some(step) = tf::verify_code(&secret, typed, now_unix(), last_step) else {
         return Ok(false);
     };
     // Moved forward only if nothing newer was used meanwhile, so two requests with the same
     // code can't both get in.
-    let moved =
-        sqlx::query("UPDATE two_factor SET last_step = ? WHERE user_id = ? AND last_step < ?")
-            .bind(step)
-            .bind(user_id)
-            .bind(step)
-            .execute(&state.db)
-            .await
-            .map_err(crate::api::error::internal)?;
+    let moved = sqlx::query(
+        "UPDATE two_factor SET last_step = ? WHERE user_id = ? AND last_step < ?
+                     AND secret_enc = ? AND enabled_at IS NOT NULL",
+    )
+    .bind(step)
+    .bind(user_id)
+    .bind(step)
+    .bind(&sealed)
+    .execute(&state.db)
+    .await
+    .map_err(crate::api::error::internal)?;
+    if moved.rows_affected() == 1 && opened.stale {
+        reseal(state, secret_box, user_id, &sealed, &secret).await;
+    }
     Ok(moved.rows_affected() == 1)
 }
 
@@ -315,6 +318,23 @@ pub struct SetupResponse {
     pub otpauth_url: String,
 }
 
+/// The authenticated request may have waited through recovery/password change/logout.
+/// Hold BEGIN IMMEDIATE while checking this and changing factor configuration.
+async fn require_current_session(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    auth: &AuthUser,
+) -> Result<(), ApiError> {
+    let version: Option<i64> = sqlx::query_scalar("SELECT token_version FROM users WHERE id = ?")
+        .bind(&auth.0)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(crate::api::error::internal)?;
+    if version != Some(auth.1) {
+        return Err((StatusCode::UNAUTHORIZED, "invalid session".into()));
+    }
+    Ok(())
+}
+
 /// POST /users/@me/two-factor/setup — start turning it on. Needs the password, so a stolen
 /// session can't put a code in front of the owner. Nothing changes for signing in until a
 /// working code is sent to `enable`.
@@ -328,7 +348,20 @@ pub async fn setup(
     };
     change_try(&state, &auth.0)?;
     require_password(&state, &auth.0, body.password).await?;
-    if is_enabled(&state, &auth.0).await? {
+    let mut tx = state
+        .db
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::api::error::internal)?;
+    require_current_session(&mut tx, &auth).await?;
+    let enabled: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM two_factor WHERE user_id = ? AND enabled_at IS NOT NULL)",
+    )
+    .bind(&auth.0)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(crate::api::error::internal)?;
+    if enabled {
         return Err((
             StatusCode::CONFLICT,
             "two-factor sign-in is already on".into(),
@@ -336,7 +369,7 @@ pub async fn setup(
     }
     let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
         .bind(&auth.0)
-        .fetch_optional(&state.db)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(crate::api::error::internal)?
         .ok_or((StatusCode::UNAUTHORIZED, "invalid session".into()))?;
@@ -350,9 +383,10 @@ pub async fn setup(
     .bind(&auth.0)
     .bind(secret_box.seal(&auth.0, &secret))
     .bind(now_unix())
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
+    tx.commit().await.map_err(crate::api::error::internal)?;
     Ok(Json(SetupResponse {
         secret: tf::base32_encode(&secret),
         otpauth_url: tf::otpauth_url(&secret, &user.username, ISSUER),
@@ -398,9 +432,6 @@ pub async fn enable(
     let opened = secret_box
         .open_checked(&auth.0, &sealed)
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE.into()))?;
-    if opened.stale {
-        reseal(&state, &secret_box, &auth.0, &sealed, &opened.plaintext).await;
-    }
     let secret = opened.plaintext;
     let code = body.code.unwrap_or_default();
     let Some(step) = tf::verify_code(&secret, &code, now_unix(), 0) else {
@@ -410,15 +441,23 @@ pub async fn enable(
 
     let mut tx = state
         .db
-        .begin()
+        .begin_with("BEGIN IMMEDIATE")
         .await
         .map_err(crate::api::error::internal)?;
+    require_current_session(&mut tx, &auth).await?;
     let turned_on = sqlx::query(
-        "UPDATE two_factor SET enabled_at = ?, last_step = ? WHERE user_id = ? AND enabled_at IS NULL",
+        "UPDATE two_factor SET enabled_at = ?, last_step = ?, secret_enc = ?
+         WHERE user_id = ? AND enabled_at IS NULL AND secret_enc = ?",
     )
     .bind(now_unix())
     .bind(step)
+    .bind(if opened.stale {
+        secret_box.seal(&auth.0, &secret)
+    } else {
+        sealed.clone()
+    })
     .bind(&auth.0)
+    .bind(&sealed)
     .execute(&mut *tx)
     .await
     .map_err(crate::api::error::internal)?;
@@ -445,12 +484,30 @@ pub struct PasswordAndCode {
     pub code: Option<String>,
 }
 
-async fn require_on(state: &AppState, user_id: &str) -> Result<(), ApiError> {
-    if is_enabled(state, user_id).await? {
-        Ok(())
-    } else {
-        Err((StatusCode::CONFLICT, "two-factor sign-in is off".into()))
+async fn require_on(state: &AppState, user_id: &str) -> Result<(Vec<u8>, i64), ApiError> {
+    sqlx::query_as("SELECT secret_enc, enabled_at FROM two_factor WHERE user_id = ? AND enabled_at IS NOT NULL")
+        .bind(user_id).fetch_optional(&state.db).await
+        .map_err(crate::api::error::internal)?
+        .ok_or((StatusCode::CONFLICT, "two-factor sign-in is off".into()))
+}
+
+/// Step-up verified the earlier factor, not a replacement configured while it ran.
+async fn require_same_factor(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    user_id: &str,
+    factor: &(Vec<u8>, i64),
+) -> Result<(), ApiError> {
+    let same: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM two_factor WHERE user_id = ? AND secret_enc = ? AND enabled_at = ?)",
+    ).bind(user_id).bind(&factor.0).bind(factor.1).fetch_one(&mut **tx).await
+        .map_err(crate::api::error::internal)?;
+    if !same {
+        return Err((
+            StatusCode::CONFLICT,
+            "two-factor sign-in changed — try again".into(),
+        ));
     }
+    Ok(())
 }
 
 /// POST /users/@me/two-factor/disable — turn it off. Needs the password and a code.
@@ -461,13 +518,15 @@ pub async fn disable(
 ) -> Result<StatusCode, ApiError> {
     change_try(&state, &auth.0)?;
     require_password(&state, &auth.0, body.password).await?;
-    require_on(&state, &auth.0).await?;
+    let factor = require_on(&state, &auth.0).await?;
     require_second_factor(&state, &auth.0, body.code).await?;
     let mut tx = state
         .db
-        .begin()
+        .begin_with("BEGIN IMMEDIATE")
         .await
         .map_err(crate::api::error::internal)?;
+    require_current_session(&mut tx, &auth).await?;
+    require_same_factor(&mut tx, &auth.0, &factor).await?;
     for sql in [
         "DELETE FROM two_factor WHERE user_id = ?",
         "DELETE FROM two_factor_recovery_codes WHERE user_id = ?",
@@ -494,13 +553,15 @@ pub async fn new_recovery_codes(
 ) -> Result<Json<RecoveryCodes>, ApiError> {
     change_try(&state, &auth.0)?;
     require_password(&state, &auth.0, body.password).await?;
-    require_on(&state, &auth.0).await?;
+    let factor = require_on(&state, &auth.0).await?;
     require_second_factor(&state, &auth.0, body.code).await?;
     let mut tx = state
         .db
-        .begin()
+        .begin_with("BEGIN IMMEDIATE")
         .await
         .map_err(crate::api::error::internal)?;
+    require_current_session(&mut tx, &auth).await?;
+    require_same_factor(&mut tx, &auth.0, &factor).await?;
     let codes = replace_recovery_codes(&mut tx, &auth.0).await?;
     tx.commit().await.map_err(crate::api::error::internal)?;
     Ok(Json(RecoveryCodes {
@@ -561,9 +622,13 @@ pub async fn login_code(
     Json(body): Json<CodeStep>,
 ) -> Result<Json<AuthResponse>, ApiError> {
     check_auth_rate(&state, &headers, &addr)?;
+    if body.challenge.len() > 128 || body.code.len() > 128 {
+        return Err((StatusCode::BAD_REQUEST, "input too long".into()));
+    }
     let hash = sha256_hex(body.challenge.as_bytes());
-    let row: Option<(String, i64)> = sqlx::query_as(
-        "SELECT user_id, expires_at FROM two_factor_challenges WHERE token_hash = ?",
+    let row: Option<(String, i64, i64)> = sqlx::query_as(
+        "SELECT c.user_id, c.expires_at, u.token_version FROM two_factor_challenges c
+         JOIN users u ON u.id = c.user_id WHERE c.token_hash = ?",
     )
     .bind(&hash)
     .fetch_optional(&state.db)
@@ -575,7 +640,7 @@ pub async fn login_code(
             "sign in again — that took too long".to_owned(),
         )
     };
-    let Some((user_id, expires_at)) = row else {
+    let Some((user_id, expires_at, token_version)) = row else {
         return Err(gone());
     };
     if expires_at < now_unix() {
@@ -624,7 +689,11 @@ pub async fn login_code(
         .await
         .map_err(crate::api::error::internal)?
         .ok_or_else(gone)?;
-    let token_version = current_token_version(&state, &user.id).await?;
+    // Never stamp a pre-reset challenge with the post-reset generation. A reset after
+    // this check still revokes the captured generation stamped into the response.
+    if current_token_version(&state, &user.id).await? != token_version {
+        return Err(gone());
+    }
     let token = create_token(&user.id, token_version, &jwt_secret())
         .map_err(crate::api::error::internal)?;
     Ok(Json(AuthResponse {

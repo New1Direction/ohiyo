@@ -24,6 +24,8 @@
   --hover: hsl(var(--tone-hue) 18% 20%); --line: hsl(var(--tone-hue) 14% 25%);
   --control-line: hsl(var(--tone-hue) 16% 32%);
 }
+/* Rotate the supplied mint accents; keep the fur's neutral shading and alpha. */
+.burrow[data-tone]:not([data-tone=original]) .kikka-mascot-image { filter: hue-rotate(calc((var(--tone-hue) - 162) * 1deg)) saturate(.65); }
 .burrow-colour-pulse { position: fixed; z-index: 100; border-radius: 50%; pointer-events: none; opacity: 0; background: radial-gradient(closest-side, transparent 25%, var(--pulse-colour) 65%, transparent 100%); }
 .burrow * { box-sizing: border-box; }
 .burrow button, .burrow input, .burrow textarea, .burrow select { font: inherit; }
@@ -234,7 +236,7 @@
 .burrow-detail > .kikka-reply { padding: 20px 0; border-top: 1px solid var(--line); }
 .kikka-reply-heading { display: flex; gap: 12px; align-items: center; }
 .kikka-reply-heading strong { font-size: 13px; font-weight: 600; }
-.kikka-presence { position: relative; width: 46px; height: 46px; flex-shrink: 0; padding: 5px; border: 1px solid #46523c; border-radius: 50%; background: var(--green-bg); }
+.kikka-presence { position: relative; width: 46px; height: 46px; flex-shrink: 0; padding: 5px; border: 1px solid var(--control-line); border-radius: 50%; background: var(--accent-tint); }
 .kikka-presence img { width: 100%; height: 100%; object-fit: contain; }
 .kikka-presence i { position: absolute; right: 0; bottom: 0; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--base); background: var(--green); }
 .kikka-activity { display: block; color: var(--muted); font-size: 10px; margin-top: 5px; }
@@ -242,7 +244,7 @@
 .kikka-working-dots i { width: 3px; height: 3px; background: currentColor; border-radius: 50%; animation: kikka-dot 1.4s ease-in-out infinite; }
 .kikka-working-dots i:nth-child(2) { animation-delay: .18s; }
 .kikka-working-dots i:nth-child(3) { animation-delay: .36s; }
-.kikka-reply.working .kikka-presence { background: #3a2923; border-color: #78503e; }
+.kikka-reply.working .kikka-presence { background: var(--accent-tint); border-color: var(--coral); }
 .kikka-reply.working .kikka-presence i { background: var(--coral); animation: burrow-pulse 1.5s ease-in-out infinite; }
 .kikka-reply.needs-you .kikka-presence { background: var(--amber-bg); border-color: #796238; }
 .kikka-reply.needs-you .kikka-presence i { background: #b68a3c; }
@@ -251,7 +253,7 @@
 .kikka-reply.error .kikka-activity { color: var(--error); }
 .kikka-reply.stopped .kikka-presence { background: var(--raised); border-color: var(--line); }
 .kikka-reply.stopped .kikka-presence i { background: #8b8d82; }
-.kikka-reply.talking .kikka-presence { box-shadow: 0 0 0 4px #82906a18; }
+.kikka-reply.talking .kikka-presence { box-shadow: 0 0 0 4px var(--accent-tint); }
 .kikka-reply.talking .kikka-presence i { animation: burrow-pulse .8s ease-in-out infinite; }
 .ambience-paused .kikka-reply .kikka-presence i, .ambience-paused .kikka-reply .kikka-working-dots i { animation-play-state: paused; }
 @keyframes kikka-dot { 0%, 70%, 100% { opacity: .3; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-2px); } }

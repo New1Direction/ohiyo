@@ -47,6 +47,7 @@ import { type Density, DENSITIES, FONT_SCALES } from "../../lib/density";
 import { pushAppearance } from "../../lib/appearanceSync";
 import { LinkedDevices } from "./LinkedDevices";
 import { ChangePassword } from "./ChangePassword";
+import { AccountRecovery } from "./AccountRecovery";
 import { DeleteAccount } from "./DeleteAccount";
 import { TwoFactorCard, type TwoFactorApi } from "./TwoFactorCard";
 import { ConfirmWithPassword } from "./ConfirmWithPassword";
@@ -890,6 +891,7 @@ function AccountTab({ currentUser, token, onToast, onCurrentUserUpdate, onTokenC
           needsCode={twoFactorOn}
         />
       )}
+      <AccountRecovery key={token} token={token} username={currentUser.username} needsCode={twoFactorOn} />
       <TwoFactorCard
         twoFactorApi={twoFactorApi}
         username={currentUser.username}

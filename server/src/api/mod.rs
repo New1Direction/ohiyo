@@ -96,6 +96,11 @@ pub fn router() -> Router<AppState> {
         .route("/auth/logout-everywhere", post(auth::logout_everywhere))
         // Change the password; ends every other session and returns a token for this one.
         .route("/auth/password", post(auth::change_password))
+        .route("/auth/recover", post(auth::recover_account))
+        .route(
+            "/users/@me/account-recovery",
+            get(auth::account_recovery_status).post(auth::issue_account_recovery),
+        )
         // Device linking (QR / one-time code) — add a device without re-entering the password
         .route("/devices/link/start", post(auth::link_start))
         .route("/devices/link/complete", post(auth::link_complete))

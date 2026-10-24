@@ -49,3 +49,18 @@ test("neither host restricts the microphone, camera or screen capture (calls nee
     }
   }
 });
+
+test("the install manifest provides real 192 and 512 icons and a separate maskable icon", () => {
+  const manifest = JSON.parse(readFileSync(join(root, "public/manifest.webmanifest"), "utf8"));
+  const icons = manifest.icons as { src: string; sizes: string; type: string; purpose: string }[];
+  for (const size of [192, 512]) {
+    assert.ok(icons.some(icon => icon.sizes === `${size}x${size}` && icon.purpose === "any"));
+  }
+  assert.ok(icons.some(icon => icon.sizes === "512x512" && icon.purpose === "maskable"));
+  for (const icon of icons) {
+    const bytes = readFileSync(join(root, "public", icon.src));
+    assert.equal(icon.type, "image/png");
+    assert.equal(bytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    assert.equal(`${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`, icon.sizes, icon.src);
+  }
+});

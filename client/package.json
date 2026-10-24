@@ -38,7 +38,7 @@
     "react-virtualized-auto-sizer": "^2.0.3",
     "react-window": "^1.8.11",
     "tailwindcss": "^4.3.1",
-    "zod": "4.3.6"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.2",
@@ -49,7 +49,7 @@
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^15.15.0",
-    "happy-dom": "^20.14.5",
+    "happy-dom": "^21.0.4",
     "playwright-core": "^1.60.0",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.61.0",

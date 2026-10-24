@@ -54,7 +54,7 @@ export function ChangePassword({ token, username, onToast, onChanged, needsCode 
       setRepeat("");
       setCode("");
       onChanged(res.token);
-      onToast("Password changed. You're signed out everywhere else.", "success");
+      onToast("Password changed. You're signed out everywhere else. Create a new account recovery code in My account.", "success");
     } catch (err) {
       const codeProblem = stepUpCodeMessage(err);
       if (codeProblem) setCodeAsked(true);
@@ -72,8 +72,8 @@ export function ChangePassword({ token, username, onToast, onChanged, needsCode 
         Password
       </div>
       <p className="mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
-        Changing it signs you out everywhere else. Your encryption keys and recovery backup don&apos;t use it, so
-        nothing to re-set there.
+        Changing it signs you out everywhere else and invalidates your account recovery code. Create a new code below afterward.
+        Your encryption keys and encrypted-chat backup stay unchanged.
       </p>
       {/* Lets a password manager tie the new password to this account. */}
       <input type="text" name="username" autoComplete="username" value={username} readOnly hidden />

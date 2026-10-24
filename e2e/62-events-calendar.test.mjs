@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { launchBrowser, ORIGIN, register, shot, settle, log, uniq, PASS } from "./harness.mjs";
 
 // Events, end to end. A plans a hangout in the space's voice channel starting in about two
@@ -6,6 +7,9 @@ import { launchBrowser, ORIGIN, register, shot, settle, log, uniq, PASS } from "
 // voice) within a sweep of the server's background loop. A edits the title and B sees the new
 // one; A cancels it and B is told. Screenshots: the month and agenda views and the event card
 // in dark and light, and the agenda on a phone.
+checkDateBoundaries();
+// Deterministic regression checks without a running stack or Chromium.
+if (process.argv.includes("--dates-only")) process.exit(0);
 const u = uniq();
 const A = `eva_${u}`, B = `evb_${u}`;
 const COMPOSER = 'textarea[placeholder*="Say something to #general"]';
@@ -19,14 +23,84 @@ async function openEvents(page) {
 }
 
 // The local wall-clock time `minutes` from now, as a datetime-local input wants it.
-function localInputValue(page, minutes) {
-  return page.evaluate((m) => {
-    const d = new Date(Date.now() + m * 60_000);
-    d.setSeconds(0, 0);
-    d.setMinutes(d.getMinutes() + 1);
-    const p = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-  }, minutes);
+// Also accepts an explicit instant so the midnight regression is reproducible.
+function localInputValue({ minutes, now = Date.now() }) {
+  const d = new Date(now + minutes * 60_000);
+  d.setSeconds(0, 0);
+  d.setMinutes(d.getMinutes() + 1);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function eventCell(start) {
+  return `[role="grid"] [data-day="${start.slice(0, 10)}"]`;
+}
+
+function monthDistance(from, to) {
+  const [fy, fm] = from.split("-").map(Number);
+  const [ty, tm] = to.split("-").map(Number);
+  return (ty - fy) * 12 + tm - fm;
+}
+
+function agendaLabel({ start, now = Date.now(), locale = navigator.language }) {
+  const date = new Date(start);
+  const today = new Date(now);
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow";
+  return new Intl.DateTimeFormat(locale, { weekday: "long", month: "long", day: "numeric" }).format(date);
+}
+
+// Reopening Events resets its month. Navigate to the event's month, even when the
+// next day isn't included among the current grid's trailing days (or is next year).
+async function monthEvent(page, start, title) {
+  const selected = page.locator('[role="grid"] [aria-selected="true"]');
+  await selected.waitFor({ timeout: 6000 });
+  const distance = monthDistance(await selected.getAttribute("data-day"), start.slice(0, 10));
+  for (let i = 0; i < Math.abs(distance); i++) {
+    const previous = await selected.getAttribute("data-day");
+    await page.getByRole("button", { name: distance > 0 ? "Next month" : "Previous month", exact: true }).click();
+    await page.waitForFunction((day) => document.querySelector('[role="grid"] [aria-selected="true"]')?.getAttribute("data-day") !== day, previous);
+  }
+  const month = await page.evaluate((value) => new Intl.DateTimeFormat(navigator.language, { month: "long", year: "numeric" }).format(new Date(value)), start);
+  assert.equal(await page.locator('[role="grid"]').getAttribute("aria-label"), month);
+  const event = page.locator(eventCell(start)).getByRole("button", { name: title, exact: true });
+  await event.waitFor({ timeout: 6000 });
+  return event;
+}
+
+async function agendaEvent(page, start, title) {
+  const section = page.locator(".kc-cal-agenda section").filter({ has: page.getByText(title, { exact: true }) });
+  await section.waitFor({ timeout: 6000 });
+  // EventsModal refreshes 'now' every 30 s. Recompute the expected label while
+  // waiting so a midnight during the test can't leave a stale Tomorrow selector.
+  const deadline = Date.now() + 35_000;
+  let expected, actual;
+  do {
+    expected = await page.evaluate(agendaLabel, { start });
+    actual = await section.getAttribute("aria-label");
+    if (actual === expected) return section.getByRole("button").filter({ has: page.getByText(title, { exact: true }) });
+    await page.waitForTimeout(100);
+  } while (Date.now() < deadline);
+  assert.equal(actual, expected, "the event is grouped under its scheduled day");
+}
+
+function checkDateBoundaries() {
+  for (const [now, expected, months, label] of [
+    ["2026-10-24T12:00:00", "2026-10-24T12:03", 0, "Today"],
+    ["2026-10-24T23:58:00", "2026-10-25T00:01", 0, "Tomorrow"],
+    ["2026-10-31T23:58:00", "2026-11-01T00:01", 1, "Tomorrow"],
+    ["2026-12-31T23:58:00", "2027-01-01T00:01", 1, "Tomorrow"],
+    ["2028-02-28T23:58:00", "2028-02-29T00:01", 0, "Tomorrow"],
+  ]) {
+    const start = localInputValue({ minutes: 2, now: new Date(now).getTime() });
+    assert.equal(start, expected);
+    assert.equal(eventCell(start), `[role="grid"] [data-day="${expected.slice(0, 10)}"]`);
+    assert.equal(monthDistance(now.slice(0, 10), start.slice(0, 10)), months);
+    assert.equal(agendaLabel({ start, now: new Date(now).getTime(), locale: "en-US" }), label);
+    assert.equal(agendaLabel({ start, now: new Date(start).getTime(), locale: "en-US" }), "Today");
+  }
+  log("date selectors: same day, midnight, month/year rollover and leap day ✓");
 }
 
 try {
@@ -67,7 +141,8 @@ try {
   await openEvents(pageA);
   await pageA.click('button:has-text("New event")');
   await pageA.fill('input[aria-label="Event title"]', "Voice hangout");
-  await pageA.fill('input[aria-label="Starts"]', await localInputValue(pageA, 2));
+  const starts = await pageA.evaluate(localInputValue, { minutes: 2 });
+  await pageA.fill('input[aria-label="Starts"]', starts);
   await pageA.selectOption('select[aria-label="Where"]', { label: "🔊 General" });
   await pageA.fill('textarea[aria-label="Event details"]', "Bring a game, snacks optional.");
   await pageA.click('button:has-text("Create event")');
@@ -75,20 +150,20 @@ try {
   await pageA.waitForSelector('article[aria-label="Voice hangout"] [role="group"][aria-label="Your answer"] button[aria-pressed="true"]:has-text("Going")', { timeout: 6000 });
   log("A created the event in the voice channel and is down as Going ✓");
   await pageA.click('button:has-text("Back to calendar")');
-  await pageA.waitForSelector('[role="grid"] [aria-current="date"]:has-text("Voice hangout")', { timeout: 6000 });
+  await monthEvent(pageA, starts, "Voice hangout");
   await shot(pageA, "62-events-month-dark");
-  log("the month grid shows it on today ✓");
+  log(`the month grid shows it on ${starts.slice(0, 10)} ✓`);
 
   // ── B finds it on the calendar and says Going ──
   await openEvents(pageB);
-  await pageB.click('[role="grid"] [aria-current="date"] button:has-text("Voice hangout")');
+  await (await monthEvent(pageB, starts, "Voice hangout")).click();
   const goingB = pageB.locator('article[aria-label="Voice hangout"] [role="group"][aria-label="Your answer"] button:has-text("Going")');
   await goingB.click();
   await pageB.waitForSelector('article[aria-label="Voice hangout"] [role="group"][aria-label="Your answer"] button[aria-pressed="true"]:has-text("Going")', { timeout: 6000 });
   log("B said Going ✓");
 
   // ── A's open card shows B going, live ──
-  await pageA.click('[role="grid"] [aria-current="date"] button:has-text("Voice hangout")');
+  await (await monthEvent(pageA, starts, "Voice hangout")).click();
   await pageA.waitForSelector('article[aria-label="Voice hangout"] :text("Bex")', { timeout: 8000 });
   log("A's card shows Bex going without a reload ✓");
   await shot(pageA, "62-events-card-dark");
@@ -119,7 +194,7 @@ try {
   // ── The agenda ──
   await pageA.click('button:has-text("Back to calendar")');
   await pageA.click('button[aria-pressed]:has-text("Agenda")');
-  await pageA.waitForSelector('section[aria-label="Today"] :text("Voice hangout, round two")', { timeout: 6000 });
+  await agendaEvent(pageA, starts, "Voice hangout, round two");
   await shot(pageA, "62-events-agenda-dark");
 
   // ── Light theme ──
@@ -131,13 +206,14 @@ try {
   await settle(pageA, 300);
   await openEvents(pageA);
   await pageA.click('button[aria-pressed]:has-text("Month")');
-  await pageA.waitForSelector('[role="grid"]', { timeout: 6000 });
+  await monthEvent(pageA, starts, "Voice hangout, round two");
   await shot(pageA, "62-events-month-light");
-  await pageA.click('[role="grid"] [aria-current="date"] button:has-text("Voice hangout")');
+  await (await monthEvent(pageA, starts, "Voice hangout, round two")).click();
   await pageA.waitForSelector('article[aria-label="Voice hangout, round two"]', { timeout: 6000 });
   await shot(pageA, "62-events-card-light");
   await pageA.click('button:has-text("Back to calendar")');
   await pageA.click('button[aria-pressed]:has-text("Agenda")');
+  await agendaEvent(pageA, starts, "Voice hangout, round two");
   await shot(pageA, "62-events-agenda-light");
   log("month, card and agenda in the light theme ✓");
 
@@ -145,16 +221,16 @@ try {
   await pageB.click('button:has-text("Back to calendar")');
   await pageB.setViewportSize({ width: 390, height: 844 });
   await settle(pageB, 300);
-  await pageB.waitForSelector('section[aria-label="Today"] :text("Voice hangout, round two")', { timeout: 6000 });
+  await agendaEvent(pageB, starts, "Voice hangout, round two");
   if ((await pageB.locator('[role="grid"]').count()) !== 0) throw new Error("a phone should show the agenda, not the grid");
   await shot(pageB, "62-events-agenda-phone");
-  await pageB.click('section[aria-label="Today"] button:has-text("Voice hangout, round two")');
+  await (await agendaEvent(pageB, starts, "Voice hangout, round two")).click();
   await pageB.waitForSelector('article[aria-label="Voice hangout, round two"]', { timeout: 6000 });
   await shot(pageB, "62-events-card-phone");
   log("a phone shows the agenda ✓");
 
   // ── A cancels; B is told ──
-  await pageA.click('section[aria-label="Today"] button:has-text("Voice hangout, round two")');
+  await (await agendaEvent(pageA, starts, "Voice hangout, round two")).click();
   await pageA.click('article[aria-label="Voice hangout, round two"] button:has-text("Cancel event")');
   await pageA.click('[role="dialog"] button:has-text("Yes, cancel it")');
   await pageA.waitForSelector('article[aria-label="Voice hangout, round two"] :text("Cancelled")', { timeout: 6000 });

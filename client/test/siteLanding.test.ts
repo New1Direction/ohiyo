@@ -132,14 +132,16 @@ test("the site does not promise what the hosted service does not do today", () =
   assert.match(home, /Channels inside a space\. Our server can read those/);
 });
 
-test("the download section says the Mac build is an unverified beta, and how to open it", () => {
-  const html = readFileSync(join(site, "index.html"), "utf8");
-  assert.match(html, /<section[^>]*id="download"/);
-  assert.match(html, /Apple has not verified/);
-  assert.match(html, /Open Anyway/);
-  // Seen in the hands-on update test: an unsigned build asks for the keychain after an update.
-  assert.match(html, /Always Allow/);
-  assert.ok((html.match(/releases\/download\/v/g) ?? []).length >= 5, "two Mac builds and three Linux packages");
+test("family setup leads to the web app without recommending a native security bypass", () => {
+  const section = parse("index.html").querySelector("#download")!;
+  assert.ok(section);
+  const links = [...section.querySelectorAll("a")];
+  assert.equal(links.length, 2, "phone and computer setup each open the web app");
+  for (const link of links) assert.equal(link.getAttribute("href"), "https://app.ohiyo.gg");
+  assert.match(section.textContent, /Add to Home Screen/);
+  assert.match(section.textContent, /Add to Dock/);
+  assert.match(section.textContent, /not Apple-notarized/);
+  assert.doesNotMatch(section.textContent, /Open Anyway|Always Allow/);
 });
 
 test("the legal pages say where the hosted service really runs", () => {
