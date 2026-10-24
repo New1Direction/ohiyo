@@ -111,7 +111,7 @@ jobs:
         # Reads client/bun.lock. Unlike the old `npm audit --omit=dev`, this also covers
         # dev dependencies (Vite, tsc, ESLint), which run on every build machine.
         run: bun audit --audit-level=high
-      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
         with:
           tool: cargo-audit
       - name: cargo audit (server)
