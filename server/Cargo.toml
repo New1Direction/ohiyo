@@ -19,7 +19,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 # Keep token/key formats, but avoid the rust_crypto provider's vulnerable
 # crypto-bigint 0.5 dependency (RUSTSEC-2026-0387).
-jsonwebtoken = { version = "10.3", features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "11.1", features = ["aws_lc_rs"] }
 argon2 = "0.5"
 anyhow = "1"
 thiserror = "2"
