@@ -32,7 +32,7 @@ dotenvy = "0.15"
 rand = "0.8"
 # Two-factor secrets are stored encrypted (auth::two_factor).
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
-hkdf = "0.12"
+hkdf = "0.13"
 sha2 = "0.10"
 hmac = "0.12"
 sha1 = "0.10"
