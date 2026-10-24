@@ -17,7 +17,9 @@ serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "migrate", "uuid", "chrono", "macros", "json"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
+# Keep token/key formats, but avoid the rust_crypto provider's vulnerable
+# crypto-bigint 0.5 dependency (RUSTSEC-2026-0387).
+jsonwebtoken = { version = "10.3", features = ["aws_lc_rs"] }
 argon2 = "0.5"
 anyhow = "1"
 thiserror = "2"
@@ -28,8 +30,7 @@ tokio-stream = "0.1"
 futures-util = "0.3"
 dotenvy = "0.15"
 rand = "0.8"
-# Two-factor secrets are stored encrypted (auth::two_factor). Both are already in the tree
-# through web-push, with exactly these features, so nothing new is built.
+# Two-factor secrets are stored encrypted (auth::two_factor).
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 hkdf = "0.12"
 sha2 = "0.10"
@@ -38,7 +39,10 @@ sha1 = "0.10"
 base64 = "0.22"
 tokio-util = { version = "0.7", features = ["io"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
-web-push = { version = "0.11", default-features = false }
+# Use the same Web Push encryption backend directly; web-push's JWT wrapper
+# unconditionally pulls in the vulnerable crypto-bigint 0.5 dependency.
+ece = "2.3"
+openssl = "0.10"
 url = "2"
 urlencoding = "2"
 imagesize = "0.15"

@@ -9,13 +9,12 @@ use axum::{
     http::{header, HeaderMap, StatusCode},
     Json,
 };
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
+use openssl::{bn::BigNumContext, ec::PointConversionForm, nid::Nid, pkey::PKey};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use web_push::{
-    ContentEncoding, SubscriptionInfo, VapidSignatureBuilder, WebPushError, WebPushMessageBuilder,
-};
 
 use crate::{
     auth::AuthUser,
@@ -783,58 +782,10 @@ async fn send_web_push(http: &Client, job: &DeliveryJob) -> ProviderSendResult {
     };
     let subject = std::env::var("OHIYO_WEB_PUSH_SUBJECT")
         .unwrap_or_else(|_| "mailto:security@ohiyo.gg".to_owned());
-    let Some(endpoint) = job.endpoint.as_deref() else {
-        return ProviderSendResult::Failed(permanent("web push endpoint missing"));
+    let request = match web_push_request(http, job, &private_key, &subject) {
+        Ok(request) => request,
+        Err(failure) => return failure,
     };
-    let Some(p256dh) = job.p256dh.as_deref() else {
-        return ProviderSendResult::Failed(permanent("web push p256dh missing"));
-    };
-    let Some(auth) = job.auth.as_deref() else {
-        return ProviderSendResult::Failed(permanent("web push auth missing"));
-    };
-    let p256dh = web_push_key(p256dh);
-    let auth = web_push_key(auth);
-    let subscription = SubscriptionInfo::new(endpoint.to_owned(), p256dh, auth);
-    let mut sig = match VapidSignatureBuilder::from_pem(private_key.as_bytes(), &subscription) {
-        Ok(builder) => builder,
-        Err(_) => {
-            return ProviderSendResult::MissingProvider("web push VAPID key invalid".to_owned())
-        }
-    };
-    sig.add_claim("sub", subject);
-    let signature = match sig.build() {
-        Ok(sig) => sig,
-        Err(_) => {
-            return ProviderSendResult::MissingProvider(
-                "web push VAPID signature failed".to_owned(),
-            )
-        }
-    };
-    let payload = content_free_payload(&job.kind).to_string();
-    let mut builder = WebPushMessageBuilder::new(&subscription);
-    builder.set_payload(ContentEncoding::Aes128Gcm, payload.as_bytes());
-    builder.set_vapid_signature(signature);
-    let message = match builder.build() {
-        Ok(message) => message,
-        Err(err) => return ProviderSendResult::Failed(web_push_failure(err)),
-    };
-    let mut request = http
-        .post(message.endpoint.to_string())
-        .header("TTL", message.ttl.to_string());
-    if let Some(urgency) = message.urgency {
-        request = request.header("Urgency", urgency.to_string());
-    }
-    if let Some(topic) = message.topic {
-        request = request.header("Topic", topic);
-    }
-    if let Some(payload) = message.payload {
-        request = request.header("Content-Encoding", payload.content_encoding.to_str());
-        request = request.header(header::CONTENT_TYPE, "application/octet-stream");
-        for (name, value) in payload.crypto_headers {
-            request = request.header(name, value);
-        }
-        request = request.body(payload.content);
-    }
     match request.send().await {
         Ok(res) if res.status().is_success() => ProviderSendResult::Sent,
         Ok(res) if res.status().as_u16() == 404 || res.status().as_u16() == 410 => {
@@ -855,25 +806,82 @@ async fn send_web_push(http: &Client, job: &DeliveryJob) -> ProviderSendResult {
     }
 }
 
-fn web_push_failure(err: WebPushError) -> SendFailure {
-    match err {
-        WebPushError::EndpointNotFound(_) | WebPushError::EndpointNotValid(_) => SendFailure {
-            retryable: false,
-            invalid_token: true,
-            reason: "web push endpoint expired".to_owned(),
-        },
-        WebPushError::Unauthorized(_) | WebPushError::BadRequest(_) | WebPushError::InvalidUri => {
-            SendFailure {
-                retryable: false,
-                invalid_token: false,
-                reason: "web push request rejected".to_owned(),
-            }
-        }
-        WebPushError::ServerError { .. } | WebPushError::Unspecified => {
-            transient("web push provider unavailable")
-        }
-        _ => permanent("web push delivery failed"),
-    }
+/// Build the wire request without changing existing VAPID keys or subscriptions.
+/// ECE still owns encryption; jsonwebtoken's AWS-LC provider owns ES256 signing.
+fn web_push_request(
+    http: &Client,
+    job: &DeliveryJob,
+    private_key: &str,
+    subject: &str,
+) -> Result<reqwest::RequestBuilder, ProviderSendResult> {
+    let Some(endpoint) = job.endpoint.as_deref() else {
+        return Err(ProviderSendResult::Failed(permanent(
+            "web push endpoint missing",
+        )));
+    };
+    let Some(p256dh) = job.p256dh.as_deref() else {
+        return Err(ProviderSendResult::Failed(permanent(
+            "web push p256dh missing",
+        )));
+    };
+    let Some(auth) = job.auth.as_deref() else {
+        return Err(ProviderSendResult::Failed(permanent(
+            "web push auth missing",
+        )));
+    };
+    let endpoint = url::Url::parse(endpoint)
+        .map_err(|_| ProviderSendResult::Failed(permanent("web push request rejected")))?;
+    let authorization = (|| -> anyhow::Result<String> {
+        // Accept both the original SEC1 PEM and PKCS#8; conversion keeps the key.
+        let key = PKey::private_key_from_pem(private_key.as_bytes())?;
+        let ec = key.ec_key()?;
+        anyhow::ensure!(ec.group().curve_name() == Some(Nid::X9_62_PRIME256V1));
+        ec.check_key()?;
+        let mut context = BigNumContext::new()?;
+        let public = ec.public_key().to_bytes(
+            ec.group(),
+            PointConversionForm::UNCOMPRESSED,
+            &mut context,
+        )?;
+        let encoding_key = EncodingKey::from_ec_pem(&key.private_key_to_pem_pkcs8()?)?;
+        let now = now_unix();
+        // Preserve web-push 0.11's audience (scheme + host, without path or port).
+        let audience = format!(
+            "{}://{}",
+            endpoint.scheme(),
+            endpoint
+                .host_str()
+                .ok_or_else(|| anyhow::anyhow!("missing push host"))?
+        );
+        let token = jsonwebtoken::encode(
+            &Header::new(Algorithm::ES256),
+            &json!({"aud": audience, "sub": subject, "exp": now + 43_200, "iat": now, "nbf": now}),
+            &encoding_key,
+        )?;
+        Ok(format!(
+            "vapid t={token}, k={}",
+            URL_SAFE_NO_PAD.encode(public)
+        ))
+    })()
+    .map_err(|_| {
+        ProviderSendResult::MissingProvider("web push VAPID key or signature invalid".to_owned())
+    })?;
+    let body = (|| -> anyhow::Result<Vec<u8>> {
+        let p256dh = URL_SAFE_NO_PAD.decode(web_push_key(p256dh))?;
+        let auth = URL_SAFE_NO_PAD.decode(web_push_key(auth))?;
+        let payload = content_free_payload(&job.kind).to_string();
+        // Retain the wrapper's conservative single-message limit.
+        anyhow::ensure!(payload.len() <= 3052);
+        Ok(ece::encrypt(&p256dh, &auth, payload.as_bytes())?)
+    })()
+    .map_err(|_| ProviderSendResult::Failed(permanent("web push delivery failed")))?;
+    Ok(http
+        .post(endpoint)
+        .header("TTL", "2419200")
+        .header("Content-Encoding", "aes128gcm")
+        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .header(header::AUTHORIZATION, authorization)
+        .body(body))
 }
 
 #[derive(Serialize)]
@@ -1378,6 +1386,120 @@ mod tests {
         include_str!("../../tests/fixtures/test-only-fcm-rs256-private.pem");
     const TEST_ONLY_FCM_PUBLIC: &str =
         include_str!("../../tests/fixtures/test-only-fcm-rs256-public.pem");
+
+    #[test]
+    fn web_push_wire_request_preserves_keys_claims_and_encrypted_payload() {
+        let (receiver, _) = ece::generate_keypair_and_auth_secret().unwrap();
+        let auth = [0xfb; 16];
+        let mut job = DeliveryJob {
+            id: "test-delivery".into(),
+            device_id: None,
+            kind: "message".into(),
+            attempts: 0,
+            platform: Some("web".into()),
+            // Include a path and nondefault port to pin the previous audience behavior.
+            endpoint: Some("https://fcm.googleapis.com:8443/send/test-subscription".into()),
+            p256dh: None,
+            auth: None,
+            current_session: Some(true),
+        };
+        let key = PKey::private_key_from_pem(TEST_ONLY_APNS_P8.as_bytes()).unwrap();
+        let sec1 = String::from_utf8(key.ec_key().unwrap().private_key_to_pem().unwrap()).unwrap();
+        let public = PKey::public_key_from_pem(TEST_ONLY_APNS_PUBLIC.as_bytes()).unwrap();
+        let public_ec = public.ec_key().unwrap();
+        let expected_public = public_ec
+            .public_key()
+            .to_bytes(
+                public_ec.group(),
+                PointConversionForm::UNCOMPRESSED,
+                &mut BigNumContext::new().unwrap(),
+            )
+            .unwrap();
+        let http = dispatch_client();
+        for (private, encoding) in [
+            (TEST_ONLY_APNS_P8, base64::engine::general_purpose::STANDARD),
+            (sec1.as_str(), URL_SAFE_NO_PAD),
+        ] {
+            job.p256dh = Some(encoding.encode(receiver.pub_as_raw().unwrap()));
+            job.auth = Some(encoding.encode(auth));
+            let before = now_unix();
+            let request = web_push_request(&http, &job, private, "mailto:push@example.test")
+                .ok()
+                .expect("both PEM and browser key formats work")
+                .build()
+                .unwrap();
+            let after = now_unix();
+            assert_eq!(request.method(), reqwest::Method::POST);
+            assert_eq!(request.url().as_str(), job.endpoint.as_deref().unwrap());
+            assert_eq!(request.headers()["TTL"], "2419200");
+            assert_eq!(request.headers()["Content-Encoding"], "aes128gcm");
+            assert_eq!(
+                request.headers()[header::CONTENT_TYPE],
+                "application/octet-stream"
+            );
+            let authorization = request.headers()[header::AUTHORIZATION].to_str().unwrap();
+            let (jwt, public) = authorization
+                .strip_prefix("vapid t=")
+                .unwrap()
+                .split_once(", k=")
+                .unwrap();
+            assert_eq!(URL_SAFE_NO_PAD.decode(public).unwrap(), expected_public);
+            // Verify AWS-LC's JOSE signature independently with OpenSSL and a separate
+            // public-key fixture, not the signer/provider under test.
+            let (signed, signature) = jwt.rsplit_once('.').unwrap();
+            let signature = URL_SAFE_NO_PAD.decode(signature).unwrap();
+            assert_eq!(signature.len(), 64);
+            let signature = openssl::ecdsa::EcdsaSig::from_private_components(
+                openssl::bn::BigNum::from_slice(&signature[..32]).unwrap(),
+                openssl::bn::BigNum::from_slice(&signature[32..]).unwrap(),
+            )
+            .unwrap();
+            assert!(signature
+                .verify(&openssl::sha::sha256(signed.as_bytes()), &public_ec)
+                .unwrap());
+            let (header, claims) = signed.split_once('.').unwrap();
+            let header: serde_json::Value =
+                serde_json::from_slice(&URL_SAFE_NO_PAD.decode(header).unwrap()).unwrap();
+            assert_eq!(header["alg"], "ES256");
+            let claims: serde_json::Value =
+                serde_json::from_slice(&URL_SAFE_NO_PAD.decode(claims).unwrap()).unwrap();
+            assert_eq!(claims["aud"], "https://fcm.googleapis.com");
+            assert_eq!(claims["sub"], "mailto:push@example.test");
+            assert!((before + 43_200..=after + 43_200).contains(&claims["exp"].as_i64().unwrap()));
+            let plaintext = ece::decrypt(
+                &receiver.raw_components().unwrap(),
+                &auth,
+                request.body().unwrap().as_bytes().unwrap(),
+            )
+            .expect("the existing subscription decrypts the binary aes128gcm body");
+            let payload: serde_json::Value = serde_json::from_slice(&plaintext).unwrap();
+            assert_eq!(
+                payload,
+                json!({
+                    "title": "Ohiyo", "body": "You have new activity.",
+                    "tag": "ohiyo-activity", "data": {"kind": "message"},
+                })
+            );
+        }
+        for bad_key in ["invalid PEM", TEST_ONLY_FCM_PRIVATE] {
+            assert!(matches!(
+                web_push_request(&http, &job, bad_key, "mailto:push@example.test"),
+                Err(ProviderSendResult::MissingProvider(_))
+            ));
+        }
+        // Invalid subscription crypto must not become a retryable provider outage.
+        for bad_auth in ["not base64!", "AQ"] {
+            job.auth = Some(bad_auth.into());
+            assert!(matches!(
+                web_push_request(&http, &job, TEST_ONLY_APNS_P8, "mailto:push@example.test"),
+                Err(ProviderSendResult::Failed(SendFailure {
+                    retryable: false,
+                    invalid_token: false,
+                    ..
+                }))
+            ));
+        }
+    }
 
     #[test]
     fn apns_provider_token_is_es256_signed_with_the_p8_key() {

@@ -29,10 +29,11 @@ distribution. The older dated sections below are historical, not current certifi
 - The two failing baseline CI gates have candidate fixes: patched Zod/Happy DOM
   dependencies and a calendar E2E that uses the scheduled date across midnight
   rather than assuming the event is today. This is not a claim of deployed fixes.
-- A fresh Rust audit also reports `RUSTSEC-2026-0387` in `crypto-bigint 0.5.5`,
-  pulled through elliptic-curve/JWT/Web Push dependencies. The same audit fails
-  against the unchanged `origin/main` lockfile; the candidate does not fix or
-  suppress this advisory. Passing application tests does not clear that gate.
+- The Rust audit failure `RUSTSEC-2026-0387` was traced to both JWT providers.
+  Session/provider JWTs now use AWS-LC; Web Push keeps its existing ECE encryption
+  backend and uses AWS-LC for VAPID signing, accepting the same SEC1/PKCS#8 keys.
+  `crypto-bigint` is absent from the lockfile and the configured audit passes,
+  without adding an exception. This source fix is not a production deployment.
 - A private restore of the existing production Litestream replica succeeded:
   SQLite integrity was `ok` and foreign-key violations were zero. All 17 restored
   upload references matched live paths and sizes (404,603,754 bytes total).
