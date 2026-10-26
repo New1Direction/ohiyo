@@ -1,0 +1,5 @@
+{
+  "catalog": [{ "id": "fixture/school", "providerModelId": "school", "contextWindow": 100000, "maxOutputTokens": 4096, "inputUsdPerMillion": 0, "outputUsdPerMillion": 0 }],
+  "connections": [{ "id": "school-fixture", "name": "Scripted school fixture (no provider calls)", "endpoint": "https://example.com/v1/chat/completions", "modelMapping": "", "active": true, "priority": 0, "keyEnv": "KIKKA_SCHOOL_FIXTURE_KEY" }],
+  "roles": { "general": "fixture/school", "research": "fixture/school", "review": "fixture/school", "summary": "fixture/school" }
+}

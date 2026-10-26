@@ -6,6 +6,30 @@ bridge remains separate; Pi can now attach an ImOrb resource through the
 [versioned ComputerProvider contract](COMPUTERS.md). Browser/desktop engines
 remain unavailable until installed and explicitly authorized.
 
+## Project knowledge pilot (API-first)
+
+See [architecture mapping and API contract](../docs/burrow-thinkrail.md).
+`allow_project_knowledge: true` in the server's agent approval adds exactly
+`read_project_spec` and `propose_project_change` to a non-travel project run.
+It is immutable and off by default, including for previously saved runs. Coding
+may explicitly add these two tools; approval/test/install are never model tools.
+Proposals enter the existing durable event stream under the Pi tool task ID;
+server reconciliation binds them to the authenticated task's account/project.
+The approved spec is part of current explicit context, refreshed at admission and
+human follow-up, not live-resynchronized into an in-flight model call.
+
+The private host-only `skill_test` command validates guidance JSON in a fixed
+Node child process. **This optional operation requires Node 26+**; older workers
+fail closed without changing the existing Pi runtime's minimum version. It has
+an empty environment, no filesystem/network/child-process permissions, a 32 MiB
+V8 heap limit, a three-second deadline and a 1 KiB output cap. These are defense
+in depth for a fixed validator, not a security boundary for executing hostile JS:
+candidate instructions are parsed as text and are NEVER evaluated. Tests check
+structure and actual permission denial, not skill usefulness or model behavior.
+No package fetch, model call, skill activation or tool change occurs. The server
+requires human approval then a separate explicit one-shot test request. Lost
+acknowledgements cannot retry; rollback revokes the candidate, not past effects.
+
 ## Repository coding pilot
 
 Burrow's **Code repository** action saves `coding: true` intent on an ordinary

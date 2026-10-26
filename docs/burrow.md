@@ -3,6 +3,13 @@
 Open `/burrow` in the existing browser client. `/` remains Ohiyo. Burrow is an
 explicit experimental surface, not a change to Ohiyo chat or encryption.
 
+The [project specs and skill proposal pilot](burrow-thinkrail.md) adds persistent
+project knowledge and human review without replacing Pi Durable. Its browser
+workspace starts with a chatbox. Saved materials and review cards appear in the
+conversation; project plans and preferences open on demand. AI starts only with
+permission. Suggested helpers have separate approval and format-check actions;
+nothing installs or activates here.
+
 Prompt composers use Enter to send and Shift+Enter for a new line. Ctrl/⌘ Enter
 also sends. IME composition and repeated Enter key events never send; empty, busy or
 disconnected prompts cannot bypass the disabled submit button. Saved-document
@@ -60,14 +67,16 @@ a harbour mystery with four endings, and a web-request journey with empty/fresh
 DNS-cache scenarios. Examples work without a configured service and are never
 presented as newly generated work. Previously saved pages still open unchanged.
 
-New requests create owner-scoped **creations** and open a full-width conversation
-with the composer at the bottom. **Preview** toggles the page beside the
-conversation on wide screens, or switches panes on smaller screens. Existing
-pages open with their preview visible. Hiding either pane preserves the unsent
-draft and temporary preview progress; leaving the creation or replacing its page
-still resets preview progress.
+Choose **Interactive page** beside the new-chat composer, describe what to make,
+and send. This saves an owner-scoped **creation** in the selected project without
+starting generation. The page appears directly in the conversation, with one
+composer below the scrollable messages on both wide and narrow screens. There
+is no separate preview pane or Conversation/Preview switch. Typing and opening
+**About this page** preserve interactive progress and unsent text; leaving the
+chat or replacing its page resets interactive progress. Existing pages and
+ready-made examples use this same inline renderer.
 
-**Make it** approves one generation attempt; **Send** approves one revision.
+**Allow & create** approves one generation attempt; **Send** approves one revision.
 The destination and possible cost are disclosed beside the composer. The service
 receives only the original request, current page and latest instruction, not
 Ohiyo conversations or other tasks. Saving a request alone makes no service call.
@@ -96,7 +105,7 @@ from replacing it, but does not guarantee cancellation of upstream billing.
 
 The page definition and conversation survive reloads. Quiz answers, story
 position and checklist ticks are temporary preview state, not persisted user
-data. The preview states this explicitly. **Checks** reports structural
+data. **About this page** states this explicitly and describes structural
 validation only, not fact-checking, live research or proof of every interaction.
 Nothing is published, sent, booked or purchased. General application generation,
 free-form scripts, live browsing and external integrations are not enabled.

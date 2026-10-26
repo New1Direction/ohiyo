@@ -604,3 +604,88 @@ test("research workspace preserves candidate identity, decision basis and drafts
     for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
   }
 });
+
+test("presentation drafting keeps consent explicit, documents clean and edits protected on permission failure", async () => {
+  const window = new Window({ url: "http://localhost/burrow" });
+  const originals = new Map<string, PropertyDescriptor | undefined>();
+  const writes: { url: string; body: Record<string, unknown> }[] = [];
+  let task: BurrowTask = { id: "school", kind: "writing", format: "document", template: null, coding: false, request: "A water cycle presentation", project: "School", state: "waiting", result: "", error: null, version: 1, created_at: 10, updated_at: 10 };
+  let agent: BurrowAgent | null = null;
+  const fetcher = async (url: string, init: RequestInit = {}) => {
+    if (init.method && init.method !== "GET") {
+      writes.push({ url, body: JSON.parse(String(init.body)) });
+      if (url.endsWith("/result") || url.endsWith("/control")) return new Response("SQLITE owner_id mismatch diagnostic", { status: 403 });
+      assert.ok(url.endsWith("/agent"));
+      task = { ...task, state: "draft_ready", result: "Teacher introduction.\n\n## Slide 1: The water cycle\nAsk the class where rain comes from.\n\n## Slide 2: Evaporation\nSunshine warms water.", version: 2 };
+      agent = { task, agent: { id: "run", runtime_id: "runtime-secret", phase: "finished", max_cost_cents: 25, coding: false, project_knowledge: false }, connected: true, commands: [], history: [], events: [] };
+      return Response.json(task);
+    }
+    if (url.endsWith("/agent")) return agent ? Response.json(agent) : new Response("Not started", { status: 404 });
+    if (url.endsWith("/context")) return Response.json({ memories: [], routines: [], history: [] });
+    if (url.includes("/model-routing")) return Response.json({ catalog: [], roles: {}, preview: {}, connections: [] });
+    throw new Error(`Unexpected read: ${url}`);
+  };
+  for (const [key, value] of Object.entries({ window, document: window.document, navigator: window.navigator, HTMLElement: window.HTMLElement, Node: window.Node, sessionStorage: window.sessionStorage, fetch: fetcher, requestAnimationFrame: (fn: FrameRequestCallback) => setTimeout(() => fn(0), 0) })) {
+    originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  }
+  const bundle = await bundleEntry<{ act: (fn: () => void) => void; mount: (el: unknown, props: unknown) => { render: (props: unknown) => void; unmount: () => void } }>(join(fixtures, "researchTask.tsx"));
+  const container = window.document.createElement("div"); window.document.body.append(container);
+  let dirty = false;
+  let canRun = false;
+  let view: ReturnType<typeof bundle.mod.mount>;
+  const props = () => ({ token: "parent", task, canRun, projectPlanning: true, onUpdate(next: BurrowTask) { task = next; view.render(props()); }, onDirtyChange(value: boolean) { dirty = value; } });
+  const settle = () => new Promise(resolve => setTimeout(resolve, 100));
+  const button = (label: string) => [...container.querySelectorAll("button")].find(b => b.textContent === label || b.getAttribute("aria-label") === label)!;
+  const click = (label: string) => bundle.mod.act(() => { assert.ok(button(label), label); button(label).click(); });
+  try {
+    view = bundle.mod.mount(container, props()); await settle();
+    assert.equal(writes.length, 0);
+    assert.equal(button("Allow & start chat").disabled, true);
+    assert.equal(button("Send message").disabled, true, "the chatbox cannot bypass initial consent");
+    assert.match(container.textContent!, /write and review your plan without AI/);
+    assert.equal(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked, false);
+    canRun = true; view.render(props()); await settle();
+    click("Allow & start chat"); await settle();
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].body.allow_project_knowledge, undefined, "creating a draft alone never grants proposal tools");
+    assert.equal(writes[0].body.allow_agent, true);
+    assert.equal(container.querySelector('.project-consent input') === null, true, "saved tool permission cannot silently change");
+    assert.doesNotMatch(container.textContent!, /runtime-secret|SQLITE|regional|tax details|dispatching|schema/);
+    assert.doesNotMatch(container.textContent!, /draft/i);
+    assert.equal(button("Previous slide").disabled, true);
+    assert.match(container.querySelector('.project-presentation')!.textContent!, /Teacher introduction/);
+    click("Next slide");
+    assert.match(container.querySelector('.project-slide')!.textContent!, /Evaporation.*Sunshine warms water/s);
+    assert.equal(button("Next slide").disabled, true);
+    click("Read all");
+    assert.match(container.querySelector('.project-presentation')!.textContent!, /where rain comes from.*Sunshine warms water/s);
+    click("Slide view"); click("Previous slide");
+    assert.equal(writes.length, 1, "preview navigation never changes content or starts AI");
+    click("Edit");
+    const draft = container.querySelector<HTMLTextAreaElement>("#presentation-draft")!;
+    assert.equal(draft.value, task.result, "only the document is editable, not status or permission receipts");
+    const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!;
+    bundle.mod.act(() => { set.call(draft, "My unsaved classroom notes"); draft.dispatchEvent(new window.Event("input", { bubbles: true })); });
+    assert.equal(dirty, true);
+    click("Save edits"); await settle();
+    assert.match(container.querySelector('[role="alert"]')!.textContent!, /don’t have permission/);
+    assert.doesNotMatch(container.textContent!, /SQLITE|owner_id/);
+    assert.equal(draft.value, "My unsaved classroom notes");
+    assert.equal(dirty, true);
+    click("Cancel"); assert.equal(dirty, false);
+    const composer = container.querySelector<HTMLTextAreaElement>("#presentation-instruction")!;
+    bundle.mod.act(() => { set.call(composer, "Make the explanation shorter."); composer.dispatchEvent(new window.Event("input", { bubbles: true })); });
+    click("Send message"); await settle();
+    assert.equal(writes[2].body.message, "Make the explanation shorter.");
+    assert.equal(writes[2].body.allow_project_knowledge, undefined, "a follow-up cannot change the original tool permission");
+    assert.equal(composer.value, "Make the explanation shorter.", "permission failure retains the chat message");
+    // Older project documents remain readable without an agent or AI connection.
+    view.unmount(); agent = null; canRun = false;
+    view = bundle.mod.mount(container, props()); await settle();
+    assert.match(container.querySelector('.burrow-result')!.textContent!, /Ask the class where rain comes from/);
+    assert.equal(writes.length, 3, "opening an older document cannot start work");
+  } finally {
+    view!.unmount(); await bundle.cleanup(); await window.happyDOM.close();
+    for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
+  }
+});

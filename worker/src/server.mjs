@@ -11,6 +11,7 @@ import { ImOrbComputerBackend } from './imorb-computer.mjs';
 import { Crawl4aiEngine } from './crawl4ai-engine.mjs';
 import { CodingEngine } from './coding-engine.mjs';
 import { travelTransport } from './travel.mjs';
+import { testSkill } from './skill-sandbox.mjs';
 
 export function workerServer(worker, token, { subscriptionAccounts } = {}) {
   if (!token || token.length < 32) throw new Error('A private worker token of at least 32 characters is required.');
@@ -24,7 +25,7 @@ export function workerServer(worker, token, { subscriptionAccounts } = {}) {
       if (req.method !== 'POST' || req.url !== '/command') throw new Error('Unknown operation.');
       let bytes = 0; const chunks = [];
       // Admission includes bounded request, current context, routine and pinned routes.
-      for await (const chunk of req) { bytes += chunk.length; if (bytes > 64000) throw new Error('Request too large.'); chunks.push(chunk); }
+      for await (const chunk of req) { bytes += chunk.length; if (bytes > 128000) throw new Error('Request too large.'); chunks.push(chunk); }
       const body = JSON.parse(Buffer.concat(chunks).toString());
       let output;
       switch (body.operation) {
@@ -34,6 +35,8 @@ export function workerServer(worker, token, { subscriptionAccounts } = {}) {
           output = await subscriptions.call(body.owner, provider, body.action, body); break;
         }
         case 'start': output = await worker.start(body.admission); break;
+        // Trusted host control only. This operation is never an agent tool.
+        case 'skill_test': output = await testSkill(body.content); break;
         case 'computer': output = await worker.computer(body); break;
         case 'status': output = await worker.status(body.run); break;
         case 'watch': output = await worker.events(body.run); break;

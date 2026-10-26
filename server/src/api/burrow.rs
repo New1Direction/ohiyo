@@ -8,6 +8,7 @@ pub mod everyday;
 pub mod research;
 pub mod routing;
 mod skills;
+pub mod specs;
 pub mod subscriptions;
 pub mod tracker;
 pub mod travel;

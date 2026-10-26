@@ -6,7 +6,7 @@ import { Window } from "happy-dom";
 import { bundleEntry, fixtures, type Bundle } from "./fixtures/bundle.ts";
 import type { BurrowTask } from "../src/api.ts";
 
-type Mod = { act: (fn: () => void) => void; parsePage: (value: unknown) => unknown; schema: unknown; mount: (element: unknown, value: unknown) => () => void; mountCreation: (element: unknown, task: BurrowTask) => () => void };
+type Mod = { act: (fn: () => void) => void; parsePage: (value: unknown) => unknown; schema: unknown; mount: (element: unknown, value: unknown) => () => void; mountCreation: (element: unknown, task: BurrowTask, canRun?: boolean) => () => void };
 const window = new Window({ url: "http://localhost" });
 const document = window.document;
 const originals = new Map<string, PropertyDescriptor | undefined>();
@@ -127,7 +127,7 @@ test("web journey changes DNS behavior without skipping the server, and can rest
   } finally { unmount(); container.remove(); }
 });
 
-test("creation preview toggles preserve drafts and play progress; new requests start in conversation", () => {
+test("interactive pages and a single composer stay together; typing preserves play progress and disconnected AI stays off", () => {
   const container = document.createElement("div"); document.body.append(container);
   const task: BurrowTask = { id: "study", kind: "writing", format: "creation", template: null, coding: false, request: "Help me study", state: "draft_ready", error: null, version: 1, created_at: 0, updated_at: 0, result: JSON.stringify({ ...load("examples/quiz.json"), messages: [], can_undo: false, example: true }) };
   const button = (text: string) => {
@@ -137,34 +137,70 @@ test("creation preview toggles preserve drafts and play progress; new requests s
   };
   let unmount = bundle.mod.mountCreation(container, task);
   try {
-    const preview = container.querySelector<HTMLElement>('[aria-label="Page preview"]')!;
-    assert.equal(preview.hidden, false);
+    const preview = container.querySelector<HTMLElement>('[aria-label="Interactive page"]')!;
+    assert.ok(preview);
+    assert.equal(container.querySelectorAll("textarea").length, 1);
+    assert.equal(container.querySelector('[aria-label="Messages"]')!.contains(preview), true);
     const answer = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent!.includes("The extension doubles"))!;
     bundle.mod.act(() => answer.click());
     assert.match(preview.textContent!, /You got it/);
     button("Next question");
-    button("Conversation");
-    assert.equal(preview.hidden, true);
     const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
     bundle.mod.act(() => {
       Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Keep my notes\nAdd a recap");
       input.dispatchEvent(new window.Event("input", { bubbles: true }));
     });
-    button("Preview");
-    assert.equal(preview.hidden, false);
+    bundle.mod.act(() => preview.querySelector("summary")!.click());
     assert.match(preview.textContent!, /Question 2 of 3/);
-    button("Preview");
     assert.equal(container.querySelector<HTMLTextAreaElement>("textarea")!.value, "Keep my notes\nAdd a recap");
-    assert.equal(preview.hidden, true);
+    assert.equal([...container.querySelectorAll("button")].find(b => b.type === "submit")!.disabled, true);
+    assert.match(container.querySelector("form")!.textContent!, /AI page creation isn’t available/, "the disabled reason stays beside the composer");
     unmount();
     unmount = bundle.mod.mountCreation(container, { ...task, state: "waiting", result: JSON.stringify({ page: null, messages: [{ role: "user", text: task.request }], can_undo: false, example: false }) });
-    assert.equal(container.querySelector<HTMLElement>('[aria-label="Page preview"]')!.hidden, true);
-    assert.match(container.querySelector('[role="log"]')!.textContent!, /Help me study/);
-    button("Preview");
-    assert.equal(container.querySelector<HTMLElement>('[aria-label="Page preview"]')!.hidden, false);
-    button("Back to conversation");
-    assert.equal(container.querySelector<HTMLElement>('[aria-label="Page preview"]')!.hidden, true);
+    assert.equal(container.querySelector('[aria-label="Interactive page"]'), null);
+    assert.match(container.querySelector('[aria-label="Messages"]')!.textContent!, /Help me study/);
+    assert.equal([...container.querySelectorAll("button")].find(b => b.type === "submit")!.disabled, true);
   } finally { unmount(); container.remove(); }
+});
+
+test("page chat sends only on consent, retains a denied revision and restores the previous page on Undo", async () => {
+  const originalFetch = globalThis.fetch;
+  const writes: { allow_generation?: boolean; instruction?: string; version: number; action?: string }[] = [];
+  const container = document.createElement("div"); document.body.append(container);
+  const initial = load("examples/page.json");
+  const restored = { ...initial.page, title: "Original classroom page" };
+  const task: BurrowTask = { id: "page-chat", kind: "writing", format: "creation", template: null, coding: false, request: "Explain a web request", state: "waiting", error: null, version: 1, created_at: 0, updated_at: 0, result: JSON.stringify({ page: null, messages: [{ role: "user", text: "Explain a web request" }], can_undo: false, example: false }) };
+  let denied = false;
+  globalThis.fetch = async (_url, init) => {
+    writes.push(JSON.parse(String(init!.body)));
+    if (denied && writes.at(-1)!.action !== "undo") return new Response("Permission denied", { status: 403 });
+    const undo = writes.at(-1)!.action === "undo";
+    return Response.json({ ...task, version: undo ? 4 : 2, state: "draft_ready", result: JSON.stringify({ ...initial, page: undo ? restored : initial.page, messages: [{ role: "user", text: task.request }, { role: "helper", text: undo ? "Restored your page." : initial.reply }], can_undo: !undo, example: false }) });
+  };
+  const unmount = bundle.mod.mountCreation(container, task, true);
+  const settle = () => new Promise(resolve => setTimeout(resolve, 40));
+  const button = (text: string) => [...container.querySelectorAll("button")].find(b => b.textContent!.startsWith(text))!;
+  const input = container.querySelector("textarea")!;
+  const type = (text: string) => bundle.mod.act(() => {
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!.call(input, text);
+    input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+  try {
+    await settle(); assert.equal(writes.length, 0);
+    bundle.mod.act(() => button("Allow & create").click()); await settle();
+    assert.deepEqual(writes, [{ allow_generation: true, version: 1 }]);
+    assert.equal(container.querySelector('.generated-page h1')!.textContent, initial.page.title);
+    denied = true; type("Add a class question");
+    assert.equal(button("Undo change").disabled, true, "undo must not discard unsent text");
+    bundle.mod.act(() => button("Send").click()); await settle();
+    assert.equal(input.value, "Add a class question");
+    assert.equal(container.querySelector('.generated-page h1')!.textContent, initial.page.title);
+    assert.match(container.querySelector('[role="alert"]')!.textContent!, /permission/i);
+    await settle(); assert.equal(writes.length, 2, "denial never auto-retries");
+    type(""); bundle.mod.act(() => button("Undo change").click()); await settle();
+    assert.equal(container.querySelector('.generated-page h1')!.textContent, restored.title);
+    assert.equal(button("Undo change").disabled, true);
+  } finally { unmount(); container.remove(); globalThis.fetch = originalFetch; }
 });
 
 test("the shared page contract rejects executable content, invalid graphs and invalid answers", () => {

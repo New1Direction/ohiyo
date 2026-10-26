@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { api, getApiBase, type BurrowAgent, type BurrowCommandReceipt, type BurrowComputerWorkspace, type BurrowTask, type ModelRole, type ModelRouting } from "../api";
 import { apiStatus } from "../lib/apiErrors";
 import KikkaReply from "./KikkaReply";
@@ -101,8 +101,26 @@ function RecentCommands({ token, taskId, events }: { token: string; taskId: stri
   </section>;
 }
 
-export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyChange }: { task: BurrowTask; token: string; canRun: boolean; onUpdate: (task: BurrowTask) => void; onDirtyChange: (dirty: boolean) => void }) {
+function ProjectMaterial({ text }: { text: string }) {
+  const [index, setIndex] = useState(0);
+  const [readAll, setReadAll] = useState(false);
+  const headings = [...text.matchAll(/^#{1,3}\s+Slide\s+\d+\s*[:—–-]\s*.+$/gim)];
+  if (headings.length < 2) return <SavedResearchText text={text} />;
+  const slides = headings.map((heading, i) => text.slice(heading.index, headings[i + 1]?.index));
+  const introduction = text.slice(0, headings[0].index);
+  return <div className="project-presentation">
+    <div className="project-material-tools"><span>Presentation · {slides.length} slides</span><button className="burrow-link" onClick={() => setReadAll(!readAll)}>{readAll ? "Slide view" : "Read all"}</button></div>
+    {readAll ? <SavedResearchText text={text} /> : <>
+      {introduction.trim() && <SavedResearchText text={introduction} />}
+      <div className="project-slide" aria-label={`Slide ${index + 1}`}><SavedResearchText text={slides[index]} /></div>
+      <div className="project-slide-navigation"><button className="burrow-secondary" aria-label="Previous slide" disabled={index === 0} onClick={() => setIndex(index - 1)}>←</button><span role="status">{index + 1} / {slides.length}</span><button className="burrow-secondary" aria-label="Next slide" disabled={index === slides.length - 1} onClick={() => setIndex(index + 1)}>→</button></div>
+    </>}
+  </div>;
+}
+
+export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyChange, projectPlanning = false, children }: { task: BurrowTask; token: string; canRun: boolean; onUpdate: (task: BurrowTask) => void; onDirtyChange: (dirty: boolean) => void; projectPlanning?: boolean; children?: ReactNode }) {
   const selectionRoot = useRef<HTMLElement>(null);
+  const [projectKnowledge, setProjectKnowledge] = useState(false);
   const memoryDraft = useRef<MemoryDraft>(null);
   const [view, setView] = useState<BurrowAgent | null>(null);
   const codingEligible = task.kind === "writing" && task.format === "document" && !task.template && !task.comparison && !task.travel && task.routine_id == null && task.routine_version == null;
@@ -128,6 +146,9 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
   const instructionInput = useRef<HTMLTextAreaElement>(null);
   const emojiPicker = useRef<HTMLDetailsElement>(null);
   const [editor, setEditor] = useState<{ text: string; version: number } | null>(null);
+  const presentationInput = useRef<HTMLTextAreaElement>(null);
+  const editing = editor !== null;
+  useEffect(() => { if (editing) presentationInput.current?.focus(); }, [editing]);
   const [contextDirty, setContextDirty] = useState(false);
   const [workspaceDirty, setWorkspaceDirty] = useState(false);
   const [tab, setTab] = useState<Tab>("result");
@@ -194,7 +215,7 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
   async function start() {
     if (busy || view || !loaded || !canRun || (coding && (!codingEligible || !computers?.some(c => c.id === computer)))) return;
     setBusy(true); setError(""); setNotice("");
-    try { await api.startBurrowAgent(token, task, cents, routing?.catalog.length ? role : undefined, routing?.catalog.length ? routing.preview : undefined, coding ? { coding: true, computer_workspace: computer } : undefined); const next = await api.burrowAgent(token, task.id); setView(next); onUpdate(next.task); }
+    try { await api.startBurrowAgent(token, task, cents, routing?.catalog.length ? role : undefined, routing?.catalog.length ? routing.preview : undefined, { ...(coding ? { coding: true, computer_workspace: computer } : {}), ...(projectPlanning && projectKnowledge ? { allow_project_knowledge: true } : {}) }); const next = await api.burrowAgent(token, task.id); setView(next); onUpdate(next.task); }
     catch (e) { setError(coding && (apiStatus(e) === 400 || apiStatus(e) === 503) ? "Coding could not start with this task, connection and saved computer. A saved computer does not mean its coding engine is ready. Check the configuration with the person running this Burrow." : taskActionError(e, "Couldn’t confirm whether work started. Reopen the task before trying again.")); }
     finally { setBusy(false); }
   }
@@ -273,6 +294,44 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
     catch (e) { setError(taskActionError(e, "Couldn’t confirm your choice. Refresh before trying again.")); }
     finally { setBusy(false); }
   }
+  async function saveEdits() {
+    if (!editor || busy) return;
+    setBusy(true); setError("");
+    try { onUpdate(await api.saveBurrowResult(token, { ...task, version: editor.version }, editor.text)); setEditor(null); }
+    catch (e) { setError(taskActionError(e, "Couldn’t confirm your save. Your edits are still here; refresh before trying again.")); }
+    finally { setBusy(false); }
+  }
+  const startDisabled = !loaded || !routingLoaded || !routing || busy || !canRun || (coding && (!codingEligible || !computers?.some(c => c.id === computer))) || (!!routing.catalog.length && modelRoles.some(r => !routing.preview[r])) || !Number.isInteger(cents) || cents < (zeroPrice ? 0 : 1) || cents > (zeroPrice ? 0 : 50);
+  if (projectPlanning) return <article className="project-writing" aria-label="Conversation with Kikka">
+    <div className="project-thread" role="region" aria-label="Messages">
+    <div className="project-message user"><span className="sr-only">You</span><p>{task.request}</p></div>
+    <header><div className="project-speaker"><strong>Kikka</strong>{view && <span className="project-status" role="status">{status}</span>}</div>{active && <button className="burrow-secondary" disabled={busy || !!stopping || !view?.connected || view?.agent.phase === "review"} onClick={() => void control("stop")}>{stopping ? "Stopping…" : "Stop"}</button>}</header>
+    {error && <p className="burrow-error" role="alert">{error}</p>}
+    {failure && <p className="burrow-error" role="alert">{failure}</p>}
+    <p className="project-notice" role="status">{notice}</p>
+    {!view && <section className="project-start" aria-label="Chat permission">
+      <h3>Ready to help. May I use AI for this?</h3>
+      <p>Your request and relevant saved choices, including your project plan, will be shared with {routing?.preview[role] ? new URL(routing.preview[role].endpoint).hostname : routing ? "OpenAI" : "your AI service"}. Your Ohiyo chats are not included.</p>
+      <label className="project-consent"><input type="checkbox" checked={projectKnowledge} disabled={busy} onChange={e => setProjectKnowledge(e.target.checked)} /><span>Let Kikka suggest plan changes and helpers.<small>You review every suggestion. Kikka cannot approve or enable it.</small></span></label>
+      {subscriptionOnly ? <p className="project-caption">Uses your subscription, up to 20 requests including revisions. No paid fallback.</p> : zeroPrice ? <p className="project-caption">Free service only. No paid fallback.</p> : <label className="project-cost">Spending limit (US cents)<input type="number" min={1} max={50} value={cents} onChange={e => setCents(Number(e.target.value))} /><small>Up to 50 cents. Revisions share this limit; costs are estimates.</small></label>}
+      <div className="project-actions"><button className="burrow-primary" disabled={startDisabled} onClick={() => void start()}>{busy ? "Starting…" : "Allow & start chat"}</button></div>
+      {(!canRun || (routingLoaded && !routing)) && <p role="status" className="project-caption">{!canRun ? "Kikka isn’t connected right now. You can still write and review your plan without AI." : "We couldn’t confirm the AI connection. No work has started."}</p>}
+      {routingLoaded && !routing && <button className="burrow-secondary" onClick={() => { void api.modelRouting(token).then(setRouting).catch(() => setError("Couldn’t check the connection. No work has started.")); }}>Check connection</button>}
+      <details><summary>What you’re allowing</summary><p>Writing and reading allowed public sources only. No publishing, purchases or account changes. Follow-ups use this same service and limit. If a response is lost, Kikka pauses instead of automatically repeating a paid request.</p>{!!routing?.catalog.length && <ul>{modelRoles.map(r => { const route = routing.preview[r]; return route && <li key={r}>{r === "general" ? "General assistance" : r === "research" ? "Writing" : r === "review" ? "Review" : "Summaries"}: {route.providerModelId} via {new URL(route.endpoint).hostname}. {route.connectionId.startsWith("subscription-") ? "Uses your subscription." : route.fundedBy === "you" ? "Paid by you, within your limit." : "Provided by Ohiyo, within your limit."}</li>; })}</ul>}{subscriptionOnly && <p>Your provider’s allowance and billing settings apply. Your remaining allowance isn’t available here.</p>}</details>
+    </section>}
+    {view && (active || stopped || view.agent.phase === "review") && <p className="project-caption" role="status">{activity}</p>}
+    {task.result && <section className="burrow-result" aria-label="Saved material"><header><span className="project-caption">Saved for you</span>{task.state === "draft_ready" && !editor && <button className="burrow-link" onClick={() => setEditor({ text: task.result, version: task.version })}>Edit</button>}</header>{editor ? <><label htmlFor="presentation-draft" className="sr-only">Edit material</label><textarea ref={presentationInput} id="presentation-draft" rows={14} maxLength={100000} value={editor.text} onChange={e => setEditor({ ...editor, text: e.target.value })} /><div className="project-actions"><button className="burrow-primary" disabled={busy || !editor.text.trim()} onClick={() => void saveEdits()}>Save edits</button><button className="burrow-secondary" disabled={busy} onClick={() => setEditor(null)}>Cancel</button></div></> : <ProjectMaterial key={task.result} text={task.result} />}<footer>Review facts and sources before sharing. Slide view is a preview, not a PowerPoint file.</footer></section>}
+    {view && <>
+      {!!view.commands.filter(c => c[1] !== "stop").length && <details className="project-history"><summary>Your earlier messages</summary>{view.commands.filter(c => c[1] !== "stop").map(c => <div className="project-message user" key={c[0]}><p>{c[2]}</p><small className="project-caption">{followUpLabel(c[3])}</small></div>)}</details>}
+      {task.proposed_result && !review && <div className="project-revision"><p>Kikka suggested a revision. Your edits are unchanged.</p><button className="burrow-secondary" onClick={showChanges}>Review revision</button></div>}
+      {review && task.proposed_result && <section className="project-revision" aria-label="Suggested revision"><h3>Review the revision</h3><div className="project-comparison"><div><h4>Your saved version</h4><SavedResearchText text={review.before ?? ""} /></div><div><h4>Suggested version</h4><SavedResearchText text={review.after} /></div></div>{review.version !== task.version && <p role="alert">A newer revision arrived. Close this review and open it again before deciding.</p>}<div className="project-actions"><button className="burrow-primary" disabled={busy || !!editor || task.state !== "draft_ready" || review.version !== task.version} onClick={() => void decide(true)}>Use this revision</button><button className="burrow-secondary" disabled={busy || !!editor || task.state !== "draft_ready" || review.version !== task.version} onClick={() => void decide(false)}>Keep my edits</button><button className="burrow-link" onClick={() => setReview(null)}>Close review</button></div></section>}
+      {!!view.history.length && <details className="project-history"><summary>Previous versions</summary>{view.history.map(([id, result], index) => <details key={id}><summary>Version {view.history.length - index}</summary><SavedResearchText text={result} /></details>)}</details>}
+    </>}
+    {children}
+    <details className="project-history"><summary>Saved preferences</summary><TaskContext ref={memoryDraft} task={task} token={token} onUpdate={onUpdate} onDirtyChange={setContextDirty} /></details>
+    </div>
+    <form className="project-followup" onSubmit={e => { e.preventDefault(); if (instructionAllowed && !busy && !editor && instruction.trim()) void control(active ? "steer" : "continue"); }}><label className="sr-only" htmlFor="presentation-instruction">Message Kikka</label><textarea id="presentation-instruction" ref={instructionInput} rows={2} maxLength={8000} value={instruction} disabled={busy || !instructionAllowed} onChange={e => setInstruction(e.target.value)} onKeyDown={submitPromptOnEnter} placeholder={view ? "Message Kikka…" : "Allow AI above to start chatting…"} /><div className="project-actions"><span className="project-caption">{view ? subscriptionOnly ? "Uses your existing allowance" : `Within your limit · $${((budget ?? 0) / 100).toFixed(2)}` : "AI is off until you allow it"}</span><button type="submit" className="burrow-primary" disabled={!instructionAllowed || busy || !instruction.trim() || !!editor} aria-label="Send message">{busy ? "Sending…" : "Send"}<span aria-hidden="true"> ↑</span></button></div><p className="project-composer-hint">Changes need your review. Nothing installs or activates.</p></form>
+  </article>;
   return <article ref={selectionRoot} className={`research-studio pane-${mobilePane}`}>
     <SelectionActions root={selectionRoot} onRemember={selected => { openTab("result"); memoryDraft.current?.prepare(selected); }} onQuote={instructionAllowed && !busy ? selected => {
       const quote = selected.split("\n").map(line => `> ${line}`).join("\n");
@@ -342,7 +401,7 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
       {task.proposed_result && <details><summary>Full proposed revision</summary><SavedResearchText text={review.after} /></details>}
     </section>}
     <ResearchWorkspace key={`${token}:${task.id}`} enabled={!!task.comparison && !task.travel} hasManualEdits={!!task.manual_edited} token={token} taskId={task.id} canUpdate={!!view?.connected && view.agent.phase === "finished" && task.state === "draft_ready" && !busy} running={active} onResearch={revision => control("continue", revision)} onDirtyChange={setWorkspaceDirty}>
-    {task.result && <section className="burrow-result"><header><div><p className="burrow-eyebrow">SAVED FOR YOU</p><h2>{coding ? "Your coding report" : "Your comparison"}</h2></div>{task.state === "draft_ready" && !editor && <button className="burrow-secondary" onClick={() => setEditor({ text: task.result, version: task.version })}>Edit result</button>}</header>{editor ? <><label className="sr-only" htmlFor="research-result">{coding ? "Edit saved coding report" : "Edit saved comparison"}</label><textarea id="research-result" value={editor.text} maxLength={100000} onChange={e => setEditor({ ...editor, text: e.target.value })} /><div className="burrow-editor-actions"><button className="burrow-secondary" onClick={() => setEditor(null)}>Cancel</button><button className="burrow-primary" disabled={busy || !editor.text.trim()} onClick={() => { setBusy(true); void api.saveBurrowResult(token, { ...task, version: editor.version }, editor.text).then(t => { onUpdate(t); setEditor(null); }).catch(e => setError(taskActionError(e, "Couldn’t confirm your save. Your edits are still here; refresh before trying again."))).finally(() => setBusy(false)); }}>Save edits</button></div></> : comparison ? <Comparison value={comparison} /> : <SavedResearchText text={task.result} />}{task.manual_notes && <div className="burrow-document"><strong>Your notes</strong><p>{task.manual_notes}</p></div>}<footer>{coding ? "Review the reported file changes and tests. Editing this report does not change repository files. Your manual report edits are protected." : task.manual_edited ? "Your manual edits are protected. New revisions need your review." : "Sources may change. Review eligibility and tax details before acting."}</footer></section>}
+    {task.result && <section className="burrow-result"><header><div><p className="burrow-eyebrow">SAVED FOR YOU</p><h2>{coding ? "Your coding report" : "Your comparison"}</h2></div>{task.state === "draft_ready" && !editor && <button className="burrow-secondary" onClick={() => setEditor({ text: task.result, version: task.version })}>Edit result</button>}</header>{editor ? <><label className="sr-only" htmlFor="research-result">{coding ? "Edit saved coding report" : "Edit saved comparison"}</label><textarea id="research-result" value={editor.text} maxLength={100000} onChange={e => setEditor({ ...editor, text: e.target.value })} /><div className="burrow-editor-actions"><button className="burrow-secondary" onClick={() => setEditor(null)}>Cancel</button><button className="burrow-primary" disabled={busy || !editor.text.trim()} onClick={() => void saveEdits()}>Save edits</button></div></> : comparison ? <Comparison value={comparison} /> : <SavedResearchText text={task.result} />}{task.manual_notes && <div className="burrow-document"><strong>Your notes</strong><p>{task.manual_notes}</p></div>}<footer>{coding ? "Review the reported file changes and tests. Editing this report does not change repository files. Your manual report edits are protected." : task.manual_edited ? "Your manual edits are protected. New revisions need your review." : "Sources may change. Review eligibility and tax details before acting."}</footer></section>}
     {!task.result && <div className="research-empty"><h2>{task.state === "working" ? coding ? "Repository work is underway" : "The research is underway" : "Your result will live here"}</h2><p>{coding ? "No saved coding report yet. Review the reported changes and test outcomes when it arrives." : "No saved comparison yet. Kikka’s actual activity is shown in the conversation."}</p></div>}
     </ResearchWorkspace>
     <div ref={context} tabIndex={-1}><TaskContext ref={memoryDraft} task={task} token={token} onUpdate={onUpdate} onDirtyChange={setContextDirty} /></div>

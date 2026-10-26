@@ -653,6 +653,8 @@ export type BurrowTask = {
   updated_at: number;
 };
 export type BurrowWorkspace = { tasks: BurrowTask[]; can_run: boolean; service: string | null; can_research?: boolean; can_travel?: boolean; agent_task_ids?: string[] };
+export type ProjectProposal = { id: string; kind: "spec" | "skill"; base_revision: number; content: string; status: "pending" | "approved" | "rejected" | "testing" | "tested" | "test_failed" | "rolled_back"; test_report: string | null };
+export type ProjectReview = { spec: { project: string; revision: number; content: string }; history: { revision: number; content: string; proposal_id: string }[]; proposals: ProjectProposal[] };
 export type TravelMoney = { minor: number; currency: string };
 export type Traveler = { given_name: string; family_name: string; email: string; phone: string; born_on: string };
 export type TravelGuest = { type: "adult" } | { type: "child"; age: number };
@@ -699,6 +701,7 @@ export type BurrowCommandReceipt = {
 export type BurrowAgent = {
   task: BurrowTask;
   agent: { id: string; phase: string; activity: string; runtime_id: string | null; computer_workspace?: string | null; coding: boolean;
+    project_knowledge?: boolean;
     max_cost_cents?: number;
     role?: ModelRole; routing?: Partial<Record<ModelRole, ModelRoute>> | null; usage?: ModelRequestUsage[] | null };
   connected: boolean;
@@ -788,6 +791,9 @@ export const api = {
     method: "POST", body: JSON.stringify({ version, ...change }),
   }, token),
   burrowAgent: (token: string, id: string) => request<BurrowAgent>(`/burrow/tasks/${id}/agent`, {}, token),
+  projectReview: (token: string, task: string) => request<ProjectReview>(`/burrow/tasks/${encodeURIComponent(task)}/specs`, {}, token),
+  proposeProject: (token: string, task: string, base: number, content: string) => request(`/burrow/tasks/${encodeURIComponent(task)}/proposals`, { method: "POST", body: JSON.stringify({ kind: "spec", base_revision: base, content }) }, token),
+  decideProject: (token: string, task: string, proposal: string, action: "approve" | "reject" | "test" | "rollback") => request<ProjectReview>(`/burrow/tasks/${encodeURIComponent(task)}/proposals/${encodeURIComponent(proposal)}`, { method: "POST", body: JSON.stringify({ action }) }, token),
   burrowComputerWorkspaces: (token: string) => request<BurrowComputerWorkspace[]>("/burrow/computer-workspaces", {}, token),
   burrowCommandReceipt: (token: string, taskId: string, requestId: string) => request<BurrowCommandReceipt>(`/burrow/tasks/${encodeURIComponent(taskId)}/computer`, {
     method: "POST", body: JSON.stringify({ action: "receipt", request_id: requestId }),
@@ -795,7 +801,7 @@ export const api = {
   privateBrowser: (token: string, taskId: string, requestId: string, browser: PrivateBrowserCommand) => request<PrivateBrowserStatus>(`/burrow/tasks/${encodeURIComponent(taskId)}/computer`, {
     method: "POST", body: JSON.stringify({ action: "browser_control", request_id: requestId, browser }),
   }, token),
-  startBurrowAgent: (token: string, task: BurrowTask, cents: number, role?: ModelRole, routing?: ModelRouting["preview"], coding?: { coding: true; computer_workspace: string }) => request(`/burrow/tasks/${task.id}/agent`, {
+  startBurrowAgent: (token: string, task: BurrowTask, cents: number, role?: ModelRole, routing?: ModelRouting["preview"], coding?: { coding?: true; computer_workspace?: string; allow_project_knowledge?: boolean }) => request(`/burrow/tasks/${task.id}/agent`, {
     method: "POST", body: JSON.stringify({ version: task.version, allow_agent: true, max_cost_cents: cents, role, routing, ...coding }),
   }, token),
   controlBurrowAgent: (token: string, task: BurrowTask, requestId: string, action: "steer" | "stop" | "continue", message: string, requirementsRevision?: number) => request<BurrowTask>(`/burrow/tasks/${task.id}/agent/control`, {
@@ -809,8 +815,8 @@ export const api = {
   createBurrowTask: (token: string, text: string, kind: BurrowTask["kind"] = "writing", template?: "bill" | "packing", context?: { project?: string; routine_id?: string; comparison?: boolean; coding?: true }) => request<BurrowTask>("/burrow/tasks", {
     method: "POST", body: JSON.stringify({ request: text, kind, template, ...context }),
   }, token),
-  createBurrowPage: (token: string, text: string, example?: "quiz" | "story" | "page") => request<BurrowTask>("/burrow/tasks", {
-    method: "POST", body: JSON.stringify({ request: text, format: "creation", example }),
+  createBurrowPage: (token: string, text: string, example?: "quiz" | "story" | "page", project?: string) => request<BurrowTask>("/burrow/tasks", {
+    method: "POST", body: JSON.stringify({ request: text, format: "creation", example, project }),
   }, token),
   makeBurrowPage: (token: string, task: BurrowTask, instruction?: string) => request<BurrowTask>(`/burrow/tasks/${task.id}/run`, {
     method: "POST", body: JSON.stringify({ allow_generation: true, version: task.version, instruction }),

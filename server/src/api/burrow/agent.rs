@@ -221,6 +221,7 @@ pub struct Run {
     pub computer_workspace: Option<String>,
     pub requirements: Option<sqlx::types::Json<Value>>,
     pub coding: bool,
+    pub project_knowledge: bool,
 }
 
 #[derive(Deserialize)]
@@ -234,6 +235,8 @@ pub struct Start {
     computer_workspace: Option<String>,
     #[serde(default)]
     coding: bool,
+    #[serde(default)]
+    allow_project_knowledge: bool,
 }
 
 pub(super) fn connected(s: &AppState, user: &str) -> Result<Kikka, Error> {
@@ -288,6 +291,18 @@ pub async fn start(
     }
     let kikka = connected(&s, &user)?;
     let travel_workspace = super::travel::workflow::workspace(&s, &id).await?;
+    if body.allow_project_knowledge
+        && (kikka.pi.is_none()
+            || task.project.is_none()
+            || task.travel
+            || travel_workspace.is_some())
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Project proposal tools require an explicit Pi project task, separate from travel."
+                .into(),
+        ));
+    }
     if body.coding {
         // Coding is explicit computer authority, never a research/travel extension.
         // Research requirements are snapshotted only for comparison tasks below.
@@ -384,6 +399,7 @@ pub async fn start(
             || previous.role != role
             || previous.computer_workspace != computer_workspace
             || previous.coding != body.coding
+            || previous.project_knowledge != body.allow_project_knowledge
             || !super::routing::same_snapshot(
                 previous.routing.as_ref().map(|v| &v.0),
                 body.routing.as_ref(),
@@ -481,9 +497,9 @@ pub async fn start(
             }
         })
         .unwrap_or_else(|| task.request.clone());
-    sqlx::query("INSERT INTO burrow_agent_runs(id,task_id,request_version,target,root_goal,goal,max_cost_cents,phase,activity,role,routing,computer_workspace,requirements,coding) VALUES(?,?,?,?,?,?,?,'queued','Getting ready…',?,?,?,?,?)")
+    sqlx::query("INSERT INTO burrow_agent_runs(id,task_id,request_version,target,root_goal,goal,max_cost_cents,phase,activity,role,routing,computer_workspace,requirements,coding,project_knowledge) VALUES(?,?,?,?,?,?,?,'queued','Getting ready…',?,?,?,?,?,?)")
         .bind(&run).bind(&id).bind(body.version).bind(target).bind(format!("burrow-{run}"))
-        .bind(goal).bind(body.max_cost_cents).bind(role).bind(routing).bind(&computer_workspace).bind(requirements.map(|v| v.to_string())).bind(body.coding).execute(&mut *tx).await.map_err(internal)?;
+        .bind(goal).bind(body.max_cost_cents).bind(role).bind(routing).bind(&computer_workspace).bind(requirements.map(|v| v.to_string())).bind(body.coding).bind(body.allow_project_knowledge).execute(&mut *tx).await.map_err(internal)?;
     super::travel::workflow::admit(&mut tx, &id, &format!("burrow-{run}"))
         .await
         .map_err(internal)?;
@@ -831,6 +847,7 @@ pub async fn tick(s: &AppState) -> Result<(), sqlx::Error> {
                     .await
                     .map_err(|e| sqlx::Error::Protocol(e.1))?);
                 admission["comparison"] = json!(task.comparison);
+                admission["project_knowledge"] = json!(run.project_knowledge);
                 if let (Some(id), Some(version)) = (&task.routine_id, task.routine_version) {
                     let definition: String = sqlx::query_scalar("SELECT definition FROM burrow_routines WHERE id=? AND version=? AND user_id=? AND project IS ?")
                         .bind(id).bind(version).bind(&owner).bind(&task.project).fetch_one(&s.db).await?;
@@ -1046,6 +1063,15 @@ async fn reconcile(s: &AppState, k: &Kikka, run: &Run) -> Result<(), String> {
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
+        if current > run.last_seq
+            && event["type"] == "project_proposal"
+            && run.project_knowledge
+            && !task.travel
+        {
+            super::specs::ingest(&mut tx, &owner, &task, &run.id, &event["data"])
+                .await
+                .map_err(|e| e.1)?;
+        }
         if event["type"] == "final_message" {
             super::research::ingest(&mut tx, &task, &run.id, current, &event["data"])
                 .await

@@ -52,3 +52,37 @@ node e2e/run.mjs invite
 
 Tests create throwaway accounts with unique suffixes, so they're safe to re-run
 against a dev database. For CI, point `KIKKA_ORIGIN` at a freshly-seeded preview.
+
+## Project-plan and skill review fixture
+
+`project-review.test.mjs` is opt-in and skips in the ordinary chat E2E run. Never
+enable it against a real provider. It tests the browser, authenticated HTTP,
+SQLite, Pi Durable tools/journal and the real restricted validator subprocess;
+only inference is scripted. Node 26+ is required for the sandbox success case.
+
+Use a disposable local database and worker directory. Start
+`node worker/test/fixtures/project-worker.mjs <worker-directory> school`; its
+startup JSON prints the private worker port. Configure the server with:
+
+- `DATABASE_URL=sqlite:<disposable-absolute-path>`
+- `KIKKA_RUNTIME=pi`, `KIKKA_USER_ID=*`
+- `KIKKA_WORKER_URL=http://127.0.0.1:<printed-port>/command`
+- `KIKKA_WORKER_TOKEN=fixture-token-not-a-secret-000000000`
+- `KIKKA_ROUTING_CONFIG=worker/test/fixtures/project-routing.json` (repository-root cwd)
+- `KIKKA_SCHOOL_FIXTURE_KEY=fixture-not-a-real-provider-key`
+- `OHIYO_REGISTER_LIMIT_PER_HOUR=0` on this disposable server only
+
+The route is displayed and approved normally, but the fixture rejects network
+inference and supplies scripted Pi responses. Do not use this fixture credential
+or wildcard account scope outside isolated tests. Run the client with
+`VITE_SERVER_URL=http://localhost:3000`, then:
+
+```bash
+KIKKA_PROJECT_FIXTURE=1 KIKKA_CHROMIUM=<chrome-path> node e2e/project-review.test.mjs
+```
+
+`KIKKA_API` can override the API root (default `http://localhost:3000/api/v1`);
+it must equal the client's configured API root for the tab-scoped login.
+In Amp orbs, run the fixture worker, API and Vite with supervised
+`amp orb service start`, not detached shell processes. Screenshots go to
+`KIKKA_SHOTS`; never use this fixture as evidence of live-model teaching quality.
