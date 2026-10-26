@@ -89,7 +89,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
     >
       <OnboardingBackdrop accent={accent} pulse={pulse} paused={motionPaused} />
       <div className="ohiyo-onboarding-glow" aria-hidden="true" />
-      <div className="ohiyo-onboarding-hero relative z-10 m-auto flex w-full max-w-xl flex-col items-center text-center">
+      <div className="ohiyo-onboarding-hero relative z-10 m-auto flex w-full max-w-2xl flex-col items-center text-center">
         <div className="ohiyo-onboarding-mark mb-1" style={{ color: "var(--accent)" }}>
           <BirdMark size={64} />
         </div>
@@ -98,35 +98,23 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
         <h1
           style={{
             fontFamily: "var(--font-display)", fontWeight: 700,
-            fontSize: "var(--text-3xl)", color: "var(--text-primary)",
+            fontSize: "clamp(2rem, 4vw, 2.8rem)", color: "var(--text-primary)",
             letterSpacing: "var(--tracking-tight)",
           }}
         >
           oh, hi {firstName} 👋
         </h1>
-        <p className="mt-2 text-base" style={{ color: "var(--text-secondary)", maxWidth: 440 }}>
+        <p className="mt-4 text-base" style={{ color: "var(--text-secondary)", maxWidth: 440, lineHeight: 1.7 }}>
           Every good space starts with a hello.<br />Give yours a name. We’ll set up chat and voice.
         </p>
 
-        {/* Create-your-first-space card */}
-        <div
-          className="ohiyo-first-space-card kc-card mt-7 w-full"
-          style={{
-            background: "linear-gradient(145deg, color-mix(in oklch, var(--text-primary) 4%, var(--bg-channel)), var(--bg-channel))",
-            borderRadius: "var(--radius-xl)",
-            boxShadow: "var(--shadow-lg)",
-            padding: "var(--space-6)",
-            border: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)",
-          }}
-        >
-          <svg className="ohiyo-onboarding-outline" aria-hidden="true" focusable="false">
-            <rect x="1" y="1" width="calc(100% - 2px)" height="calc(100% - 2px)" rx="22" pathLength="1" />
-          </svg>
+        {/* The form sits directly in the scene, without an enclosing panel. */}
+        <div className="ohiyo-first-space w-full">
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <label
               htmlFor="kc-space-name"
-              className="text-left text-xs font-bold uppercase"
-              style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}
+              className="text-left text-sm font-medium"
+              style={{ color: "var(--text-primary)" }}
             >
               Name your space
             </label>
@@ -167,7 +155,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
                   className="ohiyo-suggestion-chip kc-interactive px-2.5 py-1 text-xs font-semibold"
                   style={{
                     borderRadius: "var(--radius-full)",
-                    background: "color-mix(in oklch, var(--text-primary) 7%, var(--bg-input))",
+                    background: "transparent",
                     color: "var(--text-secondary)",
                     border: "1px solid color-mix(in oklch, var(--text-primary) 7%, transparent)",
                   }}
@@ -198,7 +186,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
 
         {/* Existing link path: don't make invited users create a throwaway space first. */}
         {onOpenSharedLink && (
-          <form onSubmit={handleSharedLinkSubmit} className="ohiyo-link-entry-card mt-4 w-full" aria-label="Open an existing Ohiyo link">
+          <form onSubmit={handleSharedLinkSubmit} className="ohiyo-link-entry w-full" aria-label="Open an existing Ohiyo link">
             <div className="ohiyo-link-entry-copy">
               <strong>Already have a link?</strong>
               <span>Join a space invite or open a private DM link.</span>
@@ -213,7 +201,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
                 autoComplete="url"
                 aria-label="Ohiyo invite or private DM link"
               />
-              <button type="submit" className="kc-interactive rounded-full px-4 py-2 text-sm font-bold" style={{ background: "var(--bg-input)", color: "var(--text-secondary)", border: "1px solid color-mix(in oklch, var(--text-primary) 8%, transparent)" }}>
+              <button type="submit" className="ohiyo-open-link kc-interactive px-4 py-2 text-sm font-medium">
                 Open link
               </button>
             </div>
@@ -228,7 +216,7 @@ export function Onboarding({ displayName, onCreate, onSkip, onOpenSharedLink, on
 
         {/* Make it yours — pick an accent right away (recolors this screen live) */}
         {onPickAccent && (
-          <div className="ohiyo-accent-section mt-6 flex flex-col items-center gap-2">
+          <div className="ohiyo-accent-section flex flex-col items-center gap-3">
             <span className="text-xs font-bold uppercase" style={{ color: "var(--text-muted)", letterSpacing: "var(--tracking-wide)" }}>
               Make it yours
             </span>
