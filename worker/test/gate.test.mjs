@@ -72,3 +72,20 @@ test('private computer control holds generation before spending and Stop wins ov
     db.close();
   }
 });
+
+test('a presentation evaluation permits one bounded request, including across reopen, compaction and zero-price routes', async () => {
+  for (const limit of [21657,21658,500000]) {
+    const db = new DatabaseSync(':memory:'); let id='evaluation', calls=0;
+    const options={db,policy,maxRequests:1,budgetMicros:limit,identity:async()=>id,stopped:()=>false,blocked(){},activity(){},models:{completeSimple:async()=>{calls++;return {stopReason:'stop',content:[{type:'text',text:'Advisory, not approval'}]};}}};
+    let gate=spendingGate(options);
+    const first=await gate.models.completeSimple(model,{});
+    assert.equal(first.stopReason,limit<21658?'error':'stop');
+    assert.equal(calls,limit<21658?0:1);
+    gate=spendingGate(options);
+    if (limit>=21658) assert.equal((await gate.models.completeSimple(model,{})).stopReason,'stop');
+    id='pi.compaction:new';
+    assert.equal((await gate.models.completeSimple(model,{})).stopReason,'error');
+    assert.equal(calls,limit<21658?0:1);
+    db.close();
+  }
+});

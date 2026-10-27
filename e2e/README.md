@@ -86,3 +86,15 @@ it must equal the client's configured API root for the tab-scoped login.
 In Amp orbs, run the fixture worker, API and Vite with supervised
 `amp orb service start`, not detached shell processes. Screenshots go to
 `KIKKA_SHOTS`; never use this fixture as evidence of live-model teaching quality.
+
+The same journey now covers persistent audience/citations, separate one-response
+AI review consent, a zero-cost immutable allowance, explicit human school-use
+sign-off, a real PowerPoint download (including its slide XML, notes and sources),
+confirmed withdrawal and denied export, permissions and narrow-screen controls.
+Neither saving sources nor reading a report can approve school use. Test source
+excerpts are fixture data, not a real source-verification exercise.
+
+For production-preview coverage, set `VITE_SERVER_URL=http://localhost:3000`
+**when building**, not only when launching preview, then point `KIKKA_ORIGIN` to
+the preview service. Keep `KIKKA_API` equal to that build's API root. Both builds
+must use the same disposable, network-inference-forbidden fixture stack.

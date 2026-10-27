@@ -74,7 +74,23 @@
 @media (prefers-reduced-motion: no-preference) {
   .burrow-main:not(.ambience-paused) .project-workspace button:active:not(:disabled) { transform: scale(.98); }
 }
+.presentation-review { margin-block: 20px; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-panel); overflow-wrap: anywhere; }
+.presentation-review > summary { cursor: pointer; font-weight: 600; }
+.presentation-review > summary .project-status { margin-left: 8px; }
+.presentation-review > header { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; margin-block: 18px; }
+.presentation-review fieldset { min-width: 0; border: 0; margin: 16px 0; padding: 0; }
+.presentation-review legend { font-weight: 600; margin-bottom: 12px; }
+.presentation-review label { display: flex; flex-direction: column; gap: 8px; margin-block: 12px; }
+.presentation-review input:not([type="checkbox"]), .presentation-review textarea { box-sizing: border-box; width: 100%; font: inherit; font-size: 16px; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-control); padding: 12px; }
+.presentation-review label.project-consent { flex-direction: row; align-items: flex-start; }
+.presentation-review input[type="checkbox"] { flex: 0 0 auto; margin-top: 4px; width: 18px; height: 18px; }
+.presentation-source { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-control); margin-block: 16px; }
+.presentation-source blockquote { margin: 12px 0; padding-left: 16px; border-left: 2px solid var(--line); line-height: 1.7; }
+.presentation-ai { margin-block: 20px; }
+.presentation-review button { min-height: 44px; }
 @media (max-width: 760px) {
+  .presentation-review { padding: 16px; }
+  .presentation-review > header { flex-wrap: wrap; }
   .project-workspace { padding: 12px 16px; }
   .project-saved, .project-proposal, .project-start, .project-revision { padding: 18px; }
   .project-followup { padding: 12px; }

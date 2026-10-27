@@ -3,6 +3,8 @@
 // worker/test/fixtures/project-worker.mjs <state-dir> school, Node 26+, and
 // KIKKA_USER_ID=*. Explicit opt-in prevents accidentally using a live model.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import JSZip from '../client/node_modules/jszip/lib/index.js';
 import { launchBrowser, ORIGIN, PASS, uniq, shot } from './harness.mjs';
 if (process.env.KIKKA_PROJECT_FIXTURE !== '1') { console.log('SKIP project review: requires the disposable school fixture stack and KIKKA_PROJECT_FIXTURE=1.'); process.exit(0); }
 const API = process.env.KIKKA_API ?? 'http://localhost:3000/api/v1';
@@ -86,6 +88,93 @@ try {
   await page.getByRole('button', { name: 'Previous slide', exact: true }).click();
   await page.setViewportSize({ width: 1280, height: 900 });
   await shot(page, 'project-draft');
+  // Classroom review is a separate, human-owned decision. Saving and reading
+  // sources never authorize a model, and AI suggestions never approve export.
+  const presentation = () => call(`${reviewPath}/presentation`, owner.token).then(r => r.json());
+  const reviewPanel = page.getByLabel('Presentation review and download', { exact: true });
+  assert.equal((await call(`${reviewPath}/presentation/export`, owner.token)).status, 409);
+  await reviewPanel.locator(':scope > summary').click();
+  await reviewPanel.getByLabel('Age or school year', { exact: true }).fill('Year 5 · ages 9–10');
+  await reviewPanel.getByRole('button', { name: 'Add source', exact: true }).click();
+  await reviewPanel.getByLabel('Claim or slide', { exact: true }).fill('Slide 2: the sun warms water, causing evaporation.');
+  await reviewPanel.getByLabel('Source title', { exact: true }).fill('USGS · The water cycle');
+  await reviewPanel.getByLabel('Source web address', { exact: true }).fill('https://www.usgs.gov/special-topics/water-science-school/science/water-cycle');
+  await reviewPanel.getByLabel('Supporting excerpt', { exact: true }).fill('The sun provides energy that drives the water cycle.');
+  assert.equal(await reviewPanel.getByRole('button', { name: 'Approve for school use', exact: true }).isDisabled(), true);
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  assert.equal(await reviewPanel.isVisible(), false, 'material edits cannot approve an unfinished version');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.equal(await reviewPanel.getByLabel('Supporting excerpt').inputValue(), 'The sun provides energy that drives the water cycle.', 'opening the material editor cannot discard unsaved citations');
+  await reviewPanel.getByRole('checkbox', { name: /I read this source/ }).check();
+  await reviewPanel.getByRole('button', { name: 'Save review notes', exact: true }).click();
+  await reviewPanel.getByText('Sources and audience saved. School use is not approved.', { exact: true }).waitFor();
+  assert.equal((await presentation()).evaluation, null, 'saving sources never starts AI');
+  await page.reload();
+  await reviewPanel.locator(':scope > summary').click();
+  assert.equal(await reviewPanel.getByLabel('Age or school year').inputValue(), 'Year 5 · ages 9–10');
+  assert.match(await reviewPanel.getByLabel('Supporting excerpt').inputValue(), /sun provides energy/);
+  await reviewPanel.getByText('Ask AI for a second opinion · optional', { exact: true }).click();
+  const allowReview = reviewPanel.getByRole('button', { name: 'Allow one AI review', exact: true });
+  await allowReview.waitFor();
+  assert.equal(await allowReview.isDisabled(), true);
+  await reviewPanel.getByLabel('AI review limit (US cents)').fill('0');
+  await reviewPanel.getByRole('checkbox', { name: /Share this saved material/ }).check();
+  await reviewPanel.getByLabel('AI review limit (US cents)').fill('1');
+  assert.equal(await reviewPanel.getByRole('checkbox', { name: /Share this saved material/ }).isChecked(), false, 'a changed budget invalidates consent');
+  await reviewPanel.getByLabel('AI review limit (US cents)').fill('0');
+  await reviewPanel.getByRole('checkbox', { name: /Share this saved material/ }).check();
+  await shot(page, 'presentation-consent');
+  const [evaluationRequest] = await Promise.all([
+    page.waitForRequest(r => r.url().endsWith('/presentation/evaluate') && r.method() === 'POST'), allowReview.click(),
+  ]);
+  assert.equal(evaluationRequest.postDataJSON().max_cost_cents, 0);
+  await reviewPanel.getByText(/One AI review requested/).waitFor();
+  let evaluated;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    evaluated = await presentation();
+    if (evaluated.evaluation?.state === 'draft_ready') break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  assert.equal(evaluated.evaluation.state, 'draft_ready', JSON.stringify(evaluated));
+  assert.equal(evaluated.approved, false);
+  assert.match(evaluated.evaluation.result, /source \[1\]/);
+  await reviewPanel.getByRole('button', { name: 'Refresh review', exact: true }).click();
+  await reviewPanel.getByText('AI suggestions · not a fact check', { exact: true }).waitFor();
+  assert.equal(await reviewPanel.getByRole('button', { name: 'Download PowerPoint', exact: true }).count(), 0);
+  assert.equal((await call(`${reviewPath}/presentation/evaluate`, owner.token, evaluationRequest.postDataJSON())).status, 409, 'replay cannot reset the request or budget');
+  const report = await (await call(`/burrow/tasks/${evaluated.evaluation.id}/agent`, owner.token)).json();
+  assert.equal(report.agent.project_knowledge, false);
+  assert.equal(report.commands.length, 0);
+  assert.equal(report.agent.max_cost_cents, 0);
+  for (const label of [/I checked the factual claims/, /I checked the language/, /I approve this saved version/]) await reviewPanel.getByRole('checkbox', { name: label }).check();
+  await reviewPanel.getByRole('button', { name: 'Approve for school use', exact: true }).click();
+  const downloadButton = reviewPanel.getByRole('button', { name: 'Download PowerPoint', exact: true });
+  await downloadButton.waitFor();
+  await downloadButton.scrollIntoViewIfNeeded();
+  await shot(page, 'presentation-approved');
+  const [download] = await Promise.all([page.waitForEvent('download'), downloadButton.click()]);
+  assert.equal(download.suggestedFilename(), 'presentation.pptx');
+  const zip = await JSZip.loadAsync(readFileSync(await download.path()));
+  const slidePaths = Object.keys(zip.files).filter(p => /^ppt\/slides\/slide\d+\.xml$/.test(p));
+  assert.equal(slidePaths.length, 7, 'six outline slides plus an attested source');
+  const exportedText = (await Promise.all(slidePaths.map(p => zip.file(p).async('string')))).join('');
+  assert.match(exportedText, /Evaporation/); assert.match(exportedText, /USGS/); assert.match(exportedText, /sun provides energy/);
+  assert.match(await zip.file('ppt/notesSlides/notesSlide2.xml').async('string'), /puddle drying/);
+  await reviewPanel.getByRole('button', { name: 'Withdraw approval', exact: true }).click();
+  assert.equal((await presentation()).approved, true, 'opening confirmation never withdraws');
+  await reviewPanel.getByRole('button', { name: 'Keep approval', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await downloadButton.scrollIntoViewIfNeeded();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await shot(page, 'presentation-approved-narrow');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await reviewPanel.getByRole('button', { name: 'Withdraw approval', exact: true }).click();
+  await reviewPanel.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click();
+  await reviewPanel.getByText(/School-use approval withdrawn/).waitFor();
+  assert.equal((await call(`${reviewPath}/presentation/export`, owner.token)).status, 409);
+  assert.equal((await presentation()).history.at(-1).status, 'withdrawn');
+  assert.equal((await presentation()).evaluation.id, evaluated.evaluation.id, 'withdrawal does not reset AI consent or its allowance');
+  await reviewPanel.locator(':scope > summary').click();
   // Editing retains exactly the saved material, never status or permission copy.
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const draft = page.getByLabel('Edit material');
@@ -150,10 +239,11 @@ try {
   assert.equal((await read()).spec.content, plan);
   // Account ownership is enforced by the real API, not button visibility.
   const other = await (await call('/auth/register', null, { username: `other_${id}`, password: PASS })).json();
-  for (const [path, body] of [[`${reviewPath}/specs`], [`${reviewPath}/proposals`, { kind: 'spec', base_revision: 3, content: 'Foreign edit' }], [`${reviewPath}/proposals/${encodeURIComponent(proposed.id)}`, { action: 'rollback' }]]) {
+  for (const [path, body] of [[`${reviewPath}/specs`], [`${reviewPath}/presentation`], [`${reviewPath}/presentation/export`], [`${reviewPath}/proposals`, { kind: 'spec', base_revision: 3, content: 'Foreign edit' }], [`${reviewPath}/proposals/${encodeURIComponent(proposed.id)}`, { action: 'rollback' }]]) {
     assert.equal((await call(path, other.token, body)).status, 404);
   }
   assert.equal((await call(`${reviewPath}/specs`, null)).status, 401);
+  assert.equal((await call(`${reviewPath}/presentation/export`, null)).status, 401);
   const foreign = await (await call('/burrow/tasks', other.token, { request: 'Other school', project: `School ${id}` })).json();
   assert.equal((await (await call(`/burrow/tasks/${foreign.id}/specs`, other.token)).json()).spec.revision, 0);
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
@@ -185,6 +275,9 @@ try {
   } finally { await touch.close(); }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  // New chat focuses the composer on the next animation frame. Wait for that
+  // focus handoff before editing a different field (Playwright fill uses keys).
+  await page.waitForFunction(() => document.activeElement?.id === 'burrow-request');
   await page.getByLabel('Create or select a project').fill('');
   await page.getByLabel('New task for Kikka').fill('Help me plan a class activity.');
   await page.getByLabel('New task for Kikka').press('Enter');
@@ -238,7 +331,7 @@ try {
   await page.getByRole('heading', { name: 'A name, not a destination yet', exact: true }).waitFor();
   assert.equal(await page.getByRole('textbox', { name: 'Ask Kikka for a change', exact: true }).count(), 1, 'saved page reloads in chat; local play progress resets');
   assert.deepEqual(errors, []);
-  console.log('PASS: chatbox, optional projects, inline slides, trusted generated UI, explicit consent, protected edits, persistence, one-shot sandbox, rollback, account isolation, keyboard and Chromium touch; no installs or activations.');
+  console.log('PASS: project chat, citations, separate one-response AI consent, immutable budget, human school-use sign-off, real PPTX download fidelity, withdrawal, persistence, protected edits, sandbox, rollback, account isolation, keyboard and Chromium touch; no installs or activations.');
 } catch (error) {
   await shot(page, 'project-review-failure'); throw error;
 } finally { await browser.close(); }

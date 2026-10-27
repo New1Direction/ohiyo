@@ -283,6 +283,30 @@ pub async fn start(
     // Serialize admission with account deletion, as hosted-machine mutations do.
     let _lifecycle = s.instance_lifecycle.lock().await;
     let task = owned(&s, &user, &id).await?;
+    let evaluation: Option<(i64, String)> = sqlx::query_as(
+        "SELECT max_cost_cents,routing FROM burrow_presentation_evaluations WHERE task_id=?",
+    )
+    .bind(&id)
+    .fetch_optional(&s.db)
+    .await
+    .map_err(internal)?;
+    if let Some((limit, routes)) = evaluation {
+        if body.max_cost_cents != limit
+            || body.role.as_deref() != Some("review")
+            || body.coding
+            || body.allow_project_knowledge
+            || body.computer_workspace.is_some()
+            || !super::routing::same_snapshot(
+                body.routing.as_ref(),
+                serde_json::from_str::<Value>(&routes).ok().as_ref(),
+            )
+        {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Presentation review keeps its original limit, model and no-tool scope.".into(),
+            ));
+        }
+    }
     if task.coding && !body.coding {
         return Err((
             StatusCode::CONFLICT,
@@ -605,6 +629,12 @@ pub async fn control(
     let _lifecycle = s.instance_lifecycle.lock().await;
     let task = owned(&s, &user, &id).await?;
     let kikka = connected(&s, &user)?;
+    if body.action != "stop" && super::presentation::is_evaluation(&s, &id).await? {
+        return Err((
+            StatusCode::CONFLICT,
+            "Presentation reviews allow one model request, not follow-ups or retries.".into(),
+        ));
+    }
     let message = body.message.trim();
     if body.request_id.is_empty()
         || body.request_id.len() > 100
@@ -848,6 +878,16 @@ pub async fn tick(s: &AppState) -> Result<(), sqlx::Error> {
                     .map_err(|e| sqlx::Error::Protocol(e.1))?);
                 admission["comparison"] = json!(task.comparison);
                 admission["project_knowledge"] = json!(run.project_knowledge);
+                let evaluation: Option<String> = sqlx::query_scalar(
+                    "SELECT material FROM burrow_presentation_evaluations WHERE task_id=?",
+                )
+                .bind(&run.task_id)
+                .fetch_optional(&s.db)
+                .await?;
+                if let Some(packet) = evaluation {
+                    admission["presentation_evaluation"] = json!(true);
+                    admission["burrow_context"] = json!(packet);
+                }
                 if let (Some(id), Some(version)) = (&task.routine_id, task.routine_version) {
                     let definition: String = sqlx::query_scalar("SELECT definition FROM burrow_routines WHERE id=? AND version=? AND user_id=? AND project IS ?")
                         .bind(id).bind(version).bind(&owner).bind(&task.project).fetch_one(&s.db).await?;

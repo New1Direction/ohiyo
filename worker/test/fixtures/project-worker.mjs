@@ -14,6 +14,11 @@ const worker=new KikkaWorker({ directory:process.argv[2],approvedUrls:[],
     if (!school) models.setProvider(openaiProvider());
     models.completeSimple=async(_model,input)=>{
       const results=input.messages.filter(m=>m.role==='toolResult');
+      if (school && !input.tools?.length && JSON.stringify(input).includes('source support')) return {
+        role:'assistant',api:_model.api,provider:_model.provider,model:_model.id,timestamp:Date.now(),
+        content:[{type:'text',text:'Factual concerns: check evaporation against source [1]. Source support: the supplied excerpt supports the claim, but I have not opened the source. Age suitability: short sentences suit Year 5. Clarity: add a class question. This is advisory, not school-use approval.'}],stopReason:'stop',
+        usage:{input:20,output:20,cacheRead:0,cacheWrite:0,totalTokens:40,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
+      };
       if (school && !JSON.stringify(input).includes('Six slides')) throw new Error('Expected approved school plan in model context.');
       const base = school ? 1 : 0;
       const steps=[['read_project_spec',{}],['propose_project_change',{kind:'spec',base_revision:base,content:school ? 'Six slides for year 5 about the water cycle. Add speaker notes and a sources slide. No student names or photos.' : 'Private chat. Optional AI. Keep Pi Durable.'}],

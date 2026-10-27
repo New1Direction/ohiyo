@@ -12,7 +12,7 @@ const canonical = value => JSON.stringify(value, (_, v) => v && typeof v === 'ob
 // One gate per task. No caller, including compaction, gets the underlying Models.
 export function spendingGate({ db, models, identity, budgetMicros, policy, blocked, activity, stopped, campaign, runId,
   openRouterKey, verifyRoute = verifyOpenRouterSelection, routing, role, admission, resolveCredential,
-  inferenceTransport, subscriptionAccounts, gatewayPrivacyConfirmed = false, computerControl }) {
+  inferenceTransport, subscriptionAccounts, gatewayPrivacyConfirmed = false, computerControl, maxRequests }) {
   db.exec(`CREATE TABLE IF NOT EXISTS paid_requests (
     id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, reservation INTEGER NOT NULL,
     phase TEXT NOT NULL, response TEXT
@@ -55,6 +55,9 @@ export function spendingGate({ db, models, identity, budgetMicros, policy, block
     if (saved) {
       if (saved.fingerprint !== fingerprint || saved.phase !== 'complete') deny('Needs you: recovered request does not match its saved acknowledgement.');
       return JSON.parse(saved.response);
+    }
+    if (maxRequests !== undefined && db.prepare('SELECT count(*) n FROM paid_requests').get().n >= maxRequests) {
+      deny('This presentation review has used its one approved model request. No retry or follow-up is authorized.');
     }
     if (subscription && db.prepare('SELECT count(*) n FROM paid_requests').get().n >= 20) {
       deny('Needs you: this task reached its 20-request limit. Revisions and summaries share this limit.');
@@ -100,6 +103,9 @@ export function spendingGate({ db, models, identity, budgetMicros, policy, block
     while (computerControl?.active() && !stopped()) await computerControl.wait(options.signal);
     if (stopped()) deny('No new requests are authorized for this task.');
     if (reserved() + reservation > budgetMicros) deny('Needs you: the approved model budget is exhausted.');
+    if (maxRequests !== undefined && db.prepare('SELECT count(*) n FROM paid_requests').get().n >= maxRequests) {
+      deny('This presentation review has used its one approved model request. No retry or follow-up is authorized.');
+    }
     try { campaign?.admit('model', `${runId}:${id}`); } catch (error) { deny(error.message); }
     // Synchronous SQLite FULL commit completes before the first provider operation.
     const usageEntry = route ? { id, role: selectedRole, canonicalModel: model.id, providerModelId: route.providerModelId,

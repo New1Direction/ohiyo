@@ -655,6 +655,14 @@ export type BurrowTask = {
 export type BurrowWorkspace = { tasks: BurrowTask[]; can_run: boolean; service: string | null; can_research?: boolean; can_travel?: boolean; agent_task_ids?: string[] };
 export type ProjectProposal = { id: string; kind: "spec" | "skill"; base_revision: number; content: string; status: "pending" | "approved" | "rejected" | "testing" | "tested" | "test_failed" | "rolled_back"; test_report: string | null };
 export type ProjectReview = { spec: { project: string; revision: number; content: string }; history: { revision: number; content: string; proposal_id: string }[]; proposals: ProjectProposal[] };
+export type PresentationCitation = { claim: string; title: string; url: string; quote: string; checked: boolean };
+export type PresentationReview = {
+  version: number; approved: boolean;
+  review: { revision: number; source_version: number; status: "draft" | "approved" | "withdrawn"; audience: string; citations: PresentationCitation[]; created_at: number } | null;
+  history: NonNullable<PresentationReview["review"]>[];
+  evaluation: { id: string; version: number; state: BurrowTask["state"]; result: string; error: string | null; max_cost_cents: number } | null;
+};
+export type PresentationExport = { version: number; format: "document" | "creation"; content: string; audience: string; citations: PresentationCitation[] };
 export type TravelMoney = { minor: number; currency: string };
 export type Traveler = { given_name: string; family_name: string; email: string; phone: string; born_on: string };
 export type TravelGuest = { type: "adult" } | { type: "child"; age: number };
@@ -792,6 +800,10 @@ export const api = {
   }, token),
   burrowAgent: (token: string, id: string) => request<BurrowAgent>(`/burrow/tasks/${id}/agent`, {}, token),
   projectReview: (token: string, task: string) => request<ProjectReview>(`/burrow/tasks/${encodeURIComponent(task)}/specs`, {}, token),
+  presentationReview: (token: string, task: string) => request<PresentationReview>(`/burrow/tasks/${encodeURIComponent(task)}/presentation`, {}, token),
+  reviewPresentation: (token: string, task: string, body: { version: number; revision: number; action: "save" | "approve" | "withdraw"; audience: string; citations: PresentationCitation[]; facts_checked: boolean; age_checked: boolean; school_use_approved: boolean }) => request<PresentationReview>(`/burrow/tasks/${encodeURIComponent(task)}/presentation`, { method: "POST", body: JSON.stringify(body) }, token),
+  exportPresentation: (token: string, task: string) => request<PresentationExport>(`/burrow/tasks/${encodeURIComponent(task)}/presentation/export`, {}, token),
+  evaluatePresentation: (token: string, task: string, version: number, revision: number, cents: number, routing: ModelRouting["preview"]) => request<PresentationReview>(`/burrow/tasks/${encodeURIComponent(task)}/presentation/evaluate`, { method: "POST", body: JSON.stringify({ version, revision, allow_evaluation: true, max_cost_cents: cents, routing }) }, token),
   proposeProject: (token: string, task: string, base: number, content: string) => request(`/burrow/tasks/${encodeURIComponent(task)}/proposals`, { method: "POST", body: JSON.stringify({ kind: "spec", base_revision: base, content }) }, token),
   decideProject: (token: string, task: string, proposal: string, action: "approve" | "reject" | "test" | "rollback") => request<ProjectReview>(`/burrow/tasks/${encodeURIComponent(task)}/proposals/${encodeURIComponent(proposal)}`, { method: "POST", body: JSON.stringify({ action }) }, token),
   burrowComputerWorkspaces: (token: string) => request<BurrowComputerWorkspace[]>("/burrow/computer-workspaces", {}, token),

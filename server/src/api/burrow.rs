@@ -5,6 +5,7 @@ pub mod computer;
 pub mod context;
 pub mod creation;
 pub mod everyday;
+pub mod presentation;
 pub mod research;
 pub mod routing;
 mod skills;
@@ -112,7 +113,7 @@ pub async fn list(
     AuthUser(user, _): AuthUser,
 ) -> Result<Json<Workspace>, Error> {
     let tasks = sqlx::query_as::<_, Task>(
-        "SELECT * FROM burrow_tasks WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+        "SELECT * FROM burrow_tasks WHERE user_id = ? AND NOT EXISTS(SELECT 1 FROM burrow_presentation_evaluations e WHERE e.task_id=burrow_tasks.id) ORDER BY created_at DESC, id DESC",
     )
     .bind(&user)
     .fetch_all(&s.db)
@@ -280,6 +281,12 @@ pub async fn run(
     Json(permission): Json<Permission>,
 ) -> Result<Json<Task>, Error> {
     let task = owned(&s, &user, &id).await?;
+    if presentation::is_evaluation(&s, &id).await? {
+        return Err((
+            StatusCode::CONFLICT,
+            "Presentation reviews use their one approved Pi request only.".into(),
+        ));
+    }
     if agent::managed(&s, &id).await? {
         return Err((StatusCode::CONFLICT, "Kikka is already handling this in her workspace. Open that task instead of starting another attempt.".into()));
     }
@@ -496,6 +503,12 @@ pub async fn edit(
     Json(body): Json<Edit>,
 ) -> Result<Json<Task>, Error> {
     let task = owned(&s, &user, &id).await?;
+    if presentation::is_evaluation(&s, &id).await? {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "AI review reports cannot be replaced. Edit the original material instead.".into(),
+        ));
+    }
     if task.format == "creation" {
         return Err((
             StatusCode::BAD_REQUEST,

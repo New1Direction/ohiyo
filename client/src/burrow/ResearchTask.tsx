@@ -8,6 +8,7 @@ import SelectionActions from "./SelectionActions";
 import Comparison from "./ResearchComparison";
 import ResearchWorkspace from "./ResearchWorkspace";
 import PrivateBrowser from "./PrivateBrowser";
+import PresentationReview from "./PresentationReview";
 import { SavedTravelText as SavedResearchText, TravelProgress, parseTravelResult } from "./Travel";
 import { followUpLabel, taskActionError, taskActivity } from "./taskLanguage";
 import { submitPromptOnEnter } from "./promptKeys";
@@ -151,6 +152,7 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
   useEffect(() => { if (editing) presentationInput.current?.focus(); }, [editing]);
   const [contextDirty, setContextDirty] = useState(false);
   const [workspaceDirty, setWorkspaceDirty] = useState(false);
+  const [presentationDirty, setPresentationDirty] = useState(false);
   const [tab, setTab] = useState<Tab>("result");
   const [mobilePane, setMobilePane] = useState<"conversation" | "result">("conversation");
   const [review, setReview] = useState<{ before?: string; after: string; version: number } | null>(null);
@@ -170,7 +172,7 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
   useEffect(() => {
     if (runId && seenSeq !== null && seenSeq !== returnSeq) savePlace({ run: runId, seq: seenSeq, tab: "result", pane: "conversation", conversation: conversationPane.current?.scrollTop ?? 0, result: resultPane.current?.scrollTop ?? 0 });
   }, [runId, seenSeq, returnSeq, savePlace]);
-  const dirty = contextDirty || workspaceDirty || !!instruction.trim() || (!!editor && editor.text !== task.result);
+  const dirty = contextDirty || workspaceDirty || presentationDirty || !!instruction.trim() || (!!editor && editor.text !== task.result);
   useLayoutEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
   useEffect(() => {
     if (!dirty) return;
@@ -320,13 +322,14 @@ export default function ResearchTask({ task, token, canRun, onUpdate, onDirtyCha
       <details><summary>What you’re allowing</summary><p>Writing and reading allowed public sources only. No publishing, purchases or account changes. Follow-ups use this same service and limit. If a response is lost, Kikka pauses instead of automatically repeating a paid request.</p>{!!routing?.catalog.length && <ul>{modelRoles.map(r => { const route = routing.preview[r]; return route && <li key={r}>{r === "general" ? "General assistance" : r === "research" ? "Writing" : r === "review" ? "Review" : "Summaries"}: {route.providerModelId} via {new URL(route.endpoint).hostname}. {route.connectionId.startsWith("subscription-") ? "Uses your subscription." : route.fundedBy === "you" ? "Paid by you, within your limit." : "Provided by Ohiyo, within your limit."}</li>; })}</ul>}{subscriptionOnly && <p>Your provider’s allowance and billing settings apply. Your remaining allowance isn’t available here.</p>}</details>
     </section>}
     {view && (active || stopped || view.agent.phase === "review") && <p className="project-caption" role="status">{activity}</p>}
-    {task.result && <section className="burrow-result" aria-label="Saved material"><header><span className="project-caption">Saved for you</span>{task.state === "draft_ready" && !editor && <button className="burrow-link" onClick={() => setEditor({ text: task.result, version: task.version })}>Edit</button>}</header>{editor ? <><label htmlFor="presentation-draft" className="sr-only">Edit material</label><textarea ref={presentationInput} id="presentation-draft" rows={14} maxLength={100000} value={editor.text} onChange={e => setEditor({ ...editor, text: e.target.value })} /><div className="project-actions"><button className="burrow-primary" disabled={busy || !editor.text.trim()} onClick={() => void saveEdits()}>Save edits</button><button className="burrow-secondary" disabled={busy} onClick={() => setEditor(null)}>Cancel</button></div></> : <ProjectMaterial key={task.result} text={task.result} />}<footer>Review facts and sources before sharing. Slide view is a preview, not a PowerPoint file.</footer></section>}
+    {task.result && <section className="burrow-result" aria-label="Saved material"><header><span className="project-caption">Saved for you</span>{task.state === "draft_ready" && !editor && <button className="burrow-link" onClick={() => setEditor({ text: task.result, version: task.version })}>Edit</button>}</header>{editor ? <><label htmlFor="presentation-draft" className="sr-only">Edit material</label><textarea ref={presentationInput} id="presentation-draft" rows={14} maxLength={100000} value={editor.text} onChange={e => setEditor({ ...editor, text: e.target.value })} /><div className="project-actions"><button className="burrow-primary" disabled={busy || !editor.text.trim()} onClick={() => void saveEdits()}>Save edits</button><button className="burrow-secondary" disabled={busy} onClick={() => setEditor(null)}>Cancel</button></div></> : <ProjectMaterial key={task.result} text={task.result} />}<footer>Check facts and sources in Review &amp; download before sharing or exporting to PowerPoint.</footer></section>}
     {view && <>
       {!!view.commands.filter(c => c[1] !== "stop").length && <details className="project-history"><summary>Your earlier messages</summary>{view.commands.filter(c => c[1] !== "stop").map(c => <div className="project-message user" key={c[0]}><p>{c[2]}</p><small className="project-caption">{followUpLabel(c[3])}</small></div>)}</details>}
       {task.proposed_result && !review && <div className="project-revision"><p>Kikka suggested a revision. Your edits are unchanged.</p><button className="burrow-secondary" onClick={showChanges}>Review revision</button></div>}
       {review && task.proposed_result && <section className="project-revision" aria-label="Suggested revision"><h3>Review the revision</h3><div className="project-comparison"><div><h4>Your saved version</h4><SavedResearchText text={review.before ?? ""} /></div><div><h4>Suggested version</h4><SavedResearchText text={review.after} /></div></div>{review.version !== task.version && <p role="alert">A newer revision arrived. Close this review and open it again before deciding.</p>}<div className="project-actions"><button className="burrow-primary" disabled={busy || !!editor || task.state !== "draft_ready" || review.version !== task.version} onClick={() => void decide(true)}>Use this revision</button><button className="burrow-secondary" disabled={busy || !!editor || task.state !== "draft_ready" || review.version !== task.version} onClick={() => void decide(false)}>Keep my edits</button><button className="burrow-link" onClick={() => setReview(null)}>Close review</button></div></section>}
       {!!view.history.length && <details className="project-history"><summary>Previous versions</summary>{view.history.map(([id, result], index) => <details key={id}><summary>Version {view.history.length - index}</summary><SavedResearchText text={result} /></details>)}</details>}
     </>}
+    {task.result && <div hidden={!!editor}><PresentationReview token={token} task={task} onDirtyChange={setPresentationDirty} /></div>}
     {children}
     <details className="project-history"><summary>Saved preferences</summary><TaskContext ref={memoryDraft} task={task} token={token} onUpdate={onUpdate} onDirtyChange={setContextDirty} /></details>
     </div>

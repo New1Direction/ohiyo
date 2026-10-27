@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, type BurrowTask } from "../api";
 import GeneratedPage from "./GeneratedPage";
+import PresentationReview from "./PresentationReview";
 import { taskActionError } from "./taskLanguage";
 import SelectionActions from "./SelectionActions";
 import { submitPromptOnEnter } from "./promptKeys";
@@ -14,13 +15,14 @@ export default function Creation({ task, token, canRun, service, onUpdate, onDir
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [presentationDirty, setPresentationDirty] = useState(false);
   const sending = useRef(false);
   const composer = useRef<HTMLTextAreaElement>(null);
   const latestMessage = useRef<HTMLDivElement>(null);
   const seenVersion = useRef(task.version);
   const working = task.state === "working";
   const submitLabel = task.state === "failed" ? "Try again" : result.page ? "Send" : "Allow & create";
-  const dirty = !!text.trim();
+  const dirty = !!text.trim() || presentationDirty;
   useLayoutEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
   useEffect(() => {
     if (!dirty) return;
@@ -57,6 +59,7 @@ export default function Creation({ task, token, canRun, service, onUpdate, onDir
     <div className="creation-thread" role="region" aria-label="Messages">
         {result.messages.map((message, i) => <div key={i} ref={i === result.messages.length - 1 ? latestMessage : undefined} className={`creation-message ${message.role}`}><strong>{message.role === "user" ? "You" : "Kikka"}</strong><p data-selection-content>{message.text}</p></div>)}
         {page}
+        {result.page && <PresentationReview token={token} task={task} onDirtyChange={setPresentationDirty} />}
         {working && <p role="status" className="creation-working">Making your page. You can keep using your last saved version.</p>}
         {(error || task.error) && <p role="alert" className="burrow-error">{error || `Kikka couldn’t finish this change. ${result.page ? "Your last saved page" : "Your request"} is still here. A previous attempt may already have cost money.`}</p>}
         {!result.page && <section className="creation-permission" aria-label="Page permission"><h2>{working ? "Making your page…" : "Let’s make an interactive page."}</h2><p>{working ? "You can stop this request. An attempt may already have cost money." : canRun ? "Your request is saved. Choose Allow & create to share it with your AI service. You can add more detail below first." : "Your request is saved. Page creation isn’t connected for this account yet."}</p>{working && <button className="burrow-secondary" disabled={busy} onClick={() => void act("stop")}>Stop</button>}</section>}

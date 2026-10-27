@@ -649,7 +649,7 @@ test("presentation drafting keeps consent explicit, documents clean and edits pr
     assert.equal(writes.length, 1);
     assert.equal(writes[0].body.allow_project_knowledge, undefined, "creating a draft alone never grants proposal tools");
     assert.equal(writes[0].body.allow_agent, true);
-    assert.equal(container.querySelector('.project-consent input') === null, true, "saved tool permission cannot silently change");
+    assert.equal([...container.querySelectorAll('label')].some(label => /Let Kikka suggest plan changes and helpers/.test(label.textContent ?? "")), false, "saved tool permission cannot silently change");
     assert.doesNotMatch(container.textContent!, /runtime-secret|SQLITE|regional|tax details|dispatching|schema/);
     assert.doesNotMatch(container.textContent!, /draft/i);
     assert.equal(button("Previous slide").disabled, true);

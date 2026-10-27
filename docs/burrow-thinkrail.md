@@ -192,9 +192,58 @@ with scripted inference, project reuse/reload, separate tool consent, rejection,
 rollback, cross-account permissions and mobile overflow checks. See the E2E
 README for the explicitly isolated fixture stack; no live-model quality claim.
 
-Future decisions, not hidden implementations: presentation file export;
-behavioral fixture evaluation with explicitly approved model costs and
-no effects; explicit per-task activation of a tested guidance version; graph
-node/edge schema and import/export; audit retention beyond this pilot's cap.
+Future decisions, not hidden implementations: explicit per-task activation of a
+tested guidance version; graph node/edge schema and import/export; audit
+retention beyond this pilot's cap.
 Executable third-party plugins or delegation require separate threat models and
 approval contracts. None is necessary to use the spec/proposal APIs now.
+
+## Classroom review, export and optional evaluation
+
+Migration `0072_burrow_presentations.sql` adds append-only, account-owned review
+history bound to the exact saved material version. **Review & download** stays
+inside the document/page conversation. Audience, claim-to-source links, titles
+and supporting excerpts persist independently of AI. School-use approval needs
+checked sources and three explicit human attestations: factual review, age
+suitability and school use. Edits, proposed revisions and withdrawal prevent
+export under the old approval; restoring identical text does not restore consent.
+Withdrawal preserves history and cannot recall previously downloaded copies.
+
+Export rechecks ownership and approval in one database read transaction, then
+generates an OOXML `.pptx` locally with pinned MIT `pptxgenjs` 4.0.1. No model,
+remote images, source fetching, macros or generated code is needed. It preserves
+outline order, introductions, speaker notes, Unicode, citations and audience;
+long bodies paginate. Supported catalog pages become semantic static slides:
+tables and charts retain supplied values, quizzes retain all questions with
+answers/explanations in notes, and stories retain every scene and branch target.
+This is not a screenshot or interactive export. Fixed SpringLab/RequestJourney
+activities fail closed instead of silently disappearing from a downloaded deck.
+
+Optional AI review requires a separate unchecked consent and a displayed model,
+funding route and configurable 0–50 US-cent limit. Zero permits genuinely free
+routes only. Existing Pi Durable admission and spending reservations remain the
+authority; the full model context/output reserve can exceed a small chosen limit,
+in which case no inference occurs. Subscription billing is not offered here
+because Burrow cannot enforce its dollar cap. Operator-approved prices must be
+valid upper bounds; reservations are not a provider invoice or billing guarantee.
+
+One immutable allowance exists per material version, not per HTTP attempt.
+The reviewer receives only the saved material, audience and numbered sources:
+no private Ohiyo chat, personal memories, project tools, browser or computer.
+The durable spending gate allows one model dispatch, including for free routes,
+and fences uncertain outcomes. No follow-up, retry, paid fallback or budget/tool
+escalation is allowed; Stop remains available. Failure does not renew the
+allowance. Reports stay inside their parent review, cannot be manually replaced,
+and never change content or approve school use. Human sign-off and AI consent
+are independent: withdrawal does not cancel an already-requested model review.
+
+Verification includes real ZIP/XML export assertions in
+`client/test/presentation.test.ts`, authenticated persistence/permissions/stale
+approval/rollback/budget tests in `server/tests/burrow_presentation.rs`, real Pi
+journal and gate tests, and the extended browser fixture against development and
+production-preview builds. The browser downloads and opens the actual PPTX ZIP,
+checks citations/notes, and exercises consent, approval and withdrawal. Only
+inference is scripted; no live-model spending or quality evaluation was performed.
+No native Microsoft PowerPoint/Keynote rendering was checked in the orb. Source
+links are human-supplied and never automatically verified; these surfaces aid
+review, not certify factual accuracy, age suitability or school compliance.
