@@ -28,6 +28,8 @@ function boot(env: Record<string, string>, options: { dbExists?: boolean; restor
   };
   stub("litestream", options.restoreFails ? 'if [ "$1" = restore ]; then exit 1; fi' : "");
   stub("ohiyo-server", "");
+  stub("tini", 'shift; shift; exec "$@"');
+  stub("node", "");
   const db = join(dir, "data", "ohiyo.db");
   mkdirSync(join(dir, "data"));
   if (options.dbExists) writeFileSync(db, "");
@@ -61,6 +63,23 @@ test("with no replica the server starts on its own", (t) => {
   t.after(() => rmSync(run.dir, { recursive: true, force: true }));
   assert.equal(run.status, 0);
   assert.deepEqual(run.calls, ["ohiyo-server "]);
+});
+
+test("only the exact embedded opt-in enters the subreaped supervisor", (t) => {
+  const run = boot({ KIKKA_EMBEDDED_WORKER: "1", ...R2 });
+  t.after(() => rmSync(run.dir, { recursive: true, force: true }));
+  assert.equal(run.status, 0);
+  assert.deepEqual(run.calls, [
+    `tini -s -- node ${join(dirname(entrypoint), "worker-supervisor.mjs")}`,
+    `node ${join(dirname(entrypoint), "worker-supervisor.mjs")}`,
+  ]);
+  assert.equal(run.config, null, "the API subprocess owns the unchanged restore path");
+  for (const value of ["0", "true", "yes"]) {
+    const legacy = boot({ KIKKA_EMBEDDED_WORKER: value });
+    t.after(() => rmSync(legacy.dir, { recursive: true, force: true }));
+    assert.equal(legacy.status, 0);
+    assert.deepEqual(legacy.calls, ["ohiyo-server "]);
+  }
 });
 
 test("a replica URL without an endpoint is used as it is (AWS S3)", (t) => {

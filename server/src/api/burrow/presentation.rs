@@ -21,7 +21,7 @@ fn conflict() -> Error {
         "This material or review changed. Refresh before deciding. Nothing was repeated.".into(),
     )
 }
-fn material(task: &Task) -> Result<(), Error> {
+pub(super) fn material(task: &Task) -> Result<(), Error> {
     if task.kind != "writing"
         || task.coding
         || task.comparison
@@ -55,6 +55,8 @@ pub struct Citation {
     claim: String,
     title: String,
     url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    notes: Option<String>,
     quote: String,
     checked: bool,
 }
@@ -136,7 +138,17 @@ pub async fn change(
                     && u.username().is_empty()
                     && u.password().is_none()
             });
-            if url.is_none()
+            let notes = c.notes.as_deref().filter(|n| !n.is_empty());
+            let source_valid = match notes {
+                Some(n) => {
+                    c.url.is_empty()
+                        && !n.trim().is_empty()
+                        && n.len() <= 8000
+                        && n.contains(&c.quote)
+                }
+                None => url.is_some(),
+            };
+            if !source_valid
                 || c.url.len() > 2000
                 || c.claim.trim().is_empty()
                 || c.claim.len() > 500
@@ -145,7 +157,7 @@ pub async fn change(
                 || c.quote.trim().is_empty()
                 || c.quote.len() > 2000
             {
-                return Err((StatusCode::BAD_REQUEST, "Each source needs a claim, title, public web address and supporting excerpt. Source links are not fetched or verified by Burrow.".into()));
+                return Err((StatusCode::BAD_REQUEST, "Each source needs a claim, title and supporting excerpt, with either a web address or pasted notes containing that exact excerpt. Source links are not fetched or verified by Burrow.".into()));
             }
         }
         if body.action == "approve"
@@ -208,8 +220,9 @@ pub async fn export(
 
 pub async fn is_evaluation(s: &AppState, id: &str) -> Result<bool, Error> {
     sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM burrow_presentation_evaluations WHERE task_id=?)",
+        "SELECT EXISTS(SELECT 1 FROM burrow_presentation_evaluations WHERE task_id=? UNION ALL SELECT 1 FROM burrow_practice_packs WHERE task_id=?)",
     )
+    .bind(id)
     .bind(id)
     .fetch_one(&s.db)
     .await

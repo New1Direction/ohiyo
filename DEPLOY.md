@@ -80,6 +80,91 @@ run Discord imports or change an Instant Server's tier; unset means nobody can. 
 other variables are set the way they are is under
 [Railway settings and gotchas](#railway-settings-and-gotchas).
 
+### Optional cohosted school-practice worker (Railway API service only)
+
+The server image includes **Node.js 26** and the actual **Pi 1.3.0** worker,
+installed from `worker/package-lock.json` with `npm ci --ignore-scripts --omit=dev`.
+Packaging does not enable it. With `KIKKA_EMBEDDED_WORKER` unset (or anything other
+than exactly `1`), startup and Litestream restore/replication remain unchanged.
+There is no separate public worker service or port: only the existing API port
+3000 is exposed. Include `worker/**` in the API service's Git deploy watch paths.
+
+The image includes reviewed, nonsecret configurations from
+`worker/config/practice-routing.json` and `worker/config/practice-worker.json`,
+at the immutable paths `/opt/ohiyo-worker/config/practice-routing.json` and
+`/opt/ohiyo-worker/config/practice-worker.json`. The school/no-browse worker
+configuration is exactly:
+
+```json
+{"approvedUrls":[]}
+```
+
+Do not add `computer` configuration or `KIKKA_TRAVEL_URL`: this embedded school
+profile refuses them, so computer, coding and travel are not enabled. Empty
+`approvedUrls` is accepted only with routed model access; the non-routed profile
+still requires 1–20 pages, and both profiles retain the 20-page maximum.
+
+The reviewed route selects Groq `openai/gpt-oss-120b` for all four roles, with a
+131,072-token context, 4,096-token output maximum and budget rates of **$0.15 input /
+$0.60 output per million tokens**. Verify provider pricing before a later rollout;
+these are budget rates, not a free-tier promise. The connection uses `groq/*`
+mapping and reads `KIKKA_DEFAULT_API_KEY` **only from the API environment**. A
+missing/invalid route is not permission to fall back to another provider. No key
+belongs in these JSON files or public Vite variables. Supply a stable
+`KIKKA_CONNECTION_KEY` (at least 32 characters) to encrypt saved personal
+connections; preserve it across restarts. Setting `KIKKA_USER_ID='*'` makes the
+feature available to all authenticated users, not unauthenticated visitors;
+omitting it disables Kikka. Per-operation provider/data/budget consent remains
+required. To restrict rollout, use a specific authorized user id instead.
+
+After those files and authorized routes exist, set these **on `ohiyo-server`, not
+`ohiyo-web`**, in addition to all existing production variables:
+
+```bash
+railway variable set --service ohiyo-server \
+  KIKKA_EMBEDDED_WORKER=1 \
+  KIKKA_RUNTIME=pi \
+  KIKKA_USER_ID='*' \
+  KIKKA_WORKER_TOKEN="$(openssl rand -hex 32)" \
+  KIKKA_WORKER_CONFIG=/opt/ohiyo-worker/config/practice-worker.json \
+  KIKKA_WORKER_DIRECTORY=/data/kikka \
+  KIKKA_WORKER_PORT=3102 \
+  KIKKA_WORKER_URL=http://127.0.0.1:3102/command \
+  KIKKA_MODEL_ROUTING=1 \
+  KIKKA_ROUTING_CONFIG=/opt/ohiyo-worker/config/practice-routing.json \
+  KIKKA_ROUTING_ACCESS_URL=http://127.0.0.1:3000/api/v1/burrow/internal/model-access
+```
+
+Use a stable private service token of **at least 32 characters** shared by the API
+and worker; the example generates 64 hex characters. Preserve the value after
+initial provisioning: it also protects saved worker subscription accounts. Never
+put it in public Vite variables. The directory defaults to `/data/kikka` if unset;
+any different directory is rejected in embedded mode. Ensure `/data` is writable
+by the service user (`RAILWAY_RUN_UID=0` as above), and preserve/back up the whole
+volume, including worker journals. Litestream backs up the API SQLite database,
+**not** the worker's other databases/files. If changing either port, keep the
+loopback URLs consistent with `KIKKA_WORKER_PORT` and the API's `BIND_ADDR` port.
+
+The API retains its complete environment. The worker receives **only**
+`KIKKA_WORKER_CONFIG`, `KIKKA_WORKER_DIRECTORY`, `KIKKA_WORKER_TOKEN`,
+`KIKKA_WORKER_PORT`, `KIKKA_MODEL_ROUTING` and `KIKKA_ROUTING_ACCESS_URL`.
+It resolves authorized credentials through the loopback API at dispatch time;
+JWT, object-store, connection-encryption and ambient model-provider keys are not
+inherited. This is environment isolation, not a separate OS/filesystem sandbox.
+
+Opt-in starts a subreaped supervisor, the worker and the unchanged API/Litestream
+startup path. Either peer exiting, even successfully, terminates the other and
+fails the container. SIGTERM/SIGINT stop both process groups; after five seconds,
+unresponsive processes are killed. The supervisor never restarts a worker or
+resubmits an uncertain operation. Hosting-level restart policy is separate;
+reconcile saved outcomes before authorizing another attempt. Startup/readiness
+does not initiate model inference. This packaging does not bypass user approval,
+turn on a practice request, or certify model output for school use.
+
+To return to legacy API-only startup, unset `KIKKA_EMBEDDED_WORKER` and restart the
+service; keep `/data/kikka` and stable secrets for reconciliation. No deployment,
+configuration provisioning or live model smoke test is implied by these steps.
+
 ### Fly.io (alternative)
 
 The repo also ships `server/fly.toml`. Management commands below run from `server/`;
@@ -125,8 +210,9 @@ curl https://ohiyo-<you>.fly.dev/healthz     # → ok
 
 Notes baked into the config:
 
-- **`Dockerfile`** is a multi-stage Rust build → a slim Debian runtime with just
-  CA certs (sqlx bundles SQLite, reqwest uses rustls — no system libs needed).
+- **`Dockerfile`** is a multi-stage Rust build → a slim Debian runtime with CA
+  certificates, Litestream, Discrawl, Node 26 and the opt-in Pi worker. SQLx bundles
+  SQLite and reqwest uses rustls; no system OpenSSL is needed.
 - **`fly.toml`** keeps **one machine always running** (`auto_stop_machines = off`,
   `min_machines_running = 1`). A chat/voice server holds live WebSocket
   connections and presence — it must not sleep.

@@ -35,13 +35,21 @@ RUN git clone --depth 1 --branch "${DISCRAWL_VERSION}" https://github.com/steipe
     && test "$(git rev-parse HEAD)" = "${DISCRAWL_COMMIT}" \
     && go build -o /usr/local/bin/discrawl ./cmd/discrawl
 
+# Locked Pi dependencies: lifecycle scripts must never execute during packaging.
+FROM node:26-bookworm-slim AS worker-builder
+WORKDIR /opt/ohiyo-worker
+COPY worker/package.json worker/package-lock.json ./
+RUN npm ci --ignore-scripts --omit=dev
+COPY worker/src ./src
+COPY worker/config/practice-routing.json worker/config/practice-worker.json ./config/
+
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 # reqwest uses rustls (no OpenSSL) and sqlx bundles SQLite, so the runtime image
-# only needs CA certificates. WORKDIR is the volume mount point: both the SQLite
-# DB and the relative `uploads/` directory live here so they persist.
+# needs no system OpenSSL. Node and tini support the opt-in worker. WORKDIR is
+# the volume mount point: the DB and relative `uploads/` directory persist here.
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates libstdc++6 tini \
     && rm -rf /var/lib/apt/lists/*
 
 # Litestream — continuous SQLite replication for point-in-time backups. Installed
@@ -56,7 +64,10 @@ RUN dpkg -i /tmp/litestream.deb && rm /tmp/litestream.deb
 WORKDIR /data
 COPY --from=builder /build/server/target/release/server /usr/local/bin/ohiyo-server
 COPY --from=discrawl-builder /usr/local/bin/discrawl /usr/local/bin/discrawl
+COPY --from=worker-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=worker-builder /opt/ohiyo-worker /opt/ohiyo-worker
 COPY server/docker-entrypoint.sh server/litestream-config.sh /usr/local/bin/
+COPY server/worker-supervisor.mjs /usr/local/bin/worker-supervisor.mjs
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/litestream-config.sh
 
 # Run as a dedicated non-root user. /data (the volume mount, holding the SQLite DB,

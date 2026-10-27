@@ -1,0 +1,29 @@
+{
+  "catalog": [
+    {
+      "id": "groq/openai/gpt-oss-120b",
+      "providerModelId": "openai/gpt-oss-120b",
+      "contextWindow": 131072,
+      "maxOutputTokens": 4096,
+      "inputUsdPerMillion": 0.15,
+      "outputUsdPerMillion": 0.6
+    }
+  ],
+  "connections": [
+    {
+      "id": "ohiyo-groq",
+      "name": "Ohiyo · Groq",
+      "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+      "modelMapping": "groq/*",
+      "active": true,
+      "priority": 0,
+      "keyEnv": "KIKKA_DEFAULT_API_KEY"
+    }
+  ],
+  "roles": {
+    "general": "groq/openai/gpt-oss-120b",
+    "research": "groq/openai/gpt-oss-120b",
+    "review": "groq/openai/gpt-oss-120b",
+    "summary": "groq/openai/gpt-oss-120b"
+  }
+}

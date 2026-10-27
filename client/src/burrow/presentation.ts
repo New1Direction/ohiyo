@@ -81,8 +81,8 @@ export async function presentationPptx(value: PresentationExport): Promise<Uint8
   deck.author = "Burrow"; deck.subject = `Human-reviewed school material · ${value.audience}`;
   deck.title = content[0].title;
   deck.theme = { headFontFace: "Aptos Display", bodyFontFace: "Aptos" };
-  const sources = value.citations.map((c, i) => `[${i + 1}] ${c.title}\nClaim: ${c.claim}\n${c.url}\nSupporting excerpt: ${c.quote}`);
-  const all = [...content, ...value.citations.map((c, i) => ({ title: `Source ${i + 1}: ${c.title}`, text: `Claim: ${c.claim}\n\n${c.quote}\n\n${c.url}`, notes: "Source checked by the person approving this material, not verified by Burrow or AI." }))];
+  const sources = value.citations.map((c, i) => `[${i + 1}] ${c.title}\nClaim: ${c.claim}\n${c.notes?.trim() ? "Saved school notes" : c.url}\nSupporting excerpt: ${c.quote}`);
+  const all = [...content, ...value.citations.map((c, i) => ({ title: `Source ${i + 1}: ${c.title}`, text: `Claim: ${c.claim}\n\n${c.quote}\n\n${c.notes?.trim() ? "Saved school notes" : c.url}`, notes: "Source checked by the person approving this material, not verified by Burrow or AI." }))];
   let number = 0;
   for (const part of all) {
     for (const [index, text] of pages(part.text).entries()) {

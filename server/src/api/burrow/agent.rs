@@ -283,16 +283,17 @@ pub async fn start(
     // Serialize admission with account deletion, as hosted-machine mutations do.
     let _lifecycle = s.instance_lifecycle.lock().await;
     let task = owned(&s, &user, &id).await?;
-    let evaluation: Option<(i64, String)> = sqlx::query_as(
-        "SELECT max_cost_cents,routing FROM burrow_presentation_evaluations WHERE task_id=?",
+    let evaluation: Option<(i64, String, String)> = sqlx::query_as(
+        "SELECT max_cost_cents,routing,'review' FROM burrow_presentation_evaluations WHERE task_id=? UNION ALL SELECT max_cost_cents,routing,'general' FROM burrow_practice_packs WHERE task_id=?",
     )
+    .bind(&id)
     .bind(&id)
     .fetch_optional(&s.db)
     .await
     .map_err(internal)?;
-    if let Some((limit, routes)) = evaluation {
+    if let Some((limit, routes, role)) = evaluation {
         if body.max_cost_cents != limit
-            || body.role.as_deref() != Some("review")
+            || body.role.as_deref() != Some(role.as_str())
             || body.coding
             || body.allow_project_knowledge
             || body.computer_workspace.is_some()
@@ -303,7 +304,7 @@ pub async fn start(
         {
             return Err((
                 StatusCode::BAD_REQUEST,
-                "Presentation review keeps its original limit, model and no-tool scope.".into(),
+                "Presentation review or practice keeps its original limit, model and no-tool scope.".into(),
             ));
         }
     }
@@ -632,7 +633,7 @@ pub async fn control(
     if body.action != "stop" && super::presentation::is_evaluation(&s, &id).await? {
         return Err((
             StatusCode::CONFLICT,
-            "Presentation reviews allow one model request, not follow-ups or retries.".into(),
+            "Presentation reviews and practice drafts allow one model request, not follow-ups or retries.".into(),
         ));
     }
     let message = body.message.trim();
@@ -887,6 +888,13 @@ pub async fn tick(s: &AppState) -> Result<(), sqlx::Error> {
                 if let Some(packet) = evaluation {
                     admission["presentation_evaluation"] = json!(true);
                     admission["burrow_context"] = json!(packet);
+                }
+                let practice: Option<(String,String,String,i64)> = sqlx::query_as(
+                    "SELECT material,objective,audience,source_version FROM burrow_practice_packs WHERE task_id=?",
+                ).bind(&run.task_id).fetch_optional(&s.db).await?;
+                if let Some((material, objective, audience, source_version)) = practice {
+                    admission["presentation_practice"] = json!(true);
+                    admission["burrow_context"] = json!(json!({"material":material,"objective":objective,"audience":audience,"source_version":source_version}).to_string());
                 }
                 if let (Some(id), Some(version)) = (&task.routine_id, task.routine_version) {
                     let definition: String = sqlx::query_scalar("SELECT definition FROM burrow_routines WHERE id=? AND version=? AND user_id=? AND project IS ?")

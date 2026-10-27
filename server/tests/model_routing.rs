@@ -53,6 +53,52 @@ async fn server() -> TestServer {
     .await
 }
 const SETTINGS: &str = "/api/v1/burrow/model-routing";
+#[tokio::test]
+async fn packaged_practice_route_exposes_the_reviewed_groq_model_and_prices() {
+    let config: Config =
+        serde_json::from_str(include_str!("../../worker/config/practice-routing.json")).unwrap();
+    let s = TestServer::start_with(move |s| {
+        let mut k = Kikka {
+            binary: PathBuf::new(),
+            home: PathBuf::new(),
+            user: "*".into(),
+            orb: "pi".into(),
+            model: "legacy".into(),
+            verify: String::new(),
+            lock: Default::default(),
+            pi: Some(Pi {
+                endpoint: "http://127.0.0.1:1/command".into(),
+                token: "private-worker-token-0123456789012345".into(),
+            }),
+            routing: None,
+        };
+        k.routing = Some(
+            Routing::new(
+                config,
+                None,
+                BTreeMap::from([("ohiyo-groq".into(), "synthetic-provider-key".into())]),
+            )
+            .unwrap(),
+        );
+        s.kikka = Some(k);
+    })
+    .await;
+    let user = s.register("packagedroute", "password-12345").await;
+    let view = settings(&s, &user.token).await;
+    for role in ROLES {
+        let route = &view["preview"][role];
+        assert_eq!(route["connectionId"], "ohiyo-groq");
+        assert_eq!(route["providerModelId"], "openai/gpt-oss-120b");
+        assert_eq!(
+            route["endpoint"],
+            "https://api.groq.com/openai/v1/chat/completions"
+        );
+        assert_eq!(route["inputUsdPerMillion"], 0.15);
+        assert_eq!(route["outputUsdPerMillion"], 0.6);
+        assert_eq!(route["maxOutputTokens"], 4096);
+    }
+    assert!(!view.to_string().contains("synthetic-provider-key"));
+}
 fn connection(name: &str, key: &str) -> Value {
     json!({"name":name,"templateId":"shared","modelMapping":"*/*\n-openai/*\nopenai/test -> alias # comment","active":true,"priority":0,"key":key})
 }

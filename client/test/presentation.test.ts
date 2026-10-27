@@ -123,3 +123,40 @@ test("withdrawal needs confirmation, preserves history, and stale material reset
   try { assert.match(stale.container.textContent,/Earlier sign-off does not cover this version/); assert.equal(stale.container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked,false); }
   finally {stale.close();}
 });
+
+test("pasted school notes require an exact excerpt and render as escaped text without a bogus link", async () => {
+  const f = await mount();
+  const notes = "Class notes: Water changes <state> & circulates. <script>never execute</script>";
+  function change(field: HTMLInputElement | HTMLTextAreaElement, value: string) {
+    bundle.mod.act(() => {
+      Object.getOwnPropertyDescriptor(field.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype, "value")!.set!.call(field, value);
+      field.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
+  }
+  try {
+    const select = f.container.querySelector<HTMLSelectElement>("select")!;
+    bundle.mod.act(() => { select.value = "notes"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    assert.equal(f.container.querySelector('input[type="url"]'), null);
+    const textarea = f.container.querySelector<HTMLTextAreaElement>('textarea[maxlength="8000"]')!;
+    assert.equal(textarea.maxLength, 8000); assert.equal(f.button("Save review notes")!.disabled, true);
+    change(textarea, "An unrelated note"); assert.equal(f.button("Save review notes")!.disabled, true);
+    change(textarea, notes); assert.equal(f.button("Save review notes")!.disabled, false);
+    assert.equal(f.container.querySelector('a[href=""]'), null);
+    bundle.mod.act(() => f.button("Save review notes")!.click()); await settle();
+    const citation = (writes[0].citations as { url: string; notes: string; checked: boolean }[])[0];
+    assert.equal(citation.url, ""); assert.equal(citation.notes, notes); assert.equal(citation.checked, false);
+    snapshot = { ...snapshot, approved: true, review: { ...snapshot.review!, status: "approved", citations: [{ ...source, url: "", notes }] } };
+    bundle.mod.act(() => f.button("Refresh review")!.click()); await settle();
+    const approved = f.container.querySelector('section[aria-label="Approved audience and sources"]')!;
+    assert.equal(approved.querySelector("a"), null); assert.equal(approved.querySelector("script"), null);
+    assert.match(approved.textContent!, /Saved school notes/); assert.ok(approved.textContent!.includes(notes));
+  } finally { f.close(); }
+});
+
+test("PowerPoint labels saved school notes instead of an empty URL and preserves the supporting excerpt", async () => {
+  const zip = await JSZip.loadAsync(await bundle.mod.presentationPptx({ version: 4, format: "document", content: "Water lesson", audience: "Year 5", citations: [{ ...source, url: "", notes: `Class notes: ${source.quote}` }] }));
+  const slide = texts(await zip.file("ppt/slides/slide2.xml")!.async("string"));
+  const notes = texts(await zip.file("ppt/notesSlides/notesSlide1.xml")!.async("string"));
+  assert.match(slide, /Saved school notes/); assert.ok(slide.includes(source.quote));
+  assert.match(notes, /Saved school notes/); assert.ok(notes.includes(`Supporting excerpt: ${source.quote}`));
+});

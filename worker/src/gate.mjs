@@ -57,7 +57,7 @@ export function spendingGate({ db, models, identity, budgetMicros, policy, block
       return JSON.parse(saved.response);
     }
     if (maxRequests !== undefined && db.prepare('SELECT count(*) n FROM paid_requests').get().n >= maxRequests) {
-      deny('This presentation review has used its one approved model request. No retry or follow-up is authorized.');
+      deny('This review or practice has used its one approved model request. No retry or follow-up is authorized.');
     }
     if (subscription && db.prepare('SELECT count(*) n FROM paid_requests').get().n >= 20) {
       deny('Needs you: this task reached its 20-request limit. Revisions and summaries share this limit.');
@@ -104,7 +104,7 @@ export function spendingGate({ db, models, identity, budgetMicros, policy, block
     if (stopped()) deny('No new requests are authorized for this task.');
     if (reserved() + reservation > budgetMicros) deny('Needs you: the approved model budget is exhausted.');
     if (maxRequests !== undefined && db.prepare('SELECT count(*) n FROM paid_requests').get().n >= maxRequests) {
-      deny('This presentation review has used its one approved model request. No retry or follow-up is authorized.');
+      deny('This review or practice has used its one approved model request. No retry or follow-up is authorized.');
     }
     try { campaign?.admit('model', `${runId}:${id}`); } catch (error) { deny(error.message); }
     // Synchronous SQLite FULL commit completes before the first provider operation.

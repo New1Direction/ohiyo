@@ -81,13 +81,16 @@
 .presentation-review fieldset { min-width: 0; border: 0; margin: 16px 0; padding: 0; }
 .presentation-review legend { font-weight: 600; margin-bottom: 12px; }
 .presentation-review label { display: flex; flex-direction: column; gap: 8px; margin-block: 12px; }
-.presentation-review input:not([type="checkbox"]), .presentation-review textarea { box-sizing: border-box; width: 100%; font: inherit; font-size: 16px; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-control); padding: 12px; }
+.presentation-review input:not([type="checkbox"]), .presentation-review textarea, .presentation-review select { box-sizing: border-box; width: 100%; font: inherit; font-size: 16px; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-control); padding: 12px; }
 .presentation-review label.project-consent { flex-direction: row; align-items: flex-start; }
 .presentation-review input[type="checkbox"] { flex: 0 0 auto; margin-top: 4px; width: 18px; height: 18px; }
 .presentation-source { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-control); margin-block: 16px; }
 .presentation-source blockquote { margin: 12px 0; padding-left: 16px; border-left: 2px solid var(--line); line-height: 1.7; }
 .presentation-ai { margin-block: 20px; }
 .presentation-review button { min-height: 44px; }
+.presentation-review .project-text, .practice-review .gen-answer-result p { white-space: pre-wrap; }
+.practice-review { --gen-accent: var(--coral); --gen-tint: var(--accent-tint); container-type: inline-size; }
+.practice-review blockquote { margin: 12px 0; padding-left: 16px; border-left: 2px solid var(--line); line-height: 1.7; white-space: pre-wrap; }
 @media (max-width: 760px) {
   .presentation-review { padding: 16px; }
   .presentation-review > header { flex-wrap: wrap; }

@@ -66,8 +66,8 @@ test('guidance sandbox checks boundaries without evaluating candidate code or pe
   await assert.rejects(testSkill('x'.repeat(8001)),/Invalid skill/);
 });
 
-test('real Pi presentation evaluation has no tools, one request even when free, pinned bounds, and no replay after uncertainty', async () => {
-  for (const mode of ['normal','free','tool-attempt','interrupted','too-small']) {
+test('real Pi presentation review and practice have no tools, one request even when free, pinned bounds, and no replay after uncertainty', async () => {
+  for (const kind of ['presentation_evaluation', 'presentation_practice']) for (const mode of ['normal','free','tool-attempt','interrupted','too-small']) {
     const directory=await mkdtemp(join(tmpdir(),'burrow-evaluation-'));
     let calls=0;
     const route={canonicalModel:'test/review',providerModelId:'review',connectionId:'review-fixture',connectionRevision:'v1',fundedBy:'you',endpoint:'https://example.com/v1/chat/completions',contextWindow:100000,maxOutputTokens:1000,inputUsdPerMillion:mode==='free'?0:0.1,outputUsdPerMillion:mode==='free'?0:0.3};
@@ -83,8 +83,8 @@ test('real Pi presentation evaluation has no tools, one request even when free, 
       };return m;
     },inferenceTransport:async()=>{throw new Error('No real provider allowed');}});
     try {
-      const admission={owner:'alice',task:'school',root_goal:'evaluation',goal:'Review the saved material',role:'review',routing,presentation_evaluation:true,burrow_context:'Review-only material with source [1].',max_cost_cents:mode==='free'?0:mode==='too-small'?1:5};
-      for(const escalation of [{project_knowledge:true},{coding:true},{computer_workspace:'injected'},{role:'general'}]) await assert.rejects(worker.start({...admission,...escalation}));
+      const admission={owner:'alice',task:'school',root_goal:kind,goal:'Use the saved material',role:kind==='presentation_practice'?'general':'review',routing,[kind]:true,burrow_context:'Review-only material with source [1].',max_cost_cents:mode==='free'?0:mode==='too-small'?1:5};
+      for(const escalation of [{project_knowledge:true},{coding:true},{computer_workspace:'injected'},{role:kind==='presentation_practice'?'review':'general'}, {[kind==='presentation_practice'?'presentation_evaluation':'presentation_practice']:true}]) await assert.rejects(worker.start({...admission,...escalation}));
       const id=await worker.start(admission);
       let state;
       for(let n=0;n<300;n++){state=await worker.status(id);if(state.state!=='Running')break;await new Promise(r=>setTimeout(r,10));}

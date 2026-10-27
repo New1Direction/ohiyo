@@ -58,9 +58,10 @@ export function workerServer(worker, token, { subscriptionAccounts } = {}) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === new URL(import.meta.url).pathname) {
+  if (Number(process.versions.node.split('.')[0]) < 26) throw new Error('The worker requires Node.js 26 or newer.');
   const config = JSON.parse(await readFile(process.env.KIKKA_WORKER_CONFIG, 'utf8'));
   const routingEnabled = process.env.KIKKA_MODEL_ROUTING === '1';
-  if (!Array.isArray(config.approvedUrls) || config.approvedUrls.length < 1 || config.approvedUrls.length > 20) throw new Error('Invalid public page allowlist.');
+  if (!Array.isArray(config.approvedUrls) || config.approvedUrls.length < (routingEnabled ? 0 : 1) || config.approvedUrls.length > 20) throw new Error('Invalid public page allowlist.');
   if (!routingEnabled && !process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is missing. No live model work was started.');
   if (!routingEnabled && (config.policy?.provider !== 'openai' || config.policy?.modelId !== 'gpt-4o-mini'
     || !Number.isFinite(config.policy.inputUsdPerMillion) || config.policy.inputUsdPerMillion < 0.15

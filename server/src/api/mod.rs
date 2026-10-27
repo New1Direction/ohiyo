@@ -75,6 +75,8 @@ pub fn router() -> Router<AppState> {
         .route("/burrow/tasks/{id}/presentation", get(burrow::presentation::get).post(burrow::presentation::change))
         .route("/burrow/tasks/{id}/presentation/export", get(burrow::presentation::export))
         .route("/burrow/tasks/{id}/presentation/evaluate", post(burrow::presentation::evaluate))
+        .route("/burrow/tasks/{id}/practice", get(burrow::practice::get).post(burrow::practice::generate))
+        .route("/burrow/tasks/{id}/practice/review", post(burrow::practice::review))
         .route("/burrow/tasks/{id}/proposals", post(burrow::specs::propose))
         .route("/burrow/tasks/{id}/proposals/{proposal}", post(burrow::specs::decide))
         .route("/burrow/tasks/{id}/research", get(burrow::research::get).post(burrow::research::change))

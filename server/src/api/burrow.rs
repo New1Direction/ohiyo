@@ -5,6 +5,7 @@ pub mod computer;
 pub mod context;
 pub mod creation;
 pub mod everyday;
+pub mod practice;
 pub mod presentation;
 pub mod research;
 pub mod routing;
@@ -113,7 +114,7 @@ pub async fn list(
     AuthUser(user, _): AuthUser,
 ) -> Result<Json<Workspace>, Error> {
     let tasks = sqlx::query_as::<_, Task>(
-        "SELECT * FROM burrow_tasks WHERE user_id = ? AND NOT EXISTS(SELECT 1 FROM burrow_presentation_evaluations e WHERE e.task_id=burrow_tasks.id) ORDER BY created_at DESC, id DESC",
+        "SELECT * FROM burrow_tasks WHERE user_id = ? AND NOT EXISTS(SELECT 1 FROM burrow_presentation_evaluations e WHERE e.task_id=burrow_tasks.id) AND NOT EXISTS(SELECT 1 FROM burrow_practice_packs p WHERE p.task_id=burrow_tasks.id) ORDER BY created_at DESC, id DESC",
     )
     .bind(&user)
     .fetch_all(&s.db)
@@ -284,7 +285,8 @@ pub async fn run(
     if presentation::is_evaluation(&s, &id).await? {
         return Err((
             StatusCode::CONFLICT,
-            "Presentation reviews use their one approved Pi request only.".into(),
+            "Presentation reviews and practice drafts use their one approved Pi request only."
+                .into(),
         ));
     }
     if agent::managed(&s, &id).await? {
@@ -506,7 +508,7 @@ pub async fn edit(
     if presentation::is_evaluation(&s, &id).await? {
         return Err((
             StatusCode::FORBIDDEN,
-            "AI review reports cannot be replaced. Edit the original material instead.".into(),
+            "AI review reports and practice drafts cannot be replaced. Edit the original material instead.".into(),
         ));
     }
     if task.format == "creation" {

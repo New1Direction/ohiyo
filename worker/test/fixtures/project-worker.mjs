@@ -14,6 +14,19 @@ const worker=new KikkaWorker({ directory:process.argv[2],approvedUrls:[],
     if (!school) models.setProvider(openaiProvider());
     models.completeSimple=async(_model,input)=>{
       const results=input.messages.filter(m=>m.role==='toolResult');
+      if (school && !input.tools?.length && JSON.stringify(input).includes('source-grounded private practice draft')) {
+        const packet = input.messages.flatMap(m => Array.isArray(m.content) ? m.content : []).filter(p => p.type === 'text').map(p => { try { return JSON.parse(p.text); } catch { return null; } }).find(p => p?.material && p?.objective);
+        if (!packet || !packet.material.includes('The sun warms water.')) throw new Error('Expected selected water-cycle material, not project memory.');
+        return { role:'assistant',api:_model.api,provider:_model.provider,model:_model.id,timestamp:Date.now(),
+          content:[{type:'text',text:JSON.stringify({objective:packet.objective,
+            explanation:{text:'Water moves through a repeating cycle. Warming turns some liquid into vapour; cooling forms tiny drops.',quote:'Water vapour cools and forms tiny drops in clouds.'},
+            worked_example:{text:'Think of a lake after rain: water collects there, and later some can return to the air as vapour.',quote:'Water collects in rivers, lakes and oceans. The cycle continues.'},
+            questions:[
+              {question:'A puddle gets smaller on a sunny day. Where can some of its water go?',options:['It stops existing.','Into the air as water vapour.','Only into clouds as solid ice.'],answer:1,explanation:'Warming can turn liquid water into vapour. Smaller does not mean the water stopped existing.',quote:'The sun warms water. Some water turns into water vapour.'},
+              {question:'Water vapour in the air cools. Which change helps form a cloud?',options:['It forms tiny liquid drops.','It becomes warmer liquid in a river.','It permanently disappears.'],answer:0,explanation:'Cooling water vapour forms tiny drops in clouds; warming and disappearing are different claims.',quote:'Water vapour cools and forms tiny drops in clouds.'},
+              {question:'Rain has collected in a lake. What can happen as the cycle continues?',options:['The water cycle must stop.','All water must stay liquid forever.','Some water can later become vapour again.'],answer:2,explanation:'Collected water can take part in evaporation again; collecting is not the end of the cycle.',quote:'Water collects in rivers, lakes and oceans. The cycle continues.'}
+            ]})}],stopReason:'stop',usage:{input:20,output:20,cacheRead:0,cacheWrite:0,totalTokens:40,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}} };
+      }
       if (school && !input.tools?.length && JSON.stringify(input).includes('source support')) return {
         role:'assistant',api:_model.api,provider:_model.provider,model:_model.id,timestamp:Date.now(),
         content:[{type:'text',text:'Factual concerns: check evaporation against source [1]. Source support: the supplied excerpt supports the claim, but I have not opened the source. Age suitability: short sentences suit Year 5. Clarity: add a class question. This is advisory, not school-use approval.'}],stopReason:'stop',

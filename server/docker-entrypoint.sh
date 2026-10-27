@@ -1,6 +1,12 @@
 #!/bin/sh
 set -e
 
+# Only the explicit opt-in changes process ownership. The supervisor starts this
+# same script with the flag cleared, preserving restore/replication verbatim.
+if [ "$KIKKA_EMBEDDED_WORKER" = "1" ]; then
+  exec tini -s -- node "$(dirname "$0")/worker-supervisor.mjs"
+fi
+
 # Continuous SQLite backup via Litestream — fully OPT-IN.
 #
 # With LITESTREAM_REPLICA_URL unset (the default) this is a transparent passthrough:

@@ -15,6 +15,62 @@ also sends. IME composition and repeated Enter key events never send; empty, bus
 disconnected prompts cannot bypass the disabled submit button. Saved-document
 editors keep normal multiline input and explicit Save actions.
 
+## School material and private practice
+
+Saved text documents offer **Review & download** and **Practise from this
+material**. School-use approval and private-practice approval are independent,
+human-owned decisions. Neither AI suggestions nor source quotation matching can
+certify accuracy or age suitability.
+
+- Review sources can use a web address or pasted school notes (up to 8 KB), not
+  both. Notes must contain the supporting excerpt exactly. They are stored as
+  escaped text, not executed or fetched; PowerPoint labels them “Saved school
+  notes”. Read and check the original source before signing off school use.
+- Practice needs a complete saved text document with no proposed revision. Choose
+  one objective and learner age/year; avoid student names or other identifiers.
+  Explicit consent discloses the general model, service, payer and a 0–50 US-cent
+  cap. Only that document's saved text (up to 40 KB), objective, audience and
+  version are sent. Separate review citations/notes, project knowledge and Ohiyo
+  chats are not included. To learn from pasted notes, put them in the selected
+  saved document first.
+- Pi Durable remains the only inference runtime. One tool-free response creates
+  an explanation, worked example and exactly three multiple-choice questions.
+  No browsing, tools, computer, helper installation, subscriptions, automatic
+  retries or paid fallback are admitted. Presentation AI review has its own
+  separate allowance; neither allowance resets on refresh or withdrawal.
+  Context-window and maximum-output reservations can prevent a priced model from
+  fitting the chosen cap. Interrupted calls may still cost money; an unknown
+  outcome cannot automatically spend again.
+- Every explanation/example/question needs an exact excerpt from the immutable
+  saved-material snapshot. Invalid structure, duplicate choices, invalid answer
+  indices or unsupported quotes make the draft unapprovable. There is one
+  generation allowance per saved source version, including failed admissions.
+- Before private practice, a person reads every answer, explanation and quote,
+  checks accuracy/ambiguity and age suitability, then signs off that exact output
+  version. Approval/withdrawal decisions are append-only. Editing the source
+  makes the older pack read-only even if identical text is restored. Quiz
+  answers and scores live only in the current view, disappear on reload, and do
+  not establish mastery or create a learner profile. Private here means
+  account-scoped: saved material, drafts and reviews remain backend plaintext,
+  not end-to-end encrypted; model-provider retention still applies.
+
+This is an idea-level adaptation of source-bound learning patterns researched in
+[DeepTutor at a31d826](https://github.com/HKUDS/DeepTutor/tree/a31d82624c27d75f4e771d4fcb78dce16470b383),
+not an imported runtime or dependency. No DeepTutor code, auth, memory, execution,
+MCP or plugin components are included. PDF/PPTX ingestion, OCR, graph retrieval,
+learner tracking and spaced repetition are not part of this slice. A later file
+import would need parser licensing/security review, source hash/page identity,
+explicit provider-disclosure consent and bounded extraction before indexing;
+PyMuPDF's AGPL/commercial licensing is one reason not to copy that stack wholesale.
+
+Checks: `cargo test --locked --test burrow_presentation` in `server/`,
+`node --test test/project-knowledge.test.mjs test/gate.test.mjs` in `worker/`, and
+the client practice/presentation tests. The disposable school-fixture run in
+`e2e/project-review.test.mjs` exercises real HTTP/SQLite/Pi Durable, reviewed
+practice, asymmetric scoring, reload, stale source, withdrawal, pasted notes and
+PowerPoint without network inference. These checks establish engineering
+boundaries, not the pedagogical quality of an untested live model.
+
 ## Backgrounds
 
 The small coloured dot beside Motion cycles nine looks: Ember, Neural bloom,

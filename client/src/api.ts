@@ -655,7 +655,7 @@ export type BurrowTask = {
 export type BurrowWorkspace = { tasks: BurrowTask[]; can_run: boolean; service: string | null; can_research?: boolean; can_travel?: boolean; agent_task_ids?: string[] };
 export type ProjectProposal = { id: string; kind: "spec" | "skill"; base_revision: number; content: string; status: "pending" | "approved" | "rejected" | "testing" | "tested" | "test_failed" | "rolled_back"; test_report: string | null };
 export type ProjectReview = { spec: { project: string; revision: number; content: string }; history: { revision: number; content: string; proposal_id: string }[]; proposals: ProjectProposal[] };
-export type PresentationCitation = { claim: string; title: string; url: string; quote: string; checked: boolean };
+export type PresentationCitation = { claim: string; title: string; url: string; quote: string; checked: boolean; notes?: string };
 export type PresentationReview = {
   version: number; approved: boolean;
   review: { revision: number; source_version: number; status: "draft" | "approved" | "withdrawn"; audience: string; citations: PresentationCitation[]; created_at: number } | null;
@@ -663,6 +663,16 @@ export type PresentationReview = {
   evaluation: { id: string; version: number; state: BurrowTask["state"]; result: string; error: string | null; max_cost_cents: number } | null;
 };
 export type PresentationExport = { version: number; format: "document" | "creation"; content: string; audience: string; citations: PresentationCitation[] };
+export type PracticeContent = {
+  objective: string;
+  explanation: { text: string; quote: string };
+  worked_example: { text: string; quote: string };
+  questions: { question: string; options: string[]; answer: number; explanation: string; quote: string }[];
+};
+export type PracticeView = {
+  source_version: number;
+  pack: { id: string; version: number; state: BurrowTask["state"]; max_cost_cents: number; objective: string; audience: string; source_version: number; revision: number; status: "draft" | "approved" | "withdrawn"; stale: boolean; content: PracticeContent | null; error: string | null; history?: { revision: number; output_version: number; status: "approved" | "withdrawn"; created_at: number }[] } | null;
+};
 export type TravelMoney = { minor: number; currency: string };
 export type Traveler = { given_name: string; family_name: string; email: string; phone: string; born_on: string };
 export type TravelGuest = { type: "adult" } | { type: "child"; age: number };
@@ -804,6 +814,9 @@ export const api = {
   reviewPresentation: (token: string, task: string, body: { version: number; revision: number; action: "save" | "approve" | "withdraw"; audience: string; citations: PresentationCitation[]; facts_checked: boolean; age_checked: boolean; school_use_approved: boolean }) => request<PresentationReview>(`/burrow/tasks/${encodeURIComponent(task)}/presentation`, { method: "POST", body: JSON.stringify(body) }, token),
   exportPresentation: (token: string, task: string) => request<PresentationExport>(`/burrow/tasks/${encodeURIComponent(task)}/presentation/export`, {}, token),
   evaluatePresentation: (token: string, task: string, version: number, revision: number, cents: number, routing: ModelRouting["preview"]) => request<PresentationReview>(`/burrow/tasks/${encodeURIComponent(task)}/presentation/evaluate`, { method: "POST", body: JSON.stringify({ version, revision, allow_evaluation: true, max_cost_cents: cents, routing }) }, token),
+  practice: (token: string, task: string) => request<PracticeView>(`/burrow/tasks/${encodeURIComponent(task)}/practice`, {}, token),
+  generatePractice: (token: string, task: string, body: { version: number; objective: string; audience: string; allow_practice: true; max_cost_cents: number; routing: ModelRouting["preview"] }) => request<PracticeView>(`/burrow/tasks/${encodeURIComponent(task)}/practice`, { method: "POST", body: JSON.stringify(body) }, token),
+  reviewPractice: (token: string, task: string, body: { version: number; pack_id: string; pack_version: number; revision: number; action: "approve" | "withdraw"; answers_checked: boolean; age_checked: boolean }) => request<PracticeView>(`/burrow/tasks/${encodeURIComponent(task)}/practice/review`, { method: "POST", body: JSON.stringify(body) }, token),
   proposeProject: (token: string, task: string, base: number, content: string) => request(`/burrow/tasks/${encodeURIComponent(task)}/proposals`, { method: "POST", body: JSON.stringify({ kind: "spec", base_revision: base, content }) }, token),
   decideProject: (token: string, task: string, proposal: string, action: "approve" | "reject" | "test" | "rollback") => request<ProjectReview>(`/burrow/tasks/${encodeURIComponent(task)}/proposals/${encodeURIComponent(proposal)}`, { method: "POST", body: JSON.stringify({ action }) }, token),
   burrowComputerWorkspaces: (token: string) => request<BurrowComputerWorkspace[]>("/burrow/computer-workspaces", {}, token),

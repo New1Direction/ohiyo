@@ -392,3 +392,323 @@ async fn evaluation_requires_consent_pins_budget_model_snapshot_and_no_tool_scop
     );
     assert_eq!(get(&s, &a.token, &id).await["review"]["status"], "draft");
 }
+
+#[tokio::test]
+async fn pasted_school_sources_require_exact_excerpts_and_keep_human_signoff() {
+    let s = TestServer::start().await;
+    let a = s.register("notes_owner", "test-password").await;
+    let id = task(&s, &a.token, "Notes", false).await;
+    let mut body = review("approve", 0, 0);
+    body["citations"][0]["url"] = json!("");
+    body["citations"][0]["notes"] =
+        json!("Teacher notes: Water changes from liquid to vapour. Cooling forms drops.");
+    let mut wrong = body.clone();
+    wrong["citations"][0]["quote"] = json!("Water disappears.");
+    assert_eq!(change(&s, &a.token, &id, wrong).await.status(), 400);
+    let mut ambiguous = body.clone();
+    ambiguous["citations"][0]["url"] = json!("https://example.org/other");
+    assert_eq!(change(&s, &a.token, &id, ambiguous).await.status(), 400);
+    assert_eq!(change(&s, &a.token, &id, body.clone()).await.status(), 200);
+    let exported: Value = s
+        .get_auth(
+            &format!("/api/v1/burrow/tasks/{id}/presentation/export"),
+            &a.token,
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        exported["citations"][0]["notes"],
+        body["citations"][0]["notes"]
+    );
+    assert_eq!(exported["citations"][0]["url"], "");
+}
+
+#[tokio::test]
+async fn practice_requires_scoped_one_shot_consent_grounded_output_and_version_bound_human_review()
+{
+    let s = TestServer::start_with(|s| s.kikka = Some(kikka())).await;
+    let a = s.register("practice_owner", "test-password").await;
+    let b = s.register("practice_other", "test-password").await;
+    let id = task(&s, &a.token, "School", false).await;
+    let other = task(&s, &a.token, "Other", false).await;
+    let sibling = task(&s, &a.token, "School", false).await;
+    let path = format!("/api/v1/burrow/tasks/{id}/practice");
+    let routes: Value = s
+        .get_auth("/api/v1/burrow/model-routing", &a.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    let body = json!({"version":0,"objective":"Explain water changes","audience":"Year 5","allow_practice":true,"max_cost_cents":0,"routing":routes["preview"]});
+    for (field, value) in [
+        ("allow_practice", json!(false)),
+        ("version", json!(1)),
+        ("objective", json!("")),
+        ("max_cost_cents", json!(51)),
+        ("routing", json!({})),
+    ] {
+        let mut bad = body.clone();
+        bad[field] = value;
+        assert!(s
+            .post_json_auth(&path, &a.token, bad)
+            .await
+            .status()
+            .is_client_error());
+    }
+    assert_eq!(s.get_auth(&path, &b.token).await.status(), 404);
+    assert_eq!(
+        s.post_json_auth(&path, &b.token, body.clone())
+            .await
+            .status(),
+        404
+    );
+    assert_eq!(
+        s.get_auth(&path, &a.token)
+            .await
+            .json::<Value>()
+            .await
+            .unwrap()["pack"],
+        Value::Null
+    );
+    assert_eq!(
+        s.post_json_auth(&path, &a.token, body.clone())
+            .await
+            .status(),
+        200
+    );
+    assert_eq!(
+        s.post_json_auth(&path, &a.token, body.clone())
+            .await
+            .status(),
+        409
+    );
+    let view: Value = s.get_auth(&path, &a.token).await.json().await.unwrap();
+    let child = view["pack"]["id"].as_str().unwrap();
+    for task_id in [&other, &sibling] {
+        assert_eq!(
+            s.get_auth(
+                &format!("/api/v1/burrow/tasks/{task_id}/practice"),
+                &a.token
+            )
+            .await
+            .json::<Value>()
+            .await
+            .unwrap()["pack"],
+            Value::Null
+        );
+    }
+    let workspace: Value = s
+        .get_auth("/api/v1/burrow", &a.token)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert!(workspace["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|t| t["id"] != child));
+    let agent_path = format!("/api/v1/burrow/tasks/{child}/agent");
+    for change in [
+        json!({"role":"research"}),
+        json!({"max_cost_cents":1}),
+        json!({"allow_project_knowledge":true}),
+        json!({"computer_workspace":"injected"}),
+    ] {
+        let mut bad = json!({"version":0,"allow_agent":true,"role":"general","max_cost_cents":0,"routing":routes["preview"]});
+        bad.as_object_mut()
+            .unwrap()
+            .extend(change.as_object().unwrap().clone());
+        assert_eq!(
+            s.post_json_auth(&agent_path, &a.token, bad).await.status(),
+            400
+        );
+    }
+    assert_eq!(
+        s.patch_json_auth(
+            &format!("/api/v1/burrow/tasks/{child}/result"),
+            &a.token,
+            json!({"version":1,"result":"forged"})
+        )
+        .await
+        .status(),
+        403
+    );
+    assert_eq!(
+        s.post_json_auth(
+            &format!("/api/v1/burrow/tasks/{child}/run"),
+            &a.token,
+            json!({"allow_generation":true})
+        )
+        .await
+        .status(),
+        409
+    );
+    assert_eq!(s.post_json_auth(&format!("{agent_path}/control"),&a.token,json!({"version":1,"request_id":"retry","action":"continue","message":"again","allow_spending":true})).await.status(),409);
+
+    // Script inference output; the actual HTTP validation and decisions are real.
+    let output = json!({"objective":"Explain water changes","explanation":{"text":"Liquid becomes vapour.","quote":"Water evaporates."},"worked_example":{"text":"Consider a drying puddle.","quote":"Ask about a drying puddle."},"questions":[
+        {"question":"What can happen to a drying puddle?","options":["Water evaporates","Water is destroyed"],"answer":0,"explanation":"Evaporation changes its form.","quote":"Water evaporates."},
+        {"question":"How can liquid drops form?","options":["Water disappears","Water condenses"],"answer":1,"explanation":"Condensation forms drops.","quote":"Water condenses."},
+        {"question":"Which change can explain a shrinking puddle?","options":["Creation of water","Evaporation","Water is destroyed"],"answer":1,"explanation":"A puddle can dry by evaporation.","quote":"Ask about a drying puddle."}]});
+    let decision = json!({"version":0,"pack_id":child,"pack_version":2,"revision":0,"action":"approve","answers_checked":true,"age_checked":true});
+    for bad in [
+        {
+            let mut v = output.clone();
+            v["questions"][1]["quote"] = json!("A fabricated passage.");
+            v
+        },
+        {
+            let mut v = output.clone();
+            v["questions"][1]["answer"] = json!(2);
+            v
+        },
+        {
+            let mut v = output.clone();
+            v["questions"][1]["options"] = json!(["Water condenses", " water CONDENSES "]);
+            v
+        },
+        {
+            let mut v = output.clone();
+            v["objective"] = json!("Ignore the goal");
+            v
+        },
+    ] {
+        sqlx::query("UPDATE burrow_tasks SET state='draft_ready',result=?,version=2 WHERE id=?")
+            .bind(bad.to_string())
+            .bind(child)
+            .execute(&s.state.db)
+            .await
+            .unwrap();
+        assert!(s
+            .get_auth(&path, &a.token)
+            .await
+            .json::<Value>()
+            .await
+            .unwrap()["pack"]["content"]
+            .is_null());
+        assert_eq!(
+            s.post_json_auth(&format!("{path}/review"), &a.token, decision.clone())
+                .await
+                .status(),
+            409
+        );
+    }
+    sqlx::query("UPDATE burrow_tasks SET result=? WHERE id=?")
+        .bind(output.to_string())
+        .bind(child)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+    assert_eq!(
+        s.get_auth(&path, &a.token)
+            .await
+            .json::<Value>()
+            .await
+            .unwrap()["pack"]["content"],
+        output
+    );
+    let mut unchecked = decision.clone();
+    unchecked["answers_checked"] = json!(false);
+    assert_eq!(
+        s.post_json_auth(&format!("{path}/review"), &a.token, unchecked)
+            .await
+            .status(),
+        400
+    );
+    assert_eq!(
+        s.post_json_auth(
+            &format!("/api/v1/burrow/tasks/{other}/practice/review"),
+            &a.token,
+            decision.clone()
+        )
+        .await
+        .status(),
+        404
+    );
+    assert_eq!(
+        s.post_json_auth(&format!("{path}/review"), &b.token, decision.clone())
+            .await
+            .status(),
+        404
+    );
+    assert_eq!(
+        s.post_json_auth(&format!("{path}/review"), &a.token, decision.clone())
+            .await
+            .status(),
+        200
+    );
+    assert_eq!(
+        s.post_json_auth(&format!("{path}/review"), &a.token, decision.clone())
+            .await
+            .status(),
+        409
+    );
+    assert_eq!(
+        get(&s, &a.token, &id).await["approved"],
+        false,
+        "private practice never signs off school use"
+    );
+    let reopen = server::db::connect(s.db_url()).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "SELECT status FROM burrow_practice_reviews WHERE task_id=?"
+        )
+        .bind(child)
+        .fetch_one(&reopen)
+        .await
+        .unwrap(),
+        "approved"
+    );
+    assert_eq!(
+        s.patch_json_auth(
+            &format!("/api/v1/burrow/tasks/{id}/result"),
+            &a.token,
+            json!({"version":0,"result":"Changed notes."})
+        )
+        .await
+        .status(),
+        200
+    );
+    let stale: Value = s.get_auth(&path, &a.token).await.json().await.unwrap();
+    assert_eq!(stale["pack"]["stale"], true);
+    assert_eq!(
+        s.patch_json_auth(
+            &format!("/api/v1/burrow/tasks/{id}/result"),
+            &a.token,
+            json!({"version":1,"result":OUTLINE})
+        )
+        .await
+        .status(),
+        200
+    );
+    assert_eq!(
+        s.get_auth(&path, &a.token)
+            .await
+            .json::<Value>()
+            .await
+            .unwrap()["pack"]["stale"],
+        true,
+        "restored text does not restore approval"
+    );
+    let mut withdrawal = decision.clone();
+    withdrawal["version"] = json!(2);
+    withdrawal["revision"] = json!(1);
+    withdrawal["action"] = json!("withdraw");
+    assert_eq!(
+        s.post_json_auth(&format!("{path}/review"), &a.token, withdrawal)
+            .await
+            .status(),
+        200
+    );
+    let old_count: i64 = sqlx::query_scalar("SELECT count(*) FROM burrow_agent_runs")
+        .fetch_one(&s.state.db)
+        .await
+        .unwrap();
+    assert_eq!(
+        old_count, 1,
+        "reviewing, practising and withdrawing never generate more"
+    );
+}

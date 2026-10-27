@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import JSZip from '../client/node_modules/jszip/lib/index.js';
-import { launchBrowser, ORIGIN, PASS, uniq, shot } from './harness.mjs';
+import { launchBrowser, ORIGIN, PASS, SHOTS, uniq, shot } from './harness.mjs';
 if (process.env.KIKKA_PROJECT_FIXTURE !== '1') { console.log('SKIP project review: requires the disposable school fixture stack and KIKKA_PROJECT_FIXTURE=1.'); process.exit(0); }
 const API = process.env.KIKKA_API ?? 'http://localhost:3000/api/v1';
 const browser = await launchBrowser();
@@ -175,6 +175,106 @@ try {
   assert.equal((await presentation()).history.at(-1).status, 'withdrawn');
   assert.equal((await presentation()).evaluation.id, evaluated.evaluation.id, 'withdrawal does not reset AI consent or its allowance');
   await reviewPanel.locator(':scope > summary').click();
+  // Source-bound practice is a separate, single-response Pi admission. Human
+  // approval enables only private practice, never classroom export or tracking.
+  const practice = page.getByLabel('Practice from saved material', { exact: true });
+  const practicePath = `${reviewPath}/practice`;
+  const readPractice = () => call(practicePath, owner.token).then(r => r.json());
+  assert.equal((await readPractice()).pack, null);
+  await practice.locator(':scope > summary').click();
+  await practice.getByLabel('Learning objective', { exact: true }).fill('Explain how warming and cooling move water through the cycle');
+  await practice.getByLabel('Learner age or school year', { exact: true }).fill('Year 5 · ages 9–10');
+  await practice.getByLabel('Practice generation limit (US cents)', { exact: true }).fill('0');
+  const allowPractice = practice.getByRole('button', { name: 'Allow one practice generation', exact: true });
+  assert.equal(await allowPractice.isDisabled(), true);
+  await practice.getByRole('checkbox', { name: /Share only this selected document/ }).check();
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await practice.scrollIntoViewIfNeeded();
+  await practice.screenshot({ path: `${SHOTS}/practice-consent.png` });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const [practiceRequest] = await Promise.all([
+    page.waitForRequest(r => r.url().endsWith('/practice') && r.method() === 'POST'), allowPractice.click(),
+  ]);
+  assert.equal(practiceRequest.postDataJSON().max_cost_cents, 0);
+  let practiced;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    practiced = await readPractice();
+    if (practiced.pack?.state === 'draft_ready') break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  assert.equal(practiced.pack.state, 'draft_ready', JSON.stringify(practiced));
+  assert.equal(practiced.pack.content.questions.length, 3);
+  assert.equal(practiced.pack.status, 'draft');
+  assert.equal((await call(practicePath, owner.token, practiceRequest.postDataJSON())).status, 409);
+  const practiceReport = await (await call(`/burrow/tasks/${practiced.pack.id}/agent`, owner.token)).json();
+  assert.equal(practiceReport.agent.project_knowledge, false);
+  assert.equal(practiceReport.agent.max_cost_cents, 0);
+  assert.equal(practiceReport.commands.length, 0);
+  await practice.getByRole('button', { name: 'Refresh practice', exact: true }).click();
+  const approvePractice = practice.getByRole('button', { name: 'Approve private practice', exact: true });
+  await approvePractice.waitFor();
+  assert.equal(await approvePractice.isDisabled(), true);
+  assert.equal(await practice.locator('.gen-quiz').count(), 0);
+  assert.equal(await practice.locator('.presentation-source').count(), 3);
+  await practice.getByRole('heading', { name: practiced.pack.objective, exact: true }).scrollIntoViewIfNeeded();
+  await practice.locator('.presentation-source').first().screenshot({ path: `${SHOTS}/practice-answer-review.png` });
+  for (const label of [/I checked all three answers/, /I checked the language and activities/]) await practice.getByRole('checkbox', { name: label }).check();
+  await approvePractice.click();
+  const quiz = practice.locator('.gen-quiz');
+  await quiz.waitFor();
+  assert.equal((await presentation()).approved, false, 'practice never approves school use');
+  assert.doesNotMatch(await quiz.innerText(), /From saved material/);
+  await quiz.scrollIntoViewIfNeeded();
+  await shot(page, 'practice-approved');
+  const practiceWrites = [];
+  const recordPracticeWrite = r => { if (r.method() !== 'GET' && r.url().includes('/practice')) practiceWrites.push(r.url()); };
+  page.on('request', recordPracticeWrite);
+  // Deliberately choose the misconception; feedback must not reward the wrong answer.
+  await quiz.getByRole('button', { name: /It stops existing/ }).click();
+  assert.match(await quiz.innerText(), /Not quite/);
+  assert.match(await quiz.innerText(), /From saved material version/);
+  assert.match(await quiz.innerText(), /0 correct/);
+  await shot(page, 'practice-feedback');
+  await quiz.getByRole('button', { name: /Next question/ }).click();
+  await quiz.getByRole('button', { name: /It forms tiny liquid drops/ }).click();
+  await quiz.getByRole('button', { name: /Next question/ }).click();
+  await quiz.getByRole('button', { name: /Some water can later become vapour again/ }).click();
+  await quiz.getByRole('button', { name: /See my score/ }).click();
+  assert.match(await quiz.innerText(), /2 out of 3/);
+  assert.deepEqual(practiceWrites, [], 'answers never POST learner records');
+  page.off('request', recordPracticeWrite);
+  await page.reload();
+  await practice.locator(':scope > summary').click();
+  await quiz.waitFor();
+  assert.match(await quiz.innerText(), /Question 1 of 3/);
+  assert.doesNotMatch(await quiz.innerText(), /From saved material/, 'reload forgets answers');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await quiz.scrollIntoViewIfNeeded();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await shot(page, 'practice-approved-narrow');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await practice.getByRole('button', { name: 'Withdraw practice approval', exact: true }).click();
+  assert.equal((await readPractice()).pack.status, 'approved');
+  await practice.getByRole('button', { name: 'Confirm practice withdrawal', exact: true }).click();
+  assert.equal((await readPractice()).pack.status, 'withdrawn');
+  assert.equal(await quiz.count(), 0);
+  for (const label of [/I checked all three answers/, /I checked the language and activities/]) await practice.getByRole('checkbox', { name: label }).check();
+  await approvePractice.click();
+  assert.equal((await readPractice()).pack.history.length, 3);
+  // Pasted school sources are saved without fetching a URL or starting another model.
+  await reviewPanel.locator(':scope > summary').click();
+  await reviewPanel.getByLabel('Source type').selectOption('notes');
+  await reviewPanel.getByLabel('Source title', { exact: true }).fill('Teacher’s water-cycle notes');
+  await reviewPanel.getByLabel('Pasted school notes', { exact: true }).fill('Class notes: The sun provides energy that drives the water cycle. Use a puddle as an example.');
+  await reviewPanel.getByRole('checkbox', { name: /I read this source/ }).check();
+  await reviewPanel.getByRole('button', { name: 'Save review notes', exact: true }).click();
+  assert.match((await presentation()).review.citations[0].notes, /Class notes/);
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await reviewPanel.locator('.presentation-source').scrollIntoViewIfNeeded();
+  await reviewPanel.locator('.presentation-source').screenshot({ path: `${SHOTS}/presentation-school-notes.png` });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await reviewPanel.locator(':scope > summary').click();
+  await practice.locator(':scope > summary').click();
   // Editing retains exactly the saved material, never status or permission copy.
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const draft = page.getByLabel('Edit material');
@@ -186,6 +286,12 @@ try {
   assert.equal(await draft.inputValue(), manual, 'opening project details preserves unsaved edits');
   await page.getByRole('button', { name: 'Save edits', exact: true }).click();
   await page.getByRole('heading', { name: 'My classroom introduction', exact: true }).waitFor();
+  await practice.locator(':scope > summary').click();
+  await practice.getByText(/This earlier pack is read-only/).waitFor();
+  assert.equal(await quiz.count(), 0, 'changed material cannot retain an approved playable pack');
+  await practice.getByText(/This earlier pack is read-only/).scrollIntoViewIfNeeded();
+  await shot(page, 'practice-stale');
+  await practice.locator(':scope > summary').click();
   await page.getByLabel('Message Kikka', { exact: true }).fill('Add a short class question.');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await page.getByRole('button', { name: 'Review revision', exact: true }).waitFor({ timeout: 30000 });
@@ -331,7 +437,7 @@ try {
   await page.getByRole('heading', { name: 'A name, not a destination yet', exact: true }).waitFor();
   assert.equal(await page.getByRole('textbox', { name: 'Ask Kikka for a change', exact: true }).count(), 1, 'saved page reloads in chat; local play progress resets');
   assert.deepEqual(errors, []);
-  console.log('PASS: project chat, citations, separate one-response AI consent, immutable budget, human school-use sign-off, real PPTX download fidelity, withdrawal, persistence, protected edits, sandbox, rollback, account isolation, keyboard and Chromium touch; no installs or activations.');
+  console.log('PASS: project chat, school notes, separate one-response practice/review consent, human approval, exact-source practice, asymmetric quiz feedback, local-only attempts, withdrawal, stale protection, PPTX, isolation and Chromium touch; no real inference, installs or activations.');
 } catch (error) {
   await shot(page, 'project-review-failure'); throw error;
 } finally { await browser.close(); }

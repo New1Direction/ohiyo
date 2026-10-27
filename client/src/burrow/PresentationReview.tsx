@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { api, type BurrowTask, type ModelRouting, type PresentationCitation, type PresentationReview as Review } from "../api";
 import { presentationSlides } from "./presentation";
 import { taskActionError } from "./taskLanguage";
+import Practice from "./Practice";
 import "./project.css";
 
 const emptySource = (): PresentationCitation => ({ claim: "", title: "", url: "", quote: "", checked: false });
@@ -21,7 +22,8 @@ export default function PresentationReview({ token, task, onDirtyChange }: { tok
   const [cents, setCents] = useState(10);
   const [consent, setConsent] = useState(false);
   const [undo, setUndo] = useState(false);
-  useLayoutEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
+  const [practiceDirty, setPracticeDirty] = useState(false);
+  useLayoutEffect(() => { onDirtyChange(dirty || practiceDirty); return () => onDirtyChange(false); }, [dirty, practiceDirty, onDirtyChange]);
   const receive = useCallback((next: Review) => {
     setData(next); setAudience(next.review?.audience ?? ""); setSources((next.review?.citations ?? []).map(c => next.review?.source_version === task.version ? c : { ...c, checked: false }));
     setChecks([false, false, false]); setDirty(false); setUncertain(false); setUndo(false); setConsent(false);
@@ -69,7 +71,9 @@ export default function PresentationReview({ token, task, onDirtyChange }: { tok
   const locked = busy || uncertain || !data || stale || task.state !== "draft_ready" || !!task.proposed_result;
   const approved = !!data?.approved && !stale;
   const sourceValid = (s: PresentationCitation) => {
-    try { const url = new URL(s.url); return !!s.claim.trim() && !!s.title.trim() && !!s.quote.trim() && ["https:", "http:"].includes(url.protocol) && !url.username && !url.password; } catch { return false; }
+    if (!s.claim.trim() || !s.title.trim() || !s.quote.trim()) return false;
+    if (s.notes !== undefined && (s.notes.trim() || !s.url)) return s.url === "" && !!s.notes.trim() && s.notes.length <= 8000 && s.notes.includes(s.quote);
+    try { const url = new URL(s.url); return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password; } catch { return false; }
   };
   const valid = !!audience.trim() && sources.every(sourceValid);
   const reviewRoute = routes?.preview.review;
@@ -78,18 +82,19 @@ export default function PresentationReview({ token, task, onDirtyChange }: { tok
   function editSource(index: number, update: Partial<PresentationCitation>) {
     setSources(current => current.map((s, i) => i === index ? { ...s, checked: false, ...update } : s)); setDirty(true); setChecks([false, false, false]);
   }
-  return <details className="presentation-review" aria-label="Presentation review and download"><summary>Review &amp; download <span className="project-status">{approved ? "Approved by you" : data?.review?.status === "withdrawn" ? "Approval withdrawn" : "Needs your review"}</span></summary>
+  return <><details className="presentation-review" aria-label="Presentation review and download"><summary>Review &amp; download <span className="project-status">{approved ? "Approved by you" : data?.review?.status === "withdrawn" ? "Approval withdrawn" : "Needs your review"}</span></summary>
     <header><div><h3>Ready for the classroom?</h3><p>Check the facts, sources and suitability for your class. AI is optional; only you can approve school use.</p></div><button type="button" className="burrow-secondary" disabled={busy} onClick={() => void refresh()}>Refresh review</button></header>
     {notice && <p role="status" className="project-notice">{notice}</p>}
     {(stale || (data?.review && data.review.source_version !== task.version)) && <p role="status">The material changed. Earlier sign-off does not cover this version. Refresh, review the new content and check the sources again.</p>}
-    {approved ? <section aria-label="Approved audience and sources"><p>Reviewed by you for <strong>{audience}</strong>.</p>{sources.map((source, i) => <section key={i} className="presentation-source" aria-label={`Source ${i + 1}`}><h4><a href={source.url} target="_blank" rel="noopener noreferrer">{i + 1}. {source.title} ↗</a></h4><p>{source.claim}</p><blockquote>{source.quote}</blockquote><p className="project-caption">Source support checked by you.</p></section>)}</section> : <fieldset disabled={locked}><legend>Audience and sources</legend>
+    {approved ? <section aria-label="Approved audience and sources"><p>Reviewed by you for <strong>{audience}</strong>.</p>{sources.map((source, i) => <section key={i} className="presentation-source" aria-label={`Source ${i + 1}`}><h4>{source.notes?.trim() ? <>{i + 1}. {source.title}</> : <a href={source.url} target="_blank" rel="noopener noreferrer">{i + 1}. {source.title} ↗</a>}</h4><p>{source.claim}</p><blockquote>{source.quote}</blockquote>{source.notes?.trim() && <details><summary>Saved school notes</summary><p className="project-text">{source.notes}</p></details>}<p className="project-caption">Source support checked by you.</p></section>)}</section> : <fieldset disabled={locked}><legend>Audience and sources</legend>
       <label>Age or school year<input value={audience} maxLength={300} placeholder="Year 5 · ages 9–10" onChange={e => { setAudience(e.target.value); setDirty(true); setChecks([false, false, false]); }} /></label>
       <p className="project-caption">Add a source for each factual claim. Read the original and record the excerpt that supports it. Links and AI suggestions are not proof.</p>
       {sources.map((source, i) => <section key={i} className="presentation-source" aria-label={`Source ${i + 1}`}><h4>Source {i + 1}</h4>
         <label>Claim or slide<input value={source.claim} maxLength={500} onChange={e => editSource(i, { claim: e.target.value })} /></label>
         <label>Source title<input value={source.title} maxLength={300} onChange={e => editSource(i, { title: e.target.value })} /></label>
-        <label>Source web address<input type="url" value={source.url} maxLength={2000} placeholder="https://…" onChange={e => editSource(i, { url: e.target.value })} /></label>
-        {sourceValid(source) && <a href={source.url} target="_blank" rel="noopener noreferrer">Read source {i + 1} ↗</a>}
+        <label>Source type<select value={source.notes !== undefined && !source.url ? "notes" : "web"} onChange={e => editSource(i, { url: "", notes: e.target.value === "notes" ? "" : undefined })}><option value="web">Web address</option><option value="notes">Pasted school notes</option></select></label>
+        {source.notes !== undefined && !source.url ? <label>Pasted school notes<textarea aria-label="Pasted school notes" rows={6} value={source.notes} maxLength={8000} onChange={e => editSource(i, { notes: e.target.value })} /></label> : <label>Source web address<input type="url" value={source.url} maxLength={2000} placeholder="https://…" onChange={e => editSource(i, { url: e.target.value })} /></label>}
+        {sourceValid(source) && source.url && <a href={source.url} target="_blank" rel="noopener noreferrer">Read source {i + 1} ↗</a>}
         <label>Supporting excerpt<textarea rows={3} value={source.quote} maxLength={2000} onChange={e => editSource(i, { quote: e.target.value })} /></label>
         <label className="project-consent"><input type="checkbox" checked={source.checked} onChange={e => editSource(i, { checked: e.target.checked })} />I read this source and checked that it supports this claim.</label>
         <button type="button" className="burrow-link" onClick={() => { setSources(sources.filter((_, n) => n !== i)); setDirty(true); setChecks([false, false, false]); }}>Remove source {i + 1}</button>
@@ -116,5 +121,5 @@ export default function PresentationReview({ token, task, onDirtyChange }: { tok
       </>}
     </details>
     {!!data?.history?.length && <details><summary>Review history</summary>{data.history.slice().reverse().map(r => <p key={r.revision}>{r.status === "approved" ? "Approved by you" : r.status === "withdrawn" ? "Approval withdrawn" : "Review notes saved"} · saved material version {r.source_version} · {r.audience} · {r.citations.length} sources</p>)}</details>}
-  </details>;
+  </details><Practice key={task.id} token={token} task={task} onDirtyChange={setPracticeDirty} /></>;
 }
