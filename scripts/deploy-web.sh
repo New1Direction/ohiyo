@@ -20,20 +20,22 @@ if [[ -n "${RAILWAY_PROJECT_ID:-}" ]]; then
 fi
 
 # Upload the repository root: the client imports shared brand assets outside client/.
-# In Railway, leave Root Directory at / and set Config File to /client/railway.json
-# (see DEPLOY.md). The config selects client/Dockerfile and its health check.
+# In Railway, leave Root Directory at / and set dockerfilePath directly to
+# client/Dockerfile (builder RAILPACK), health check /, timeout 60s (see DEPLOY.md).
+# railwayConfigFile is deprecated; nested client/railway.json is reference only.
 railway up "$root" --path-as-root --service "$SERVICE" --ci "${target[@]}"
 
-# Read the asset names the live site now serves.
-page="$(curl -fsS --max-time 20 "$APP_URL/")"
-js="$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' <<<"$page" | head -1)"
-css="$(grep -o 'assets/index-[A-Za-z0-9_-]*\.css' <<<"$page" | head -1)"
-if [[ -z "$js" || -z "$css" ]]; then
-  echo "Could not find the bundle names at $APP_URL; set OHIYO_EXPECTED_APP_BUNDLE by hand." >&2
+# Validate the live graph before updating freshness. Vite may load all CSS from JS.
+workdir="$(mktemp -d)"
+trap 'rm -rf "$workdir"' EXIT
+curl -fsS --max-time 20 "${APP_URL%/}/" > "$workdir/app.html"
+if ! assets="$(python3 "$root/scripts/app-bundle-assets.py" "$APP_URL" "$workdir/app.html")"; then
+  echo "Could not validate the bundles at $APP_URL; expected bundle variable was not updated." >&2
   exit 1
 fi
-echo "Live bundle: $js, $css"
+js="$(grep -E '^assets/index-[A-Za-z0-9_-]+\.js$' <<<"$assets" | head -1)"
+echo "Live bundle: $js (JS/CSS graph validated)"
 
-# The scheduled reliability check compares the live bundle with this variable.
-gh variable set OHIYO_EXPECTED_APP_BUNDLE --repo "$REPO" --body "$js,$css"
+# The entry JS hash identifies the build, including its lazy CSS dependencies.
+gh variable set OHIYO_EXPECTED_APP_BUNDLE --repo "$REPO" --body "$js"
 echo "OHIYO_EXPECTED_APP_BUNDLE updated."

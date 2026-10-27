@@ -83,18 +83,15 @@ fi
 
 if [[ -s "$app_html" ]]; then
   app_assets=()
-  while IFS= read -r asset; do
-    app_assets+=("$asset")
-  done < <(grep -Eo "assets/index-[^\"'<> ]+\\.(js|css)" "$app_html" | sort -u || true)
-  js_count="$(printf '%s\n' "${app_assets[@]:-}" | grep -c '\.js$' || true)"
-  css_count="$(printf '%s\n' "${app_assets[@]:-}" | grep -c '\.css$' || true)"
-  if [[ "$js_count" -lt 1 || "$css_count" -lt 1 ]]; then
-    record_failure "app bundle missing index JS/CSS assets in $APP_URL"
-  else
+  # Follow Vite's same-origin imports/preload map: CSS need not be linked in HTML.
+  if python3 "$(dirname "${BASH_SOURCE[0]}")/app-bundle-assets.py" "$APP_URL" "$app_html" \
+      > "$workdir/assets.txt" 2> "$workdir/assets-error.txt"; then
+    while IFS= read -r asset; do
+      app_assets+=("$asset")
+    done < "$workdir/assets.txt"
     echo "ok app-bundle ${app_assets[*]}"
-    for asset in "${app_assets[@]}"; do
-      check "app-asset:$asset" "$APP_URL/$asset" "$workdir/asset-$(basename "$asset")"
-    done
+  else
+    record_failure "app bundle validation failed: $(cat "$workdir/assets-error.txt")"
   fi
 
   if [[ -n "$EXPECTED_APP_BUNDLE" ]]; then
@@ -102,11 +99,16 @@ if [[ -s "$app_html" ]]; then
     for expected in "${expected_assets[@]}"; do
       expected="${expected# }"
       expected="${expected% }"
-      if [[ -n "$expected" && " ${app_assets[*]:-} " != *" $expected "* ]]; then
+      # An expected entry JS must still occur in HTML, not merely survive as a
+      # dependency of another build. CSS may legitimately be reached through JS.
+      if [[ -n "$expected" ]] && { [[ " ${app_assets[*]:-} " != *" $expected "* ]] ||
+          { [[ "$expected" == *.js ]] && ! grep -Fq "$expected" "$app_html"; }; }; then
         record_failure "app appears stale: expected bundle asset '$expected' was not served by $APP_URL"
       fi
     done
   fi
+else
+  record_failure "app bundle missing HTML at $APP_URL"
 fi
 
 if command -v jq >/dev/null 2>&1; then
