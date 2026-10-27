@@ -20,6 +20,14 @@ updates:
     labels:
       - dependencies
       - rust
+  - package-ecosystem: pip
+    directory: /worker/browser-engine
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - python
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -534,6 +534,14 @@ Update bundles are made only by the release workflow, which switches
 `bundle.createUpdaterArtifacts` on when the key is present. A plain `bun run tauri build`
 needs no key and makes no update bundle.
 
+Use native Tauri 2 update artifacts (`createUpdaterArtifacts: true`), never
+`"v1Compatible"`. The updater's optional legacy ZIP feature is disabled to remove
+vulnerable ZIP dependencies: Linux updates must use raw `.AppImage`, `.deb` or
+`.rpm` files, and future Windows updates must use raw `.exe` or `.msi` installers.
+Do not point Linux updates at `.AppImage.tar.gz`; that legacy wrapper is not
+supported. macOS `.app.tar.gz` updates remain supported. The published v0.3.1
+manifest and the release workflow already use these native formats.
+
 **A copy you build yourself never looks for updates.** Only the release workflow switches
 that on, by setting `VITE_DESKTOP_UPDATES=1` for its builds. This matters because the
 config in this repository names the official key and release address: a hand-built copy

@@ -37,7 +37,9 @@ tauri-plugin-autostart = "2"
 # The app offers its own updates. Desktop only. Held at one minor because the npm
 # @tauri-apps/plugin-updater must be on the same one, as the Tauri CLI requires; move
 # both together (and the other @tauri-apps packages with tauri itself).
-tauri-plugin-updater = "~2.13"
+# Release builds use native Tauri 2 artifacts, not legacy zipped installers or
+# AppImage.tar.gz. Omitting that optional format removes vulnerable zip 4.x.
+tauri-plugin-updater = { version = "~2.13", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 # OS keychain for the vault master key — native backend per platform.
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -47,3 +49,7 @@ keyring = { version = "3", features = ["windows-native"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["sync-secret-service"] }
 
+[patch.crates-io]
+# Tauri's GTK3 stack requires glib 0.18; upstream has no patched 0.18 release.
+# Exact upstream RUSTSEC-2024-0429 backport and provenance: vendor/README.md.
+glib = { path = "vendor/glib-0.18.5" }

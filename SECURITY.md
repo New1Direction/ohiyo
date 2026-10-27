@@ -56,6 +56,25 @@ device or a malicious server operator, and findings against infrastructure you
 don't own. Please do not test against the hosted service at ohiyo.gg — run your
 own local or self-hosted instance for testing.
 
+## Dependency checks
+
+CI audits the client Bun lockfile (including build dependencies), the Node worker
+npm lockfile, the server/desktop/standalone-vault Cargo lockfiles, and the Python
+browser engine's complete resolved requirements. JavaScript audits block all
+severity levels; Rust audits also block unsoundness advisories that would
+otherwise be warnings. Python updates are also checked weekly by Dependabot.
+The existing server-only exception for RUSTSEC-2023-0071
+(`rsa`, no fixed release) remains; it is not a claim that the issue is fixed.
+
+The desktop currently carries a narrowly scoped, MIT-licensed GLib security
+backport because Tauri's GTK3 dependency cannot use the fixed release. Its
+[provenance, optimized regression checks and scanner limitations](client/src-tauri/vendor/README.md)
+must be reviewed when updating desktop dependencies: local-path crates are not
+covered by cargo-audit. Updating the browser-engine requirements does not update
+an already-installed sidecar; an operator must reprovision it through the normal
+approved setup process. None of these checks authorize automatic production
+installs or deployments.
+
 ## A note on the cryptography
 
 Ohiyo builds on standard primitives rather than inventing ciphers, but parts of the
