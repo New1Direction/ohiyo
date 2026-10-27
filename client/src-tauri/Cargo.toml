@@ -39,7 +39,7 @@ tauri-plugin-autostart = "2"
 # both together (and the other @tauri-apps packages with tauri itself).
 # Release builds use native Tauri 2 artifacts, not legacy zipped installers or
 # AppImage.tar.gz. Omitting that optional format removes vulnerable zip 4.x.
-tauri-plugin-updater = { version = "~2.13", default-features = false, features = ["rustls-tls", "system-proxy"] }
+tauri-plugin-updater = { version = "~2.14", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 # OS keychain for the vault master key — native backend per platform.
 [target.'cfg(target_os = "macos")'.dependencies]
