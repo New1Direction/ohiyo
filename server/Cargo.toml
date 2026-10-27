@@ -29,7 +29,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio-stream = "0.1"
 futures-util = "0.3"
 dotenvy = "0.15"
-rand = "0.8"
+rand = "0.10"
 # Two-factor secrets are stored encrypted (auth::two_factor).
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 hkdf = "0.12"
