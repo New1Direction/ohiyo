@@ -48,18 +48,27 @@ uploads and build artifacts. Keep their allowlists in sync when adding build inp
 From the repo root, with the Railway CLI logged in. Create a project, a service for the
 server and a volume mounted at `/data` (`railway volume add`, or the dashboard).
 In each service's **Settings**, leave **Root Directory** at `/` (not `server/` or
-`client/`) and set **Railway Config File** explicitly:
+`client/`) and explicitly configure these build/deploy fields:
 
-| Service | Railway Config File | Dockerfile selected by that config |
-| --- | --- | --- |
-| `ohiyo-server` | `/server/railway.json` | `server/Dockerfile` |
-| `ohiyo-web` | `/client/railway.json` | `client/Dockerfile` |
+| Service | Dockerfile path | Health check | Timeout |
+| --- | --- | --- | --- |
+| `ohiyo-server` | `server/Dockerfile` | `/healthz` | 120 seconds |
+| `ohiyo-web` | `client/Dockerfile` | `/` | 60 seconds |
+
+Set one replica and an `ALWAYS` restart policy; the API must not overlap two
+instances on its SQLite volume. On the current Railway API, `railwayConfigFile`
+is deprecated and rejects updates. The builder enum also no longer accepts
+`DOCKERFILE`: use the direct `dockerfilePath` setting (with builder `RAILPACK`)
+and verify the build logs actually select that Dockerfile. The nested
+`server/railway.json` and `client/railway.json` retain the intended settings as
+references, but do not assume the platform applies them automatically.
 
 Clear any old `RAILWAY_DOCKERFILE_PATH` override pointing to `Dockerfile`. If using
 Git-triggered deploys with watch paths, include `.agents/skills/**` for the server
 and `brand/**` for the web app, as well as each service's own directory and the root
 ignore files. These service settings are required even for CLI uploads; Railway
-does not automatically choose a nested config from the `--service` name. Then:
+does not select a Dockerfile from the `--service` name. Read back the effective
+settings before uploading. Then:
 
 ```bash
 # Required: the server REFUSES to start in release without JWT_SECRET and PUBLIC_BASE_URL.
@@ -252,8 +261,10 @@ Login, registration and other limits are keyed on the client's address.
 
 ### Railway settings and gotchas
 
-The hosted service runs on Railway from the same `Dockerfile` (`server/railway.json`
-selects it and the `/healthz` check). Settings that differ from Fly:
+The hosted service runs on Railway from `server/Dockerfile`, with `/healthz` as
+its health check. Configure those direct service settings as described above;
+the nested JSON is a reference, not proof of the platform's effective config.
+Settings that differ from Fly:
 
 - A volume mounted at `/data`, and `RAILWAY_RUN_UID=0`: Railway mounts volumes as
   root and the image otherwise runs as an unprivileged user that cannot write there.

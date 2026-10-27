@@ -60,7 +60,7 @@ async function startSupervisor(t, options = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ohiyo-supervisor-"));
   const fixture = join(dir, "child.mjs");
   writeFileSync(fixture, `
-    import { writeFileSync } from 'node:fs';
+    import { writeFileSync, renameSync } from 'node:fs';
     import { spawn } from 'node:child_process';
     const [name, dir, mode] = process.argv.slice(2);
     if (name === 'api' && mode === 'descendant') spawn(process.execPath, [process.argv[1], 'descendant', dir, ''], { stdio: 'inherit' });
@@ -70,7 +70,8 @@ async function startSupervisor(t, options = {}) {
     });
     process.on('SIGUSR1', () => process.exit(0));
     setInterval(() => {}, 1000);
-    writeFileSync(dir + '/' + name + '.json', JSON.stringify({ pid: process.pid, env: process.env }));
+    writeFileSync(dir + '/' + name + '.tmp', JSON.stringify({ pid: process.pid, env: process.env }));
+    renameSync(dir + '/' + name + '.tmp', dir + '/' + name + '.json');
   `);
   const workerCommand = options.missing ? [join(dir, "missing")] : [process.execPath, fixture, "worker", dir, options.stubborn ? "stubborn" : ""];
   const apiCommand = [process.execPath, fixture, "api", dir, options.descendant ? "descendant" : ""];

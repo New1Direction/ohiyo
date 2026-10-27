@@ -49,7 +49,7 @@ COPY worker/config/practice-routing.json worker/config/practice-worker.json ./co
 # the volume mount point: the DB and relative `uploads/` directory persist here.
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libstdc++6 tini \
+    && apt-get install -y --no-install-recommends ca-certificates libstdc++6 libatomic1 tini \
     && rm -rf /var/lib/apt/lists/*
 
 # Litestream — continuous SQLite replication for point-in-time backups. Installed
@@ -69,6 +69,11 @@ COPY --from=worker-builder /opt/ohiyo-worker /opt/ohiyo-worker
 COPY server/docker-entrypoint.sh server/litestream-config.sh /usr/local/bin/
 COPY server/worker-supervisor.mjs /usr/local/bin/worker-supervisor.mjs
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/litestream-config.sh
+# Execute in the final Debian image: builder-stage success does not prove Node's
+# shared libraries or the installed Pi imports are available at runtime.
+# Imports alone do not start a worker, open a service port or perform inference.
+RUN node --version \
+    && node --input-type=module -e "await import('/opt/ohiyo-worker/src/server.mjs'); await import('/usr/local/bin/worker-supervisor.mjs'); const { DatabaseSync } = await import('node:sqlite'); new DatabaseSync(':memory:').close();"
 
 # Run as a dedicated non-root user. /data (the volume mount, holding the SQLite DB,
 # litestream state and uploads/) must be writable by it; the bound port :3000 is
