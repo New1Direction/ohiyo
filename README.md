@@ -1,10 +1,11 @@
 <p align="center">
-  <img src="brand/readme-hero.webp" alt="Ohiyo — a home for your people. Chat first. AI optional. Kikka, our grey, cream and mint chinchilla, waves from a cozy clubhouse." width="100%" />
+  <img src="client/public/icon-512.png" alt="Ohiyo logo" width="128" height="128" />
 </p>
 
-<h1 align="center">Group chat that feels like home.</h1>
+<h1 align="center">Ohiyo</h1>
 
 <p align="center">
+  <strong>Group chat that feels like home.</strong><br />
   A place for your friends, family, and little corner of the internet.<br />
   Open source. Self-hostable. With a chinchilla who says hi.
 </p>
