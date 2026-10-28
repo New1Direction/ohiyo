@@ -263,14 +263,20 @@ const CUSTOM_THEMES_KEY = "kikkacord:custom-themes";
 
 const DEFAULT_THEME: Theme = BUILTIN_THEMES[0];
 
-/** A theme is only usable if its `vars` is a non-null object — a partial blob (no vars)
- *  would otherwise blow up at Object.entries(theme.vars) on first paint. */
+/** Themes contain color tokens only, never arbitrary CSS properties or URLs.
+ * Older themes may omit newer tokens; themeVars supplies their safe defaults. */
 function isValidTheme(t: unknown): t is Theme {
+  if (!t || typeof t !== "object" || Array.isArray(t)) return false;
+  const theme = t as Theme;
   return (
-    !!t &&
-    typeof t === "object" &&
-    typeof (t as Theme).vars === "object" &&
-    (t as Theme).vars !== null
+    typeof theme.id === "string" && /^[a-z0-9_.-]{1,120}$/i.test(theme.id) &&
+    typeof theme.name === "string" && theme.name.trim().length > 0 && theme.name.length <= 80 &&
+    (theme.author === undefined || (typeof theme.author === "string" && theme.author.length <= 120)) &&
+    !!theme.vars && typeof theme.vars === "object" && !Array.isArray(theme.vars) &&
+    ["--bg-base", "--bg-channel", "--accent"].every((key) => Object.prototype.hasOwnProperty.call(theme.vars, key)) &&
+    Object.entries(theme.vars).every(([key, value]) =>
+      Object.prototype.hasOwnProperty.call(DEFAULT_THEME.vars, key) && typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value),
+    )
   );
 }
 
@@ -292,7 +298,9 @@ export function themeVars(theme: Theme): ThemeVar {
   return { ...base.vars, ...theme.vars };
 }
 
-export function applyTheme(theme: Theme) {
+/** Previewing paints the same tokens without changing the saved choice. */
+export function applyTheme(theme: Theme, persist = true) {
+  if (!isValidTheme(theme)) throw new Error("Invalid color-only theme.");
   const root = document.documentElement;
   // The FULL var set, not just this theme's: a theme that omits some keys (custom or
   // imported) would otherwise inherit the previous theme's values for them — cross-theme
@@ -300,7 +308,7 @@ export function applyTheme(theme: Theme) {
   for (const [k, v] of Object.entries(themeVars(theme))) {
     root.style.setProperty(k, v);
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(theme));
+  if (persist) localStorage.setItem(STORAGE_KEY, JSON.stringify(theme));
 }
 
 export function loadTheme(): Theme {
@@ -331,6 +339,7 @@ export function getCustomThemes(): Theme[] {
 }
 
 export function saveCustomTheme(theme: Theme) {
+  if (!isValidTheme(theme)) throw new Error("Invalid color-only theme.");
   const themes = getCustomThemes().filter((t) => t.id !== theme.id);
   themes.push(theme);
   localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(themes));
@@ -346,9 +355,16 @@ export function exportTheme(theme: Theme): string {
 }
 
 export function importTheme(json: string): Theme {
-  const t = JSON.parse(json) as Theme;
-  if (!t.id || !t.name || !t.vars) throw new Error("Invalid theme JSON");
-  return t;
+  if (json.length > 16_384) throw new Error("This look is too large (maximum 16 KB).");
+  let t: unknown;
+  try {
+    t = JSON.parse(json);
+  } catch {
+    throw new Error("Paste a valid theme JSON object.");
+  }
+  if (!isValidTheme(t)) throw new Error("Use a name (up to 80 characters) and known color tokens in #RRGGBB format.");
+  // An imported id must never overwrite an existing custom or built-in theme.
+  return { id: makeThemeId(), name: t.name.trim(), ...(t.author ? { author: t.author } : {}), vars: themeVars(t) };
 }
 
 // ── Visual theme editor support ─────────────────────────────────────────────

@@ -1,0 +1,7 @@
+.env
+!.env.example
+data/
+caddy-data/
+caddy-config/
+*.tar.gz
+*.sha256

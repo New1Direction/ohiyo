@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, type Plugin, type PreviewServer, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -87,6 +87,28 @@ function cspPlugin(csp: string) {
   };
 }
 
+// The threaded local STT pilot is explicitly opt-in. Its published Emscripten
+// bindings use new Function as well as WASM. Allow that only on dedicated worker
+// responses, NEVER on the main document; worker network access stays blocked.
+// Production static hosts must supply these headers themselves; see docs.
+function localCaptionHeaders(isolated: boolean): Plugin {
+  const install = (server: ViteDevServer | PreviewServer) => {
+    server.middlewares.use((req, res, next) => {
+      if (isolated) {
+        res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+        res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+      }
+      if (req.url?.startsWith("/local-captions/")) {
+        res.setHeader("Content-Security-Policy", "default-src 'none'; script-src 'self' 'unsafe-eval'; worker-src 'self'; connect-src 'none'");
+        res.setHeader("Cache-Control", "no-store");
+        res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+      }
+      next();
+    });
+  };
+  return { name: "local-caption-headers", configureServer: install, configurePreviewServer: install };
+}
+
 export default defineConfig(async ({ mode }) => {
   // Load VITE_* env vars for this mode (does not mutate process.env).
   const env = loadEnv(mode, process.cwd(), "VITE_");
@@ -94,7 +116,7 @@ export default defineConfig(async ({ mode }) => {
   // The app shows its version in Settings → Help & feedback and in bug reports.
   const version = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version as string;
   return {
-  plugins: [tailwindcss(), react(), cspPlugin(csp)],
+  plugins: [tailwindcss(), react(), cspPlugin(csp), localCaptionHeaders(env.VITE_LOCAL_CAPTION_ISOLATION === "1")],
   define: { __OHIYO_VERSION__: JSON.stringify(version) },
   clearScreen: false,
   build: {

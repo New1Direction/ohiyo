@@ -1,0 +1,51 @@
+name: Desktop security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# No signing secrets, installer builds, publishing, or production access here.
+permissions:
+  contents: read
+
+jobs:
+  secure-memory:
+    name: Vault and goodnight (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        # Git Bash is available on Windows runners too. Fail on the first
+        # failed command, not just the last native command in a PowerShell step.
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: |
+            client/src-tauri/crates/goodnight
+            client/src-tauri/crates/vault
+      - name: Secure-memory format and lint
+        run: |
+          cargo fmt --manifest-path client/src-tauri/crates/goodnight/Cargo.toml --check
+          cargo clippy --locked --all-targets --manifest-path client/src-tauri/crates/goodnight/Cargo.toml -- -D warnings
+      - name: Native goodnight regressions (debug and optimized)
+        # Serial execution also keeps the Windows rollback/address-reservation
+        # test isolated from this test binary's other page allocations.
+        run: |
+          cargo test --locked --manifest-path client/src-tauri/crates/goodnight/Cargo.toml -- --test-threads=1
+          cargo test --locked --release --manifest-path client/src-tauri/crates/goodnight/Cargo.toml -- --test-threads=1
+      - name: Native vault regressions (debug and optimized)
+        run: |
+          cargo test --locked --manifest-path client/src-tauri/crates/vault/Cargo.toml -- --test-threads=1
+          cargo test --locked --release --manifest-path client/src-tauri/crates/vault/Cargo.toml -- --test-threads=1

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LocalCaptionPilot } from "./LocalCaptionPilot";
 import {
   MIN_SENSITIVITY_DB,
   VOICE_PREFS_EVENT,
@@ -23,12 +24,15 @@ function percentOf(db: number): number {
  * sensitivity with a live mic meter. Saved on this device, like Discord's; a call in progress
  * follows the change at once.
  */
-export function VoiceTab() {
+export function VoiceTab({ voiceActive = false }: { voiceActive?: boolean }) {
   const [prefs, setPrefs] = useState<VoicePrefs>(() => loadVoicePrefs());
   const [recording, setRecording] = useState(false);
   const [checking, setChecking] = useState(false);
   const [level, setLevel] = useState(MIN_SENSITIVITY_DB);
   const [micError, setMicError] = useState<string | null>(null);
+  const [captionBusy, setCaptionBusy] = useState(false);
+  const captureGuard = useRef({ voiceActive, checking, captions: captionBusy });
+  captureGuard.current = { voiceActive, checking, captions: captionBusy };
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
 
@@ -59,47 +63,66 @@ export function VoiceTab() {
   // "Check my mic": a live level from a separate capture, stopped when done or on leaving.
   useEffect(() => {
     if (!checking) return;
+    if (voiceActive) {
+      setChecking(false);
+      return;
+    }
     let cancelled = false;
     let stream: MediaStream | null = null;
     let ctx: AudioContext | null = null;
     let timer: number | null = null;
-    void (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-      } catch {
-        if (!cancelled) {
-          setMicError("Ohiyo couldn't use your microphone. Check that it's allowed for this site or app.");
-          setChecking(false);
-        }
-        return;
-      }
-      if (cancelled) {
-        stream.getTracks().forEach((t) => t.stop());
-        return;
-      }
-      const Ctor =
-        window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctor) return;
-      ctx = new Ctor();
-      const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 1024;
-      source.connect(analyser);
-      void ctx.resume().catch(() => {});
-      const samples = new Float32Array(analyser.fftSize);
-      timer = window.setInterval(() => {
-        analyser.getFloatTimeDomainData(samples);
-        setLevel(levelToDb(rmsOf(samples)));
-      }, METER_SAMPLE_MS);
-    })();
-    return () => {
+    const release = () => {
       cancelled = true;
       if (timer !== null) window.clearInterval(timer);
       stream?.getTracks().forEach((t) => t.stop());
       void ctx?.close().catch(() => {});
+      stream = null;
+      ctx = null;
+      timer = null;
+    };
+    const onPageHide = () => {
+      release();
+      setChecking(false);
       setLevel(MIN_SENSITIVITY_DB);
     };
-  }, [checking]);
+    window.addEventListener("pagehide", onPageHide);
+    void (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          stream = null;
+          return;
+        }
+        const Ctor =
+          window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!Ctor) throw new Error("AudioContext unavailable");
+        ctx = new Ctor();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        source.connect(analyser);
+        await ctx.resume();
+        if (cancelled) return;
+        const samples = new Float32Array(analyser.fftSize);
+        timer = window.setInterval(() => {
+          analyser.getFloatTimeDomainData(samples);
+          setLevel(levelToDb(rmsOf(samples)));
+        }, METER_SAMPLE_MS);
+      } catch {
+        if (!cancelled) {
+          release();
+          setMicError("Ohiyo couldn't use your microphone. Check that it's allowed for this site or app.");
+          setChecking(false);
+        }
+      }
+    })();
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      release();
+      setLevel(MIN_SENSITIVITY_DB);
+    };
+  }, [checking, voiceActive]);
 
   const setMode = (inputMode: InputMode) => update({ ...prefs, inputMode });
   const keyLabel = describeKey(prefs.pttKey);
@@ -187,7 +210,12 @@ export function VoiceTab() {
         )}
 
         <div className="kc-voice-meter-row">
-          <button type="button" className="kc-voice-button" onClick={() => { setMicError(null); setChecking((c) => !c); }}>
+          <button type="button" className="kc-voice-button" disabled={voiceActive || captionBusy} onClick={() => {
+            if (captureGuard.current.voiceActive || captureGuard.current.captions) return;
+            setMicError(null);
+            captureGuard.current.checking = !captureGuard.current.checking;
+            setChecking(captureGuard.current.checking);
+          }}>
             {checking ? "Stop checking" : "Check my mic"}
           </button>
           <div
@@ -207,8 +235,22 @@ export function VoiceTab() {
             {showSlider && <div className="kc-voice-meter__mark" style={{ left: `${percentOf(prefs.sensitivityDb)}%` }} aria-hidden="true" />}
           </div>
         </div>
+        {voiceActive && <p className="kc-voice-note">Leave your call before checking a separate microphone capture.</p>}
         {micError && <p className="kc-voice-note kc-voice-note--error" role="alert">{micError}</p>}
       </section>
+
+      <LocalCaptionPilot
+        disabledReason={voiceActive ? "Leave your call first: a separate caption capture must not bypass call mute."
+          : checking ? "Stop checking your mic before starting local captions." : undefined}
+        claimMicrophone={() => {
+          const guard = captureGuard.current;
+          if (guard.voiceActive || guard.checking || guard.captions) return false;
+          guard.captions = true;
+          setCaptionBusy(true);
+          return true;
+        }}
+        releaseMicrophone={() => { captureGuard.current.captions = false; setCaptionBusy(false); }}
+      />
 
       <section className="kc-voice-panel" aria-labelledby="kc-voice-keys-title">
         <h3 id="kc-voice-keys-title" className="kc-voice-panel__title">In a call</h3>

@@ -13,6 +13,7 @@ import {
   importTheme,
   loadTheme,
   createCustomTheme,
+  themeVars,
   THEME_VAR_GROUPS,
 } from "../../themes";
 import { isValidHex } from "../../lib/color";
@@ -90,6 +91,8 @@ type Props = {
   dms: Channel[];
   /** Open straight to a given tab (e.g. the recovery-code nudge deep-links to "security"). */
   initialTab?: Tab;
+  /** Standalone microphone pilots must not bypass an active call's mute controls. */
+  voiceActive?: boolean;
   onClose: () => void;
   onToast: (text: string, type?: "info" | "success" | "error") => void;
   privacyPrefs: PrivacyPrefs;
@@ -104,9 +107,9 @@ type Props = {
 };
 
 const SETTINGS_FOCUSABLE =
-  'button:not([disabled]), input:not([disabled]), textarea, select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+  'button:not([disabled]), input:not([disabled]), textarea, select:not([disabled]), summary, [href], [tabindex]:not([tabindex="-1"])';
 
-export function SettingsModal({ currentUser, pluginManager, token, servers, dms, initialTab, onClose, onToast, privacyPrefs, onPrivacyPrefsChange, onCurrentUserUpdate, onSignOutEverywhere, onTokenChange, onAccountDeleted }: Props) {
+export function SettingsModal({ currentUser, pluginManager, token, servers, dms, initialTab, voiceActive = false, onClose, onToast, privacyPrefs, onPrivacyPrefsChange, onCurrentUserUpdate, onSignOutEverywhere, onTokenChange, onAccountDeleted }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "appearance");
   const dialogRef = useRef<HTMLDivElement>(null);
   // On a phone the tabs are a row that scrolls sideways: keep the open one in view.
@@ -136,7 +139,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
   function trapTab(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key !== "Tab") return;
     const nodes = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(SETTINGS_FOCUSABLE) ?? [])
-      .filter((node) => node.getClientRects().length > 0);
+      .filter((node) => node.getClientRects().length > 0 && !node.closest("details:not([open]) > :not(summary)"));
     if (!nodes || !nodes.length) return;
     const first = nodes[0];
     const last = nodes[nodes.length - 1];
@@ -243,7 +246,7 @@ export function SettingsModal({ currentUser, pluginManager, token, servers, dms,
           {tab === "social" && <SocialTab token={token} onToast={onToast} />}
           {tab === "security" && <SecurityTab token={token} userId={currentUser?.id} dms={dms} onToast={onToast} privacyPrefs={privacyPrefs} onPrivacyPrefsChange={onPrivacyPrefsChange} onSignOutEverywhere={onSignOutEverywhere} />}
           {tab === "notifications" && <NotificationsTab token={token} onToast={onToast} />}
-          {tab === "voice" && <VoiceTab />}
+          {tab === "voice" && <VoiceTab voiceActive={voiceActive} />}
           {tab === "help" && (
             <HelpTab version={APP_VERSION} desktop={isDesktop()} home={getApiBase()} userAgent={navigator.userAgent} loadStatus={fetchServiceStatus} />
           )}
@@ -266,6 +269,7 @@ function AppearanceTab({
   const [currentTheme, setCurrentTheme] = useState<Theme>(loadTheme);
   const [customThemes, setCustomThemes] = useState<Theme[]>(getCustomThemes);
   const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
   const [accent, setAccentVal] = useState<string>(getActiveAccent);
   const [accentOverride, setAccentOverride] = useState<boolean>(() => loadAccent() !== null);
   const [density, setDensityVal] = useState<Density>(loadDensity);
@@ -291,6 +295,8 @@ function AppearanceTab({
   } satisfies Record<string, string>)[label] ?? label;
 
   function select(theme: Theme) {
+    previewing.current = false;
+    setEditing(false);
     applyTheme(theme);
     setCurrentTheme(theme);
     // Keep a personal accent layered over the new theme; otherwise follow the theme.
@@ -331,7 +337,14 @@ function AppearanceTab({
   // ── Visual theme editor ──────────────────────────────────────────────────
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState("");
-  const [draftVars, setDraftVars] = useState<ThemeVar>(() => ({ ...currentTheme.vars }));
+  const [draftVars, setDraftVars] = useState<ThemeVar>(() => themeVars(currentTheme));
+  const previewing = useRef(false);
+  const editorRef = useRef<HTMLElement>(null);
+
+  // Closing Settings or switching tabs must never leave an unsaved preview behind.
+  useEffect(() => () => {
+    if (previewing.current) applyActiveAppearance();
+  }, []);
 
   // Local state is seeded once at mount. When another device's appearance arrives via
   // pullAppearance (or any other code applies a change), the DOM updates but these
@@ -353,8 +366,9 @@ function AppearanceTab({
   }, [editing]);
 
   function openEditor() {
-    setDraftVars({ ...currentTheme.vars });
+    setDraftVars(themeVars(currentTheme));
     setDraftName("");
+    previewing.current = true;
     setEditing(true);
   }
 
@@ -364,8 +378,15 @@ function AppearanceTab({
   }
 
   function cancelEditor() {
+    previewing.current = false;
     setEditing(false);
     applyActiveAppearance(); // restore the real active theme + accent
+  }
+
+  function resetDraft() {
+    const vars = themeVars(currentTheme);
+    setDraftVars(vars);
+    applyTheme({ ...currentTheme, vars }, false);
   }
 
   function saveEditor() {
@@ -377,6 +398,7 @@ function AppearanceTab({
     setCurrentTheme(theme);
     setAccentVal(theme.vars["--accent"]);
     setAccentOverride(false);
+    previewing.current = false;
     setEditing(false);
     pushAppearance(token);
     onToast(`Theme "${theme.name}" saved`, "success");
@@ -390,12 +412,15 @@ function AppearanceTab({
   function handleImport() {
     try {
       const theme = importTheme(importText);
-      saveCustomTheme(theme);
-      setCustomThemes(getCustomThemes());
-      select(theme);
-      setImportText("");
-    } catch {
-      onToast("Invalid theme JSON", "error");
+      setImportError(null);
+      setDraftVars(theme.vars);
+      setDraftName(theme.name);
+      previewing.current = true;
+      setEditing(true);
+      applyTheme(theme, false);
+      requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: "start", behavior: "instant" }));
+    } catch (error) {
+      setImportError(errorMessage(error, "Couldn't preview this look."));
     }
   }
 
@@ -652,7 +677,7 @@ function AppearanceTab({
       </section>
 
       {/* Build your own theme — visual editor (no JSON required) */}
-      <section className="kc-settings-stage kc-theme-builder" aria-labelledby="theme-builder-title">
+      <section ref={editorRef} className="kc-settings-stage kc-theme-builder" aria-labelledby="theme-builder-title">
         {!editing ? (
           <div className="kc-theme-builder__closed">
             <div>
@@ -673,9 +698,9 @@ function AppearanceTab({
             <div className="kc-theme-editor__head">
               <div>
                 <span className="kc-step-pill kc-step-pill--muted">Step 3 · Optional</span>
-                <div className="kc-theme-editor__title">Fine-tune your own look</div>
+                <h3 id="theme-builder-title" className="kc-theme-editor__title">Preview your look</h3>
                 <p className="kc-theme-editor__copy">
-                  Pick a color, watch Ohiyo update instantly, then save it as your own look.
+                  Nothing is saved yet. Try colors, reset to your saved look, or cancel to go back.
                 </p>
               </div>
               <div className="kc-theme-editor__preview" aria-hidden="true">
@@ -696,6 +721,7 @@ function AppearanceTab({
               <input
                 value={draftName}
                 onChange={(e) => setDraftName(e.target.value)}
+                maxLength={80}
                 placeholder="e.g. Night Study"
                 aria-label="Theme name"
               />
@@ -734,6 +760,9 @@ function AppearanceTab({
               <button type="button" onClick={saveEditor} className="kc-cta px-4 py-2 text-sm">
                 Save this look
               </button>
+              <button type="button" onClick={resetDraft} className="kc-interactive rounded-full px-4 py-2 text-sm font-semibold">
+                Reset draft colors
+              </button>
               <button type="button" onClick={cancelEditor} className="kc-interactive rounded-full px-4 py-2 text-sm font-semibold">
                 Cancel
               </button>
@@ -762,13 +791,18 @@ function AppearanceTab({
           </button>
         </div>
         <textarea
+          aria-label="Theme JSON"
+          aria-invalid={!!importError}
+          aria-describedby={importError ? "theme-import-error" : undefined}
           placeholder="Paste a look here…"
           value={importText}
-          onChange={(e) => setImportText(e.target.value)}
+          onChange={(e) => { setImportText(e.target.value); setImportError(null); }}
+          maxLength={16_384}
           rows={4}
           className="mt-3 mb-2 w-full rounded-xl p-3 text-xs outline-none font-mono"
-          style={{ background: "var(--bg-input)", color: "var(--text-primary)", resize: "vertical", border: "1px solid var(--bg-hover)" }}
+          style={{ background: "var(--bg-input)", color: "var(--text-primary)", resize: "vertical", border: `1px solid ${importError ? "var(--danger)" : "var(--bg-hover)"}` }}
         />
+        {importError && <p id="theme-import-error" role="alert" className="mb-3 text-sm" style={{ color: "var(--danger)" }}>{importError}</p>}
         <button
           type="button"
           onClick={handleImport}
@@ -776,7 +810,7 @@ function AppearanceTab({
           className="rounded-full px-3 py-1.5 text-sm font-semibold"
           style={{ background: importText.trim() ? "var(--accent)" : "var(--bg-hover)", color: "white", opacity: importText.trim() ? 1 : 0.65 }}
         >
-          Add this look
+          Preview this look
         </button>
       </details>
     </div>

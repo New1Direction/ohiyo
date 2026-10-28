@@ -150,6 +150,9 @@ See the [roadmap](ROADMAP.md) for planned improvements.
 
 ## Quickstart (local dev)
 
+For a private Linux host, use the [self-hosting baseline](docs/self-hosting.md):
+one Compose stack, AI off by default, optional voice and whole-volume recovery.
+
 You need **Rust stable**, **Node 22.19+**, and **[Bun 1.4+](https://bun.sh)**.
 Chat development does not need AI credentials or a running Burrow worker.
 

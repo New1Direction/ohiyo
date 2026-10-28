@@ -2,8 +2,8 @@
 # The hosted app at app.ohiyo.gg runs this on Railway; `railway.json` selects it.
 # Build from the repository root: docker build -f client/Dockerfile .
 #
-# The backend address is baked in at build time from `.env.production`
-# (VITE_SERVER_URL). To point the app at your own server, change that file and rebuild.
+# The backend address is baked in at build time. An optional VITE_SERVER_URL build
+# argument overrides `.env.production`; omitting it preserves the hosted default.
 
 FROM node:22-bookworm-slim AS build
 # Bun installs the packages; Node still runs tsc and Vite. Keep this version in step with
@@ -14,8 +14,10 @@ COPY client/package.json client/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY client/ ./
 COPY brand/kikka-chinchilla-clean.png /app/brand/kikka-chinchilla-clean.png
+ARG VITE_SERVER_URL
 # public/_headers is for Cloudflare Pages; Caddy sets the same headers itself.
-RUN bun run build && rm -f dist/_headers
+RUN if [ -n "$VITE_SERVER_URL" ]; then export VITE_SERVER_URL; else unset VITE_SERVER_URL; fi \
+    && bun run build && rm -f dist/_headers
 
 FROM caddy:2-alpine
 COPY client/Caddyfile /etc/caddy/Caddyfile

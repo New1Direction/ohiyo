@@ -22,6 +22,8 @@ Apple Developer enrollment is not required to use the web app.
 - **Backend host:** any host that runs a Docker image with one persistent volume.
   ohiyo.gg runs on Railway ([§1](#1-deploy-the-backend)); the repo also ships a
   `fly.toml` for Fly.io. Either way it is a single machine with a persistent volume.
+- **Self-hosting:** the [single-host Compose baseline](docs/self-hosting.md) keeps
+  AI off by default and includes whole-volume backup, restore and upgrade procedures.
 - **Signing:** the published v0.3.1 Mac installers fail Gatekeeper. New native
   releases require Developer ID signing and notarization; see
   [§5](#5-code-signing--auto-update-required-for-release-downloads). The updater's
@@ -308,6 +310,10 @@ DELETE FROM _sqlx_migrations WHERE version = 40;
 
 ### Backups — set this up before you have real users
 
+For SQLite **plus uploads and Pi Durable journals/state**, use a coordinated
+whole-volume backup. The [self-hosting recovery guide](docs/self-hosting.md#whole-volume-backup-planned-outage)
+includes an offline restore drill. Litestream alone does not cover these files.
+
 The `/data` volume holds the SQLite DB: **all** messages (ciphertext for encrypted DMs
 and group chats, readable text for everything else) *and* the encrypted `key_backups`
 blobs. Losing it is unrecoverable, so back it up.
@@ -513,6 +519,9 @@ download. A new signed, notarized version must be built and tested before public
 ### Windows signing
 Obtain a code-signing certificate (OV/EV) and set the `tauri.conf.json`
 `bundle.windows.certificateThumbprint` (or use Azure Trusted Signing).
+Windows installers remain disabled. The new secure-memory backend and native
+test matrix do not establish app-level readiness; complete the
+[desktop hardening gates](docs/desktop-hardening.md) before enabling releases.
 
 ### Auto-update (on since 0.3.0)
 
@@ -564,9 +573,11 @@ download the new package instead.
 
 `.github/workflows/release.yml` builds the macOS (Apple Silicon + Intel) and Linux
 installers on every `v*` tag (or via manual dispatch) and attaches them to a
-**draft** GitHub Release. macOS has two explicit CI paths: Developer ID signed +
-notarized when all Apple secrets are present, otherwise ad-hoc-signed Mac beta
-fallback:
+**draft** GitHub Release. Missing updater-signing credentials fail the release;
+macOS additionally requires Developer ID signing and notarization credentials.
+There is no ad-hoc Mac release fallback. The separate
+`.github/workflows/desktop-security.yml` tests the vault on Linux, macOS and
+Windows without building or publishing installers:
 
 | Secret | Purpose |
 |--------|---------|

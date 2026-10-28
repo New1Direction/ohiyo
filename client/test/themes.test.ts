@@ -10,6 +10,8 @@ import {
   THEME_VAR_GROUPS,
   BUILTIN_THEMES,
   themeVars,
+  importTheme,
+  exportTheme,
   type ThemeVar,
 } from "../src/themes/index.ts";
 
@@ -121,4 +123,35 @@ test("a dark custom theme missing newer colours still gets the dark default's", 
 test("a theme's own colours always win over the fallback", () => {
   const light = BUILTIN_THEMES.find((t) => t.id === "light")!;
   assert.deepEqual(themeVars(light), { ...BUILTIN_THEMES[0].vars, ...light.vars });
+});
+
+test("imports accept older color-only looks without reusing their identity", () => {
+  const older = withoutNewerColours("light");
+  const imported = importTheme(exportTheme(older));
+  assert.equal(imported.name, older.name);
+  assert.notEqual(imported.id, older.id);
+  assert.notEqual(importTheme(exportTheme(older)).id, imported.id);
+  assert.deepEqual(imported.vars, themeVars(older));
+});
+
+test("imports reject CSS payloads and malformed metadata before painting or saving", () => {
+  const theme = BUILTIN_THEMES[0];
+  const invalid = [
+    null,
+    [],
+    { ...theme, name: " " },
+    { ...theme, name: "x".repeat(81) },
+    { ...theme, id: {} },
+    { ...theme, author: ["not text"] },
+    { ...theme, vars: [] },
+    { ...theme, vars: {} },
+    { ...theme, vars: { ...theme.vars, "--accent": "url(https://example.com/track)" } },
+    { ...theme, vars: { ...theme.vars, "--accent": ["#112233"] } },
+    { ...theme, vars: { ...theme.vars, "--accent": "#12345g" } },
+    { ...theme, vars: { ...theme.vars, "background-image": "#112233" } },
+    { ...theme, vars: { ...theme.vars, "--text-primary": "transparent" } },
+  ];
+  for (const value of invalid) assert.throws(() => importTheme(JSON.stringify(value)));
+  assert.throws(() => importTheme("{"), /valid theme JSON/);
+  assert.throws(() => importTheme(" ".repeat(16_385)), /too large/);
 });

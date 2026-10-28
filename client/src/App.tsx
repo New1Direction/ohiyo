@@ -4192,6 +4192,7 @@ function MainApp({
           servers={servers}
           dms={dms}
           initialTab={settingsTab}
+          voiceActive={webrtc.callState !== "idle"}
           privacyPrefs={privacyPrefs}
           onPrivacyPrefsChange={updatePrivacyPrefs}
           onClose={() => { setShowSettings(false); setSettingsTab("appearance"); }}

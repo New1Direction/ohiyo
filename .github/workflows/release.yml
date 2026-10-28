@@ -24,9 +24,9 @@ jobs:
             target: x86_64-apple-darwin
           - platform: ubuntu-22.04
             target: ""
-          # Windows is temporarily disabled: crates/goodnight (the key vault) uses
-          # POSIX-only libc (mmap/mlock/getuid/RLIMIT_MEMLOCK) that doesn't compile on
-          # Windows. Re-enable once it's cfg-gated with a Windows VirtualLock fallback.
+          # Windows stays disabled pending native secure-memory/vault CI, full
+          # Tauri/keychain verification and a fail-closed Authenticode signing path.
+          # The VirtualLock backend alone is insufficient; see docs/desktop-hardening.md.
           # - platform: windows-latest
           #   target: ""
     runs-on: ${{ matrix.platform }}

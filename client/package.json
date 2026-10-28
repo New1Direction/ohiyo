@@ -20,6 +20,7 @@
   "dependencies": {
     "@json-render/core": "0.21.1",
     "@json-render/react": "0.21.1",
+    "@moonshine-ai/moonshine-wasm": "0.1.5",
     "@paper-design/shaders": "0.0.82",
     "@privacyresearch/libsignal-protocol-typescript": "^0.0.16",
     "@tailwindcss/vite": "^4.3.1",

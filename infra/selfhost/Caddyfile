@@ -1,0 +1,11 @@
+{$OHIYO_DOMAIN} {
+	# Preserve paths and query strings (including signed file URLs). Caddy proxies
+	# WebSocket upgrades automatically. Never send API errors to the SPA fallback.
+	@backend path /api /api/* /gateway /gateway/* /files /files/* /healthz
+	handle @backend {
+		reverse_proxy server:3000
+	}
+	handle {
+		reverse_proxy web:8080
+	}
+}

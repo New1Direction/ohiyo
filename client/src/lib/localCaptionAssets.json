@@ -1,0 +1,27 @@
+{
+  "version": "0.1.5",
+  "revision": "quantized_26_07_30",
+  "base": "/local-captions/0.1.5-tiny-en-260730/",
+  "source": "https://download.moonshine.ai/model/tiny-streaming-en/quantized_26_07_30/",
+  "runtime": [
+    ["moonshine.wasm", 13155937, "d0e783f661f8be68f7af48d859d3bbc7a6381a980b35b4128fc36344218a6682"],
+    ["moonshine.mjs", 156457, "a4b40a7cf7a810e3cdbe8c12f3dd47598900566117b824da690585deb79c59e2"],
+    ["transcriber.js", 10646, "7d18f6123a3a69a10a687c86662b3aa93748a27c95b26dc2f562ea34fe3f30d0"],
+    ["asset-downloader.js", 7398, "1887c3895d4d05aefacd9c7d0ca638c3b209c30de537fe65cd56595ff732d42e"],
+    ["enums.js", 2058, "149edff4d610640fc268a18ae0d207b443a5e5d841045e555b39788f9db802ed"],
+    ["errors.js", 4712, "1f3abb56d6d28213adbb3f45e2c59eafecb48302d1e1a95164cdcb10c03576e0"],
+    ["module.js", 4053, "76ac4333a21258c9d80cf27a0d7804865e8fe56314fd31baf20cf286d77d3534"],
+    ["stream.js", 6681, "443a90c0fa92f4a75d85015f9c109ab48f4201b7546bccae0749111a885fd21b"],
+    ["types.js", 2373, "7fb0bd0c6e9168b3f8b637e9267d799a570c2fb333a7fbdd69c0b067da7e2b85"],
+    ["events.js", 2105, "2dd5076fcc75d27d531df3de86e3fe4829e98cb39a9e9214b252ac7b10923faa"]
+  ],
+  "models": [
+    ["adapter.ort", 1319664, "22ecc949e146c49667fda28d102d4e30749a107dc88a396292aa8f277ef1347c", "kwQ+Bw=="],
+    ["cross_kv.ort", 1287544, "143a36667b8d05fd9d04e8c337b7ee121f37ef299aea6b3d82bdb3d3401950b4", "76wzFQ=="],
+    ["decoder_kv.ort", 32583720, "8852553f312adb6c9aa4d17418015049b30f412209ee569d336548c0044627de", "KJjeNw=="],
+    ["encoder.ort", 7675440, "a8414e1a5dedf9f2093d7680601dd8a9b0433e7020260eafe0e370ead91134ca", "UjAIpQ=="],
+    ["frontend.ort", 8324920, "271a563251f11e6311949530f8025ed4d345c5d69d4ac1efa74093779927d636", "AW9qsg=="],
+    ["streaming_config.json", 509, "74fe5ddebd63b17caf59e8a3b18c17547ff7bce1642050edbb1c3962674f8950", "HGL0Ug=="],
+    ["tokenizer.bin", 249974, "6884b35fd6377d4c4d32336a0bc152f36b64d1e45b6503683cdc238250a8472d", "B7s10Q=="]
+  ]
+}

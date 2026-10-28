@@ -1,0 +1,60 @@
+# Run from this directory. Exactly one server owns the local SQLite volume.
+name: ohiyo-selfhost
+services:
+  server:
+    image: ohiyo-selfhost-server:${OHIYO_VERSION:?set OHIYO_VERSION}
+    build:
+      context: ../..
+      dockerfile: server/Dockerfile
+    deploy:
+      replicas: 1
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      BIND_ADDR: 0.0.0.0:3000
+      DATABASE_URL: sqlite:/data/ohiyo.db
+      PUBLIC_BASE_URL: https://${OHIYO_DOMAIN:?set OHIYO_DOMAIN}
+      CORS_ALLOWED_ORIGINS: https://${OHIYO_DOMAIN:?set OHIYO_DOMAIN}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      OHIYO_TOTP_KEY: ${OHIYO_TOTP_KEY:?set OHIYO_TOTP_KEY}
+      TRUSTED_PROXY_HOPS: "1"
+      KIKKA_EMBEDDED_WORKER: "0"
+      KIKKA_USER_ID: ""
+      LIVEKIT_ENABLED: "false"
+      MIN_FREE_DISK_BYTES: ${MIN_FREE_DISK_BYTES:-5368709120}
+      MAX_UPLOAD_BYTES_PER_USER: ${MAX_UPLOAD_BYTES_PER_USER:-1073741824}
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+        bind:
+          create_host_path: false
+    networks: [backend]
+
+  web:
+    image: ohiyo-selfhost-web:${OHIYO_VERSION:?set OHIYO_VERSION}
+    build:
+      context: ../..
+      dockerfile: client/Dockerfile
+      args:
+        VITE_SERVER_URL: https://${OHIYO_DOMAIN:?set OHIYO_DOMAIN}
+    restart: unless-stopped
+    networks: [backend]
+
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      OHIYO_DOMAIN: ${OHIYO_DOMAIN:?set OHIYO_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+    depends_on: [server, web]
+    networks: [backend]
+
+networks:
+  backend:

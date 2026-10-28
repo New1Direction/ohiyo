@@ -7,6 +7,7 @@
       "dependencies": {
         "@json-render/core": "0.21.1",
         "@json-render/react": "0.21.1",
+        "@moonshine-ai/moonshine-wasm": "0.1.5",
         "@paper-design/shaders": "0.0.82",
         "@privacyresearch/libsignal-protocol-typescript": "^0.0.16",
         "@tailwindcss/vite": "^4.3.1",
@@ -192,6 +193,8 @@
     "@livekit/mutex": ["@livekit/mutex@1.1.1", "", {}, "sha512-EsshAucklmpuUAfkABPxJNhzj9v2sG7JuzFDL4ML1oJQSV14sqrpTYnsaOudMAw9yOaW53NU3QQTlUQoRs4czw=="],
 
     "@livekit/protocol": ["@livekit/protocol@1.45.8", "", { "dependencies": { "@bufbuild/protobuf": "^1.10.0" } }, "sha512-Q+l57E7w/xxOBFVWzdX5rkAZO7ffyF+rlDzNUYq2SU114+5aTyCq+PK4unaEVDNd4952Af7wteKr3sOgasGuaA=="],
+
+    "@moonshine-ai/moonshine-wasm": ["@moonshine-ai/moonshine-wasm@0.1.5", "", {}, "sha512-b90GVFkbuQQthW8wZFU/dvJpnnsISHSSxs/p6Xv/NMfaHotLhRp0e9Risy5/np6QSF3SFust3jGE3Uj2LdecmQ=="],
 
     "@paper-design/shaders": ["@paper-design/shaders@0.0.82", "", {}, "sha512-eCxYQrrCxRVc4KG8sLSQecsq8Ymstbaq/FqZjq/fhOa6UiR1ZZfdMO5IJpHmwL0GYmfzvZVQ4l8ZOLux0uLVdg=="],
 

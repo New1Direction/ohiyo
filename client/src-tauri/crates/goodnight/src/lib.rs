@@ -1,7 +1,7 @@
 //! Secure memory primitives for dazai.
 //!
 //! A [`SecretBuffer`] owns a page-aligned anonymous mapping that is locked into
-//! physical RAM ([`mlock`]) so it is never written to swap, excluded from core
+//! physical RAM where possible, excluded from core
 //! dumps where the OS supports it, and **explicitly wiped** on drop with a
 //! zeroing primitive the compiler is not permitted to elide.
 //!
@@ -11,12 +11,16 @@
 //! `#![deny(unsafe_code)]`.
 //!
 //! # Guarantees (best-effort, platform-dependent)
+//! Unix retains the upstream best-effort locking behavior:
 //! - page-aligned `mmap(MAP_ANON | MAP_PRIVATE)` allocation
 //! - `mlock` on every buffer (degrades to a warning if `RLIMIT_MEMLOCK` forbids)
 //! - `madvise(MADV_DONTDUMP)` on Linux (no-op on macOS)
 //! - non-elidable wipe: `explicit_bzero` on Linux, `memset_s` on macOS,
 //!   a volatile write loop elsewhere
 //! - `Drop` wipes, then `munlock`, then `munmap`
+//! - Windows: `VirtualAlloc` + mandatory `VirtualLock` (failure returns an error),
+//!   volatile wipe of all committed pages, then `VirtualUnlock` + `VirtualFree`.
+//!   Locking does not exclude memory from Windows crash dumps or hibernation.
 //! - move-only: `SecretBuffer` is neither `Clone` nor `Copy`, and never hands
 //!   out a raw pointer that can outlive the borrow
 
@@ -25,6 +29,12 @@
 use std::io;
 use std::ptr::NonNull;
 use std::slice;
+
+#[cfg(windows)]
+mod windows;
+
+#[cfg(not(any(unix, windows)))]
+compile_error!("goodnight requires Unix or Windows secure-memory primitives");
 
 /// Overwrite `buf` with zero bytes using a primitive the optimizer may not
 /// remove (unlike `memset` / `ptr::write_bytes`, which are subject to
@@ -65,6 +75,7 @@ pub fn secure_wipe(buf: &mut [u8]) {
 ///
 /// Exposed here (the workspace's sole `unsafe` crate) so unsafe-free crates can
 /// build a per-user socket path without their own FFI.
+#[cfg(unix)]
 pub fn current_uid() -> u32 {
     // SAFETY: `getuid` is a pure query that always succeeds and touches no
     // memory we provide.
@@ -77,6 +88,7 @@ pub fn current_uid() -> u32 {
 /// means the process exists. Rejects pid 0 and values that would not fit a
 /// positive `pid_t`, since those select a process *group* or every process
 /// rather than one process.
+#[cfg(unix)]
 pub fn pid_exists(pid: u32) -> bool {
     if pid == 0 || pid > i32::MAX as u32 {
         return false;
@@ -96,6 +108,7 @@ pub fn pid_exists(pid: u32) -> bool {
 ///
 /// Rejects pid 0 and out-of-`pid_t`-range values so a wrapped or zero value can
 /// never target a process group or every process.
+#[cfg(unix)]
 pub fn send_signal(pid: u32, signum: i32) -> bool {
     if pid == 0 || pid > i32::MAX as u32 {
         return false;
@@ -106,11 +119,13 @@ pub fn send_signal(pid: u32, signum: i32) -> bool {
 }
 
 /// Send `SIGKILL` to PID `pid`. Returns whether the signal was delivered.
+#[cfg(unix)]
 pub fn sigkill_pid(pid: u32) -> bool {
     send_signal(pid, libc::SIGKILL)
 }
 
 /// Send `SIGKILL` to the current process. Never returns.
+#[cfg(unix)]
 pub fn raise_sigkill() -> ! {
     // SAFETY: `raise(SIGKILL)` targets the current process and takes no memory
     // arguments; SIGKILL is uncatchable, so control never returns here.
@@ -125,6 +140,7 @@ pub fn raise_sigkill() -> ! {
 }
 
 /// Query the system page size, falling back to 4 KiB.
+#[cfg(unix)]
 fn page_size() -> usize {
     // SAFETY: `sysconf` is a pure query with no memory arguments.
     let ps = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
@@ -141,6 +157,7 @@ fn page_size() -> usize {
 /// raises the soft limit to the hard limit. Returns `Ok(true)` if the limit was
 /// successfully raised, `Ok(false)` if the kernel refused (caller should warn
 /// and continue), or `Err` if the limit could not even be read.
+#[cfg(unix)]
 pub fn try_raise_memlock_rlimit() -> io::Result<bool> {
     let mut lim = libc::rlimit {
         rlim_cur: 0,
@@ -191,7 +208,7 @@ pub fn set_process_undumpable() -> io::Result<()> {
     }
 }
 
-/// A page-aligned, `mlock`'d, explicitly-zeroizable byte buffer.
+/// A page-aligned, explicitly-zeroizable byte buffer with OS page locking.
 ///
 /// The allocation is rounded up to a whole number of pages. `len()` reports the
 /// requested logical length; the full allocation is wiped on [`SecretBuffer::wipe`]
@@ -208,9 +225,10 @@ pub struct SecretBuffer {
 impl SecretBuffer {
     /// Allocate, lock, and zero a new buffer of `len` bytes.
     ///
-    /// Fails only if `len == 0` or the mapping cannot be created. A failed
-    /// `mlock` is non-fatal: the buffer is returned in a degraded (swappable)
-    /// state with [`is_locked`](Self::is_locked) reporting `false`.
+    /// Fails if the length is zero, too large, or allocation fails. On Unix a
+    /// failed `mlock` is non-fatal: [`is_locked`](Self::is_locked) reports false.
+    /// On Windows `VirtualLock` failure frees the allocation and returns an error;
+    /// a successful buffer is always locked before secret bytes can be written.
     pub fn new(len: usize) -> io::Result<Self> {
         if len == 0 {
             return Err(io::Error::new(
@@ -218,38 +236,49 @@ impl SecretBuffer {
                 "SecretBuffer length must be > 0",
             ));
         }
+        #[cfg(unix)]
         let ps = page_size();
-        let cap = len.div_ceil(ps) * ps;
+        #[cfg(windows)]
+        let ps = windows::page_size();
+        let cap = allocation_size(len, ps)?;
 
-        // SAFETY: a null `addr` lets the kernel choose the location;
-        // `MAP_ANON | MAP_PRIVATE` returns a fresh, zero-filled private mapping
-        // of `cap` bytes. We check the result against `MAP_FAILED` before use.
-        let raw = unsafe {
-            libc::mmap(
-                std::ptr::null_mut(),
-                cap,
-                libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_ANON | libc::MAP_PRIVATE,
-                -1,
-                0,
-            )
+        #[cfg(unix)]
+        let ptr = {
+            // SAFETY: a null `addr` lets the kernel choose the location;
+            // `MAP_ANON | MAP_PRIVATE` returns a fresh, zero-filled private mapping
+            // of `cap` bytes. We check the result against `MAP_FAILED` before use.
+            let raw = unsafe {
+                libc::mmap(
+                    std::ptr::null_mut(),
+                    cap,
+                    libc::PROT_READ | libc::PROT_WRITE,
+                    libc::MAP_ANON | libc::MAP_PRIVATE,
+                    -1,
+                    0,
+                )
+            };
+            if raw == libc::MAP_FAILED {
+                return Err(io::Error::last_os_error());
+            }
+            NonNull::new(raw.cast::<u8>()).expect("mmap returned non-null on success")
         };
-        if raw == libc::MAP_FAILED {
-            return Err(io::Error::last_os_error());
-        }
-        let ptr = NonNull::new(raw.cast::<u8>()).expect("mmap returned non-null on success");
+        #[cfg(windows)]
+        let ptr = windows::allocate_locked(cap)?;
 
+        #[allow(unused_mut)]
         let mut buf = SecretBuffer {
             ptr,
             len,
             cap,
-            locked: false,
+            locked: cfg!(windows),
         };
+        #[cfg(unix)]
         buf.lock();
         buf.dontdump();
         Ok(buf)
     }
 
+    #[cfg(unix)]
     fn lock(&mut self) {
         // SAFETY: `ptr`/`cap` describe our own valid, page-aligned mapping.
         let rc = unsafe { libc::mlock(self.ptr.as_ptr().cast(), self.cap) };
@@ -284,7 +313,7 @@ impl SecretBuffer {
         self.len == 0
     }
 
-    /// Whether `mlock` succeeded for this buffer.
+    /// Whether OS page locking succeeded (`mlock` / `VirtualLock`).
     pub fn is_locked(&self) -> bool {
         self.locked
     }
@@ -334,14 +363,32 @@ impl SecretBuffer {
 impl Drop for SecretBuffer {
     fn drop(&mut self) {
         self.wipe();
-        if self.locked {
-            // SAFETY: unlocking the same range we locked, exactly once.
-            unsafe { libc::munlock(self.ptr.as_ptr().cast(), self.cap) };
+        #[cfg(unix)]
+        {
+            if self.locked {
+                // SAFETY: unlocking the same range we locked, exactly once.
+                unsafe { libc::munlock(self.ptr.as_ptr().cast(), self.cap) };
+            }
+            // SAFETY: unmapping our own mapping exactly once — `Drop` runs once and
+            // no slice borrows can be live here (they borrow `&self`/`&mut self`).
+            unsafe { libc::munmap(self.ptr.as_ptr().cast(), self.cap) };
         }
-        // SAFETY: unmapping our own mapping exactly once — `Drop` runs once and
-        // no slice borrows can be live here (they borrow `&self`/`&mut self`).
-        unsafe { libc::munmap(self.ptr.as_ptr().cast(), self.cap) };
+        #[cfg(windows)]
+        // SAFETY: unique ownership of the allocation returned by allocate_locked;
+        // the entire committed region was wiped above, before unlocking.
+        unsafe {
+            windows::release_locked(self.ptr, self.cap)
+        };
     }
+}
+
+fn allocation_size(len: usize, page_size: usize) -> io::Result<usize> {
+    // Slice lengths (including the full-allocation wipe) must fit in isize.
+    len.checked_add(page_size.saturating_sub(1))
+        .and_then(|n| n.checked_div(page_size))
+        .and_then(|n| n.checked_mul(page_size))
+        .filter(|&cap| cap > 0 && cap <= isize::MAX as usize)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "SecretBuffer length too large"))
 }
 
 // `SecretBuffer` owns a unique mapping with no interior aliasing, so it is sound
@@ -350,3 +397,94 @@ impl Drop for SecretBuffer {
 // SAFETY: the single owner has exclusive control of the mapping; moving the
 // owning value to another thread transfers that exclusive control wholesale.
 unsafe impl Send for SecretBuffer {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_lengths_are_errors_not_panics() {
+        for len in [0, isize::MAX as usize, usize::MAX] {
+            assert_eq!(
+                SecretBuffer::new(len).err().unwrap().kind(),
+                io::ErrorKind::InvalidInput
+            );
+        }
+        assert_eq!(allocation_size(4096, 4096).unwrap(), 4096);
+        assert_eq!(allocation_size(4097, 4096).unwrap(), 8192);
+        assert!(allocation_size(1, 0).is_err());
+    }
+
+    #[test]
+    fn allocations_are_aligned_zeroed_and_locked() {
+        #[cfg(unix)]
+        let ps = page_size();
+        #[cfg(windows)]
+        let ps = windows::page_size();
+        for len in [1, ps, ps + 1] {
+            let buf = SecretBuffer::new(len).unwrap();
+            assert_eq!(buf.len(), len);
+            assert!(!buf.is_empty());
+            assert_eq!(buf.ptr.as_ptr() as usize % ps, 0);
+            assert_eq!(buf.cap % ps, 0);
+            assert!(buf.as_slice().iter().all(|&b| b == 0));
+            // The library permits degraded Unix operation, but platform CI
+            // must prove that its runner can actually lock small allocations.
+            assert!(
+                buf.is_locked(),
+                "platform test requires working page locking"
+            );
+        }
+    }
+
+    #[test]
+    fn write_zeroes_trailing_bytes_and_rejects_oversized_input() {
+        let mut buf = SecretBuffer::new(8).unwrap();
+        buf.write(b"12345678").unwrap();
+        buf.write(b"abc").unwrap();
+        assert_eq!(buf.as_slice(), b"abc\0\0\0\0\0");
+        assert_eq!(
+            buf.write(b"123456789").unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(buf.as_slice(), b"abc\0\0\0\0\0");
+        buf.write(b"").unwrap();
+        assert_eq!(buf.as_slice(), &[0; 8]);
+    }
+
+    #[test]
+    fn wipe_clears_full_allocation_including_page_slack() {
+        let mut buf = SecretBuffer::new(17).unwrap();
+        // SAFETY: the test exclusively owns the entire committed mapping;
+        // no other slices are live, and cap is its complete allocation size.
+        unsafe { slice::from_raw_parts_mut(buf.ptr.as_ptr(), buf.cap) }.fill(0xa5);
+        buf.wipe();
+        buf.wipe();
+        // SAFETY: buf still owns a valid mapping of cap bytes; no writes occur
+        // while this shared slice is borrowed. Never inspect freed memory.
+        let full = unsafe { slice::from_raw_parts(buf.ptr.as_ptr(), buf.cap) };
+        assert!(full.iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn secure_wipe_handles_empty_and_nonempty_slices() {
+        secure_wipe(&mut []);
+        let mut bytes = [0xa5; 33];
+        secure_wipe(&mut bytes);
+        assert_eq!(bytes, [0; 33]);
+    }
+
+    #[test]
+    fn repeated_allocation_and_cross_thread_drop() {
+        for _ in 0..64 {
+            let mut buf = SecretBuffer::new(32).unwrap();
+            buf.write(b"test secret").unwrap();
+            std::thread::spawn(move || {
+                assert_eq!(&buf.as_slice()[..11], b"test secret");
+                // Drop must wipe/unlock/free on the new owning thread.
+            })
+            .join()
+            .unwrap();
+        }
+    }
+}

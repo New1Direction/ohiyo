@@ -103,6 +103,33 @@ jobs:
         # inspect local-path crates; exercise the actual backported source.
         run: cargo test --manifest-path vendor/glib-0.18.5/Cargo.toml --release --lib variant_iter::tests
 
+  selfhost:
+    name: Self-hosting (config · recovery)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Validate Compose without revealing expanded configuration
+        env:
+          OHIYO_DOMAIN: chat.example.invalid
+          OHIYO_VERSION: ci
+          JWT_SECRET: ci-fixture-not-a-production-secret
+          OHIYO_TOTP_KEY: ci-fixture-not-a-production-key
+        run: docker compose -f infra/selfhost/compose.yaml config --quiet
+      - name: Validate TLS proxy configuration offline
+        run: |
+          docker run --rm --network none -e OHIYO_DOMAIN=chat.example.invalid \
+            -v "$PWD/infra/selfhost/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.10.2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Full-volume restore and shutdown safety regressions
+        run: |
+          bash -n infra/selfhost/backup.sh
+          python3 -B -m unittest discover -s infra/selfhost -p 'test_*.py' -v
+
   audit:
     name: Dependency advisories
     runs-on: ubuntu-latest
@@ -136,6 +163,8 @@ jobs:
         run: cargo audit --deny unsound --file client/src-tauri/Cargo.lock
       - name: cargo audit (standalone vault)
         run: cargo audit --deny unsound --file client/src-tauri/crates/vault/Cargo.lock
+      - name: cargo audit (standalone secure memory)
+        run: cargo audit --deny unsound --file client/src-tauri/crates/goodnight/Cargo.lock
 
   audit-worker:
     name: Dependency advisories (worker)

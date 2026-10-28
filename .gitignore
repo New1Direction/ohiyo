@@ -10,6 +10,7 @@ target/
 node_modules/
 client/dist/
 client/dist-ssr/
+client/public/local-captions/
 *.tsbuildinfo
 .vite/
 
