@@ -76,9 +76,10 @@ export function OnboardingBackdrop({ accent, pulse, paused }: {
           const colors = active && distance > radius ? state.previous : state.colors;
           const index = Math.floor((f * .8 + x / width * .25 + t * .035 + hover * .38) * 256) % 256;
           const color = colors[index];
-          // Keep the welcome copy readable without hiding the moving side fields.
-          const quiet = Math.abs(x - width / 2) < Math.min(310, width * .35);
-          const alpha = Math.round(255 * Math.min(1, .6 + f * .4 + hover * .2) * (quiet ? .25 : .7));
+          // A feathered clearing lets text float in the scene without dark cards
+          // or a hard-edged vertical strip. The colorful edges keep moving.
+          const clearing = Math.exp(-(((x - width / 2) / Math.min(430, width * .48)) ** 4));
+          const alpha = Math.round(255 * Math.min(1, .6 + f * .4 + hover * .2) * (.08 + .62 * (1 - clearing)));
           const start = row * 4 * stride + col * 16;
           for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
             const p = start + dy * stride + dx * 4;
